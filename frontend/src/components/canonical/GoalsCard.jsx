@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when,
-  Headline, StatTiles, Stat, TileGrid, Tile, Fold, PrimaryAction, Pill, dayLabel,
+  Headline, StatTiles, Stat, TileGrid, Tile, Fold, PrimaryAction, Pill, dayLabel, Group,
 } from './canonicalUi';
 import './GoalsCard.css';
 
@@ -301,5 +301,37 @@ function AddGoal({ measures, busy, run }) {
           onSave={async (m) => { setMeasure(m); setMeasuring(false); }} />
       )}
     </div>
+  );
+}
+
+/**
+ * The goals measured by `kinds`, shown on the page whose data they rely on
+ * (Outdoor for hikes, Projects for a project). Same payload as the Goals card;
+ * `match` narrows it (e.g. one project). Renders nothing when no goal applies —
+ * a page does not advertise goals you have not set.
+ */
+export function GoalNote({ kinds, match = null }) {
+  const { data, error } = useCanonical(`/api/canonical/goals/progress?kinds=${encodeURIComponent(kinds)}`);
+  if (error) return <div className="cn-muted" data-testid="goal-note-error">Couldn’t read your goal — this is not “no progress”.</div>;
+  const rows = ((data && data.goals) || []).filter((r) => !r.paused && (!match || match(r)));
+  return <GoalNoteView rows={rows} />;
+}
+
+export function GoalNoteView({ rows }) {
+  if (!rows || !rows.length) return null;
+  return (
+    <Group label={rows.length === 1 ? 'Your goal' : 'Your goals'}>
+      <TileGrid testid="goal-note">
+        {rows.map((r) => {
+          const p = r.progress || {};
+          const top = (r.levers || [])[0];
+          return (
+            <Tile key={r.goalId} title={r.title} why={p.source || undefined}
+              sub={<><Pill tone={STATE_TONE[p.state] || 'neutral'}>{STATE_WORDS[p.state] || 'Can’t tell yet'}</Pill> {p.line || ''}</>}
+              foot={top ? `→ ${top.action}` : null} />
+          );
+        })}
+      </TileGrid>
+    </Group>
   );
 }

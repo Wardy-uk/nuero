@@ -402,13 +402,15 @@ function _localDay(nowMs) {
  * Progress and levers for every active and paused goal. Inputs are read only
  * for the kinds present, each failure a named gap. Never throws.
  */
-function read({ now = Date.now() } = {}) {
+function read({ now = Date.now(), picture: given = undefined, kinds: only = null } = {}) {
   const nowMs = now instanceof Date ? now.getTime() : now;
   const today = _localDay(nowMs);
   const gaps = [];
   const attempt = (input, fn, fallback = null) => { try { return fn(); } catch (e) { gaps.push({ input, why: e.message }); return fallback; } };
   const goals = attempt('goals', () => require('./canonical-read').listGoals({ status: 'all' }), [])
-    .filter((g) => g.status === 'active' || g.status === 'paused');
+    .filter((g) => g.status === 'active' || g.status === 'paused')
+    // `kinds` narrows to goals measured by those kinds — a page reading only its own.
+    .filter((g) => !only || (g.measure && only.includes(g.measure.kind)));
   const kinds = new Set(goals.filter((g) => g.measure).map((g) => g.measure.kind));
   const needsHealth = [...kinds].some((k) => HEALTH_READ[k] && k !== 'caffeine' && k !== 'alcohol');
   const inputs = { today };
@@ -417,7 +419,11 @@ function read({ now = Date.now() } = {}) {
   if (kinds.has('alcohol')) inputs.alcoholDays = attempt('drinks', () => require('./drinks').read({ now: new Date(nowMs), days: 60 }).days, null);
   if (kinds.has('hikes')) inputs.hiking = attempt('hiking', () => require('./hiking-loop').read({ now: nowMs, weeks: 6 }), null);
   if (kinds.has('project')) inputs.projects = attempt('projects', () => require('./projects').read({ now: nowMs }).projects, []);
-  const picture = needsHealth || kinds.has('hikes') ? attempt('my-health', () => require('./health-picture').read({ now: new Date(nowMs) }), null) : null;
+  // Any measure with health levers needs My Health's insights (caffeine and
+  // alcohol included — they read their own source but their levers are there).
+  const wantsPicture = [...kinds].some((k) => (MEASURES[k].levers || []).length);
+  const picture = given !== undefined ? given
+    : wantsPicture ? attempt('my-health', () => require('./health-picture').read({ now: new Date(nowMs) }), null) : null;
   let outdoor = null;
   if (kinds.has('hikes')) {
     outdoor = attempt('outdoor', () => {
@@ -428,16 +434,57 @@ function read({ now = Date.now() } = {}) {
     }, null);
   }
   const out = goals.map((g) => {
-    if (g.status === 'paused') return { goalId: g.id, measure: g.measure || null, progress: null, levers: [], paused: true };
+    if (g.status === 'paused') return { goalId: g.id, title: g.title, measure: g.measure || null, progress: null, levers: [], paused: true };
     let progress = null; let levers = [];
     try { progress = evaluate(g, inputs); } catch (e) { progress = { state: 'unknown', line: `Could not judge it: ${e.message}` }; }
     try { levers = leversFor(g, progress, { picture, outdoor, today }); } catch { levers = []; }
-    return { goalId: g.id, measure: g.measure || null, progress, levers };
+    return { goalId: g.id, title: g.title, measure: g.measure || null, progress, levers };
   });
   return {
     ok: true, contract: 'goal-progress-v1', today, goals: out, gaps,
     rule: 'Measured only by what you chose. A missing reading is unknown, never behind. Levers are things NEURO can see that bear on a goal, not causes. Nothing here notifies or creates anything.',
   };
+}
+
+// ── where goals show up elsewhere (pure) ────────────────────────────────────
+
+// Which My Health tile a measure belongs on. Hikes and projects are not health.
+const HEALTH_SYSTEM = { bp: 'bp', weight: 'weight', steps: 'activity', exercise: 'activity', sleep: 'sleep',
+  'resting-hr': 'heart', caffeine: 'nutrition', alcohol: 'nutrition' };
+
+/**
+ * The health goals, shaped for My Health. PURE. `progressRead` is read()'s
+ * answer; `goals` is listGoals(). Returns the goal rows, the goals per tile and
+ * the goals each insight bears on — so the page can say "bears on your goal"
+ * without deciding anything. Paused goals are listed and lend nothing.
+ */
+function healthView(progressRead, goals = []) {
+  const byId = new Map(((progressRead && progressRead.goals) || []).map((x) => [x.goalId, x]));
+  const rows = [];
+  const bySystem = {};
+  const byInsight = {};
+  for (const g of goals) {
+    if (!g.measure || !HEALTH_SYSTEM[g.measure.kind] || (g.status !== 'active' && g.status !== 'paused')) continue;
+    const p = byId.get(g.id) || {};
+    const prog = p.progress || null;
+    const row = {
+      goalId: g.id, title: g.title, kind: g.measure.kind, label: MEASURES[g.measure.kind].label, status: g.status,
+      state: g.status === 'paused' ? 'paused' : prog ? prog.state : 'unknown',
+      line: g.status === 'paused' ? 'Paused — you paused it.' : prog ? prog.line : 'Not judged yet.',
+      targetText: prog && prog.targetText ? prog.targetText : null, by: g.measure.by || null,
+      system: HEALTH_SYSTEM[g.measure.kind], levers: g.status === 'paused' ? [] : p.levers || [],
+    };
+    rows.push(row);
+    (bySystem[row.system] = bySystem[row.system] || []).push({ goalId: g.id, title: g.title, state: row.state, targetText: row.targetText });
+    if (g.status === 'active') {
+      for (const l of row.levers) {
+        if (l.source !== 'My Health') continue;
+        (byInsight[l.id] = byInsight[l.id] || []).push({ goalId: g.id, title: g.title, state: row.state });
+      }
+    }
+  }
+  return { contract: 'health-goals-v1', known: !!progressRead, goals: rows, bySystem, byInsight,
+    gaps: (progressRead && progressRead.gaps) || [] };
 }
 
 function catalogue() {
@@ -450,5 +497,5 @@ function catalogue() {
 
 module.exports = {
   MEASURES, KINDS, PERIODS, validateMeasure, healthValue, nutritionDays, evaluate, judgeHealth, judgeHikes, judgeProject,
-  leversFor, read, catalogue,
+  leversFor, read, catalogue, healthView, HEALTH_SYSTEM,
 };

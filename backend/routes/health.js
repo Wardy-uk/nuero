@@ -547,7 +547,17 @@ router.get('/history', (req, res) => {
 // insights. Pull-only; an unreadable source is named, never an all-clear.
 router.get('/picture', (req, res) => {
   try {
-    res.json(require('../services/health-picture').read());
+    const picture = require('../services/health-picture').read();
+    // Health goals ride on the picture (same insights, computed once). A goals
+    // read that fails costs the goals section, never the picture.
+    try {
+      const gm = require('../services/goal-measures');
+      const goals = require('../services/canonical-read').listGoals({ status: 'all' });
+      picture.goals = gm.healthView(gm.read({ picture }), goals);
+    } catch (e) {
+      picture.goals = { contract: 'health-goals-v1', known: false, why: e.message, goals: [], bySystem: {}, byInsight: {} };
+    }
+    res.json(picture);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

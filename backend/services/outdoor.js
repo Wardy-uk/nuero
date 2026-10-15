@@ -402,7 +402,7 @@ function _activity(activityId) {
   }
   m = /^hike-day:(\d{4}-\d{2}-\d{2})$/.exec(String(activityId || ''));
   if (m) {
-    const goal = loop.findGoal((() => { try { return db.all('SELECT goal_id, title, status FROM goals').map((g) => ({ goalId: g.goal_id, title: g.title, status: g.status })); } catch { return []; } })());
+    const goal = loop.findGoal(loop.goalRows());
     if (!goal || !loop.entries(goal.goalId).some((e) => e.kind === 'confirm' && e.day === m[1])) return null;
     return { activityId, day: m[1], label: `the hike you confirmed on ${m[1]}` };
   }

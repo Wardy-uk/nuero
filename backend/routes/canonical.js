@@ -229,9 +229,18 @@ router.get('/goals', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// GET /api/canonical/goals/progress — how each active goal is moving by the measure Nick chose (hikes a week, blood-pressure average, weight, steps, sleep, resting heart, a project finished), with levers: other things NEURO can see that bear on it, each with an action. Keywords: goal progress, goal insights, am I on track.
+// GET /api/canonical/goals/progress — how each active goal is moving by the measure Nick chose (hikes a week, blood-pressure average, weight, steps, sleep, resting heart, a project finished), with levers: other things NEURO can see that bear on it. Keywords: goal progress, goal insights, am I on track. Each lever has an action. Query: kinds=hikes,project (optional, refused if unknown).
 router.get('/goals/progress', (req, res) => {
-  try { res.json(require('../services/goal-measures').read()); } catch (e) { fail(res, e); }
+  try {
+    const gm = require('../services/goal-measures');
+    let kinds = null;
+    if (req.query.kinds !== undefined) {
+      kinds = String(req.query.kinds).split(',').map((k) => k.trim()).filter(Boolean);
+      const bad = kinds.filter((k) => !gm.KINDS.includes(k));
+      if (!kinds.length || bad.length) return res.status(400).json({ ok: false, error: `kinds must be from ${gm.KINDS.join(', ')}` });
+    }
+    res.json(gm.read({ kinds }));
+  } catch (e) { fail(res, e); }
 });
 
 // GET /api/canonical/goals/measures — the closed catalogue of things a goal can be measured by, with units and target shape. Keywords: goal measure types.

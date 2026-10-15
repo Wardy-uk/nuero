@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useCanonical, postCanonical, HowItWorks, Fold, when, Headline, Stat, StatTiles, Tile, TileGrid } from './canonicalUi';
+import { GoalNote } from './GoalsCard';
 
 /**
  * Build 24 — Life → Personal projects. Personal projects only: NOVA and every
@@ -26,11 +27,11 @@ export default function ProjectsCard() {
   };
   if (error && !data) return <section className="cn-section"><h3>Personal projects</h3><div className="cn-error">Couldn’t read projects — {error}</div></section>;
   if (!data) return <section className="cn-section"><h3>Personal projects</h3><div className="cn-muted">Reading…</div></section>;
-  return <ProjectsView data={data} busy={busy} act={act} note={note} />;
+  return <ProjectsView data={data} busy={busy} act={act} note={note} goalNote={<GoalNote kinds="project" />} />;
 }
 
 /** The whole card for one payload. Exported so a test can render it for real. */
-export function ProjectsView({ data, busy, act, note = null }) {
+export function ProjectsView({ data, busy, act, note = null, goalNote = null }) {
   const projects = data.projects || [];
   const gh = (data.sources && data.sources.github) || {};
   const ghLine = gh.state === 'never' ? 'GitHub: no snapshot yet — repo activity is unknown, not absent.'
@@ -59,6 +60,7 @@ export function ProjectsView({ data, busy, act, note = null }) {
         <Stat v={parked.length} l="parked" />
         {unclassified > 0 && <Stat v={unclassified} l="to classify" tone="warn" />}
       </StatTiles>
+      {goalNote}
       {[...ready, ...rest].length > 0 && (
         <TileGrid wide>{[...ready, ...rest].map((p) => <Project key={p.projectId} p={p} busy={busy} act={act} />)}</TileGrid>
       )}

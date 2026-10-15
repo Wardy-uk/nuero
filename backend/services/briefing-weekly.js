@@ -324,6 +324,24 @@ function weekAheadFrom(radar) {
   return { known: true, items, heading: radar.heading || null };
 }
 
+/**
+ * Goals for the week (15 Oct 2026): every active goal with a measure, as
+ * goal-measures judged it, needing-help first, with its ONE top suggestion.
+ * A goal with no measure is counted, never judged. PURE over read()'s payload.
+ */
+const GOAL_ORDER = ['behind', 'moving-away', 'not-moving', 'unknown', 'on-track', 'met'];
+function goalsWeek(read) {
+  if (!read || read.ok === false) return { known: false, items: [], unmeasured: 0 };
+  const rows = (read.goals || []).filter((g) => !g.paused);
+  const items = rows.filter((g) => g.measure && g.progress).map((g) => {
+    const top = (g.levers || [])[0] || null;
+    return { title: g.title || '', state: g.progress.state, line: g.progress.line,
+      help: top ? { title: top.title, action: top.action, source: top.source } : null };
+  }).sort((a, b) => GOAL_ORDER.indexOf(a.state) - GOAL_ORDER.indexOf(b.state));
+  return { known: true, items, unmeasured: rows.filter((g) => !g.measure).length,
+    gaps: (read.gaps || []).map((x) => x.input) };
+}
+
 // ── Assembly ─────────────────────────────────────────────────────────────────
 
 async function _pull(name, fn, gaps, label) {
@@ -399,10 +417,14 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
   const radar = await _pull('weekAhead', use('weekAhead', () => require('./future-radar').read({ now: now.getTime(), horizonDays: 7 })), gaps, 'the week ahead (Future Radar)');
   const weekAhead = weekAheadFrom(radar);
 
-  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, health, weekAhead, gaps };
+  const goalRead = await _pull('goals', use('goals', () => require('./goal-measures').read({ now: now.getTime() })), gaps, 'your goals');
+  const goals = goalsWeek(goalRead);
+  if (goalRead && goals.gaps && goals.gaps.length) gaps.push({ source: `goal inputs (${goals.gaps.join(', ')})`, why: 'some goals say “can’t tell”' });
+
+  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, health, weekAhead, goals, gaps };
 }
 
 module.exports = {
-  gatherWeekly, reportWeeks, volumesFor, supportCompliance, healthWeek, weekAheadFrom, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
+  gatherWeekly, reportWeeks, volumesFor, supportCompliance, healthWeek, weekAheadFrom, goalsWeek, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
   VOLUME_KEYS, SLM_PROMPT,
 };

@@ -212,6 +212,17 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
+    name: 'get_goals',
+    tier: 'read',
+    description:
+      'His goals and how each is moving by the measure he chose (hikes a month, blood '
+      + 'pressure, weight, steps, sleep, caffeine, alcohol, a project finished), with what NEURO '
+      + 'can see that would help each one. Use for "how am I doing on my goals" or any goal by '
+      + 'name. A goal with no measure has no number - say so. "Cannot tell" is not "behind". '
+      + 'The levers bear on a goal; never say they caused anything, never diagnose.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name: 'get_urgent_emails',
     tier: 'read',
     description: 'Get emails triaged as needing action or a reply, with their ids. Use before draft_email_reply.',
@@ -678,6 +689,27 @@ const HANDLERS = {
       could_not_read: s.gaps || [],
       not_counted: w.KNOWN_GAPS || [],
       note: 'Compare against his own typical day if useful. No scores, no streaks.',
+    };
+  },
+
+  get_goals() {
+    const read = require('./goal-measures').read();
+    const goals = require('./canonical-read').listGoals({ status: 'all' }).filter((g) => g.status === 'active' || g.status === 'paused');
+    const byId = new Map(read.goals.map((x) => [x.goalId, x]));
+    return {
+      ok: true,
+      goals: goals.map((g) => {
+        const p = byId.get(g.id) || {};
+        return {
+          title: g.title, type: g.domains.map((d) => d.domain), status: g.status, importance: g.importance,
+          measured_by: p.progress ? p.progress.label : null,
+          state: p.progress ? p.progress.state : (g.measure ? 'unknown' : 'not measured'),
+          line: p.progress ? p.progress.line : null,
+          what_would_help: (p.levers || []).map((l) => ({ title: l.title, action: l.action, source: l.source })),
+        };
+      }),
+      could_not_read: read.gaps,
+      note: read.rule,
     };
   },
 

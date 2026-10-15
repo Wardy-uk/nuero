@@ -128,6 +128,36 @@ function hoursLabel(h) {
   return `${whole}h${String(Math.round((h - whole) * 60)).padStart(2, '0')}`;
 }
 
+const GOAL_WORDS = { met: 'at target', 'on-track': 'on track', behind: 'behind', 'not-moving': 'not moving', 'moving-away': 'going the wrong way', unknown: 'can’t tell' };
+
+/** Goals this week — goal-measures' judgement as given, each with its one top suggestion. */
+export function GoalsWeek({ g }) {
+  if (!g) return null;
+  return (
+    <section className="brf-section" data-testid="brf-goals">
+      <h3>Your goals</h3>
+      {!g.known
+        ? <p className="brf-meta">Couldn’t read your goals — not the same as “no progress”.</p>
+        : g.items.length
+          ? (
+            <ul className="brf-items">
+              {g.items.map((i, n) => (
+                <li key={n} className="brf-item brf-item--personal">
+                  <div className="brf-item-head">
+                    <span className="brf-item-title">{i.title}</span>
+                    <span className="brf-sphere">{GOAL_WORDS[i.state] || i.state}</span>
+                  </div>
+                  <p className="brf-detail">{i.line}</p>
+                  {i.help ? <p className="brf-detail">→ {i.help.action} <span className="brf-partial-muted">({i.help.source})</span></p> : null}
+                </li>
+              ))}
+            </ul>
+          )
+          : <p className="brf-meta">No goal has a measure yet{g.unmeasured ? ` (${g.unmeasured} without one)` : ''} — give one a measure in Life → Goals and it shows here.</p>}
+    </section>
+  );
+}
+
 /** The personal half of the weekly: the week ahead, and last week's body. Never emailed. */
 function PersonalWeek({ p }) {
   const ahead = p.weekAhead;
@@ -162,6 +192,7 @@ function PersonalWeek({ p }) {
             )
             : <p className="brf-meta">Nothing personal on the radar for the next 7 days.</p>}
       </section>
+      <GoalsWeek g={p.goals} />
       {h || bp ? (
         <section className="brf-section">
           <h3>Your body last week</h3>

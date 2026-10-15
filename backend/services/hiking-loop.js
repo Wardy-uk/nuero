@@ -440,6 +440,7 @@ function _reliability(today) {
   return { ...reliability({ recorded90, plannedPast, recordedOnPlanned }), recorded90, plannedPastDays: plannedPast.length, recordedOnPlanned, lastRecorded };
 }
 
+/** The goals as the loop judges them (title rule or a hikes measure). Exported so other readers find the SAME goal. */
 function _goals() {
   // SELECT * so a DB without goals.measure_json still reads (the column is optional here).
   const kindOf = (j) => { try { const m = JSON.parse(j || 'null'); return m && m.kind ? m.kind : null; } catch { return null; } };
@@ -597,7 +598,7 @@ function events({ since = null, limit = 200 } = {}) {
 module.exports = {
   LIKELY_STEPS, LIKELY_WALK_MIN, RELIABLE_MIN_RECORDED_90D, HIKE_WORDS, CONFIRM_BACK_DAYS, MIN_RECORDED_STEPS, MAX_WEEKS,
   CONFIRM_WINDOW_MIN, MIN_TRACK_POINTS, WALK_TRACK_MIN, STATES,
-  localDay, addDays, weekStart, weekDays, dayName, entryDay, findGoal, reliability, weekState, evidenceFor,
+  localDay, addDays, weekStart, weekDays, dayName, entryDay, findGoal, goalRows: _goals, reliability, weekState, evidenceFor,
   trackVerdict, judgeDay, windowClosesAt, locationByDay, routeFromPayload, parseStamp: _sqlMs,
   read, refresh, addEntry, plansAhead, withdraw, withdrawDenial, entries, denials, events,
 };

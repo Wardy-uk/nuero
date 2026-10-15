@@ -160,6 +160,12 @@ function weeklyPush(w) {
     const need = ahead.filter((i) => i.needsYou).length;
     lines.push(`Your week ahead: ${ahead.length} thing${ahead.length === 1 ? '' : 's'}${need ? `, ${need} need${need === 1 ? 's' : ''} you` : ''}`);
   }
+  const gl = w.goals && w.goals.known ? w.goals.items : null;
+  if (gl && gl.length) {
+    const help = gl.filter((g) => ['behind', 'moving-away', 'not-moving'].includes(g.state)).length;
+    const good = gl.filter((g) => ['on-track', 'met'].includes(g.state)).length;
+    lines.push(`Goals: ${good} on track${help ? `, ${help} need${help === 1 ? 's' : ''} a push` : ''}`);
+  }
   if (!lines.length) lines.push('Could not read the week’s KPIs — open the briefing for what is missing.');
   return { title: `Weekly briefing — week to ${_shortDate(w.weeks.report.to)}`, body: lines.join('\n') };
 }
@@ -188,6 +194,7 @@ async function composeWeekly({ now = new Date(), overrides = {} } = {}) {
     // The personal half — screen and push only, never the Nurtur email.
     health: w.health || null,
     weekAhead: w.weekAhead || null,
+    goals: w.goals || null,
     gaps: w.gaps,
     close: blind.length ? `I couldn’t read ${blind.join(', ')}, so this isn’t the whole picture.` : 'Everything above was read.',
     push: { title, body },
@@ -246,7 +253,7 @@ function weeklyEmailHtml(p) {
     const ul = (xs) => (xs.length ? `<ul>${xs.map((x) => `<li>${_esc(x)}</li>`).join('')}</ul>` : '<p style="color:#777">Nothing recorded.</p>');
     parts.push(`<h3>Friday Support Leadership Meeting</h3><p style="color:#777">From “${_esc(p.slm.note.name)}”</p><h4>Highlights</h4>${ul(p.slm.highlights)}<h4>Lowlights</h4>${ul(p.slm.lowlights)}<h4>Blockers &amp; escalations</h4>${ul(p.slm.blockers)}`);
   }
-  const workGaps = (p.gaps || []).filter((g) => !/blood pressure/i.test(g.source));
+  const workGaps = (p.gaps || []).filter((g) => !/blood pressure|goal/i.test(g.source)); // personal: never in the work email
   if (workGaps.length) parts.push(`<p style="color:#a15c00">Couldn’t read: ${_esc(workGaps.map((g) => `${g.source} (${g.why})`).join('; '))}.</p>`);
   return _wrap(`Weekly briefing — week to ${_shortDate(p.weeks.report.to)}`, parts.join(''));
 }

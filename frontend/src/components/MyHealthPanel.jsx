@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
-import { Headline, Stat, StatTiles, HowItWorks } from './canonical/canonicalUi';
+import { Headline, Stat, StatTiles, HowItWorks, dayLabel } from './canonical/canonicalUi';
 import './canonical/Canonical.css';
 import './MyHealthPanel.css';
 
@@ -18,6 +18,54 @@ import './MyHealthPanel.css';
 const LEVEL_LABEL = { act: 'Act on this', watch: 'Worth watching', gap: 'Can’t see', good: 'Holding up' };
 const STATUS_LABEL = { act: 'Act', watch: 'Watch', good: 'Good', unknown: 'Unknown' };
 const VIEW_LABEL = { health: 'Apple Health', 'jc-ring': 'JC Ring', medical: 'Medical' };
+const GOAL_STATE = {
+  met: 'At target', 'on-track': 'On track', behind: 'Behind', 'not-moving': 'Not moving',
+  'moving-away': 'Going the wrong way', unknown: 'Can’t tell yet', paused: 'Paused',
+};
+const GOAL_TONE = { met: 'good', 'on-track': 'good', behind: 'watch', 'moving-away': 'watch', 'not-moving': 'watch' }; // never 'act': a slow goal is not a fault (docs/design-rules.md)
+
+/** Your health goals — the server's judgement (goal-measures.healthView), rendered as given. */
+export function HealthGoals({ goals, onNavigate }) {
+  if (!goals) return null;
+  const toLife = onNavigate ? <button type="button" className="mh-link" onClick={() => onNavigate('life')}>Goals live in Life →</button> : null;
+  if (goals.known === false) {
+    return <section className="mh-section"><h2>Your health goals</h2><p className="mh-error">Couldn’t read your goals{goals.why ? `: ${goals.why}` : ''}. This is not “no goals”.</p></section>;
+  }
+  if (!goals.goals || !goals.goals.length) {
+    return (
+      <section className="mh-section">
+        <h2>Your health goals</h2>
+        <p className="mh-muted">None measured. Give a goal a health measure (blood pressure 130/80, a weight, steps, sleep, caffeine, alcohol) and it shows here, with what would help. {toLife}</p>
+      </section>
+    );
+  }
+  return (
+    <section className="mh-section" data-testid="mh-goals">
+      <h2>Your health goals</h2>
+      <div className="mh-insights">
+        {goals.goals.map((g) => (
+          <article key={g.goalId} className={`mh-insight mh-insight--${GOAL_TONE[g.state] || 'gap'}`}>
+            <div className="mh-insight-head">
+              <span className={`mh-chip mh-chip--${GOAL_TONE[g.state] || 'gap'}`}>{GOAL_STATE[g.state] || g.state}</span>
+              <h3>{g.title}</h3>
+            </div>
+            <p className="mh-finding">{g.line}</p>
+            <p className="mh-goal-src">{g.label}{g.targetText ? ` · target ${g.targetText}` : ''}{g.by ? ` by ${dayLabel(g.by)}` : ''}</p>
+            {g.levers.length > 0 && (
+              <div className="mh-goal-help">
+                <div className="mh-goal-help-h">What would help</div>
+                <ul>
+                  {g.levers.map((l) => <li key={l.id}><strong>{l.title}</strong> <span aria-hidden="true">→</span> {l.action} <span className="mh-muted">· {l.source}</span></li>)}
+                </ul>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+      <div className="mh-insight-foot">{toLife}</div>
+    </section>
+  );
+}
 
 function ago(hours) {
   if (hours == null) return 'never';
@@ -26,7 +74,7 @@ function ago(hours) {
   return `${Math.round(hours / 24)} days ago`;
 }
 
-function InsightCard({ insight, onNavigate }) {
+function InsightCard({ insight, onNavigate, goals = null }) {
   const [open, setOpen] = useState(false);
   const hasDetail = (insight.evidence && insight.evidence.length) || insight.basis || insight.caveat;
   return (
@@ -37,6 +85,7 @@ function InsightCard({ insight, onNavigate }) {
       </div>
       <p className="mh-finding">{insight.finding}</p>
       {insight.action && <p className="mh-action"><span aria-hidden="true">→</span> {insight.action}</p>}
+      {goals && goals.length > 0 && <p className="mh-goal-src">Bears on your goal{goals.length > 1 ? 's' : ''}: {goals.map((g) => g.title).join(', ')}</p>}
       <div className="mh-insight-foot">
         {hasDetail && (
           <button type="button" className="mh-link" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -62,7 +111,7 @@ function InsightCard({ insight, onNavigate }) {
   );
 }
 
-function SystemTile({ system, onNavigate }) {
+function SystemTile({ system, onNavigate, goals = null }) {
   const body = (
     <>
       <div className="mh-tile-top">
@@ -73,6 +122,7 @@ function SystemTile({ system, onNavigate }) {
         {system.value != null ? <>{system.value}{system.unit && <small> {system.unit}</small>}</> : <span className="mh-muted">—</span>}
       </div>
       {system.sub && <div className="mh-tile-sub">{system.sub}</div>}
+      {goals && goals.map((g) => <div key={g.goalId} className="mh-tile-goal">Goal{g.targetText ? ` ${g.targetText}` : ''} · {GOAL_STATE[g.state] || g.state}</div>)}
       {system.sources && system.sources.length > 0 && <div className="mh-tile-src">{system.sources.join(' · ')}</div>}
     </>
   );
@@ -88,6 +138,8 @@ export function MyHealthView({ data, onNavigate }) {
   const gaps = insights.filter((i) => i.level === 'gap');
   const good = insights.filter((i) => i.level === 'good');
   const counts = data.counts || null;
+  const hg = data.goals || null;
+  const goalsFor = (insight) => (hg && hg.byInsight && hg.byInsight[insight.id]) || null;
   // The pill restates the server's own counts and completeness; nothing is judged here.
   const [tone, pill] = counts?.act ? ['warn', 'Act']
     : !data.complete ? ['warn', 'Partial']
@@ -108,11 +160,13 @@ export function MyHealthView({ data, onNavigate }) {
         </StatTiles>
       )}
 
+      <HealthGoals goals={hg} onNavigate={onNavigate} />
+
       {doThis.length > 0 && (
         <section className="mh-section">
           <h2>What to do</h2>
           <div className="mh-insights">
-            {doThis.map((i) => <InsightCard key={i.id} insight={i} onNavigate={onNavigate} />)}
+            {doThis.map((i) => <InsightCard key={i.id} insight={i} onNavigate={onNavigate} goals={goalsFor(i)} />)}
           </div>
         </section>
       )}
@@ -120,7 +174,7 @@ export function MyHealthView({ data, onNavigate }) {
       <section className="mh-section">
         <h2>At a glance</h2>
         <div className="mh-grid">
-          {(data.systems || []).map((s) => <SystemTile key={s.id} system={s} onNavigate={onNavigate} />)}
+          {(data.systems || []).map((s) => <SystemTile key={s.id} system={s} onNavigate={onNavigate} goals={hg && hg.bySystem ? hg.bySystem[s.id] : null} />)}
         </div>
       </section>
 
@@ -128,7 +182,7 @@ export function MyHealthView({ data, onNavigate }) {
         <section className="mh-section">
           <h2>What NEURO can’t see</h2>
           <div className="mh-insights">
-            {gaps.map((i) => <InsightCard key={i.id} insight={i} onNavigate={onNavigate} />)}
+            {gaps.map((i) => <InsightCard key={i.id} insight={i} onNavigate={onNavigate} goals={goalsFor(i)} />)}
           </div>
         </section>
       )}
@@ -137,7 +191,7 @@ export function MyHealthView({ data, onNavigate }) {
         <section className="mh-section">
           <h2>Holding up</h2>
           <div className="mh-insights">
-            {good.map((i) => <InsightCard key={i.id} insight={i} onNavigate={onNavigate} />)}
+            {good.map((i) => <InsightCard key={i.id} insight={i} onNavigate={onNavigate} goals={goalsFor(i)} />)}
           </div>
         </section>
       )}

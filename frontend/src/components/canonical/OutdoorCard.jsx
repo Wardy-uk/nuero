@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions, Headline, Stat, StatTiles, Tile, TileGrid, Group, PrimaryAction, dayLabel } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
+import { GoalNote } from './GoalsCard';
 
 /**
  * Life → Outdoor (Build 29). One compact section: this week, the Hike weekly
@@ -108,7 +109,7 @@ function RouteForm({ act, busy }) {
   );
 }
 
-export function OutdoorView({ data, act = null, busy = false, hikeLoop = null }) {
+export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, goalNote = null }) {
   const [planning, setPlanning] = useState(false);
   const s = data.summary;
   const g = data.goal;
@@ -124,7 +125,7 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null })
       <h3>Outdoor</h3>
       <Headline testid="outdoor-week" tone={g ? GOAL_TONE[g.state] : undefined} pill={g ? (GOAL_WORDS[g.state] || g.state) : 'no goal'}
         detail={data.atRisk && data.atRisk.atRisk ? <span data-testid="outdoor-at-risk">{data.atRisk.why}.</span> : null}>
-        {g ? <>This week: <strong>{g.line}</strong></> : 'No active Hike weekly goal.'}
+        {g ? <>This week: <strong>{g.line}</strong></> : 'No active hike goal.'}
       </Headline>
 
       <StatTiles>
@@ -136,6 +137,9 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null })
             l={`in daylight · ${s.daylight.daysWithReading} of ${s.daylight.daysElapsed} day${s.daylight.daysElapsed === 1 ? '' : 's'}${s.daylight.covered ? '' : ', today partial'}`} />
         )}
       </StatTiles>
+
+      {/* A goal measured in hikes (any period) — its own line and top suggestion. */}
+      {goalNote}
 
       {(data.now && data.now.needsYou || []).map((n, i) => <div key={i} className="cn-error" data-testid="outdoor-needs-you">{n.line}</div>)}
 
@@ -220,7 +224,7 @@ export default function OutdoorCard() {
   };
   return (
     <>
-      <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} />
+      <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} goalNote={<GoalNote kinds="hikes" />} />
       {msg && <div className="cn-error">Not saved — {msg}</div>}
     </>
   );
