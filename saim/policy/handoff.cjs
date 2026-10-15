@@ -38,7 +38,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const { SURFACES } = require('./attention-policy.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_HANDOFF;
-const RESOLVER_VERSION = '2026-10-15.2';
+const RESOLVER_VERSION = '2026-10-15.3';
 const MAX_ALTERNATIVES = 3;
 
 /**
@@ -62,10 +62,18 @@ const ACTIVITY = Object.freeze({
   call:        { needs: ['meeting:teams'],  also: null,      ai: false, music: false },
 });
 
+const NO_LAUNCH = Object.freeze({
+  'S8 protected diary time': 'No task says what this time is for, so there’s no app to send you to.',
+  'S10 ritual': 'The ritual happens in SAiM itself.',
+  'S11 nothing': 'Nothing needs you, so there’s nowhere to go.',
+});
+
 const ms = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? t : null; };
 
 /** The result when there is nowhere honest to send Nick. */
 const none = (base, reason, basis = []) => ({ ...base, handoff: null, reason, basis });
+/** NEURO's own explicit gaps for the lead, attached when there is no hand-off. */
+const withGaps = (r, c) => (r.handoff === null && !r.refused && c && Array.isArray(c.handoffGaps) && c.handoffGaps.length ? { ...r, neuroGaps: c.handoffGaps.map((g) => g.field) } : r);
 
 /**
  * @param {{ decision, candidates, device, now }} input
@@ -73,7 +81,13 @@ const none = (base, reason, basis = []) => ({ ...base, handoff: null, reason, ba
  *   candidates neuro-candidates-v2 (validated)
  *   device     saim-device-v1 (validated)
  */
-function resolveHandoff({ decision, candidates, device, now = Date.now() } = {}) {
+function resolveHandoff(input = {}) {
+  const r = resolve(input);
+  const c = r.decidedFor && input.candidates && Array.isArray(input.candidates.candidates) ? input.candidates.candidates.find((x) => x.id === r.decidedFor) : null;
+  return withGaps(r, c);
+}
+
+function resolve({ decision, candidates, device, now = Date.now() } = {}) {
   const base = { contract: CONTRACT, owner: 'saim', resolverVersion: RESOLVER_VERSION, decidedAt: new Date(now).toISOString(), decidedFor: null, rule: null };
 
   // 1. Contracts — refuse anything incompatible, before reading it.
@@ -119,6 +133,8 @@ function resolveHandoff({ decision, candidates, device, now = Date.now() } = {})
   const leadProblem = leadCand ? CONTRACTS.handoffProblem(leadCand) : null;
   if (leadProblem) return none(out, 'NEURO’s hand-off details for this are malformed, so SAiM won’t use them.', [`${lead.ref}: ${leadProblem}`]);
   const intent = leadCand && leadCand.handoffIntent ? leadCand.handoffIntent : null;
+  // The rules that never launch anything say their own reason first.
+  if (NO_LAUNCH[rule]) return none(out, NO_LAUNCH[rule], [`rule ${rule}`]);
   if (intent && intent.kind === 'none') return none(out, 'NEURO says there’s nowhere to go for this.', ['handoffIntent.kind = none']);
 
   // S1 — blind: only where NEURO says the failure can be seen. Never a desk app.

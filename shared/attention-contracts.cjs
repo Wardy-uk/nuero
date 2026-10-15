@@ -56,12 +56,24 @@ const ACTIVITIES = Object.freeze(['draft', 'write', 'spreadsheet', 'email', 'cod
 const TARGET_ROLES = Object.freeze(['canonical', 'control', 'join', 'prep', 'source']);
 /** What a declared app can do. */
 const CAPABILITIES = Object.freeze(['ai', 'music', 'docs', 'sheets', 'mail', 'code', 'browser', 'notes', 'meeting:teams']);
-const HREF = /^(https?:\/\/|saim:)[^\s]+$/;
+/** http(s), a SAiM route, or a NEURO view relative to wherever the client knows NEURO lives. */
+const HREF = /^(https?:\/\/|saim:|neuro:)[^\s]+$/;
+/** What NEURO may say it could not supply. */
+const GAP_FIELDS = Object.freeze(['intent', 'activity', 'canonical', 'control', 'join', 'prep', 'provider', 'source']);
+function gapsProblem(list, at) {
+  if (list === undefined) return null;
+  if (!Array.isArray(list)) return `${at} is not a list`;
+  for (let i = 0; i < list.length; i += 1) {
+    const g = list[i];
+    if (!isObj(g) || !GAP_FIELDS.includes(g.field) || !isStr(g.why)) return `${at}[${i}] needs a known field and a why`;
+  }
+  return null;
+}
 
 function targetProblem(t, at) {
   if (!isObj(t)) return `${at} is not an object`;
   if (!TARGET_ROLES.includes(t.role)) return `${at}.role "${t.role}" is not a target role`;
-  if (typeof t.href !== 'string' || !HREF.test(t.href)) return `${at}.href is not an http(s) or saim: link`;
+  if (typeof t.href !== 'string' || !HREF.test(t.href)) return `${at}.href is not an http(s), saim: or neuro: link`;
   if (/\/approve\b/i.test(t.href)) return `${at}.href is an approve link — a hand-off never approves`;
   if (t.label != null && !isStr(t.label)) return `${at}.label is not text`;
   if (t.provider != null && !isStr(t.provider)) return `${at}.provider is not text`;
@@ -189,6 +201,7 @@ module.exports = {
   NEURO_CANDIDATES, SAIM_ATTENTION, SAIM_DEVICE, SAIM_HANDOFF, SUPPORTED, CANDIDATE_KINDS, ATTENTION_RULES,
   INTENT_KINDS, ACTIVITIES, TARGET_ROLES, CAPABILITIES,
   checkCandidates, checkAttention, checkDevice, checkHandoff,
-  handoffProblem: (c) => intentProblem(c && c.handoffIntent, 'handoffIntent') || targetsProblem(c && c.targets, 'targets'),
+  handoffProblem: (c) => intentProblem(c && c.handoffIntent, 'handoffIntent') || targetsProblem(c && c.targets, 'targets') || gapsProblem(c && c.handoffGaps, 'handoffGaps'),
+  GAP_FIELDS,
   targetsProblem,
 };

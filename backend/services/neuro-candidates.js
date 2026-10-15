@@ -29,6 +29,7 @@
  */
 
 const CONTRACT = require('../../shared/attention-contracts.cjs').NEURO_CANDIDATES;
+const NH = require('./neuro-handoff');
 
 const pad = (n) => String(n).padStart(2, '0');
 const dayKey = (ms) => { const t = new Date(ms); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`; };
@@ -234,12 +235,14 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
 
   // Attention items (attention.gate's primary + secondary) and the ritual context card.
   const card = p.primary || null;
+  const itemMeta = new Map(); // decision-engine meta per attention item — for the hand-off fields only
   const items = [...(card && card.kind === 'item' ? [{ ...card, gatePosition: 'primary' }] : []),
     ...(p.secondary || []).filter((s) => s && s.kind === 'item').map((s) => ({ ...s, gatePosition: 'secondary' }))];
   for (const it of items) {
     const raw = String(it.urgency || 'normal').toLowerCase();
     const notRisk = URGENCY_NOT_RISK[it.type] || null;
     const meta = it.meta || {};
+    itemMeta.set(`item:${it.recordId || it.id}`, meta);
     candidates.push({
       kind: 'attention-item', id: `item:${it.recordId || it.id}`, recordId: it.recordId || null, title: it.title || it.say || null,
       time: it.type === 'meeting' && meta.start ? { start: slice(meta.start), startAt: localInstant(meta.start), minutesAway: Number.isFinite(meta.minutesAway) ? meta.minutesAway : null } : undefined,
@@ -319,6 +322,10 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
       sphere: sphere('family', 'personal-date', 'a personal date Nick declared'), actions: [], provenance: { source: 'personal-dates', readAt }, known: true });
   }
 
+  // Hand-off fields (structured intent + exact links + explicit gaps) — additive
+  // v2 data, NEURO facts only. SAiM's resolver recommends; NEURO never does.
+  for (const c of candidates) Object.assign(c, NH.handoffFor(c, itemMeta.get(c.id) || null, { jiraBase: facts.jiraBase || null }));
+
   return {
     contract: CONTRACT,
     readAt,
@@ -336,6 +343,8 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
       desk: p.work && typeof p.work.atDesk === 'boolean' && p.work.deskKnown !== false ? { atDesk: p.work.atDesk } : null,
       place: (p.life && p.life.place) || null,
       workingWindow: facts.workingWindow || null,
+      // Where to look when SAiM can't see — exists whatever else failed.
+      targets: NH.constraintTargets(),
     },
     gaps: facts.gaps || [],
   };
@@ -363,7 +372,9 @@ function _workingWindow(now) {
 
 function gather({ now = Date.now() } = {}) {
   const db = require('../db/database');
-  const out = { block: null, rows: null, session: null, facts: { calendar: null, calendarKnown: false, approvals: null, taskDomains: new Map(), workingWindow: null, gaps: [] } };
+  const out = { block: null, rows: null, session: null, facts: { calendar: null, calendarKnown: false, approvals: null, taskDomains: new Map(), workingWindow: null, gaps: [],
+    // Jira's address, for a ticket's own page (hand-off control links). Config, not a read.
+    jiraBase: process.env.JIRA_BASE_URL || null } };
   const gaps = out.facts.gaps;
   try { out.session = require('./focus-session').current(now) || null; } catch (e) { gaps.push({ input: 'session', why: e.message }); }
   try {

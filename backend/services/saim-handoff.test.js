@@ -161,7 +161,7 @@ test('an undeclared app is never offered', () => {
 // ── Missing intent / link / capability ──────────────────────────────────────
 
 test('missing intent, unknown activity or intent "none" → no hand-off, said honestly', () => {
-  assert.match(run(setup('1')).reason, /stated no next step/);
+  assert.match(run(setup('1', { intent: null })).reason, /stated no next step/);
   assert.match(run(setup('1', { intent: { kind: 'work-step', activity: null } })).reason, /didn’t say what kind of work/);
   assert.match(run(setup('1', { intent: { kind: 'none' } })).reason, /nowhere to go/);
 });
@@ -201,7 +201,7 @@ test('S1 blind: only where NEURO says the failure shows; never a desk app, even 
   const o = run(setup('6a', { constraintTargets: [{ role: 'source', href: 'https://neuro.example/?view=sources', label: 'Sources in NEURO' }] }));
   assert.equal(o.rule, 'S1 blind');
   assert.deepEqual(labels(o), ['Open Sources in NEURO']);
-  const n = run(setup('6a'));
+  const n = run(setup('6a', { constraintTargets: [] }));
   assert.equal(n.handoff, null);
   assert.match(n.reason, /won’t guess/);
 });
