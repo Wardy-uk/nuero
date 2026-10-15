@@ -501,7 +501,14 @@ async function refresh({ now = new Date(), ask = null } = {}) {
     try {
       if (ask) text = await ask(prompt);
       else {
-        const r = await require('./ai-routing').runTask('capability_suggestions', { prompt, maxTokens: 3000 }, { forceCloud: true });
+        const r = await require('./ai-routing').runTask('capability_suggestions', { prompt, maxTokens: 3000 }, {
+          forceCloud: true,
+          // A weekly background call nobody is waiting on. The provider's
+          // 30s default ABORTED the second live run (15 Oct) once the prompt
+          // carried the feature list and the open cards; a ~3k-token answer
+          // needs longer, and a timeout costs the whole week's pass.
+          timeout: 150000,
+        });
         if (!r || !r.text) throw new Error((r && r.reason) || 'no AI provider answered');
         text = r.text;
       }
