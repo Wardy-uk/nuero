@@ -249,3 +249,13 @@ test('routes: build refuses an unknown kind; manual saves; queue-send refuses an
   assert.equal(q2.status, 409, 'nobody resolvable to send to in the scratch vault');
   assert.ok(q2.body.blockers.some((b) => /Chris Middleton/.test(b)));
 });
+
+test('the Monday build retries a verdict source that failed, and stops once it reads', async () => {
+  let calls = 0;
+  const r = await soap.mondayFinal({ now: MONDAY, pauseMs: 0, overrides: okOverrides({
+    leaderboard: async () => { calls += 1; if (calls === 1) throw new Error('NOVA timed out'); return { ranked: [{ agentName: 'Star' }] }; },
+  }) });
+  assert.equal(calls, 2);
+  assert.equal(r.verdictComplete, true);
+  assert.equal(soap.finalFor(r.from).verdictComplete, true, 'the stored final is the complete one');
+});

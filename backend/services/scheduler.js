@@ -1426,7 +1426,7 @@ function start() {
       maxLagMs: 4 * 60 * 60 * 1000,
       maxAttempts: 3,
       backoffMs: [5 * 60 * 1000, 10 * 60 * 1000],
-      timeoutMs: 8 * 60 * 1000,
+      timeoutMs: 15 * 60 * 1000,
       why: 'The SOAP report for last Monday–Sunday, ready before the Monday debrief and the check an approved Friday send is held on.',
       run: async () => { await require('./soap-report').mondayFinal(); },
     });

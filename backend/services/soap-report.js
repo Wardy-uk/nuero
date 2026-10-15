@@ -630,9 +630,21 @@ async function fridayCheck({ now = new Date() } = {}) {
   return { off, built: true, blockers: todo };
 }
 
-/** Monday 07:00: the full-week report, every week. */
-async function mondayFinal({ now = new Date() } = {}) {
-  return build({ kind: 'final', now });
+/**
+ * Monday 07:00: the full-week report, every week. A verdict source that failed
+ * (measured live on the first run: one NOVA flow signal timing out at 30s) is
+ * retried twice, two minutes apart — a transient timeout must not be what holds
+ * an approved Monday send. A source still unreadable after that holds it.
+ */
+async function mondayFinal({ now, attempts = 3, pauseMs = 2 * 60 * 1000, overrides = {} } = {}) {
+  let report = null;
+  for (let i = 0; i < attempts; i += 1) {
+    if (i > 0) await new Promise((r) => setTimeout(r, pauseMs));
+    report = await build({ kind: 'final', now: now || new Date(), overrides });
+    if (report.verdictComplete) break;
+    console.warn(`[SOAP] final attempt ${i + 1} could not read a verdict source: ${report.gaps.filter((g) => g.verdict).map((g) => g.source).join(', ')}`);
+  }
+  return report;
 }
 
 /** Monday 08:30: say what happened to a send Nick approved on Friday. Once. */
