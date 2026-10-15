@@ -299,7 +299,7 @@ test('incompatible inputs are refused, never guessed around', () => {
   const v1 = clone(x.candidates); v1.contract = 'neuro-candidates-v1';
   const cases = {
     'candidates v1': { ...x, candidates: v1 },
-    'decision v2': { ...x, decision: { ...x.decision, contract: 'saim-attention-v2' } },
+    'decision v2': { ...x, decision: { ...x.decision, contract: 'saim-attention-v3' } },
     'device v2': { ...x, device: { ...DEVICE(DESK()), contract: 'saim-device-v2' } },
     'device app with an unknown capability': { ...x, device: DEVICE([APP('fax', 'Fax', ['fax'])]) },
     'device app declared twice': { ...x, device: DEVICE([APP('word', 'Word', ['docs']), APP('word', 'Word', ['docs'])]) },

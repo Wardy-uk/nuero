@@ -26,7 +26,7 @@ function v1Shape() {
 }
 
 const assertRefusedSafely = (d, why) => {
-  assert.equal(d.contract, 'saim-attention-v1', why);
+  assert.equal(d.contract, 'saim-attention-v2', why);
   assert.ok(d.refused, `${why}: carries refused`);
   assert.equal(d.lead.rule, 'S1 blind', `${why}: an unreadable input is blind, never another rule`);
   assert.notEqual(d.lead.rule, 'S11 nothing', `${why}: never "nothing needs you"`);
@@ -133,7 +133,7 @@ test('checkAttention refuses incompatible decisions (for the resolver and adapte
   const ok = POL.decide(good(), { surface: 'work-desktop', now: NOW });
   assert.equal(C.checkAttention(ok).ok, true);
   const bad = {
-    'wrong contract': { ...ok, contract: 'saim-attention-v2' },
+    'wrong contract': { ...ok, contract: 'saim-attention-v3' },
     'not saim': { ...ok, owner: 'neuro' },
     'no policyVersion': { ...ok, policyVersion: undefined },
     'unknown rule': { ...ok, lead: { ...ok.lead, rule: 'S12 vibes' } },
@@ -148,7 +148,7 @@ test('checkAttention refuses incompatible decisions (for the resolver and adapte
 
 test('the registry is explicit: one supported version per family, and every lead rule the policy can emit is known', () => {
   assert.deepEqual([...C.SUPPORTED['neuro-candidates']], ['neuro-candidates-v2']);
-  assert.deepEqual([...C.SUPPORTED['saim-attention']], ['saim-attention-v1']);
+  assert.deepEqual([...C.SUPPORTED['saim-attention']], ['saim-attention-v2']);
   const fs = require('node:fs');
   const src = fs.readFileSync(require.resolve('../../saim/policy/attention-policy.cjs'), 'utf8');
   const emitted = new Set([...src.matchAll(/rule\('(S\d+[a-z]? [^']+)'/g)].map((m) => m[1]));

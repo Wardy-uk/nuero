@@ -246,7 +246,7 @@ test('15 Oct 2026: /now carries NEURO candidates and SAiM’s decision as SEPARA
   assert.equal(status, 200);
   assert.equal(json.candidates && json.candidates.contract, 'neuro-candidates-v2', 'null would mean composition threw');
   assert.ok(Array.isArray(json.candidates.candidates));
-  assert.equal(json.saim && json.saim.contract, 'saim-attention-v1');
+  assert.equal(json.saim && json.saim.contract, 'saim-attention-v2');
   assert.equal(json.saim.owner, 'saim');
   assert.equal(json.saim.surface.id, 'work-desktop');
   assert.equal(json.saim.surface.defaulted, true);

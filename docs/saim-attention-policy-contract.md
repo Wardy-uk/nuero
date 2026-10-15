@@ -413,6 +413,50 @@ The **ask** is `{ question: 'What will you use?', taskId, options, deviceSpecifi
 
 **Not built:** the adapter UI that shows the ask and posts the answer; a NEURO screen for reviewing observations; the live Pi data.
 
+## 6g. C3 (known / not-read) and C5 (display fields) (15 Oct 2026; contract only, not wired)
+
+**Audit on live data first** (read-only snapshot of the Pi's `/now`, work-desktop and home-pi, 15 candidates each):
+- **C3 absent.** The decision had no per-section known. NEURO already stated `poolReadable`, `diaryReadable`, `blocksReadable` and `approvalsReadable`, but the decision dropped them.
+- **C5 absent.** 0 of 15 candidates and no decision field had a display block.
+- **Leaks confirmed in code:**
+  - an approval's title is `<action_type with spaces>: <subject>` ("chase agenda: Ops sync");
+  - the S2u sentence carries the raw type id ("(payroll_cutoff)");
+  - the S6 sentence carries a raw `Date#toDateString` ("Tue Oct 20 2026").
+
+**`saim-attention-v2`** (renamed under the C6 rule: v1 is live and has neither field):
+
+- **`known`** gives `{ protected, held, judgement, next }` each as `{ known: boolean, why: string | null }`. It comes from the constraints NEURO states; a flag that is missing or not `true` is **not read**.
+
+  | Section | Depends on |
+  |---|---|
+  | protected, next | task blocks and the diary |
+  | judgement | approvals |
+  | held (work scope) | the attention pool and commitments (the new `constraints.commitmentsReadable`) |
+  | held (home scope) | the household model |
+
+  When blind, every section is not-read with the reason. A refused decision reads nothing. `checkAttention` refuses a missing section or a not-read without a reason.
+- **`display`** gives `{ lead: { title, sentence, when }, protected: { what, until }, held: [{ title, why, returns }] | { count }, judgement: [{ what, by, basis }], next: { title, when } }`. It is built **only** from NEURO's per-candidate `display` and SAiM's own words; anything that fails the check is replaced by a plain fallback, never shown. `lead.why` and `trace` keep their machine form. Policy `2026-10-15.7`.
+
+**`neuro-candidates-v2`:** every candidate carries **`display: { title, timing, explanation }`** (`backend/services/neuro-display.js`). The contract requires the shape, and a candidate without it is refused.
+- **Approvals** are named by what the action does ("Ask for an agenda: Ops sync"). An unknown type becomes "An action waiting for your approval", never the type.
+- **Times** come from the record's own clock: "14:00–15:30", "expires 09:00 Tue 20 Oct", "due today", "3 days overdue".
+- **Markup** is stripped, and an unsafe string becomes `null`.
+
+**`shared/display-text.cjs`** is the one safety rule. It refuses:
+- ISO and raw JS date strings;
+- record ids (Graph, `pa_`, candidate refs, HA entity ids);
+- NEURO's machine-shaped internal type tokens;
+- action types written as labels;
+- task markup and `neuro:` links.
+
+Nick's own wording may contain anything else; "Fix the user_id field" is fine.
+
+**Real data after:** 30 live candidates through the branch display builder gave **0 unsafe strings and 0 missing titles**. It caught one real flaw, now fixed: a home obligation with no days-late figure read "due Mon 12 Oct" while three days overdue; it now reads "3 days overdue".
+
+**Tests:** `c3-c5-contract.test.js` (10): known over every scenario, partial outages (approvals, diary, blocks plus diary, commitments, an unstated flag, a home screen blind with work flags true), the contract's reason rule, candidate display over every scenario, the real leaks fixed at source, decision display safe everywhere, the S2u and S6 leaks gone, unsafe fields replaced, display required, and the safety and time words. 13 of 13 mutations caught (the blind rule needed the home-screen case to be caught); earlier sets still caught. Full suite: 6,655 pass, 0 fail.
+
+**Adapter readiness: C3 ✓, C5 ✓, C6 ✓, C1 ✓ (exact links), C4 ✓ (resolver plus NEURO intent plus activity model).** C2 is half done: prep ✓, but join links and the meeting provider are still gaps, so the screen degrades as stated. The live Pi still emits v1 of both contracts, so the adapter, which accepts only v2, must be validated locally against the branch backend (Tier B), not the live payload.
+
 ## 7. Placement (if approved)
 
 - **Policy code:** `saim/policy/attention-policy.cjs`, pure. `require`d and executed by NEURO's backend for parity.

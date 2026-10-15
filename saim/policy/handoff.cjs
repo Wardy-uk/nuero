@@ -78,7 +78,7 @@ const withGaps = (r, c) => (r.handoff === null && !r.refused && c && Array.isArr
 
 /**
  * @param {{ decision, candidates, device, now }} input
- *   decision   saim-attention-v1 (validated)
+ *   decision   saim-attention-v2 (validated)
  *   candidates neuro-candidates-v2 (validated)
  *   device     saim-device-v1 (validated)
  */

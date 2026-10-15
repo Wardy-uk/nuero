@@ -1,7 +1,7 @@
 'use strict';
 
 // The attention contract end to end, pure: NEURO candidates (neuro-candidates-v2)
-// → SAiM Attention Policy (saim-attention-v1). Fixture = the live 17:11 read on
+// → SAiM Attention Policy (saim-attention-v2). Fixture = the live 17:11 read on
 // 14 Oct 2026 that put the control and Alt at odds.
 
 const test = require('node:test');
@@ -97,7 +97,7 @@ test('candidates: an unclassified calendar is unknown, never guessed', () => {
 
 test('17:11, work desktop: the running block leads (S5); the agenda request is judgement with an effective deadline of 18:00', () => {
   const d = decide(scenario(), 'work-desktop');
-  assert.equal(d.contract, 'saim-attention-v1');
+  assert.equal(d.contract, 'saim-attention-v2');
   assert.equal(d.owner, 'saim');
   assert.equal(d.lead.rule, 'S5 protected block');
   assert.equal(d.lead.ref, 'block:115');
@@ -142,7 +142,7 @@ test('an approval whose effective deadline falls inside the block interrupts it 
 test('a running meeting with others outranks the block; a critical item outranks both', () => {
   const s = scenario({ calendar: [cal(17, 0, 17, 25, 'Weekly support leads', true)] });
   assert.equal(decide(s, 'work-desktop').lead.rule, 'S3 meeting');
-  s.candidates.candidates.push({ kind: 'attention-item', id: 'item:9', recordId: 9, title: 'NT-1 breaching', facts: { type: 'escalation', risk: 'critical', riskBasis: 'classified', urgency: null, reason: 'SLA breached', gatePosition: 'secondary' }, sphere: work, actions: [], provenance: { source: 'attention.gate' } });
+  s.candidates.candidates.push({ kind: 'attention-item', id: 'item:9', recordId: 9, title: 'NT-1 breaching', facts: { type: 'escalation', risk: 'critical', riskBasis: 'classified', urgency: null, reason: 'SLA breached', gatePosition: 'secondary' }, sphere: work, actions: [], provenance: { source: 'attention.gate' }, display: { title: 'NT-1 breaching', timing: null, explanation: 'SLA breached' } });
   assert.equal(decide(s, 'work-desktop').lead.rule, 'S2 critical risk');
 });
 
@@ -170,7 +170,7 @@ test('home scope: a family date that needs action leads; the work block is invis
 
 test('work scope: unknown sphere is shown; personal context only when relevant now', () => {
   const s = scenario();
-  s.candidates.candidates.push({ kind: 'commitment', id: 'c:later', taskId: 9, title: 'Book the vet', time: { due: '2026-10-20' }, facts: { daysLate: -6, wordingConflict: null }, sphere: { value: 'personal', basis: 'set' }, actions: [], provenance: {} });
+  s.candidates.candidates.push({ kind: 'commitment', id: 'c:later', taskId: 9, title: 'Book the vet', time: { due: '2026-10-20' }, facts: { daysLate: -6, wordingConflict: null }, sphere: { value: 'personal', basis: 'set' }, actions: [], provenance: {}, display: { title: 'Book the vet', timing: 'due Tue 20 Oct', explanation: null } });
   const d = decide(s, 'work-desktop');
   assert.equal(d.scope.excluded.personal, 1);
 });

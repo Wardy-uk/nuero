@@ -1409,7 +1409,7 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
   // 15 Oct 2026 — the attention contract (docs/saim-attention-policy-contract.md).
   // TWO fields, two owners, never merged:
   //   `candidates` — NEURO's facts and constraints (neuro-candidates-v2);
-  //   `saim`       — SAiM's judgement over them (saim-attention-v1), executed
+  //   `saim`       — SAiM's judgement over them (saim-attention-v2), executed
   //                  here for parity, owned by saim/policy. For one surface.
   // Additive; neither is allowed to fail Now.
   try {

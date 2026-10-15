@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * SAiM Attention Policy — `saim-attention-v1`. OWNED BY SAiM (15 Oct 2026).
+ * SAiM Attention Policy — `saim-attention-v2`. OWNED BY SAiM (15 Oct 2026).
  * Contract: docs/saim-attention-policy-contract.md (approved in principle 14 Oct,
  * §3 scope amendment 15 Oct).
  *
@@ -27,9 +27,10 @@
  */
 
 const CONTRACTS = require('../../shared/attention-contracts.cjs');
+const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-15.6';
+const POLICY_VERSION = '2026-10-15.7';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -320,6 +321,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     alternatives,
     corrections,
     review,
+    known: knownFor(k, sf.scope, blind),
+    display: displayFor({ lead, leadCand: cands.find((c) => c.id === lead.ref) || null, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, now, countOnly: m.held === 'count' }),
     trace,
   };
 }
@@ -349,7 +352,95 @@ function refusedDecision(check, surface, sf, now) {
     corrections: [],
     review: { unclassified: [], action: null },
     refused: { family: check.family, reason: check.reason, got: check.got, supported: check.supported },
+    known: Object.fromEntries(SECTIONS.map((s) => [s, { known: false, why: 'NEURO’s candidates couldn’t be read' }])),
+    display: { lead: { title: null, sentence: why, when: null }, protected: null, held: sf.manifestation.held === 'count' ? { count: 0 } : [], judgement: [], next: null },
     trace: [{ rule: 'contract', applies: true, why: `refused: ${reason}; supported ${check.supported.join(', ')}` }],
+  };
+}
+
+// ── C3: per rail section, was it read? ─────────────────────────────────────
+
+const SECTIONS = Object.freeze(['protected', 'held', 'judgement', 'next']);
+
+/**
+ * Each rail section says whether NEURO could read what it depends on, from the
+ * constraints NEURO states. A flag that is missing or not `true` is NOT read —
+ * "NEURO didn't say" is never "nothing there".
+ */
+function knownFor(k, scope, blind) {
+  const read = (flags) => {
+    const missing = flags.filter(([f]) => k[f] !== true).map(([, words]) => words);
+    return missing.length ? { known: false, why: `couldn’t read ${missing.join(' or ')}` } : { known: true, why: null };
+  };
+  if (blind) {
+    const why = scope === 'home' ? 'couldn’t read the household model' : 'couldn’t read the attention pool';
+    return Object.fromEntries(SECTIONS.map((s) => [s, { known: false, why }]));
+  }
+  const diary = [['blocksReadable', 'task blocks'], ['diaryReadable', 'the diary']];
+  return {
+    protected: read(diary),
+    next: read(diary),
+    judgement: read([['approvalsReadable', 'approvals']]),
+    held: scope === 'home' ? read([['homeReadable', 'the household model']])
+      : read([['poolReadable', 'the attention pool'], ['commitmentsReadable', 'commitments']]),
+  };
+}
+
+// ── C5: what a screen may show ───────────────────────────────────────────────
+
+/**
+ * Display text for the decision, built ONLY from NEURO's per-candidate
+ * `display` fields and SAiM's own words — never a raw title, id, type or
+ * timestamp. Anything that fails shared/display-text's check is replaced with
+ * a plain fallback, never shown. The machine fields (`lead.why`, `trace`)
+ * are unchanged.
+ */
+function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, now, countOnly }) {
+  const byId = new Map(cands.map((c) => [c.id, c]));
+  const ok = (s) => (typeof s === 'string' && s && D.isSafeDisplay(s) ? s : null);
+  const titleOf = (c) => (c && c.display ? ok(sayTitle(c.display.title)) : null);
+  const expl = (c) => (c && c.display ? ok(c.display.explanation) : null);
+  const strip = (s) => String(s).replace(/[.!?]+$/, '');
+  const t = titleOf(leadCand);
+  const guardTitle = titleOf(guard);
+  const effWhen = (a) => (a && a.eff ? D.whenText(a.eff.at, now) : null);
+  let sentence;
+  switch (lead.rule) {
+    case 'S1 blind': case 'S10 ritual': case 'S11 nothing': case 'S8 protected diary time':
+      sentence = lead.why; break;
+    case 'S2 critical risk':
+      sentence = `${t ? strip(t) : 'This'} is critical${expl(leadCand) ? `: ${strip(expl(leadCand))}` : ''}.`; break;
+    case 'S2u unclassified potential risk':
+      sentence = `${t ? `${strip(t)} — ` : ''}NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.`; break;
+    case 'S3 meeting':
+      sentence = `You’re in ${t || 'a meeting'}${guard && guard.time ? ` until ${guard.time.end}` : ''}; I’m holding everything else.`; break;
+    case 'S3a imminent meeting transition': {
+      const min = lead.transition && lead.transition.startsInMinutes;
+      sentence = `${t || 'A meeting'} starts ${min ? `in ${min} minute${min === 1 ? '' : 's'}` : 'now'}${runningBlock && titleOf(runningBlock) ? `; I’ll hold ${titleOf(runningBlock)} for after it` : ''}.`;
+      break;
+    }
+    case 'S4 deadline inside the block':
+      sentence = `${t || 'This'} has to be dealt with before ${effWhen(interrupting) || 'the block ends'}${runningBlock ? `, and this block runs to ${runningBlock.time.end}` : ''}.`; break;
+    case 'S5 protected block':
+      sentence = `This is the time you blocked for ${t || 'this work'}. I’m holding the rest until ${runningBlock.time.end}.`; break;
+    case 'S6 judgement waiting':
+      sentence = `${t || 'An action'} is waiting for you in NEURO${effWhen(firstApproval) ? ` — before ${effWhen(firstApproval)}` : ''}.`; break;
+    case 'S7 top item':
+      sentence = `${t ? strip(t) : 'This'}${expl(leadCand) ? ` — ${strip(expl(leadCand))}` : ''}.`; break;
+    case 'S9 block about to start':
+      sentence = `${t || 'Your next block'} starts at ${leadCand && leadCand.time ? leadCand.time.start : 'soon'}.`; break;
+    default: sentence = null;
+  }
+  return {
+    lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when: leadCand && leadCand.display ? ok(leadCand.display.timing) : null },
+    protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until } : null,
+    held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns })),
+    judgement: judgement.map((j) => {
+      const c = byId.get(j.ref);
+      const a = approvals.find((x) => x.c.id === j.ref);
+      return { what: titleOf(c) || 'An action waiting for your approval', by: effWhen(a), basis: a && a.eff && a.eff.basis !== 'its own expiry' ? a.eff.basis : null };
+    }),
+    next: next ? { title: titleOf(byId.get(next.ref)) || 'Next in the diary', when: `at ${next.start}` } : null,
   };
 }
 

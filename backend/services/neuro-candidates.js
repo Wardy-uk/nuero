@@ -30,6 +30,7 @@
 
 const CONTRACT = require('../../shared/attention-contracts.cjs').NEURO_CANDIDATES;
 const NH = require('./neuro-handoff');
+const ND = require('./neuro-display');
 
 const pad = (n) => String(n).padStart(2, '0');
 const dayKey = (ms) => { const t = new Date(ms); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`; };
@@ -227,7 +228,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     candidates.push({
       kind: 'approval', id: `approval:${a.actionId}`, title: a.title || a.type,
       time: { deadlineAt: a.expiresAt || null },
-      facts: { type: a.type, status: a.status, where: ap && ap.where ? ap.where : 'Actions, in NEURO on the desktop', summary: ap ? ap.say || null : null },
+      facts: { type: a.type, status: a.status, subject: a.subject || null, where: ap && ap.where ? ap.where : 'Actions, in NEURO on the desktop', summary: ap ? ap.say || null : null },
       sphere: a.mailbox && a.mailbox !== 'work' ? sphere('personal', 'mailbox', `sends from your ${a.mailbox} mailbox`) : sphere('work', 'mailbox', 'sends from your work mailbox'),
       actions: [], provenance: { source: 'prepared_actions', readAt }, known: true,
     });
@@ -324,6 +325,8 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
 
   // Hand-off fields (structured intent + exact links + explicit gaps) — additive
   // v2 data, NEURO facts only. SAiM's resolver recommends; NEURO never does.
+  // Display fields (C5): what a screen may show — safe words, never ids, ISO times or internal types.
+  for (const c of candidates) c.display = ND.displayFor(c, { subject: c.facts && c.facts.subject, now });
   for (const c of candidates) Object.assign(c, NH.handoffFor(c, itemMeta.get(c.id) || null, { jiraBase: facts.jiraBase || null, taskActivity: facts.taskActivity || null }));
 
   return {
@@ -338,6 +341,8 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
       diaryReadable: Boolean(facts.calendarKnown),
       blocksReadable: Boolean(rows),
       approvalsReadable: Boolean(ap) && facts.approvals != null,
+      // The world-model situation (commitments). Missing = could not read, never "none" (C3).
+      commitmentsReadable: Boolean(p.situation && (p.situation.sections || p.situation)),
       activity: (p.context && p.context.activity) || null,
       duty: p.context && p.context.duty ? { onDuty: p.context.duty.onDuty ?? null } : null,
       desk: p.work && typeof p.work.atDesk === 'boolean' && p.work.deskKnown !== false ? { atDesk: p.work.atDesk } : null,
@@ -435,7 +440,7 @@ function gather({ now = Date.now() } = {}) {
   try {
     out.facts.approvals = db.all(`SELECT action_id, action_type, status, expires_at, target_json FROM prepared_actions WHERE status = 'prepared' ORDER BY expires_at`).map((r) => {
       let t = {}; try { t = JSON.parse(r.target_json || '{}'); } catch { t = {}; }
-      return { actionId: r.action_id, type: r.action_type, status: r.status, expiresAt: r.expires_at || null, mailbox: t.mailbox || 'work',
+      return { actionId: r.action_id, type: r.action_type, status: r.status, expiresAt: r.expires_at || null, mailbox: t.mailbox || 'work', subject: t.subject || null,
         title: t.subject ? `${String(r.action_type).replace(/_/g, ' ')}: ${t.subject}` : String(r.action_type).replace(/_/g, ' ') };
     });
   } catch (e) { gaps.push({ input: 'approvals', why: e.message }); }

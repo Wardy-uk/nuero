@@ -31,7 +31,9 @@
  */
 
 const NEURO_CANDIDATES = 'neuro-candidates-v2';
-const SAIM_ATTENTION = 'saim-attention-v1';
+// v2 (15 Oct 2026): adds required `known` (C3) and `display` (C5). The live Pi's
+// v1 has neither — same reasoning as neuro-candidates-v2: one name, one shape.
+const SAIM_ATTENTION = 'saim-attention-v2';
 const SAIM_DEVICE = 'saim-device-v1';
 const SAIM_HANDOFF = 'saim-handoff-v1';
 
@@ -112,7 +114,7 @@ function suggestionsProblem(list, at) {
   return null;
 }
 
-/** Every lead rule saim-attention-v1 may name. */
+/** Every lead rule saim-attention-v2 may name. */
 const ATTENTION_RULES = Object.freeze([
   'S1 blind', 'S2 critical risk', 'S3 meeting', 'S2u unclassified potential risk', 'S3a imminent meeting transition',
   'S4 deadline inside the block', 'S5 protected block', 'S6 judgement waiting', 'S7 top item', 'S8 protected diary time',
@@ -120,6 +122,7 @@ const ATTENTION_RULES = Object.freeze([
 ]);
 
 const LINKS = require('./neuro-links.cjs');
+const DISPLAY = require('./display-text.cjs');
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isStr = (x) => typeof x === 'string' && x.length > 0;
 const refuse = (family, reason, got) => ({ ok: false, family, reason, got: got === undefined ? null : got, supported: SUPPORTED[family] });
@@ -146,6 +149,8 @@ function checkCandidates(input) {
     if (!isStr(c.id)) return refuse(F, `${at}.id missing`, input.contract);
     if (!isObj(c.facts)) return refuse(F, `${at}.facts missing`, input.contract);
     if (!isObj(c.sphere) || !('value' in c.sphere)) return refuse(F, `${at}.sphere missing`, input.contract);
+    const dp = c.display;
+    if (!isObj(dp) || !['title', 'timing', 'explanation'].every((x) => dp[x] === null || typeof dp[x] === 'string')) return refuse(F, `${at}.display missing (title / timing / explanation)`, input.contract);
     if (RISK_KINDS.has(c.kind)) {
       if (!isStr(c.facts.risk)) return refuse(F, `${at}.facts.risk missing (v1 shape?)`, input.contract);
       if (!RISK_BASES.has(c.facts.riskBasis)) return refuse(F, `${at}.facts.riskBasis missing (v1 shape?)`, input.contract);
@@ -171,6 +176,21 @@ function checkAttention(d) {
   if (!Array.isArray(d.alternatives)) return refuse(F, 'alternatives is not a list', d.contract);
   if (!Array.isArray(d.trace)) return refuse(F, 'trace is not a list', d.contract);
   if (d.refused != null && (!isObj(d.refused) || d.lead.rule !== 'S1 blind')) return refuse(F, 'a refused decision must lead S1 blind', d.contract);
+  // C3: every rail section says whether it was read, with a reason when not.
+  if (!isObj(d.known)) return refuse(F, 'known missing', d.contract);
+  for (const s of ['protected', 'held', 'judgement', 'next']) {
+    const k = d.known[s];
+    if (!isObj(k) || typeof k.known !== 'boolean') return refuse(F, `known.${s} missing`, d.contract);
+    if (k.known === false && !isStr(k.why)) return refuse(F, `known.${s} is not read but gives no reason`, d.contract);
+  }
+  // C5: display text exists and carries nothing a person shouldn't read.
+  const disp = d.display;
+  if (!isObj(disp) || !isObj(disp.lead) || !isStr(disp.lead.sentence)) return refuse(F, 'display.lead missing', d.contract);
+  const strings = [disp.lead.title, disp.lead.sentence, disp.lead.when, disp.protected && disp.protected.what, disp.next && disp.next.title, disp.next && disp.next.when,
+    ...(Array.isArray(disp.held) ? disp.held.flatMap((h) => [h.title, h.why, h.returns]) : []),
+    ...(Array.isArray(disp.judgement) ? disp.judgement.flatMap((j) => [j.what, j.by, j.basis]) : [])];
+  const bad = strings.find((s) => s != null && !DISPLAY.isSafeDisplay(s));
+  if (bad !== undefined) return refuse(F, 'display carries a raw id, timestamp or internal type', d.contract);
   return { ok: true, family: F, contract: d.contract };
 }
 
