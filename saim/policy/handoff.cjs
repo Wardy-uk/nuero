@@ -19,6 +19,11 @@
  *
  * Inputs are VALIDATED first (shared/attention-contracts.cjs). An incompatible
  * contract is refused — `handoff: null` with `refused` — never guessed around.
+ * NEURO's OPTIONAL hand-off fields are different: a malformed intent or link on
+ * the lead (or a malformed `constraints.targets` when blind) degrades to "no
+ * hand-off" with the reason. It never refuses the attention payload, and the
+ * policy's decision stands — a bad link is not blindness. A list with any
+ * malformed entry is not used at all: half of a bad list is not a link to trust.
  *
  * ⚠ IT NEVER READS RAW TITLES, TEXT, DESCRIPTIONS OR EXPLANATIONS. It reads a
  * candidate's id, kind, handoffIntent and targets; a decision's lead ref/rule
@@ -33,7 +38,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const { SURFACES } = require('./attention-policy.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_HANDOFF;
-const RESOLVER_VERSION = '2026-10-15.1';
+const RESOLVER_VERSION = '2026-10-15.2';
 const MAX_ALTERNATIVES = 3;
 
 /**
@@ -108,26 +113,18 @@ function resolveHandoff({ decision, candidates, device, now = Date.now() } = {})
   const linkDest = (t, label) => ({ label, target: { type: 'link', href: t.href, role: t.role } });
   const targetOf = (c, role) => (c && Array.isArray(c.targets) ? c.targets.find((t) => t.role === role) : null) || null;
 
-  /** Primary + alternatives, enforcing the cap and dropping anything redundant. */
-  const done = (primary, alternatives, why, basis) => {
-    const seen = new Set([key(primary)]);
-    const alts = [];
-    for (const d of alternatives) {
-      if (!d || d.target.type === 'already') continue; // nowhere to go
-      const k = key(d);
-      if (seen.has(k)) continue;
-      seen.add(k); alts.push(d);
-      if (alts.length === MAX_ALTERNATIVES) break;
-    }
-    return { ...out, handoff: { primary, alternatives: alts, why }, reason: null, basis };
-  };
+  const done = (primary, alternatives, why, basis) => ({ ...out, handoff: { primary, alternatives: limitAlternatives(primary, alternatives), why }, reason: null, basis });
 
   const rule = lead.rule;
+  const leadProblem = leadCand ? CONTRACTS.handoffProblem(leadCand) : null;
+  if (leadProblem) return none(out, 'NEURO’s hand-off details for this are malformed, so SAiM won’t use them.', [`${lead.ref}: ${leadProblem}`]);
   const intent = leadCand && leadCand.handoffIntent ? leadCand.handoffIntent : null;
   if (intent && intent.kind === 'none') return none(out, 'NEURO says there’s nowhere to go for this.', ['handoffIntent.kind = none']);
 
   // S1 — blind: only where NEURO says the failure can be seen. Never a desk app.
   if (rule === 'S1 blind') {
+    const kp = CONTRACTS.targetsProblem(candidates.constraints.targets, 'constraints.targets');
+    if (kp) return none(out, 'NEURO’s link for where to look is malformed, so SAiM won’t use it.', [kp]);
     const t = (Array.isArray(candidates.constraints.targets) ? candidates.constraints.targets : []).find((x) => x.role === 'source');
     return t ? done(linkDest(t, `Open ${t.label || 'Sources in NEURO'}`), [], 'Where NEURO shows which feed stopped. SAiM can’t tell which connection failed, so it won’t suggest an app.', ['constraints.targets.source'])
       : none(out, 'NEURO gave no place to look, and SAiM won’t guess one.', ['constraints.targets: no source']);
@@ -204,6 +201,26 @@ function resolveHandoff({ decision, candidates, device, now = Date.now() } = {})
   return none(out, why, [`rule ${rule}`]);
 }
 
+/**
+ * THE one place the alternatives contract is enforced: drop empties, "already
+ * open" apps (nowhere to go) and duplicates of the primary or each other, keep
+ * order, and stop at MAX_ALTERNATIVES. Exported so the cap is exercised
+ * directly — the resolver's own rules cannot produce four today.
+ */
+function limitAlternatives(primary, alternatives) {
+  const seen = new Set([key(primary)]);
+  const alts = [];
+  for (const d of alternatives || []) {
+    if (!d || d.target.type === 'already') continue;
+    const k = key(d);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    alts.push(d);
+    if (alts.length === MAX_ALTERNATIVES) break;
+  }
+  return alts;
+}
+
 function key(d) { return d.target.type === 'link' ? `link:${d.target.href}` : `app:${d.target.app}`; }
 
-module.exports = { CONTRACT, RESOLVER_VERSION, MAX_ALTERNATIVES, DEVICE_FRESH_MINUTES, ACTIVITY, resolveHandoff };
+module.exports = { CONTRACT, RESOLVER_VERSION, MAX_ALTERNATIVES, DEVICE_FRESH_MINUTES, ACTIVITY, resolveHandoff, limitAlternatives };

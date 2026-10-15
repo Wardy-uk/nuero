@@ -166,7 +166,7 @@ test('missing intent, unknown activity or intent "none" → no hand-off, said ho
   assert.match(run(setup('1', { intent: { kind: 'none' } })).reason, /nowhere to go/);
 });
 
-test('S4 / S6: exactly that action in NEURO; no exact link → no hand-off; an approve link is refused at the contract', () => {
+test('S4 / S6: exactly that action in NEURO; no exact link → no hand-off; an approve link degrades to no hand-off', () => {
   const o = run(setup('2b', { targets: [CANON()] }));
   assert.equal(o.rule, 'S4 deadline inside the block');
   assert.deepEqual(o.handoff.primary.target, { type: 'link', href: 'https://neuro.example/?view=actions&action=pa_3', role: 'canonical' });
@@ -177,7 +177,9 @@ test('S4 / S6: exactly that action in NEURO; no exact link → no hand-off; an a
   bad.candidates.find((c) => c.id === s.decision.lead.ref).targets = [CANON('https://neuro.example/api/prepared-actions/pa_3/approve')];
   const r = H.resolveHandoff({ decision: s.decision, candidates: bad, device: DEVICE(DESK()), now: NOW });
   assert.equal(r.handoff, null);
-  assert.match(r.refused.problem, /approve link/);
+  assert.equal(r.refused, undefined, 'a bad optional link is not a contract refusal');
+  assert.match(r.reason, /malformed/);
+  assert.ok(r.basis.some((b) => /approve link/.test(b)));
 });
 
 test('S2 confirmed risk: the real control surface, no alternatives; else the item in NEURO; else nothing', () => {
@@ -302,8 +304,6 @@ test('incompatible inputs are refused, never guessed around', () => {
     'device app with an unknown capability': { ...x, device: DEVICE([APP('fax', 'Fax', ['fax'])]) },
     'device app declared twice': { ...x, device: DEVICE([APP('word', 'Word', ['docs']), APP('word', 'Word', ['docs'])]) },
     'device running not boolean': { ...x, device: DEVICE([APP('word', 'Word', ['docs'], { running: 'yes' })]) },
-    'intent with an invented activity': (() => { const c = clone(x.candidates); c.candidates.find((k) => k.id === 'block:130').handoffIntent = { kind: 'work-step', activity: 'vibes' }; return { ...x, candidates: c }; })(),
-    'target with a javascript: href': (() => { const c = clone(x.candidates); c.candidates[0].targets = [{ role: 'canonical', href: 'javascript:alert(1)' }]; return { ...x, candidates: c }; })(),
     'decision about something NEURO did not send': { ...x, decision: { ...x.decision, lead: { ...x.decision.lead, ref: 'block:999' } } },
   };
   for (const [name, input] of Object.entries(cases)) {
@@ -316,6 +316,85 @@ test('incompatible inputs are refused, never guessed around', () => {
   const r = H.resolveHandoff({ decision: refusedDecision, candidates: x.candidates, device: DEVICE(DESK()), now: x.now });
   assert.equal(r.handoff, null);
   assert.match(r.reason, /couldn’t read NEURO’s candidates/);
+});
+
+// ── Malformed OPTIONAL hand-off fields degrade; they never refuse ───────────
+
+const MALFORMED = {
+  'invented activity': { intent: { kind: 'work-step', activity: 'vibes' } },
+  'unknown intent kind': { intent: { kind: 'teleport' } },
+  'intent not an object': { intent: 'draft' },
+  'javascript: href': { targets: [{ role: 'canonical', href: 'javascript:alert(1)' }] },
+  'approve link': { targets: [{ role: 'canonical', href: 'https://neuro.example/api/prepared-actions/pa_1/approve' }] },
+  'unknown role': { targets: [{ role: 'backdoor', href: 'https://x.example' }] },
+  'targets not a list': { targets: { role: 'canonical', href: 'https://x.example' } },
+  'one bad entry beside a good one': { targets: [CANON('https://neuro.example/?view=actions&action=pa_1'), { role: 'canonical', href: 'ftp://x' }] },
+};
+
+test('malformed intent/links on the lead: no hand-off with an honest reason; the attention payload and SAiM’s decision stand', () => {
+  for (const [name, m] of Object.entries(MALFORMED)) {
+    const clean = setup('1');
+    const x = setup('1', { intent: m.intent === undefined ? DRAFT : m.intent, targets: m.targets });
+    assert.equal(C.checkCandidates(x.candidates).ok, true, `${name}: the candidates payload is still valid`);
+    assert.equal(x.decision.refused, undefined, `${name}: SAiM’s decision is not refused`);
+    assert.equal(x.decision.lead.rule, 'S5 protected block', `${name}: never turned into blindness`);
+    assert.deepEqual({ ...x.decision }, { ...clean.decision }, `${name}: the decision is identical to the clean one`);
+    const o = run(x);
+    assert.equal(o.handoff, null, name);
+    assert.equal(o.refused, undefined, `${name}: degraded, not refused`);
+    assert.match(o.reason, /malformed, so SAiM won’t use them/, name);
+    assert.equal(o.rule, 'S5 protected block');
+  }
+});
+
+test('a malformed field on ANOTHER candidate changes nothing about the lead’s hand-off', () => {
+  const good = run(setup('1', { intent: DRAFT }));
+  const x = setup('1', { intent: DRAFT });
+  const other = x.candidates.candidates.find((c) => c.id !== x.decision.lead.ref);
+  other.handoffIntent = { kind: 'teleport' };
+  other.targets = [{ role: 'canonical', href: 'javascript:alert(1)' }];
+  assert.equal(C.checkCandidates(x.candidates).ok, true);
+  assert.deepEqual(run(x), good);
+});
+
+test('S1 blind with a malformed constraints.targets: still S1, no hand-off, never a refusal', () => {
+  const x = setup('6a', { constraintTargets: [{ role: 'source', href: 'not a link' }] });
+  assert.equal(C.checkCandidates(x.candidates).ok, true);
+  assert.equal(x.decision.lead.rule, 'S1 blind');
+  assert.equal(x.decision.refused, undefined, 'S1 here is the genuine blind state, not a contract refusal');
+  const o = run(x);
+  assert.equal(o.handoff, null);
+  assert.equal(o.refused, undefined);
+  assert.match(o.reason, /link for where to look is malformed/);
+});
+
+// ── The three-alternative contract, executed ─────────────────────────────────
+
+const desk = (id, label) => ({ label: `Open ${label}`, target: { type: 'desk', app: id, mode: 'open' } });
+
+test('overflow: four (and five) valid alternatives are cut to three, in order — and the output contract refuses four', () => {
+  const primary = desk('word', 'Word');
+  const four = [desk('claude', 'Claude'), desk('music', 'Music'), desk('obsidian', 'Obsidian'), desk('excel', 'Excel')];
+  for (const d of four) assert.equal(C.checkHandoff({ contract: 'saim-handoff-v1', owner: 'saim', resolverVersion: 'x', handoff: { primary, alternatives: [d] } }).ok, true, 'each alternative is valid on its own');
+  const cut = H.limitAlternatives(primary, four);
+  assert.equal(cut.length, H.MAX_ALTERNATIVES);
+  assert.equal(H.MAX_ALTERNATIVES, 3);
+  assert.deepEqual(cut.map((d) => d.label), ['Open Claude', 'Open Music', 'Open Obsidian'], 'the first three, in order');
+  assert.deepEqual(H.limitAlternatives(primary, [...four, desk('code', 'VS Code')]).map((d) => d.label), ['Open Claude', 'Open Music', 'Open Obsidian']);
+  // Skipped entries don't use up a slot: duplicates of the primary or each other, "already open", empties.
+  const noisy = [null, desk('word', 'Word'), { label: 'Already', target: { type: 'already', app: 'teams' } }, ...four, desk('claude', 'Claude')];
+  assert.deepEqual(H.limitAlternatives(primary, noisy).map((d) => d.label), ['Open Claude', 'Open Music', 'Open Obsidian']);
+  // The contract itself refuses an uncapped four.
+  const uncapped = { contract: 'saim-handoff-v1', owner: 'saim', resolverVersion: 'x', handoff: { primary, alternatives: four, why: 'x' } };
+  assert.equal(C.checkHandoff(uncapped).ok, false);
+  assert.match(C.checkHandoff(uncapped).reason, /more than three alternatives/);
+  assert.equal(C.checkHandoff({ ...uncapped, handoff: { ...uncapped.handoff, alternatives: cut } }).ok, true);
+});
+
+test('the resolver enforces the cap through limitAlternatives (single enforcement point)', () => {
+  const src = fs.readFileSync(require.resolve('../../saim/policy/handoff.cjs'), 'utf8');
+  assert.match(src, /alternatives: limitAlternatives\(primary, alternatives\)/, 'done() routes through the exported limiter');
+  assert.equal((src.match(/MAX_ALTERNATIVES\) break/g) || []).length, 1, 'the cap is written once');
 });
 
 test('the activity table and registry agree; checkHandoff refuses a malformed output', () => {

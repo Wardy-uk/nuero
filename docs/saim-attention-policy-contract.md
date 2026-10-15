@@ -197,7 +197,7 @@ S1 is judged on what the surface's scope depends on:
   - `targets[]`: `{ role: canonical | control | join | prep | source, href, label?, provider? }`;
   - `constraints.targets` for the place to look when blind.
 
-  These fields are optional in `neuro-candidates-v2` (absent = "NEURO stated none"). When present they are shape-checked. An approve link or a non-http(s)/`saim:` href refuses the whole payload.
+  These fields are optional in `neuro-candidates-v2` (absent = "NEURO stated none") and are **not** part of `checkCandidates`. **A malformed intent or link degrades that candidate to no hand-off, with the reason.** That covers an unknown kind or activity, an approve link, a non-http(s)/`saim:` href, an unknown role, a non-list, or any bad entry in the list. It **never refuses the attention payload**, and never replaces a valid SAiM decision with blindness. A malformed field on a non-lead candidate is ignored. *(Amended 15 Oct 2026.)*
 - **The device** owns `saim-device-v1`: per app `capabilities`, `available`, `running` / `foreground` (true / false / null), plus `observedAt` and `known`.
 - **SAiM** owns the recommendation (the `ACTIVITY` table: draft, write, spreadsheet, email, code, read, call).
 
@@ -214,7 +214,7 @@ S1 is judged on what the surface's scope depends on:
   | unknown on a fresh device | "Open X" |
 
 - **Freshness:** a device observation older than 8 min (desktop-activity's `FRESH_MINUTES`, pinned), missing, from the future, or from an unreachable device means **no desk hand-off**, with the reason. NEURO links don't depend on the device.
-- **Limits:** a primary plus **at most three** alternatives, in the order AI → Music → one more relevant. AI is never repeated after an AI primary.
+- **Limits:** a primary plus **at most three** alternatives, in the order AI → Music → one more relevant. AI is never repeated after an AI primary. The cap is enforced in **one place**, `limitAlternatives` (exported). It also drops empty entries, "already open" apps and duplicates without spending a slot. `checkHandoff` separately refuses a fourth alternative.
 - **By lead:**
 
   | Lead | Destination |
@@ -231,7 +231,7 @@ S1 is judged on what the surface's scope depends on:
   Anything missing (intent, activity, link, capability, freshness) means no hand-off, with an honest `reason`.
 - **Output:** `{ contract, owner, resolverVersion, decidedFor, rule, handoff: null | { primary, alternatives[≤3], why }, reason, basis, refused? }`, validated by `checkHandoff`.
 
-**Tests:** `backend/services/saim-handoff.test.js`, 24 tests covering:
+**Tests:** `backend/services/saim-handoff.test.js`, 29 tests covering:
 - randomised titles (every text field scrambled → identical output);
 - an unavailable app;
 - stale, missing, future and unreachable state;
@@ -240,9 +240,11 @@ S1 is judged on what the surface's scope depends on:
 - the cap over every activity × device subset;
 - each rule;
 - contract refusals;
-- a source scan with a positive control.
+- a source scan with a positive control;
+- malformed optional fields degrading on the lead, ignored on other candidates, and degrading for S1's `constraints.targets` (never a refusal);
+- an executable overflow test: four and five valid alternatives are cut to three in order, and `checkHandoff` refuses an uncapped four.
 
-11 of 12 mutations are caught. The survivor is the cap, which can't be exceeded by construction today; it is a stated second guard, also enforced by `checkHandoff`.
+Mutations: all 12 original resolver mutations are caught, including the cap (it survived until the overflow test), plus 6 more (cap off by one, malformed lead used anyway, malformed S1 target used anyway, the registry refusing malformed intent again, `checkHandoff` allowing four). Resolver version: `2026-10-15.2`.
 
 **Not yet:** NEURO doesn't emit `handoffIntent` / `targets`, and nothing builds `saim-device-v1`. On real data every lead resolves to no hand-off, with its reason, until those are authorised.
 

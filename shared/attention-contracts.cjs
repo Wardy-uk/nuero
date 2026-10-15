@@ -23,8 +23,10 @@
  * Hand-off (15 Oct 2026): v2 candidates MAY carry `handoffIntent` and
  * `targets`, and `constraints` MAY carry `targets` (the place to look when
  * blind). They are optional — absent means "NEURO stated no intent / no link",
- * which the resolver says honestly — but when present they must have the shape
- * below or the whole payload is refused. `saim-device-v1` is the device's
+ * which the resolver says honestly. They are NOT part of checkCandidates: a
+ * malformed intent or link degrades THAT candidate to "no hand-off" (checked by
+ * the resolver with `handoffProblem` / `targetsProblem`) and never refuses the
+ * attention payload or turns a valid SAiM decision into blindness. `saim-device-v1` is the device's
  * declared apps and their state; `saim-handoff-v1` is the resolver's output.
  */
 
@@ -105,8 +107,6 @@ function checkCandidates(input) {
   if (!isObj(k)) return refuse(F, 'constraints missing', input.contract);
   if (typeof k.poolReadable !== 'boolean') return refuse(F, 'constraints.poolReadable is not a boolean', input.contract);
   if (!(k.homeReadable === null || typeof k.homeReadable === 'boolean')) return refuse(F, 'constraints.homeReadable is not true/false/null', input.contract);
-  const kt = targetsProblem(k.targets, 'constraints.targets');
-  if (kt) return refuse(F, kt, input.contract);
   for (let i = 0; i < input.candidates.length; i += 1) {
     const c = input.candidates[i];
     const at = `candidates[${i}]`;
@@ -115,8 +115,6 @@ function checkCandidates(input) {
     if (!isStr(c.id)) return refuse(F, `${at}.id missing`, input.contract);
     if (!isObj(c.facts)) return refuse(F, `${at}.facts missing`, input.contract);
     if (!isObj(c.sphere) || !('value' in c.sphere)) return refuse(F, `${at}.sphere missing`, input.contract);
-    const ip = intentProblem(c.handoffIntent, `${at}.handoffIntent`) || targetsProblem(c.targets, `${at}.targets`);
-    if (ip) return refuse(F, ip, input.contract);
     if (RISK_KINDS.has(c.kind)) {
       if (!isStr(c.facts.risk)) return refuse(F, `${at}.facts.risk missing (v1 shape?)`, input.contract);
       if (!RISK_BASES.has(c.facts.riskBasis)) return refuse(F, `${at}.facts.riskBasis missing (v1 shape?)`, input.contract);
@@ -191,4 +189,6 @@ module.exports = {
   NEURO_CANDIDATES, SAIM_ATTENTION, SAIM_DEVICE, SAIM_HANDOFF, SUPPORTED, CANDIDATE_KINDS, ATTENTION_RULES,
   INTENT_KINDS, ACTIVITIES, TARGET_ROLES, CAPABILITIES,
   checkCandidates, checkAttention, checkDevice, checkHandoff,
+  handoffProblem: (c) => intentProblem(c && c.handoffIntent, 'handoffIntent') || targetsProblem(c && c.targets, 'targets'),
+  targetsProblem,
 };
