@@ -622,6 +622,10 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
 // ── Judgement ────────────────────────────────────────────────────────────────
 
 function num(v) {
+  // ⚠ Number(null) is 0. NOVA sends null for "this queue solved nothing that
+  // day" — no data, not a zero — and reading it as 0 tripped the zero-against-
+  // target finding on quiet queues (found by the NOVA session, 15 Oct 2026).
+  if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }

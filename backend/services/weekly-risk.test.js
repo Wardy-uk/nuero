@@ -1742,3 +1742,11 @@ test('management rows logged in the report week show even when complete', () => 
   const got = weeklyRisk.loggedInWeek(rows, '2026-10-05').map(r => r.id);
   assert.deepEqual(got, [2, 1]);
 });
+
+test('a null KPI value is no data, never a zero against target (NOVA sends null when a queue solved nothing)', () => {
+  const wr = require('./weekly-risk');
+  const row = (Count) => ({ KPI: 'Resolution compliance % (Tier 3)', Count, KPITarget: 95, KPIDirection: 'Higher is better', RAG: null });
+  const zeroFinding = (rows) => wr.assess({ week: '2026-10-19', kpi: { rows, date: '2026-10-16' }, sources: [] }).findings.find((f) => f.kind === 'zero-against-target');
+  assert.equal(zeroFinding([row(null)]), undefined, 'null must not read as 0');
+  assert.ok(zeroFinding([row(0)]), 'a genuine 0 is still flagged');
+});
