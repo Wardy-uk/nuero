@@ -32,6 +32,8 @@ const PM_WINDOW = { from: 14 * 60, to: 16 * 60 + 30 };
 const AM_WINDOW = { from: 10 * 60, to: 12 * 60 };
 const DEFAULT_DURATION_MIN = 30;
 const SEARCH_DAYS = 21;
+// How far back Move looks for a 1-2-1 that slipped past unheld.
+const MISSED_LOOKBACK_DAYS = 14;
 const MAX_PER_DAY = 2;
 
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -39,6 +41,12 @@ function pad(n) { return String(n).padStart(2, '0'); }
 /** Local date string. Never toISOString() — that shifts the day on BST evenings. */
 function dateStr(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Local wall-clock "YYYY-MM-DDTHH:MM:SS", comparable as a string with Graph's
+// Europe/London event times.
+function localStamp(d) {
+  return `${dateStr(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function addDays(date, n) {
@@ -589,21 +597,24 @@ function recordMove(name, { from, to, reason = null }) {
  * match and is tried first; subject is the fallback, because a hand-booked
  * "Catch up - Nick/Hope" may carry no attendee NEURO can resolve.
  */
-async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS } = {}) {
+async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS, lookbackDays = MISSED_LOOKBACK_DAYS } = {}) {
   if (!name) return { ok: false, error: 'person is required' };
 
   const attendee = await resolveAttendee(name);
   const first = name.split(' ')[0].toLowerCase();
 
+  // Read a few days BACK as well (15 Oct 2026): a 1-2-1 that slipped past with no
+  // note is exactly the one Nick needs to move, and a forward-only search said
+  // "no upcoming 1-2-1" over it. An upcoming one still wins below.
   let events;
   try {
     const microsoft = require('./microsoft');
-    events = await microsoft.fetchCalendarEvents(dateStr(from), dateStr(addDays(from, days)));
+    events = await microsoft.fetchCalendarEvents(dateStr(addDays(from, -lookbackDays)), dateStr(addDays(from, days)));
   } catch (e) {
     return { ok: false, error: `Could not read the calendar: ${e.message}` };
   }
 
-  const candidates = (events || [])
+  const all = (events || [])
     .filter(e => !['cancelled'].includes(String(e.showAs || 'busy').toLowerCase()))
     .filter(e => !e.isAllDay)
     .filter((e) => {
@@ -617,8 +628,15 @@ async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS } = {}
     })
     .sort((a, b) => String(a.start).localeCompare(String(b.start)));
 
+  // Prefer the next one still to come; only if there is none, the most recent
+  // missed one. Graph times are wall-clock Europe/London, compared as strings.
+  const nowStr = localStamp(from);
+  const upcoming = all.filter(e => String(e.end || e.start) >= nowStr);
+  const missed = all.filter(e => String(e.end || e.start) < nowStr);
+  const candidates = upcoming.length ? upcoming : missed.reverse();
+
   if (!candidates.length) {
-    return { ok: false, error: `No upcoming 1-2-1 with ${name} found in the next ${days} days`, searched: days };
+    return { ok: false, error: `No 1-2-1 with ${name} found in the last ${lookbackDays} or next ${days} days`, searched: days };
   }
 
   const event = candidates[0];

@@ -147,7 +147,31 @@ test('no upcoming 1-2-1 is reported plainly, not as a crash', async (t) => {
   t.mock.method(microsoft, 'fetchCalendarEvents', async () => ([]));
   const r = await booking.findOneToOne('Nobody Home');
   assert.strictEqual(r.ok, false);
-  assert.match(r.error, /No upcoming 1-2-1/);
+  assert.match(r.error, /No 1-2-1 with Nobody Home found/);
+});
+
+// 15 Oct 2026: Heidi's 1-2-1 slipped past on the 14th with no note, and Move
+// said "No upcoming 1-2-1" — the one meeting most in need of moving was the
+// one Move could not see.
+test('a missed 1-2-1 is found when nothing is upcoming', async (t) => {
+  const microsoft = require('./microsoft');
+  t.mock.method(microsoft, 'fetchCalendarEvents', async () => ([
+    { id: 'MISSED-OLD', date: '2026-10-07', start: '2026-10-07T14:00:00', end: '2026-10-07T14:30:00', subject: '1-2-1 — Nick / Heidi', showAs: 'busy', attendees: [], isAllDay: false },
+    { id: 'MISSED', date: '2026-10-14', start: '2026-10-14T14:00:00', end: '2026-10-14T14:30:00', subject: '1-2-1 — Nick / Heidi', showAs: 'busy', attendees: [], isAllDay: false },
+  ]));
+  const r = await booking.findOneToOne('Heidi Power', { from: new Date('2026-10-15T09:00:00') });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.event.id, 'MISSED', 'the most recent missed one, not the oldest');
+});
+
+test('an upcoming 1-2-1 still wins over a missed one', async (t) => {
+  const microsoft = require('./microsoft');
+  t.mock.method(microsoft, 'fetchCalendarEvents', async () => ([
+    { id: 'MISSED', date: '2026-10-14', start: '2026-10-14T14:00:00', end: '2026-10-14T14:30:00', subject: '1-2-1 — Nick / Heidi', showAs: 'busy', attendees: [], isAllDay: false },
+    { id: 'NEXT', date: '2026-10-20', start: '2026-10-20T14:00:00', end: '2026-10-20T14:30:00', subject: '1-2-1 — Nick / Heidi', showAs: 'busy', attendees: [], isAllDay: false },
+  ]));
+  const r = await booking.findOneToOne('Heidi Power', { from: new Date('2026-10-15T09:00:00') });
+  assert.strictEqual(r.event.id, 'NEXT');
 });
 
 test('a meeting that merely names the person is not treated as their 1-2-1', async (t) => {

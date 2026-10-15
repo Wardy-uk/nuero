@@ -243,8 +243,8 @@ export default function WaitingOn({ person = null, embedded = false }) {
 
       <div className="wo-groups">
         {shown.map((g, gi) => {
-          // Worst offender is open on arrival; everyone else is one tap away.
-          const isOpen = person ? true : (expanded[g.person] ?? gi === 0);
+          // Everyone starts collapsed on the board (Nick, 15 Oct 2026); one tap opens a person.
+          const isOpen = person ? true : (expanded[g.person] ?? false);
           return (
             <div key={g.person} className="wo-group">
               {/* In person mode the panel header already says who and how many,
