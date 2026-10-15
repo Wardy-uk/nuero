@@ -596,7 +596,7 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
   const was = new Map(perQueueRows(periodWas).map((r) => [r.key, r.value]));
   const perQueue = periodNow ? perQueueRows(periodNow).map((r) => ({ ...r, was: was.has(r.key) ? was.get(r.key) : null })) : null;
 
-  const sentimentRaw = await pull('sentiment', 'sentiment', 'sentiment from NOVA', () => nova.call('/api/neuro-bridge/sentiment-signals?days=7'));
+  const sentimentRaw = await pull('sentiment', 'sentiment', 'sentiment from NOVA', () => nova.call('/api/neuro-bridge/sentiment-signals?days=7', { timeoutMs: 60000 }));
   const sentiment = sentimentSummary(sentimentRaw);
   const daily = series ? slaDaily(series, week, { queues: bw.SUPPORT_QUEUES, metrics }) : null;
   const supportSla = series ? bw.supportCompliance(series, {
@@ -638,7 +638,7 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
     : null;
   const findingsOpen = Array.isArray(findingsRaw) ? findingsRaw.filter((f) => f.status !== 'resolved').length : null;
 
-  const leadRaw = await pull('leading', 'leading', 'leading indicators from VANTAGE', () => vantage.get('/api/leading'));
+  const leadRaw = await pull('leading', 'leading', 'leading indicators from VANTAGE', () => vantage.get('/api/leading', { timeoutMs: 60000 }));
   const leading = leadRaw ? {
     available: leadRaw.available !== false, asOf: leadRaw.asOf || null,
     fired: (leadRaw.indicators || []).filter((i) => i.shadow !== true).map((i) => ({
