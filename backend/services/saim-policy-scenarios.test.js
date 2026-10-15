@@ -21,7 +21,7 @@ for (const s of SCENARIOS) {
     if (e.heldIncludes) assert.ok(d.held.some((h) => h.ref === e.heldIncludes), 'held');
     if (e.excludedWork) assert.ok(d.scope.excluded.work > 0, 'work counted, not shown');
     if (e.maxActions) assert.ok((d.recommended ? 1 : 0) + d.alternatives.length <= e.maxActions, 'phone actions bounded');
-    if (e.reviewType) assert.ok(d.review.unclassified.some((u) => u.type === e.reviewType && u.ledThisDecision), 'listed for review');
+    if (e.reviewType) assert.ok(d.review.unclassified.some((u) => u.type === e.reviewType && u.ledThisDecision === (e.reviewLed !== false)), 'listed for review');
     // Every decision explains itself: exactly one rule applied, and it is the lead's.
     assert.equal(d.trace.filter((t) => t.applies).length, 1);
     assert.equal(d.trace.find((t) => t.applies).rule, d.lead.rule);
@@ -75,4 +75,22 @@ test('scenario 8: an unclassified "critical" leads under its own rule and is lis
   assert.ok(d.review.action);
   const clean = row(SCENARIOS.find((s) => s.id === '1')).decision;
   assert.deepEqual(clean.review.unclassified, [], 'nothing to review when every type is classified');
+});
+
+test('scenario 9: in a running meeting an S2u item stays visible as possible risk but does not lead; classified S2 still does', () => {
+  const s2u = row(SCENARIOS.find((x) => x.id === '9a')).decision;
+  assert.equal(s2u.lead.rule, 'S3 meeting');
+  const held = s2u.held.find((h) => h.ref === 'item:r-payroll_cutoff');
+  assert.equal(held.why, 'possible risk — not yet classified');
+  assert.equal(held.returns, 'at 15:00');
+  const order = s2u.trace.map((t) => t.rule.split(' ')[0]);
+  assert.deepEqual(order, ['S1', 'S2', 'S3'], 'S3 decides before S2u is reached');
+  const s2 = row(SCENARIOS.find((x) => x.id === '9b')).decision;
+  assert.equal(s2.lead.rule, 'S2 critical risk');
+  assert.equal(s2.protected.kind, 'meeting', 'the meeting stays the protected context');
+});
+
+test('rule order: S1 → S2 → S3 → S2u → S3a → S4 → S5', () => {
+  const d = row(SCENARIOS.find((x) => x.id === '1')).decision;
+  assert.deepEqual(d.trace.map((t) => t.rule.split(' ')[0]).slice(0, 7), ['S1', 'S2', 'S3', 'S2u', 'S3a', 'S4', 'S5']);
 });

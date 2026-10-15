@@ -146,6 +146,18 @@ const SCENARIOS = [
       secondary: [card('payroll_cutoff', 'critical', 'Payroll cut-off for overtime claims', { reason: 'closes at 15:00' })] }),
     expect: { rule: 'S2u unclassified potential risk', lead: 'item:r-payroll_cutoff', protected: 'block:130', reviewType: 'payroll_cutoff' },
   },
+  {
+    id: '9a', name: 'Unclassified type rated critical, during a running meeting',
+    build: () => build({ now: at(14, 40), surface: 'work-desktop', calendar: [meetingEvent(14, 30, 15, 0, 'Nick Catch Up')],
+      secondary: [card('payroll_cutoff', 'critical', 'Payroll cut-off for overtime claims', { reason: 'closes at 15:00' })] }),
+    expect: { rule: 'S3 meeting', lead: 'meeting:14:30:Nick Catch Up', protected: 'meeting:14:30:Nick Catch Up', heldIncludes: 'item:r-payroll_cutoff', reviewType: 'payroll_cutoff', reviewLed: false },
+  },
+  {
+    id: '9b', name: 'Home hazard (classified risk), during a running meeting',
+    build: () => build({ now: at(14, 40), surface: 'work-desktop', calendar: [meetingEvent(14, 30, 15, 0, 'Nick Catch Up')],
+      home: { needsYou: [{ kind: 'hazard', id: 'hazard:Kitchen leak', title: 'Kitchen leak: water detected', why: 'a household hazard sensor is reporting' }], exceptions: [] } }),
+    expect: { rule: 'S2 critical risk', lead: 'home:hazard:Kitchen leak', protected: 'meeting:14:30:Nick Catch Up' },
+  },
 ];
 
 /** A row of the decision table: what went in, what came out, and why. */

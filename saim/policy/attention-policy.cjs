@@ -21,7 +21,7 @@
  */
 
 const CONTRACT = 'saim-attention-v1';
-const POLICY_VERSION = '2026-10-15.4';
+const POLICY_VERSION = '2026-10-15.5';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -139,7 +139,9 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // `urgency` instead, and never reaches S2.
   const critical = cands.find((c) => c.facts && c.facts.risk === 'critical' && c.facts.riskBasis === 'classified') || null;
   // S2u: NEURO said critical about a KIND of item nobody has classified yet.
-  // Conservative: it leads as possible risk (it is never quietly demoted), but
+  // Ordered BELOW S3 (a running meeting keeps the lead; the item stays visible
+  // in held as 'possible risk — not yet classified') and ABOVE S3a/S4/S5.
+  // Otherwise it leads as possible risk (never quietly demoted), but
   // under its own rule, so it can never pass for classified risk — and it is
   // listed in `review` until the type is classified deliberately.
   const unclassifiedCritical = cands.find((c) => c.facts && c.facts.risk === 'critical' && c.facts.riskBasis !== 'classified') || null; // a missing basis is unclassified, never assumed
@@ -183,14 +185,14 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     lead.kind = 'blind';
   } else if (rule('S2 critical risk', critical, critical ? `“${critical.title}” carries critical risk (${critical.facts.type || critical.facts.homeKind || critical.kind})` : 'no item carries critical risk in scope')) {
     lead = leadOf(critical, 'S2 critical risk', `${critical.title} is critical${(critical.facts.reason || critical.facts.why) ? `: ${critical.facts.reason || critical.facts.why}` : ''}.`, [`${critical.id}.risk = critical`]);
+  } else if (rule('S3 meeting', runningMeeting, runningMeeting ? `“${runningMeeting.title}” is running with other people in it` : 'no meeting running in scope')) {
+    lead = leadOf(runningMeeting, 'S3 meeting', `You’re in ${runningMeeting.title} until ${runningMeeting.time.end}; I’m holding everything else.`, [`${runningMeeting.id}.running`, `${runningMeeting.id}.othersAttending`]);
   } else if (rule('S2u unclassified potential risk', unclassifiedCritical,
     unclassifiedCritical ? `“${unclassifiedCritical.title}” — NEURO said critical, but type “${unclassifiedCritical.facts.type || unclassifiedCritical.facts.homeKind || unclassifiedCritical.kind}” is unclassified` : 'no unclassified critical item in scope')) {
     const t = unclassifiedCritical.facts.type || unclassifiedCritical.facts.homeKind || unclassifiedCritical.kind;
     lead = leadOf(unclassifiedCritical, 'S2u unclassified potential risk',
       `${String(leadTitle(unclassifiedCritical)).replace(/[.!?]+$/, '')} — NEURO rated it critical, but this kind of item (${t}) hasn’t been classified yet, so I’m treating it as possible risk.`,
       [`${unclassifiedCritical.id}.risk = critical`, `${unclassifiedCritical.id}.riskBasis = unclassified`]);
-  } else if (rule('S3 meeting', runningMeeting, runningMeeting ? `“${runningMeeting.title}” is running with other people in it` : 'no meeting running in scope')) {
-    lead = leadOf(runningMeeting, 'S3 meeting', `You’re in ${runningMeeting.title} until ${runningMeeting.time.end}; I’m holding everything else.`, [`${runningMeeting.id}.running`, `${runningMeeting.id}.othersAttending`]);
   } else if (rule('S3a imminent meeting transition', transition,
     transition ? `“${transition.c.title}” with other people starts ${transition.min == null ? 'now' : `in ${transition.min} min`} (≤ ${MEETING_TRANSITION_MINUTES})${runningBlock ? ` — outranks ${runningBlock.id}` : ''}` : `no meeting with others within ${MEETING_TRANSITION_MINUTES} min`)) {
     const when = transition.min ? `in ${transition.min} minute${transition.min === 1 ? '' : 's'}` : 'now';
@@ -241,7 +243,9 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     // NEURO's meeting card is the same meeting as the diary entry — never held twice.
     if (c.kind === 'attention-item' && c.facts.type === 'meeting' && (c.title === lead.title || of('meeting').some((m) => m.title === c.title))) continue;
     let why = null;
-    if (c.kind === 'ritual') why = c.facts.reason || 'outstanding';
+    // An S2u item displaced by a running meeting stays visibly present (15 Oct 2026).
+    if (c.facts && c.facts.risk === 'critical' && c.facts.riskBasis !== 'classified') why = 'possible risk — not yet classified';
+    else if (c.kind === 'ritual') why = c.facts.reason || 'outstanding';
     else if (c.kind === 'attention-item') why = c.facts.reason || `${c.facts.type || 'item'} from NEURO`;
     else if (c.kind === 'held') why = c.facts.why || 'held back by NEURO';
     else if (c.kind === 'commitment' && c.facts.daysLate >= 0 && !blockTaskIds.has(Number(c.taskId))) why = c.facts.daysLate === 0 ? 'due today' : `${c.facts.daysLate} day${c.facts.daysLate === 1 ? '' : 's'} overdue`;

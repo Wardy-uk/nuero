@@ -1,6 +1,6 @@
 # SAiM Attention Policy — decision contract (DRAFT for approval)
 
-**Status:** approved in principle 14 Oct 2026 (effective-deadline rule and the 17:11 outcome); §3 amended 15 Oct 2026 (scope); risk/urgency split and S3a added 15 Oct 2026; unclassified-type amendment, per-scope blindness and the decision table (§8) added 15 Oct 2026. The architecture boundary was approved in principle on 15 Oct 2026.
+**Status:** approved in principle 14 Oct 2026 (effective-deadline rule and the 17:11 outcome); §3 amended 15 Oct 2026 (scope); risk/urgency split and S3a added 15 Oct 2026; unclassified-type amendment, per-scope blindness and the decision table (§8) added 15 Oct 2026; S2u reordered below S3 15 Oct 2026. The architecture boundary was approved in principle on 15 Oct 2026.
 
 - **No UI is wired:** no surface reads `candidates` or `saim`.
 - **Live on the Pi:** the first version of both fields went out on 15 Oct inside another session's push. It is additive and nothing reads it.
@@ -43,8 +43,8 @@ names the facts that decided it.
 |---|---|---|
 | S1 | **Blind** — NEURO's attention read failed | "I can't see your work right now — this isn't an all-clear." |
 | S2 | **Critical risk** — an item whose *risk* is critical **and whose type NEURO has classified** (genuine harm, never a clock) | "{title} is critical: {reason}." |
-| S2u | **Unclassified potential risk** — NEURO said critical about a type nobody has classified yet | "{title} — NEURO rated it critical, but this kind of item ({type}) hasn't been classified yet, so I'm treating it as possible risk." |
 | S3 | **In a meeting** — running, other people in it | "You're in {title} until {end}; I'm holding everything else." |
+| S2u | **Unclassified potential risk** — NEURO said critical about a type nobody has classified yet | "{title} — NEURO rated it critical, but this kind of item ({type}) hasn't been classified yet, so I'm treating it as possible risk." |
 | S3a | **Imminent meeting transition** — a meeting with other people starting within 10 minutes | "{title} starts in {n} minutes; I'll hold {block} for after it." |
 | S4 | **Deadline inside the block** — an approval whose *effective deadline* falls before the block ends + 15 min | "{approval} has to go before {deadline}, and this block runs to {end}." |
 | S5 | **Protected block** — a task block is running | "This is the time you blocked for {task}. I'm holding the rest until {end}." |
@@ -72,7 +72,11 @@ overnight, the deadline that matters is when he stops work.
 
 **Unclassified types (amendment, 15 Oct 2026).** A type NEURO has not classified must not stay "critical" for ever unexamined. So:
 - NEURO marks it `riskBasis: unclassified`. A missing basis counts as unclassified, never as classified.
-- SAiM leads with it **conservatively**, as potential risk. Rule S2u sits directly below S2, so possible harm is never quietly demoted, but it can never pass for classified risk.
+- SAiM leads with it **conservatively**, as potential risk. Rule S2u can never pass for classified risk.
+- **Order (approved 15 Oct 2026): below S3, above S3a and S5.**
+  - In a running meeting, an S2u item does not replace the meeting as the lead. It stays visibly present in held as "possible risk — not yet classified", returning when the meeting ends.
+  - A classified S2 risk still interrupts the meeting.
+  - Outside a meeting, S2u outranks an imminent meeting transition, an approval deadline inside a block, and a protected task block.
 - The trace names the type ("type “payroll_cutoff” is unclassified").
 - Every decision carries **`review.unclassified`** — each unclassified type seen, its count, example refs, NEURO's word for it, and whether it led — with an action: classify it in `neuro-candidates` (`CLASSIFIED_TYPES` / `HOME_RISK`), then review the policy.
 - Household needs-you kinds are classified the same way: hazard = critical; hazard sensor unreachable, door, heating = high; network = medium; an obligation = none.
@@ -82,7 +86,7 @@ S2 reads **risk only**, and only **classified** risk. A meeting about to start r
 **S3a against an active task block.**
 - Within 10 minutes of a meeting with other people, the meeting leads, even over a running block. People are waiting on a fixed clock. The block stays the **protected** context, and held items return when it does.
 - More than 10 minutes out, the block leads (S5). The meeting is shown as **next**, with its countdown.
-- Genuine risk (S2) and a meeting already running (S3) still outrank S3a.
+- Genuine risk (S2), a meeting already running (S3) and an unclassified potential risk (S2u) still outrank S3a.
 - S3a outranks an approval deadline inside the block (S4), because the meeting has the nearer fixed time and other people.
 - The 10 minutes is NEURO's own imminence window (decision-engine), so "imminent" means one thing everywhere.
 - When the diary was not read, NEURO's meeting card alone can still trigger S3a.
@@ -181,6 +185,7 @@ S1 is judged on what the surface's scope depends on:
 
 Generated by `node backend/scripts/saim-policy-table.js` from the scenario runs that `backend/services/saim-policy-scenarios.test.js` asserts. Each run uses the real candidate composer and the real policy. Day: Thursday 15 Oct 2026, working hours 08:00–18:00, block 14:00–15:30 unless stated.
 
+
 | # | Scenario | Surface → scope | Lead (rule) | Protected | Held | Recommended action |
 |---|---|---|---|---|---|---|
 | 1 | Active work block, non-urgent approval | work-desktop → work | Customer Care training plan and refreshers — **S5 protected block** | Customer Care training plan and refreshers (until 15:30) | Nick Ward to send breakdown of Parsons contacts (due today); West Hants Tennis Club: resolve the outstanding ticket (due today) | I’m on it |
@@ -194,42 +199,44 @@ Generated by `node backend/scripts/saim-policy-table.js` from the scenario runs 
 | 6b | Unreadable or missing data — home Pi | home-pi → home | — — **S1 blind** | — | 0 (count only) | — |
 | 7 | Phone interruption with constrained actions (scenario 3 on the phone) | phone → all | Nick Catch Up — **S3a imminent meeting transition** | Customer Care training plan and refreshers (until 15:30) | 1 (count only) | Join / prep now (also: Not now) |
 | 8 | Unclassified type rated critical, during an active block | work-desktop → work | Payroll cut-off for overtime claims — **S2u unclassified potential risk** | Customer Care training plan and refreshers (until 15:30) | — | — |
+| 9a | Unclassified type rated critical, during a running meeting | work-desktop → work | Nick Catch Up — **S3 meeting** | Nick Catch Up (until 15:00) | Payroll cut-off for overtime claims (possible risk — not yet classified) | — |
+| 9b | Home hazard (classified risk), during a running meeting | work-desktop → work | Kitchen leak: water detected — **S2 critical risk** | Nick Catch Up (until 15:00) | — | — |
 
 **1. Active work block, non-urgent approval**
 - Candidates (kind/sphere): block/work×1, approval/work×1, commitment/work×2. Excluded by scope: none.
 - Lead: “Customer Care training plan and refreshers” — “This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.”
 - Judgement: chase agenda: Quarterly review — by Tue 09:00 (its own expiry). Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → S3a → S4 → **S5 protected block** — block:130 14:00–15:30 is running
+- Trace: S1 → S2 → S3 → S2u → S3a → S4 → **S5 protected block** — block:130 14:00–15:30 is running
 
 **2a. Active block, approval whose effective deadline is today (after the block)**
 - Candidates (kind/sphere): block/work×1, approval/work×1, commitment/work×2. Excluded by scope: none.
 - Lead: “Customer Care training plan and refreshers” — “This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.”
 - Judgement: chase agenda: The London Office Regroup — by Thu 18:00 (end of today’s working hours — it expires before you next start). Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → S3a → S4 → **S5 protected block** — block:130 14:00–15:30 is running
+- Trace: S1 → S2 → S3 → S2u → S3a → S4 → **S5 protected block** — block:130 14:00–15:30 is running
 
 **2b. Active block, approval whose effective deadline falls inside the block**
 - Candidates (kind/sphere): block/work×1, approval/work×1. Excluded by scope: none.
 - Lead: “chase agenda: Ops sync” — “chase agenda: Ops sync has to be dealt with before 15:00, and this block runs to 15:30.”
 - Judgement: —. Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → S3a → **S4 deadline inside the block** — effective deadline 15:00 today (its own expiry); block ends 15:30 + 15 min
+- Trace: S1 → S2 → S3 → S2u → S3a → **S4 deadline inside the block** — effective deadline 15:00 today (its own expiry); block ends 15:30 + 15 min
 
 **3. Meeting with others in under ten minutes, during an active block**
 - Candidates (kind/sphere): block/work×1, meeting/work×1, attention-item/unknown×1. Excluded by scope: none.
 - Lead: “Nick Catch Up” — “Nick Catch Up starts in 8 minutes; I’ll hold Customer Care training plan and refreshers for after it.”
 - Judgement: —. Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → **S3a imminent meeting transition** — “Nick Catch Up” with other people starts in 8 min (≤ 10) — outranks block:130
+- Trace: S1 → S2 → S3 → S2u → **S3a imminent meeting transition** — “Nick Catch Up” with other people starts in 8 min (≤ 10) — outranks block:130
 
 **4. Out-of-hours home evening**
 - Candidates (kind/sphere): approval/work×1, ritual/work×1, commitment/work×2, home/home×1, personal-date/family×1. Excluded by scope: work×4.
 - Lead: “Put the bins out” — “Put the bins out — collection is tomorrow morning.”
 - Judgement: —. Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → S3a → S4 → S5 → S6 → **S7 top item** — “Put the bins out” needs you
+- Trace: S1 → S2 → S3 → S2u → S3a → S4 → S5 → S6 → **S7 top item** — “Put the bins out” needs you
 
 **5a. Family item needing action, during work**
 - Candidates (kind/sphere): block/work×1, personal-date/family×1. Excluded by scope: none.
 - Lead: “Customer Care training plan and refreshers” — “This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.”
 - Judgement: —. Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → S3a → S4 → **S5 protected block** — block:130 14:00–15:30 is running
+- Trace: S1 → S2 → S3 → S2u → S3a → S4 → **S5 protected block** — block:130 14:00–15:30 is running
 
 **5b. Home hazard (genuine risk), during work**
 - Candidates (kind/sphere): block/work×1, home/home×1. Excluded by scope: none.
@@ -253,10 +260,22 @@ Generated by `node backend/scripts/saim-policy-table.js` from the scenario runs 
 - Candidates (kind/sphere): block/work×1, meeting/work×1, attention-item/unknown×2. Excluded by scope: none.
 - Lead: “Nick Catch Up” — “Nick Catch Up starts in 8 minutes; I’ll hold Customer Care training plan and refreshers for after it.”
 - Judgement: —. Policy review: —.
-- Trace: S1 → S2 → S2u → S3 → **S3a imminent meeting transition** — “Nick Catch Up” with other people starts in 8 min (≤ 10) — outranks block:130
+- Trace: S1 → S2 → S3 → S2u → **S3a imminent meeting transition** — “Nick Catch Up” with other people starts in 8 min (≤ 10) — outranks block:130
 
 **8. Unclassified type rated critical, during an active block**
 - Candidates (kind/sphere): block/work×1, attention-item/unknown×1. Excluded by scope: none.
 - Lead: “Payroll cut-off for overtime claims” — “Payroll cut-off for overtime claims — NEURO rated it critical, but this kind of item (payroll_cutoff) hasn’t been classified yet, so I’m treating it as possible risk.”
 - Judgement: —. Policy review: payroll_cutoff×1.
-- Trace: S1 → S2 → **S2u unclassified potential risk** — “Payroll cut-off for overtime claims” — NEURO said critical, but type “payroll_cutoff” is unclassified
+- Trace: S1 → S2 → S3 → **S2u unclassified potential risk** — “Payroll cut-off for overtime claims” — NEURO said critical, but type “payroll_cutoff” is unclassified
+
+**9a. Unclassified type rated critical, during a running meeting**
+- Candidates (kind/sphere): meeting/work×1, attention-item/unknown×1. Excluded by scope: none.
+- Lead: “Nick Catch Up” — “You’re in Nick Catch Up until 15:00; I’m holding everything else.”
+- Judgement: —. Policy review: payroll_cutoff×1.
+- Trace: S1 → S2 → **S3 meeting** — “Nick Catch Up” is running with other people in it
+
+**9b. Home hazard (classified risk), during a running meeting**
+- Candidates (kind/sphere): meeting/work×1, home/home×1. Excluded by scope: none.
+- Lead: “Kitchen leak: water detected” — “Kitchen leak: water detected is critical: a household hazard sensor is reporting.”
+- Judgement: —. Policy review: —.
+- Trace: S1 → **S2 critical risk** — “Kitchen leak: water detected” carries critical risk (hazard)
