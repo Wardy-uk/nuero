@@ -271,14 +271,14 @@ function headline(a) {
 function _load() {
   try {
     const raw = db.getState(STATE_KEY);
-    if (!raw) return { samples: [], notifiedFor: null };
+    if (!raw) return { samples: [], episodeStartedAt: null };
     const parsed = JSON.parse(raw);
     return {
       samples: Array.isArray(parsed.samples) ? parsed.samples : [],
-      notifiedFor: parsed.notifiedFor || null,
+      episodeStartedAt: parsed.episodeStartedAt || null,
     };
   } catch {
-    return { samples: [], notifiedFor: null, unreadable: true };
+    return { samples: [], episodeStartedAt: null, unreadable: true };
   }
 }
 
@@ -318,7 +318,7 @@ function record(sample = {}) {
     tempC: _num(sample.tempC),
   };
   const samples = [row, ...(state.samples || [])].slice(0, MAX_SAMPLES);
-  db.setState(STATE_KEY, JSON.stringify({ samples, notifiedFor: state.notifiedFor || null }));
+  db.setState(STATE_KEY, JSON.stringify({ samples, episodeStartedAt: state.episodeStartedAt || null }));
   return row;
 }
 
@@ -326,24 +326,72 @@ function samples() {
   return _load().samples || [];
 }
 
+// ── Episodes ─────────────────────────────────────────────────────────────────
+
 /**
- * Has this episode already been announced? So the push fires ONCE when the
- * state turns, not every five minutes for a fortnight.
- *
- * ⚠ Keyed on the STATE, so a recovery clears it and a fresh episode speaks
- * again. `unknown` deliberately does not latch — a stopped watcher is not an
- * episode to announce and re-announce.
+ * Which alert a state belongs to. Wedged and unreachable are one level: from
+ * the house they are the same fact (the router has stopped doing its job), and
+ * a shell that flaps between failing and not mid-wedge must not read as two
+ * separate alarms.
  */
-function shouldAnnounce(state) {
+const ALERT_LEVEL = { degrading: 'building', wedged: 'down', unreachable: 'down' };
+const ALERT_LEVELS = ['building', 'down'];
+
+/** The push key for one level of one episode. PURE. */
+function alertKey(startedAt, level) {
+  return `router:${startedAt}:${level}`;
+}
+
+/** Every key an episode could have pushed under. PURE. */
+function episodeAlertKeys(startedAt) {
+  return startedAt ? ALERT_LEVELS.map((l) => alertKey(startedAt, l)) : [];
+}
+
+// The ref every router alert used before 15 Oct 2026, when all of them shared
+// ONE attention record. Closed on recovery so that record stops existing.
+const LEGACY_ALERT_REF = 'SAiM — Router';
+
+/**
+ * Where this sample leaves the current episode.
+ *
+ * ⚠⚠ AN EPISODE IS THE IDENTITY, NOT THE STATE. Until 15 Oct 2026 every router
+ * alert pushed under the same title with no key, so the attention lifecycle
+ * filed them all on ONE record — opened on 21 Sep, notified once, and never
+ * closed. Every later alert was then "already notified, nothing changed": the
+ * 12-14 Oct wedge produced ~60 attempts and not one reached the phone. A
+ * per-episode key gives each wedge its own record, so the first sample of a new
+ * episode can always interrupt.
+ *
+ * ⚠ This decides NOTHING about whether to notify. The route sends on EVERY
+ * unhealthy sample and the lifecycle dedupes on the key — which means an alert
+ * held by quiet hours is simply retried on the next sample, rather than being
+ * latched as "announced" and lost the way the old latch lost it.
+ *
+ * Returns:
+ *   { key, level, startedAt }  unhealthy — push under this key
+ *   { ended }                  healthy — `ended` is the episode that just
+ *                              closed (its start), or null if none was open
+ *   null                       unknown — the watcher stopped; the episode is
+ *                              KEPT, because a stopped watcher has not seen
+ *                              the router recover
+ */
+function episode(state, now = new Date()) {
   const s = _load();
-  const write = (notifiedFor) => db.setState(STATE_KEY, JSON.stringify({ samples: s.samples || [], notifiedFor }));
-  if (state === 'ok' || state === 'unknown') {
-    if (s.notifiedFor) write(null);
-    return false;
+  if (s.unreadable) return null;
+  const save = (episodeStartedAt) =>
+    db.setState(STATE_KEY, JSON.stringify({ samples: s.samples || [], episodeStartedAt }));
+  if (state === 'ok') {
+    if (s.episodeStartedAt) save(null);
+    return { ended: s.episodeStartedAt || null };
   }
-  if (s.notifiedFor === state) return false;
-  write(state);
-  return true;
+  const level = ALERT_LEVEL[state];
+  if (!level) return null;
+  let startedAt = s.episodeStartedAt;
+  if (!startedAt) {
+    startedAt = now.toISOString();
+    save(startedAt);
+  }
+  return { key: alertKey(startedAt, level), level, startedAt };
 }
 
 function current(now = new Date()) {
@@ -352,7 +400,8 @@ function current(now = new Date()) {
 
 module.exports = {
   assess, sustainedD, headline,
-  record, samples, current, shouldAnnounce,
+  record, samples, current, episode, alertKey, episodeAlertKeys,
+  LEGACY_ALERT_REF, ALERT_LEVEL,
   STATE_KEY, MAX_SAMPLES,
   LOAD_WARN, TASKS_WARN, D_SUSTAINED, D_SAMPLES_REQUIRED, NVRAM_LOW, WATCHER_STALE_MIN,
   TEMP_WARN, TEMP_CRITICAL,

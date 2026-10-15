@@ -215,6 +215,21 @@ function _record(title, data, outcome, reason, sentCount = 0, failedCount = 0) {
  * escalation more. A bookkeeping outage must not be able to silence NEURO —
  * that is the exact failure the push log was added to make visible.
  */
+/**
+ * If `ref` names a recovery (`<key>:resolved`), resolve the open record for
+ * `<key>`. Never throws — a recovery push must still go out.
+ */
+function _closeRecovered(lifecycle, type, ref) {
+  try {
+    const m = /^(.+):resolved$/.exec(String(ref || ''));
+    if (!m) return;
+    const row = db.getOpenAttentionRecord(lifecycle.dedupeKeyForPush(type, m[1]));
+    if (row) lifecycle.act(row.id, 'resolve', { resolution: 'gone', note: 'condition cleared' });
+  } catch (e) {
+    console.warn('[WebPush] could not close the recovered alert:', e.message);
+  }
+}
+
 function _attentionFor(title, body, data) {
   try {
     const lifecycle = require('./attention-lifecycle');
@@ -229,6 +244,15 @@ function _attentionFor(title, body, data) {
     // reworded disk-space warning is still the same interruption.
     const ref = data?.key || title;
     const dedupeKey = lifecycle.dedupeKeyForPush(type, ref);
+    // ⚠ A RECOVERY CLOSES THE ALERT IT RECOVERS FROM. Watchdog pushes
+    // "<key>:resolved" when a condition clears, and that has always opened a
+    // record of its own while the original stayed ACTIVE — notified, never
+    // closed — so the NEXT time the same condition fired, the lifecycle
+    // answered "already notified, nothing changed" and it never reached the
+    // phone. Found 15 Oct 2026 on the router: the 12-14 Oct wedge was silenced
+    // by records left open since 21 Sep. Closing it here fixes every watchdog
+    // alert at once rather than each caller remembering to.
+    _closeRecovered(lifecycle, type, ref);
     const row = lifecycle.upsert(
       {
         // The key is EXPLICIT rather than derived from the type, so a push about
@@ -351,6 +375,7 @@ async function sendToAll(title, body, data = {}) {
   // no-record path: the data passes through untouched. A probe has no attention
   // record by design, so there is nothing to enrich it with.
   let record = null;
+  let attention = null; // { lifecycle, verdict } once gate 1 has let it through
   if (!PROBE_TYPES.has(data?.type)) {
     const { lifecycle, row, why: recordWhy } = _attentionFor(title, body, data);
     record = row;
@@ -360,12 +385,17 @@ async function sendToAll(title, body, data = {}) {
         now: new Date(),
         critical: ALWAYS_DELIVER.has(data?.type),
       });
-      lifecycle.recordNotification(record.id, { ...verdict, now: new Date() });
       if (!verdict.allowed) {
+        lifecycle.recordNotification(record.id, { ...verdict, now: new Date() });
         console.log(`[WebPush] Held by attention (${verdict.reason}): "${title}"`);
         _record(title, data, 'suppressed', verdict.reason);
         return;
       }
+      // ⚠ NOT marked notified yet. The governor below can still hold it, and a
+      // record stamped "notified" by a push that never left is "already
+      // notified, nothing changed" on every retry — the alert is lost for the
+      // life of the record. Found 15 Oct 2026 tracing a silent router wedge.
+      attention = { lifecycle, verdict };
     } else if (recordWhy) {
       // Loud, and in the log — a send with no record behind it is a contract
       // violation we are choosing to make rather than one we failed to notice.
@@ -375,9 +405,15 @@ async function sendToAll(title, body, data = {}) {
 
   const verdict = _governor(title, body, data);
   if (!verdict.allowed) {
+    if (attention) {
+      attention.lifecycle.recordNotification(record.id, { allowed: false, reason: verdict.reason, now: new Date() });
+    }
     console.log(`[WebPush] Suppressed (${verdict.reason}): "${title}"`);
     _record(title, data, 'suppressed', verdict.reason);
     return;
+  }
+  if (attention) {
+    attention.lifecycle.recordNotification(record.id, { ...attention.verdict, now: new Date() });
   }
 
   const allSubscriptions = db.getAllPushSubscriptions();

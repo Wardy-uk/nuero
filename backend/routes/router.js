@@ -21,6 +21,26 @@ const express = require('express');
 const router = express.Router();
 const routerHealth = require('../services/router-health');
 
+/**
+ * Close the attention records of an episode that has ended, so they leave
+ * Controls and the next wedge is unambiguously a new one. Also closes the
+ * single shared record every alert used before 15 Oct 2026 — the one that
+ * silenced the 12-14 Oct wedge. Never throws: recovery must not fail a sample.
+ */
+function closeAlerts(startedAt) {
+  try {
+    const db = require('../db/database');
+    const lifecycle = require('../services/attention-lifecycle');
+    const refs = [...routerHealth.episodeAlertKeys(startedAt), routerHealth.LEGACY_ALERT_REF];
+    for (const ref of refs) {
+      const row = db.getOpenAttentionRecord(lifecycle.dedupeKeyForPush('router_health', ref));
+      if (row) lifecycle.act(row.id, 'resolve', { resolution: 'gone', note: 'router recovered' });
+    }
+  } catch (e) {
+    console.warn('[Router] could not close alerts:', e.message);
+  }
+}
+
 // POST /api/router/sample — one reading from the watcher.
 router.post('/sample', (req, res) => {
   try {
@@ -32,26 +52,28 @@ router.post('/sample', (req, res) => {
     // failure to notify must never cost the sample that was just stored.
     let announced = false;
     try {
-      if (routerHealth.shouldAnnounce(assessment.state)) {
+      const ep = routerHealth.episode(assessment.state);
+      if (ep && ep.key) {
         const line = routerHealth.headline(assessment);
         if (line) {
-          // Deliberately NOT in ALWAYS_DELIVER: this respects quiet hours. The
-          // failure takes ~18 days to build and the weekly reboot is the safety
-          // net, so there is nothing Nick can usefully do about it at 03:00 —
-          // and nudge volume is the one budget allowed to argue against
-          // building more.
-          // ⚠ POSITIONAL: sendToAll(title, body, data). Passing one object put
-          // the object in the TITLE slot, so every router alert arrived as
-          // "[object Object]" with an empty body and no `type` — which also
-          // cost it the classification `router_health` was written for. Live on
-          // 21 Sep 2026, on a morning the router was genuinely wedging.
-          require('../services/webpush').sendToAll(
-            'SAiM — Router',
-            line,
-            { type: 'router_health' }
-          );
+          // ⚠ SENT ON EVERY UNHEALTHY SAMPLE, deliberately. The key names the
+          // episode and its level, and the attention lifecycle lets the first
+          // one through and refuses the rest — so one push per wedge, plus one
+          // more if it escalates from building to down. A push held by quiet
+          // hours or the hourly cap is retried on the next sample instead of
+          // being lost to a latch.
+          //
+          // Deliberately NOT in ALWAYS_DELIVER: nothing can be done at 03:00
+          // and the weekly reboot is the net. A held alert arrives at 07:00.
+          //
+          // ⚠ POSITIONAL: sendToAll(title, body, data).
+          require('../services/webpush')
+            .sendToAll('SAiM — Router', line, { type: 'router_health', key: ep.key })
+            .catch((e) => console.warn('[Router] alert failed:', e.message));
           announced = true;
         }
+      } else if (ep && 'ended' in ep) {
+        closeAlerts(ep.ended);
       }
     } catch (e) {
       console.warn('[Router] could not raise alert:', e.message);
