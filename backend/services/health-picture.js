@@ -449,13 +449,13 @@ function daylight({ days, today }) {
   };
 }
 
-// Nutrition (MyFitnessPal via Apple Health). Judged only on the nutrients a food
+// Nutrition (Foodnoms, earlier MyFitnessPal — via Apple Health). Judged only on the nutrients a food
 // log measures reliably — salt, saturated fat, sugars, fibre. Vitamins and
 // minerals are floors (MFP writes 0 for missing data) and are never judged here.
 const NUTRITION_MIN_DAYS = 4;
 
 function nutrition({ nutrition: n, bpHigh }) {
-  const system = { id: 'nutrition', label: 'Nutrition', sources: ['MyFitnessPal (via Apple Health)'], view: 'health' };
+  const system = { id: 'nutrition', label: 'Nutrition', sources: ['Food log (via Apple Health)'], view: 'health' };
   if (!n || !n.known) return { system: { ...system, status: 'unknown', value: null, sub: 'Could not read nutrition' }, insight: null };
   const s = n.summary || {};
   const by = Object.fromEntries((n.nutrients || []).map((x) => [x.metric, x]));
@@ -474,7 +474,7 @@ function nutrition({ nutrition: n, bpHigh }) {
       insight: anyLogging ? {
         id: 'nutrition-sparse', domain: 'nutrition', level: 'gap', view: 'health',
         title: 'Keep logging food for a few more days',
-        finding: `${s.loggedDays} day${plural(s.loggedDays)} logged in MyFitnessPal in the last ${n.windowDays}, today included.`,
+        finding: `${s.loggedDays} day${plural(s.loggedDays)} logged in the last ${n.windowDays}, today included.`,
         action: `Log ${more} more day${plural(more)} and NEURO can average it against the guidelines.`,
         basis: `An average needs at least ${NUTRITION_MIN_DAYS} logged days.`,
         evidence: [],
@@ -488,7 +488,7 @@ function nutrition({ nutrition: n, bpHigh }) {
   const sysOut = { ...system, value: kcal != null ? String(kcal) : null, unit: 'kcal/day',
     sub: [`${s.loggedDays} days logged`, salt?.avg != null ? `salt ${salt.avg}g` : null,
       protein != null ? `protein ${protein}g` : null].filter(Boolean).join(' · ') };
-  const evidenceOf = (x) => ({ source: 'MyFitnessPal',
+  const evidenceOf = (x) => ({ source: 'Food log',
     text: `${x.label} ${x.avg}${x.unit}/day over ${x.daysWithData} days (${x.ref.kind === 'max' ? 'limit' : 'target'} ${x.ref.value}${x.unit})` });
   const caveat = 'A food log is only as good as the entries in it. Restaurant meals and home recipes are often under-counted.';
 
@@ -497,8 +497,8 @@ function nutrition({ nutrition: n, bpHigh }) {
     insights.push({
       id: 'nutrition-salt', domain: 'nutrition', level: bpHigh ? 'act' : 'watch', view: 'health',
       title: `Salt is averaging ${salt.avg}g a day, against ${salt.ref.value}g`,
-      finding: `Across ${salt.daysWithData} logged days in MyFitnessPal.${bpHigh ? ' Your blood pressure is above the home threshold, and salt is the dietary change that moves it most.' : ''}`,
-      action: 'Open the day in MyFitnessPal with the most salt and find the one or two foods behind it: bread, cured meat, cheese, sauces and ready meals are the usual ones. Swap those first.',
+      finding: `Across ${salt.daysWithData} logged days.${bpHigh ? ' Your blood pressure is above the home threshold, and salt is the dietary change that moves it most.' : ''}`,
+      action: 'Open the day in your food log with the most salt and find the one or two foods behind it: bread, cured meat, cheese, sauces and ready meals are the usual ones. Swap those first.',
       basis: `NHS: no more than ${salt.ref.value}g of salt a day for adults. Cutting salt lowers blood pressure within weeks.`,
       caveat,
       evidence: [evidenceOf(salt)],
@@ -514,7 +514,7 @@ function nutrition({ nutrition: n, bpHigh }) {
       finding: `Daily averages: ${words.join(', ')}.`,
       action: others.some((x) => x.metric === 'dietary_fiber')
         ? 'Fibre is the easiest to move: oats, beans, wholemeal bread or an extra portion of veg each add 3–6g.'
-        : 'Check MyFitnessPal for the two or three foods that supply most of it and swap one.',
+        : 'Check your food log for the two or three foods that supply most of it and swap one.',
       basis: 'NHS: at most 30g saturated fat a day for men and 30g of fibre a day; 90g is the food-label reference for total sugars.',
       caveat,
       evidence: others.map(evidenceOf),
@@ -640,7 +640,7 @@ function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exe
     systems,
     sources: sourceList,
     complete: unread.length === 0,
-    note: 'Pulled from Apple Health (Watch, HiLo and MyFitnessPal), the JC Ring, medical records and the exertion model. It shows measurements and trends, and is not a diagnosis.',
+    note: 'Pulled from Apple Health (Watch, HiLo and your food log), the JC Ring, medical records and the exertion model. It shows measurements and trends, and is not a diagnosis.',
   };
 }
 
