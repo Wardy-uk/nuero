@@ -65,16 +65,55 @@ const ALREADY_HAVE = [
   'Desktop activity agent on the Windows laptop (foreground app); RescueTime',
   'Plaud meeting recorder; Outlook calendar/mail; Jira; iPhone calendar and reminders; Tally finance',
   'Car journeys from Life360, with Nick approving each one',
+  'Hike weather suitability for a planned or goal hike (Outdoor, from the forecast); hike safety check-in with an overdue alert',
+  'A household presence sensor (who is home, from Life360 + the router); room presence from BLE',
 ];
 // What Nick has RULED OUT, with why. Enforced by judge(), not just stated:
 // the first live run recommended exporting to Strava anyway.
 const RULED_OUT = [
   { re: /\bstrava\b/i, why: 'Strava is ruled out — its API is paywalled' },
   { re: /\bsweat\b/i, why: 'no consumer wearable measures sweat — an invented sensor' },
+  { re: /myfitnesspal\W+(?:\w+\W+){0,2}api\b/i, why: 'MyFitnessPal has no public API — its data already arrives via Apple Health' },
 ];
 
+const path = require('path');
+const fs = require('fs');
+
+/**
+ * What NEURO already DOES — its feature areas, read from the Key Feature Areas
+ * table in the repo's CLAUDE.md rather than kept as a second list here (the
+ * first live run suggested a hike weather picker that Outdoor already provides).
+ * PURE given the text; an unreadable file is a named gap, never a guess.
+ */
+function featureAreasFrom(text) {
+  const t = String(text || '');
+  const start = t.indexOf('## Key Feature Areas');
+  if (start < 0) return [];
+  const out = [];
+  for (const line of t.slice(start).split(/\r?\n/).slice(1)) {
+    if (line.startsWith('## ')) break;
+    const m = line.match(/^\|\s*([^|]+?)\s*\|/);
+    if (!m || /^-+$/.test(m[1]) || m[1] === 'Area') continue;
+    out.push(m[1]);
+  }
+  return out;
+}
+
+function readFeatureAreas() {
+  return featureAreasFrom(fs.readFileSync(path.join(__dirname, '..', '..', 'CLAUDE.md'), 'utf8'));
+}
+
 const MAX_SUGGESTIONS_PER_RUN = 8;
-const MAX_OPEN = 20;
+// At most this many cards are OPEN at once: a shortlist, not a pile (Nick,
+// 15 Oct 2026, after the first live list ran to 14 with duplicates). The rest
+// are `held` — kept, counted on the card, and back if a later run re-proposes them.
+const MAX_OPEN = 8;
+// Word-overlap backstop for duplicates, on titles. MEASURED on the first 15 live
+// cards: the one true duplicate pair scored 0.525, the highest unrelated pair
+// 0.301, a SARA-speaker pair that IS a duplicate only 0.322 — so words alone
+// cannot separate them, and the PRIMARY dedupe is the model's `same_as` (it sees
+// the open cards with their ids). This only catches what it misses at the top.
+const DUP_TITLE_SCORE = 0.5;
 const MAX_KEPT_DECIDED = 60;
 const ASKED_DAYS = 30;
 const MISS_RE = /\b(i (?:don['’]t|do not|can['’]t|cannot|couldn['’]t|could not) (?:have|see|access|read|reach|tell|know|check)|no access to|not (?:connected|available) to me|i have no (?:way|data|access)|outside what i can see)\b/i;
@@ -131,6 +170,7 @@ function judge(raw, evidenceById) {
     ok: true,
     suggestion: {
       title, unlocks, changes, anchors,
+      sameAs: typeof raw.same_as === 'string' && raw.same_as ? raw.same_as.slice(0, 40) : null,
       need: { kind, what, effort, how: clip(need.how, 400) || null },
       anchorText: anchors.map((id) => ({ id, kind: evidenceById.get(id).kind, text: clip(evidenceById.get(id).text, 200) })),
     },
@@ -177,8 +217,10 @@ function parseProposals(text) {
  *  - an open suggestion with the same fingerprint is refreshed in place;
  *  - a rejected one stays suppressed unless the evidence it cites changed;
  *  - accepted / done ones are never re-offered;
- *  - open suggestions that this run did not re-propose are kept (a quiet week
- *    does not withdraw them) but capped at MAX_OPEN, oldest dropped.
+ *  - a `held` one re-proposed is open again;
+ *  - open suggestions this run did not re-propose are kept (a quiet week does
+ *    not withdraw them), but at most MAX_OPEN stay open — this run's first, in
+ *    the model's order — and the rest are `held`, never deleted.
  */
 function merge(store, judged, now) {
   const items = Array.isArray(store && store.items) ? store.items.map((x) => ({ ...x })) : [];
@@ -188,7 +230,7 @@ function merge(store, judged, now) {
   for (const s of judged) {
     const prior = byFp.get(s.fingerprint);
     if (prior) {
-      if (prior.status === 'open') {
+      if (prior.status === 'open' || prior.status === 'held') {
         Object.assign(prior, s, { id: prior.id, status: 'open', firstSeenAt: prior.firstSeenAt, lastSeenAt: now, seenCount: (prior.seenCount || 1) + 1 });
         continue;
       }
@@ -206,13 +248,58 @@ function merge(store, judged, now) {
     byFp.set(s.fingerprint, row);
     added.push(id);
   }
-  const open = items.filter((x) => x.status === 'open').sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)));
-  const decided = items.filter((x) => x.status !== 'open').sort((a, b) => String(b.decidedAt || '').localeCompare(String(a.decidedAt || '')));
-  return { items: [...open.slice(0, MAX_OPEN), ...decided.slice(0, MAX_KEPT_DECIDED)], added, suppressed };
+  // Newest sighting first, then the model's own order within a run.
+  const byRank = (a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)) || (a.rank ?? 99) - (b.rank ?? 99);
+  const open = items.filter((x) => x.status === 'open').sort(byRank).slice(0, MAX_OPEN);
+  const openIds = new Set(open.map((x) => x.id));
+  const held = items.filter((x) => (x.status === 'open' || x.status === 'held') && !openIds.has(x.id))
+    .sort(byRank).map((x) => ({ ...x, status: 'held' })).slice(0, MAX_KEPT_DECIDED);
+  const decided = items.filter((x) => x.status !== 'open' && x.status !== 'held')
+    .sort((a, b) => String(b.decidedAt || '').localeCompare(String(a.decidedAt || '')));
+  return { items: [...open, ...held, ...decided.slice(0, MAX_KEPT_DECIDED)], added, suppressed };
+}
+
+/**
+ * Fold duplicates before merge. PURE (the matcher is pure).
+ *  1. `same_as` naming a card we hold → this IS that card (takes its
+ *     fingerprint, so merge refreshes it, or keeps it suppressed if rejected).
+ *     A same_as naming nothing we hold is ignored, never trusted.
+ *  2. Otherwise a title that scores >= DUP_TITLE_SCORE against a held card's
+ *     title is that card (the backstop).
+ *  3. Two suggestions in ONE run that resolve to the same card keep the first
+ *     (the model's better-ranked one).
+ * Returns { items, folded: [why...] } so a fold is visible, never silent.
+ */
+function foldDuplicates(judged, existing) {
+  const byId = new Map((existing || []).map((x) => [x.id, x]));
+  const titles = (existing || []).map((x) => x.title);
+  const folded = [];
+  const seen = new Set();
+  const out = [];
+  let td = null;
+  try { td = require('./task-dedupe'); } catch { td = null; }
+  for (const s of judged) {
+    let fp = s.fingerprint;
+    const target = s.sameAs && byId.get(s.sameAs);
+    if (target) {
+      fp = target.fingerprint;
+      folded.push(`"${s.title}" is "${target.title}" (said by the model)`);
+    } else if (td && titles.length) {
+      const hit = td.findEquivalent(s.title, titles, { minScore: DUP_TITLE_SCORE });
+      if (hit) {
+        fp = existing[hit.index].fingerprint;
+        folded.push(`"${s.title}" is "${existing[hit.index].title}" (wording, ${hit.score.toFixed(2)})`);
+      }
+    }
+    if (seen.has(fp)) { folded.push(`"${s.title}" repeated an idea earlier in the same answer`); continue; }
+    seen.add(fp);
+    out.push({ ...s, fingerprint: fp });
+  }
+  return { items: out, folded };
 }
 
 /** Compose the prompt from the evidence pack and past verdicts. PURE. */
-function buildPrompt({ evidence, decided, captured }) {
+function buildPrompt({ evidence, decided, captured, open = [], features = [] }) {
   const lines = [];
   lines.push('You are SAiM, the assistant layer of NEURO — Nick Ward\'s personal system (Head of Technical Support, neurodivergent: his difficulty is starting things, not knowing them).');
   lines.push('NEURO already sees: his calendars, work email, Jira escalations, Obsidian vault, Apple Health (Watch, HiLo blood pressure, MyFitnessPal), phone location and state, the laptop\'s foreground app, Home Assistant (lights, Hive heating, presence, room sensors), a weather station, his car journeys, his finances via Tally.');
@@ -225,6 +312,10 @@ function buildPrompt({ evidence, decided, captured }) {
   lines.push('3. changes: what he would actually do differently with that. If nothing would change, drop the idea.');
   lines.push('NEURO ALREADY HAS these — never suggest one of them as the need:');
   for (const h of ALREADY_HAVE) lines.push(`- ${h}`);
+  if (features.length) {
+    lines.push('NEURO ALREADY DOES these (its feature areas) — never suggest building one of them again:');
+    lines.push(features.join(' · '));
+  }
   lines.push('RULED OUT — never suggest:');
   for (const r of RULED_OUT) lines.push(`- ${r.why}`);
   lines.push('Only name real products and real capabilities that exist today. Never invent what a device measures.');
@@ -237,14 +328,20 @@ function buildPrompt({ evidence, decided, captured }) {
     lines.push('ALREADY IN HIS FEATURE TRACKER (do not re-suggest):');
     for (const c of captured) lines.push(`- ${clip(c, 160)}`);
   }
+  if (open.length) {
+    lines.push('');
+    lines.push('ALREADY ON HIS LIST (id — title). If an idea is the same thing as one of these, even worded differently, re-propose it with "same_as" set to that id rather than writing a near-duplicate — and only if it is still among the best:');
+    for (const o of open) lines.push(`${o.id} — ${clip(o.title, 140)}`);
+  }
   if (decided.length) {
     lines.push('');
-    lines.push('PAST VERDICTS (learn from these — a rejection reason tells you what he does not value):');
-    for (const d of decided) lines.push(`- ${d.status.toUpperCase()}: "${clip(d.title, 120)}"${d.reason ? ` — his reason: ${clip(d.reason, 200)}` : ''}`);
+    lines.push('PAST VERDICTS (learn from these — a rejection reason tells you what he does not value; an idea that is the same as one of these gets "same_as" its id):');
+    for (const d of decided) lines.push(`- ${d.id} ${d.status.toUpperCase()}: "${clip(d.title, 120)}"${d.reason ? ` — his reason: ${clip(d.reason, 200)}` : ''}`);
   }
   lines.push('');
   lines.push(`Answer with ONLY a JSON array (at most ${MAX_SUGGESTIONS_PER_RUN}, fewer is fine, [] is fine), best first. Each element:`);
-  lines.push('{"title": "...", "anchors": ["id", ...], "unlocks": "...", "changes": "...", "need": {"kind": "build|sensor|setup|purchase|integration", "what": "...", "how": "one concrete first step", "effort": "small|medium|large"}}');
+  lines.push('{"title": "...", "anchors": ["id", ...], "unlocks": "...", "changes": "...", "need": {"kind": "build|sensor|setup|purchase|integration", "what": "...", "how": "one concrete first step", "effort": "small|medium|large"}, "same_as": "cap:… or omit"}');
+  lines.push('No two elements may be the same idea. Best first: the strongest evidence and the biggest change to what he does.');
   lines.push('Write to Nick in plain British English, second person, no hedging, no praise.');
   return lines.join('\n');
 }
@@ -355,8 +452,9 @@ function list() {
   let store;
   try { store = load(); } catch (e) { return { ok: false, known: false, why: e.message, open: [], decided: [], lastRun: null }; }
   const open = store.items.filter((x) => x.status === 'open');
-  const decided = store.items.filter((x) => x.status !== 'open');
-  return { ok: true, known: true, open, decided, lastRun: store.lastRun, needKinds: NEED_KINDS };
+  const held = store.items.filter((x) => x.status === 'held');
+  const decided = store.items.filter((x) => x.status !== 'open' && x.status !== 'held');
+  return { ok: true, known: true, open, held: held.length, maxOpen: MAX_OPEN, decided, lastRun: store.lastRun, needKinds: NEED_KINDS };
 }
 
 /**
@@ -394,8 +492,11 @@ async function refresh({ now = new Date(), ask = null } = {}) {
       save({ ...store, lastRun });
       return { ok: false, ...lastRun };
     }
-    const decided = store.items.filter((x) => x.status !== 'open').slice(0, 30);
-    const prompt = buildPrompt({ evidence: pack.evidence, decided, captured: pack.captured });
+    const live = store.items.filter((x) => x.status === 'open' || x.status === 'held');
+    const decided = store.items.filter((x) => x.status !== 'open' && x.status !== 'held').slice(0, 30);
+    let features = [];
+    try { features = readFeatureAreas(); } catch (e) { pack.gaps.push(`NEURO's feature list: ${e.message}`); }
+    const prompt = buildPrompt({ evidence: pack.evidence, decided, captured: pack.captured, open: live, features });
     let text;
     try {
       if (ask) text = await ask(prompt);
@@ -421,16 +522,17 @@ async function refresh({ now = new Date(), ask = null } = {}) {
       const j = judge(raw, evidenceById);
       if (!j.ok) { refused.push(j.why); continue; }
       const s = j.suggestion;
-      judged.push({ ...s, fingerprint: fingerprint(s), anchorHash: anchorHash(s.anchors, evidenceById) });
+      judged.push({ ...s, rank: judged.length, fingerprint: fingerprint(s), anchorHash: anchorHash(s.anchors, evidenceById) });
     }
+    const folded = foldDuplicates(judged, store.items);
     if (refused.length) console.warn(`[CapabilityGaps] refused ${refused.length}: ${refused.join(' | ')}`);
-    const merged = merge(store, judged, at);
+    const merged = merge(store, folded.items, at);
     merged.items = withdrawRuledOut(merged.items, at);
     const lastRun = {
       at, ok: true, why: null, gaps: pack.gaps,
       evidenceCount: pack.evidence.length,
       proposed: parsed.items.length, kept: judged.length, added: merged.added.length,
-      refused, suppressed: merged.suppressed,
+      refused, suppressed: merged.suppressed, folded: folded.folded,
     };
     save({ items: merged.items, lastRun });
     console.log(`[CapabilityGaps] ${parsed.items.length} proposed, ${judged.length} passed the test, ${merged.added.length} new, ${refused.length} refused, ${merged.suppressed.length} already decided`);
@@ -481,7 +583,7 @@ function decide(id, { decision, reason = null, now = new Date() } = {}) {
 }
 
 module.exports = {
-  judge, ruledOutBy, withdrawRuledOut, ALREADY_HAVE, RULED_OUT, openSummary, fingerprint, anchorHash, parseProposals, merge, buildPrompt,
+  judge, foldDuplicates, featureAreasFrom, MAX_OPEN, ruledOutBy, withdrawRuledOut, ALREADY_HAVE, RULED_OUT, openSummary, fingerprint, anchorHash, parseProposals, merge, buildPrompt,
   gatherEvidence, list, refresh, decide,
   NEED_KINDS, PERSONAL_KINDS, DECISIONS, MISS_RE, STORE_KEY,
 };

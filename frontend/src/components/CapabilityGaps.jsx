@@ -109,10 +109,16 @@ export function CapabilityView({ data, error, busy, note, onRefresh, onDecide })
           {data.open.map((i) => <CapabilityCard key={i.id} item={i} busy={busy} onDecide={onDecide} />)}
         </ul>
       )}
+      {data.held > 0 && (
+        <p className="capgap__muted capgap__foot">
+          {data.held} more held back so this stays a shortlist — they come back if a later pass still thinks they’re among the best.
+        </p>
+      )}
       {run && run.ok && (
         <p className="capgap__muted capgap__foot">
           Last thought {String(run.at).slice(0, 16).replace('T', ' ')}: {run.proposed} ideas, {run.kept} passed the test
-          {run.refused && run.refused.length ? `, ${run.refused.length} refused for lack of evidence` : ''}.
+          {run.refused && run.refused.length ? `, ${run.refused.length} refused` : ''}
+          {run.folded && run.folded.length ? `, ${run.folded.length} folded into ones already on the list` : ''}.
           {run.gaps && run.gaps.length ? ` Couldn’t read: ${run.gaps.join('; ')}.` : ''}
         </p>
       )}

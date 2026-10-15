@@ -56,7 +56,7 @@ test('a card renders the anchor, what it unlocks, what changes and what is neede
   assert.match(h, /So you could:.*heating overnight/);
   assert.match(h, /I need:.*Zigbee/);
   assert.match(h, /I couldn’t answer/);
-  assert.match(h, /1 refused for lack of evidence/);
+  assert.match(h, /1 refused/);
 });
 
 test('an unreadable store is never rendered as "nothing to suggest"', () => {

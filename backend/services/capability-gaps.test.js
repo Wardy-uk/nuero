@@ -252,3 +252,66 @@ test('chat carries the open suggestions and is told to offer only those', () => 
     assert.equal(block, '');
   }
 });
+
+// ── a shortlist, not a pile (15 Oct 2026) ───────────────────────────────────
+
+const card = (id, title, over = {}) => ({ id, title, fingerprint: `fp-${id}`, status: 'open', need: { what: title }, ...over });
+
+test('same_as folds a re-worded idea into the card it names; a same_as naming nothing is ignored', () => {
+  const existing = [card('cap:hike', 'Hiking prep: weather window picker')];
+  const j = [
+    { title: 'Weekly hiking weather window selector', sameAs: 'cap:hike', fingerprint: 'new1' },
+    { title: 'Aquarium temperature', sameAs: 'cap:nope', fingerprint: 'new2' },
+  ];
+  const r = cap.foldDuplicates(j, existing);
+  assert.equal(r.items[0].fingerprint, 'fp-cap:hike');
+  assert.equal(r.items[1].fingerprint, 'new2');
+  assert.equal(r.folded.length, 1);
+});
+
+test('the word backstop folds only near-identical titles — the live unrelated pair stays apart', () => {
+  const existing = [card('cap:hike', 'Hiking prep: weather window picker'), card('cap:occ', 'Occupancy detection: phone + watch + presence sensor fusion')];
+  const r = cap.foldDuplicates([
+    { title: 'Hiking weather window picker for the weekend', fingerprint: 'n1' },
+    { title: 'SARA camera sensor sourced from old phone or Pi camera', fingerprint: 'n2' },
+  ], existing);
+  assert.equal(r.items[0].fingerprint, 'fp-cap:hike');
+  assert.equal(r.items[1].fingerprint, 'n2');
+});
+
+test('two suggestions in one answer that are the same idea keep the first', () => {
+  const r = cap.foldDuplicates([
+    { title: 'A', sameAs: 'cap:x', fingerprint: 'a' },
+    { title: 'B', sameAs: 'cap:x', fingerprint: 'b' },
+  ], [card('cap:x', 'X')]);
+  assert.equal(r.items.length, 1);
+  assert.equal(r.items[0].title, 'A');
+});
+
+test('at most MAX_OPEN stay open; the rest are held, never deleted, and a re-proposed held card is open again', () => {
+  const judged = Array.from({ length: 11 }, (_, i) => ({ title: `Idea ${i}`, fingerprint: `f${i}`, rank: i, need: { what: `w${i}` } }));
+  const m = cap.merge({ items: [] }, judged, '2026-10-15T08:00:00Z');
+  const open = m.items.filter((x) => x.status === 'open');
+  const held = m.items.filter((x) => x.status === 'held');
+  assert.equal(open.length, cap.MAX_OPEN);
+  assert.equal(held.length, 11 - cap.MAX_OPEN);
+  assert.deepEqual(open.map((x) => x.title).slice(0, 2), ['Idea 0', 'Idea 1']);
+  const back = cap.merge({ items: m.items }, [{ title: 'Idea 10', fingerprint: 'f10', rank: 0, need: { what: 'w10' } }], '2026-10-22T08:00:00Z');
+  assert.equal(back.items.find((x) => x.fingerprint === 'f10').status, 'open');
+});
+
+test("NEURO's own feature areas come from CLAUDE.md, and reach the prompt", () => {
+  const areas = cap.featureAreasFrom(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'CLAUDE.md'), 'utf8'));
+  assert.ok(areas.length > 20, `only ${areas.length} areas parsed`);
+  assert.ok(areas.some((a) => /Outdoor/.test(a)));
+  assert.ok(!areas.includes('Area'));
+  const p = cap.buildPrompt({ evidence: [], decided: [], captured: [], open: [card('cap:1', 'Hike window')], features: areas });
+  assert.match(p, /NEURO ALREADY DOES/);
+  assert.match(p, /cap:1 — Hike window/);
+  assert.match(p, /same_as/);
+});
+
+test('MyFitnessPal API is ruled out', () => {
+  assert.match(cap.ruledOutBy({ title: 'x', need: { what: 'MyFitnessPal API read access' } }) || '', /no public API/);
+  assert.equal(cap.ruledOutBy({ title: 'Log alcohol in MyFitnessPal', need: { what: 'pull it via Apple Health' } }), null);
+});
