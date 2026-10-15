@@ -22,7 +22,7 @@ const KITCHEN_SLUG = 'kitchen';
  * An empty calendar and no permission to see the calendar are different facts
  * and must not share a rendering.
  */
-export default function Home({ onSignedOut }) {
+export default function Home({ onSignedOut, onWall }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -157,6 +157,7 @@ export default function Home({ onSignedOut }) {
 
       <footer className="home__foot">
         <button className="btn btn--quiet" onClick={refresh}>Refresh</button>
+        {onWall && <button className="btn btn--quiet" onClick={onWall}>Wall view</button>}
         <span className="home__build">{api.BUILD_LABEL}</span>
       </footer>
     </div>

@@ -190,4 +190,4 @@ async function build({ area = null, now = new Date() } = {}) {
   return { area, room, weather, station, house: houseLine, diary, gaps: [...new Set(gaps)], at: now.toISOString() };
 }
 
-module.exports = { build, restOfDay, houseSummary, weatherLines, stationCard, conditionLabel, MAX_EVENTS };
+module.exports = { build, restOfDay, houseSummary, weatherLines, stationCard, readStation, conditionLabel, MAX_EVENTS };

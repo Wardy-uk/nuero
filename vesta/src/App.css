@@ -375,3 +375,19 @@ body {
 .walk__card pre { white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: var(--ink-dim); }
 .walk__party { margin: 0; font-size: 0.92rem; }
 .walk__party a { color: var(--ember); }
+
+/* ── Tablet and desktop: use the screen ──────────────────────────────────────
+   Nick, 15 Oct 2026: on an iPad the phone column sat in the middle third of the
+   screen. From 900px wide the page goes full width and the sections flow into
+   columns; the phone layout below that is unchanged. */
+@media (min-width: 900px) {
+  .app { max-width: none; padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
+  .home {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: var(--gap);
+    align-items: start;
+  }
+  .home > .section { margin-bottom: 0; }
+  .home__head, .home__stale, .home__foot, .home > .walk { grid-column: 1 / -1; margin: 0; }
+}

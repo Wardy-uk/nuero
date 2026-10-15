@@ -1,0 +1,127 @@
+/* The family wall — read from across a kitchen, not held in a hand. Big type,
+   one screen, no scrolling on a landscape iPad (1180×820 and up). */
+
+.app.app--wall { max-width: none; padding: 0; height: 100%; }
+
+.wall-shell { height: 100vh; height: 100dvh; overflow: hidden; transition: filter .8s ease; }
+/* Night: dim, never black — a black wall reads as a broken one. */
+.wall-shell--dim { filter: brightness(.28); }
+
+.wall {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: max(18px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+  gap: 16px;
+}
+
+.wall__top { display: flex; align-items: baseline; gap: 20px; }
+.wall__clock { font-size: 56px; font-weight: 300; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
+.wall__today { font-size: 24px; color: var(--ink-dim); }
+.wall__stale { font-size: 15px; color: var(--warn); margin-left: auto; }
+.wall__exit {
+  margin-left: auto; appearance: none; border: 0; background: none; color: var(--ink-faint);
+  font-size: 28px; min-width: 48px; min-height: 48px; cursor: pointer;
+}
+.wall__stale + .wall__exit { margin-left: 8px; }
+.wall__loading { font-size: 22px; color: var(--ink-dim); }
+
+.wall__body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 2.6fr) minmax(260px, 1fr); gap: 16px; }
+
+/* ── The week ─────────────────────────────────────────────────────────────── */
+.wall__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; min-height: 0; }
+.wall__week--gap { display: block; }
+.wall__day {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 8px; overflow: hidden; display: flex; flex-direction: column; min-height: 0;
+}
+.wall__day--weekend { background: var(--panel-2); }
+.wall__day--today { border-color: var(--ember); box-shadow: inset 0 3px 0 var(--ember); }
+.wall__dayhead { display: flex; flex-direction: column; margin-bottom: 8px; }
+.wall__dow { font-size: 19px; font-weight: 600; }
+.wall__day--today .wall__dow { color: var(--ember); }
+.wall__date { font-size: 14px; color: var(--ink-faint); }
+.wall__nothing { color: var(--ink-faint); font-size: 15px; margin: 0; }
+.wall__events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+.wall__event { font-size: 15px; line-height: 1.25; display: flex; flex-direction: column; }
+.wall__time { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.wall__title { overflow-wrap: anywhere; }
+.wall__event--personal .wall__title { color: var(--ink); }
+.wall__event--busy .wall__title { color: var(--ink-faint); font-style: italic; }
+.wall__event--allday { background: var(--ember-soft); border-radius: 8px; padding: 3px 6px; }
+
+/* ── The side column ──────────────────────────────────────────────────────── */
+.wall__side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
+.wall__card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.wall__card:last-child { flex: 1; min-height: 0; overflow: hidden; }
+.wall__h { margin: 0 0 8px; font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.wall__gap { margin: 0; color: var(--warn); font-size: 15px; }
+.wall__note { margin: 6px 0 0; font-size: 13px; color: var(--ink-faint); }
+
+.wall__who { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.wall__person { display: flex; gap: 8px; align-items: baseline; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 18px; }
+.wall__person--home { border-color: var(--good); }
+.wall__person--home .wall__pstate { color: var(--good); }
+.wall__person--out { opacity: .6; }
+.wall__pstate { font-size: 14px; color: var(--ink-faint); }
+
+.wall__temp { margin: 0; font-size: 48px; font-weight: 300; line-height: 1.05; }
+.wall__readings { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0 0; font-size: 15px; }
+.wall__readings dt { color: var(--ink-faint); }
+.wall__readings dd { margin: 0; }
+.wall__verdict { margin: 8px 0 0; font-size: 15px; color: var(--ink-dim); }
+
+.wall__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.wall__task { display: flex; flex-direction: column; font-size: 17px; line-height: 1.3; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.wall__task:last-child { border-bottom: 0; }
+.wall__taskmeta { display: flex; gap: 10px; font-size: 13px; color: var(--ink-faint); }
+.wall__due--today { color: var(--ember); }
+.wall__due--late { color: var(--warn); font-weight: 600; }
+.wall__more { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
+
+/* Portrait or a small screen: stack rather than squash seven columns. */
+@media (max-width: 900px) {
+  .wall-shell { overflow: auto; height: auto; min-height: 100vh; }
+  .wall__body { grid-template-columns: 1fr; }
+  .wall__week { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+
+/* The jobs card fills what is left: the list fades rather than cutting a line
+   in half, and "+N more" stays visible at the bottom — a hidden count is a
+   list that looks shorter than it is. */
+.wall__card:last-child { display: flex; flex-direction: column; }
+.wall__card:last-child .wall__tasks {
+  flex: 1; min-height: 0; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent);
+  mask-image: linear-gradient(to bottom, #000 82%, transparent);
+}
+
+/* ── Top bar holds the clock, who's in and outside ───────────────────────── */
+.wall__top { align-items: stretch; gap: 14px; }
+.wall__when { display: flex; flex-direction: column; justify-content: center; padding-right: 8px; }
+.wall__when .wall__today { font-size: 20px; margin-top: 4px; }
+.wall__topcard {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
+}
+.wall__topcard .wall__h { margin-bottom: 6px; }
+.wall__topcard--station { flex: 1; }
+.wall__station { display: flex; align-items: center; gap: 16px; }
+.wall__station .wall__temp { font-size: 44px; }
+.wall__readings { display: block; margin: 0; min-width: 0; }
+.wall__reading { margin: 0; font-size: 16px; }
+.wall__station .wall__verdict { margin: 2px 0 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wall__top .wall__exit { margin-left: 0; align-self: center; }
+.wall__top .wall__stale { margin-left: 0; align-self: center; }
+.wall__body--nocal { grid-template-columns: 1fr; }
+.wall__side .wall__card { flex: 1; }
+
+@media (max-width: 900px) {
+  .wall__top { flex-wrap: wrap; }
+}
+
+/* Read from across the room. */
+.wall__event { font-size: 17px; }
+.wall__time { font-size: 14px; }
+.wall__task { font-size: 20px; }
+.wall__taskmeta { font-size: 14px; }

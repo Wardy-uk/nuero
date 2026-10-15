@@ -5379,7 +5379,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 264,
+    "line": 265,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5815,7 +5815,7 @@
     "route": "/api/v/calendar",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 227,
+    "line": 228,
     "description": "GET /api/v/calendar.",
     "params": [],
     "query": [
@@ -5833,7 +5833,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 247,
+    "line": 310,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -5849,12 +5849,30 @@
     "route": "/api/v/home",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 85,
+    "line": 86,
     "description": "GET /api/v/home.",
     "params": [],
     "query": [],
     "body": [],
     "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_v_wall",
+    "method": "GET",
+    "route": "/api/v/wall",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 256,
+    "description": "GET /api/v/wall.",
+    "params": [],
+    "query": [
+      "from"
+    ],
+    "body": [],
+    "queryOpen": true,
     "bodyOpen": false,
     "multipart": false,
     "stream": false
@@ -6766,7 +6784,7 @@
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 286,
+    "line": 349,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -13726,7 +13744,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 325,
+    "line": 388,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -13747,7 +13765,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 359,
+    "line": 422,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -13768,7 +13786,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 335,
+    "line": 398,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -13789,7 +13807,7 @@
     "route": "/api/v/login",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 58,
+    "line": 59,
     "description": "POST /api/v/login.",
     "params": [],
     "query": [],
@@ -13808,7 +13826,7 @@
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 261,
+    "line": 324,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],

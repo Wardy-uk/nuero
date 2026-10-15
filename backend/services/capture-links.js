@@ -71,7 +71,11 @@ const STATE_KEY = 'capture_links';
 // safety — coordinates, his trail and the route. Finer still than `presence`,
 // so it is its own scope and not a default. It shows nothing at all unless a
 // walk is armed, and no coordinates once he has checked in.
-const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike'];
+// `house` (15 Oct 2026, the family wall) is who is in the house by NAME (the
+// household card's home/away/unknown) plus the outdoor weather station. Coarser
+// than `presence` (no rooms) but still a live record of whether people are home,
+// so it is its own scope and not a default either.
+const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house'];
 const DEFAULT_SCOPES = ['tasks'];
 
 /** Normalise a requested scope list. Unknown scopes are DROPPED, never passed
