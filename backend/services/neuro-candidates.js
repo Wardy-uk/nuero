@@ -118,6 +118,20 @@ const RITUAL = (title) => (/\beod\b|end.of.day/i.test(title || '') ? 'eod' : /st
  * risk — reclassifying a type nobody looked at could hide real harm.
  */
 const URGENCY_NOT_RISK = Object.freeze({ meeting: 'meeting-transition', nudge: 'ritual-due' });
+
+/**
+ * Every decision-engine item type NEURO has looked at and classified (15 Oct
+ * 2026). A type NOT in this table is UNCLASSIFIED: its urgency word is carried
+ * as potential risk with `riskBasis: 'unclassified'`, never silently trusted as
+ * genuine risk, and SAiM surfaces it for review so it gets classified on purpose.
+ */
+const CLASSIFIED_TYPES = Object.freeze(new Set([
+  'escalation', 'nova_flag', 'weekly_risk', 'source-blind', 'todo', 'email', 'capacity', 'imports', 'plan_closure',
+  ...Object.keys(URGENCY_NOT_RISK),
+]));
+
+/** Household needs-you kinds (home.needsYouFrom / intelNeedsYou) and the risk each carries. */
+const HOME_RISK = Object.freeze({ hazard: 'critical', 'hazard-blind': 'high', obligation: 'none', door: 'high', heating: 'high', network: 'medium' });
 /** Graph wall-clock string → ISO instant in the backend's zone (sliced, not offset-shifted). */
 const localInstant = (s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(s || ''));
@@ -235,6 +249,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
         // An imminent meeting and the pre-11 standup are rated `critical` by
         // decision-engine for their CLOCK, not for harm — so they carry no risk.
         risk: notRisk ? 'none' : raw,
+        riskBasis: CLASSIFIED_TYPES.has(it.type) ? 'classified' : 'unclassified',
         urgency: notRisk && raw === 'critical' ? notRisk : null,
         neuroUrgency: raw,
         othersAttending: it.type === 'meeting' ? (meta.withOthers === true ? true : meta.withOthers === false ? false : null) : undefined,
@@ -290,11 +305,11 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     const tid = tm ? Number(tm[1]) : null;
     const due = tid != null ? taskDue.get(tid) || null : null;
     candidates.push({ kind: 'home', id: `home:${n.id || n.title}`, taskId: tid, title: n.title || n.what || 'Home', time: due ? { due } : undefined,
-      facts: { needsNow: true, why: n.why || null, wordingConflict: due ? wordingConflict(n.title, due, now) : null },
+      facts: { needsNow: true, homeKind: n.kind || null, risk: HOME_RISK[n.kind] || 'unknown', riskBasis: HOME_RISK[n.kind] ? 'classified' : 'unclassified', why: n.why || null, wordingConflict: due ? wordingConflict(n.title, due, now) : null },
       sphere: sphere('home', 'source', 'from the household model'), actions: [], provenance: { source: 'home', readAt }, known: true });
   }
   for (const e of (home && home.exceptions) || []) {
-    candidates.push({ kind: 'home', id: `home-exception:${e.id}`, title: e.what, facts: { needsNow: e.actionState === 'needs_you', where: e.where || null, category: e.category },
+    candidates.push({ kind: 'home', id: `home-exception:${e.id}`, title: e.what, facts: { needsNow: e.actionState === 'needs_you', homeKind: e.category || null, risk: HOME_RISK[e.category] || 'unknown', riskBasis: HOME_RISK[e.category] ? 'classified' : 'unclassified', where: e.where || null, category: e.category },
       sphere: sphere('home', 'source', 'from the household model'), actions: [], provenance: { source: 'home', readAt }, known: true });
   }
   for (const d of (p.personalDates && p.personalDates.active) || []) {
@@ -310,6 +325,8 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     candidates,
     constraints: {
       poolReadable: p.poolAvailable !== false && p.available !== false,
+      // The household model: true read, false failed (`home: null`), null not asked.
+      homeReadable: p.home ? true : p.home === null ? false : null,
       diaryReadable: Boolean(facts.calendarKnown),
       blocksReadable: Boolean(rows),
       approvalsReadable: Boolean(ap) && facts.approvals != null,

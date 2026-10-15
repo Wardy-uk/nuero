@@ -21,7 +21,7 @@
  */
 
 const CONTRACT = 'saim-attention-v1';
-const POLICY_VERSION = '2026-10-15.3';
+const POLICY_VERSION = '2026-10-15.4';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -55,7 +55,8 @@ function relevantToWork(c) {
   if (isRunning(c)) return true;
   if (c.kind === 'block' || c.kind === 'meeting' || c.kind === 'protected-time') return true; // today's diary by construction
   if (c.kind === 'commitment') return c.facts.daysLate >= 0;
-  if (c.kind === 'attention-item') return c.facts.risk === 'critical' || Boolean(c.facts.urgency);
+  if (c.facts && c.facts.risk === 'critical') return true; // classified or not — a work surface never hides it
+  if (c.kind === 'attention-item') return Boolean(c.facts.urgency);
   return c.facts && c.facts.needsNow === true;
 }
 
@@ -136,7 +137,12 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // S2 is GENUINE RISK only. An item NEURO rated critical for its clock (an
   // imminent meeting, the pre-11 standup) carries `risk: 'none'` and an
   // `urgency` instead, and never reaches S2.
-  const critical = of('attention-item').find((c) => c.facts.risk === 'critical') || null;
+  const critical = cands.find((c) => c.facts && c.facts.risk === 'critical' && c.facts.riskBasis === 'classified') || null;
+  // S2u: NEURO said critical about a KIND of item nobody has classified yet.
+  // Conservative: it leads as possible risk (it is never quietly demoted), but
+  // under its own rule, so it can never pass for classified risk — and it is
+  // listed in `review` until the type is classified deliberately.
+  const unclassifiedCritical = cands.find((c) => c.facts && c.facts.risk === 'critical' && c.facts.riskBasis !== 'classified') || null; // a missing basis is unclassified, never assumed
   // S3a: a meeting with other people starting within MEETING_TRANSITION_MINUTES.
   // From the diary when it was read; from NEURO's meeting card otherwise.
   const soonMin = (c) => { const t = ms(c.time && c.time.startAt); return t == null ? null : (t - now) / 60000; };
@@ -152,7 +158,11 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const topItem = of('attention-item').find((c) => c.facts.gatePosition === 'primary') || null;
   const needsNow = [...of('home'), ...of('personal-date')].find((c) => c.facts.needsNow) || null;
   const ritual = of('ritual')[0] || null;
-  const blind = sf.scope !== 'home' && k.poolReadable === false;
+  // Blind is judged on what THIS scope depends on: work on NEURO's attention
+  // pool, home on the household model. "I couldn't look" is never "nothing".
+  const blindWork = k.poolReadable === false;
+  const blindHome = k.homeReadable === false;
+  const blind = sf.scope === 'home' ? blindHome : blindWork;
 
   const trace = [];
   const rule = (id, applies, why) => { trace.push({ rule: id, applies: Boolean(applies), why }); return Boolean(applies); };
@@ -164,11 +174,21 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   let lead = null;
   const leadOf = (c, ruleId, why, deciding) => ({ ref: c ? c.id : null, kind: c ? c.kind : 'none', title: c ? leadTitle(c) : null, rule: ruleId, why, deciding });
 
-  if (rule('S1 blind', blind, blind ? 'NEURO could not read the attention pool' : sf.scope === 'home' ? 'not applied in home scope' : 'pool read')) {
-    lead = leadOf(null, 'S1 blind', 'I can’t see your work right now — this isn’t an all-clear.', ['constraints.poolReadable = false']);
+  if (rule('S1 blind', blind, sf.scope === 'home'
+    ? (blindHome ? 'NEURO could not read the household model' : 'household model read')
+    : (blindWork ? 'NEURO could not read the attention pool' : 'pool read'))) {
+    lead = sf.scope === 'home'
+      ? leadOf(null, 'S1 blind', 'I can’t see the house right now — this isn’t an all-clear.', ['constraints.homeReadable = false'])
+      : leadOf(null, 'S1 blind', 'I can’t see your work right now — this isn’t an all-clear.', ['constraints.poolReadable = false']);
     lead.kind = 'blind';
-  } else if (rule('S2 critical risk', critical, critical ? `“${critical.title}” carries critical risk (${critical.facts.type})` : 'no item carries critical risk in scope')) {
-    lead = leadOf(critical, 'S2 critical risk', `${critical.title} is critical${critical.facts.reason ? `: ${critical.facts.reason}` : ''}.`, [`${critical.id}.risk = critical`]);
+  } else if (rule('S2 critical risk', critical, critical ? `“${critical.title}” carries critical risk (${critical.facts.type || critical.facts.homeKind || critical.kind})` : 'no item carries critical risk in scope')) {
+    lead = leadOf(critical, 'S2 critical risk', `${critical.title} is critical${(critical.facts.reason || critical.facts.why) ? `: ${critical.facts.reason || critical.facts.why}` : ''}.`, [`${critical.id}.risk = critical`]);
+  } else if (rule('S2u unclassified potential risk', unclassifiedCritical,
+    unclassifiedCritical ? `“${unclassifiedCritical.title}” — NEURO said critical, but type “${unclassifiedCritical.facts.type || unclassifiedCritical.facts.homeKind || unclassifiedCritical.kind}” is unclassified` : 'no unclassified critical item in scope')) {
+    const t = unclassifiedCritical.facts.type || unclassifiedCritical.facts.homeKind || unclassifiedCritical.kind;
+    lead = leadOf(unclassifiedCritical, 'S2u unclassified potential risk',
+      `${String(leadTitle(unclassifiedCritical)).replace(/[.!?]+$/, '')} — NEURO rated it critical, but this kind of item (${t}) hasn’t been classified yet, so I’m treating it as possible risk.`,
+      [`${unclassifiedCritical.id}.risk = critical`, `${unclassifiedCritical.id}.riskBasis = unclassified`]);
   } else if (rule('S3 meeting', runningMeeting, runningMeeting ? `“${runningMeeting.title}” is running with other people in it` : 'no meeting running in scope')) {
     lead = leadOf(runningMeeting, 'S3 meeting', `You’re in ${runningMeeting.title} until ${runningMeeting.time.end}; I’m holding everything else.`, [`${runningMeeting.id}.running`, `${runningMeeting.id}.othersAttending`]);
   } else if (rule('S3a imminent meeting transition', transition,
@@ -254,6 +274,22 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     if (c.facts && c.facts.wordingConflict) corrections.push({ ref: c.id, taskId: c.taskId ?? null, issue: c.facts.wordingConflict });
   }
 
+  // Policy review: every unclassified kind seen, in or out of scope, so a new
+  // type is classified deliberately rather than living as "critical" for ever.
+  const unclassified = {};
+  for (const c of all) {
+    if (!c.facts || !(c.facts.riskBasis === 'unclassified' || (c.facts.risk === 'critical' && c.facts.riskBasis !== 'classified'))) continue;
+    const t = c.facts.type || c.facts.homeKind || c.kind;
+    const u = (unclassified[t] = unclassified[t] || { type: t, count: 0, refs: [], neuroUrgency: new Set(), ledThisDecision: false });
+    u.count += 1; if (u.refs.length < 5) u.refs.push(c.id);
+    u.neuroUrgency.add(c.facts.neuroUrgency || c.facts.risk || 'unknown');
+    if (c.id === lead.ref) u.ledThisDecision = true;
+  }
+  const review = {
+    unclassified: Object.values(unclassified).map((u) => ({ ...u, neuroUrgency: [...u.neuroUrgency] })),
+    action: Object.keys(unclassified).length ? 'Classify these types in neuro-candidates (CLASSIFIED_TYPES / HOME_RISK), then review the policy.' : null,
+  };
+
   return {
     contract: CONTRACT,
     owner: 'saim',
@@ -269,6 +305,7 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     recommended,
     alternatives,
     corrections,
+    review,
     trace,
   };
 }

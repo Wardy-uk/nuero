@@ -25,7 +25,7 @@ const commit = (id, description, date, sphere = 'work') => ({
   due: { date, kind: 'set' }, domains: { known: true, domains: [{ domain: sphere, basis: 'default' }], sphere, basis: 'default' },
 });
 
-function scenario({ now = at(17, 11), approvalExpires = '2026-10-15T05:00:00.000Z', block = true, calendar = null, home = null, personalDates = null } = {}) {
+function scenario({ now = at(17, 11), approvalExpires = '2026-10-15T05:00:00.000Z', block = true, calendar = null, home = { needsYou: [], exceptions: [] }, personalDates = null } = {}) {
   const payload = {
     poolAvailable: true,
     context: { activity: 'ritual', duty: { onDuty: true } },
@@ -142,7 +142,7 @@ test('an approval whose effective deadline falls inside the block interrupts it 
 test('a running meeting with others outranks the block; a critical item outranks both', () => {
   const s = scenario({ calendar: [cal(17, 0, 17, 25, 'Weekly support leads', true)] });
   assert.equal(decide(s, 'work-desktop').lead.rule, 'S3 meeting');
-  s.candidates.candidates.push({ kind: 'attention-item', id: 'item:9', recordId: 9, title: 'NT-1 breaching', facts: { type: 'escalation', risk: 'critical', urgency: null, reason: 'SLA breached', gatePosition: 'secondary' }, sphere: work, actions: [], provenance: { source: 'attention.gate' } });
+  s.candidates.candidates.push({ kind: 'attention-item', id: 'item:9', recordId: 9, title: 'NT-1 breaching', facts: { type: 'escalation', risk: 'critical', riskBasis: 'classified', urgency: null, reason: 'SLA breached', gatePosition: 'secondary' }, sphere: work, actions: [], provenance: { source: 'attention.gate' } });
   assert.equal(decide(s, 'work-desktop').lead.rule, 'S2 critical risk');
 });
 
