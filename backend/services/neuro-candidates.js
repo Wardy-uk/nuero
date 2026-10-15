@@ -90,7 +90,7 @@ function wordingConflict(text, dueDate, now) {
   const today = keyDays(dayKey(now));
   if (due == null || today == null) return null;
   const t = String(text || '');
-  const dueWord = due === today ? 'today' : due === today + 1 ? 'tomorrow' : `on ${longDate(dueDate)}`;
+  const dueWord = due === today ? 'today' : due === today + 1 ? 'tomorrow' : longDate(dueDate);
   const rel = RELATIVE.exec(t);
   if (rel) {
     const word = rel[1].toLowerCase();
@@ -254,8 +254,13 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
 
   // Home and family context.
   const home = p.home;
+  const taskDue = facts.taskDue || new Map();
   for (const n of (home && home.needsYou) || []) {
-    candidates.push({ kind: 'home', id: `home:${n.id || n.title}`, title: n.title || n.what || 'Home', facts: { needsNow: true, why: n.why || null },
+    const tm = /^task:neuro:(\d+)$/.exec(String(n.id || ''));
+    const tid = tm ? Number(tm[1]) : null;
+    const due = tid != null ? taskDue.get(tid) || null : null;
+    candidates.push({ kind: 'home', id: `home:${n.id || n.title}`, taskId: tid, title: n.title || n.what || 'Home', time: due ? { due } : undefined,
+      facts: { needsNow: true, why: n.why || null, wordingConflict: due ? wordingConflict(n.title, due, now) : null },
       sphere: sphere('home', 'source', 'from the household model'), actions: [], provenance: { source: 'home', readAt }, known: true });
   }
   for (const e of (home && home.exceptions) || []) {
@@ -327,6 +332,16 @@ function gather({ now = Date.now() } = {}) {
       if (row) out.facts.taskDomains.set(id, { domain: row.domain || 'work', basis: row.domain ? 'stored' : 'default' });
     }
   } catch (e) { gaps.push({ input: 'task-domains', why: e.message }); }
+  // Planned dates of household obligations that are tasks — so their wording can be checked against them.
+  out.facts.taskDue = new Map();
+  try {
+    const home = require('./home').readCached({ now });
+    for (const n of (home && home.needsYou) || []) {
+      const m = /^task:neuro:(\d+)$/.exec(String(n.id || ''));
+      const row = m ? db.getTaskRow(Number(m[1])) : null;
+      if (row && row.due_date) out.facts.taskDue.set(row.id, String(row.due_date).slice(0, 10));
+    }
+  } catch (e) { gaps.push({ input: 'home-task-dates', why: e.message }); }
   try {
     const sc = require('./source-classification');
     const byKey = sc.classificationMap('calendar');

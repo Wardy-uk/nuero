@@ -216,3 +216,18 @@ test('the policy is SAiM’s: it requires nothing from NEURO’s backend', () =>
   assert.match(src, /module\.exports = \{ CONTRACT/, 'positive control: the scan read the policy file');
   assert.match(require('fs').readFileSync(require.resolve('./neuro-candidates'), 'utf8'), /require\('\.\.\/db\/database'\)/, 'positive control: the same scan does see a backend require');
 });
+
+test('live 15 Oct: a household obligation is said neutrally and its stale wording becomes a correction', () => {
+  const s = scenario({ home: { needsYou: [{ kind: 'obligation', id: 'task:neuro:374', title: 'Book my car in for its MOT tomorrow (8 October 2026). Must do tomorrow.', why: 'still open, 3 days past its date' }] } });
+  // compose again with the task's planned date, as gather() supplies it
+  const raw = s.candidates;
+  const homeC = raw.candidates.find((c) => c.kind === 'home');
+  assert.equal(homeC.taskId, 374);
+  const again = NC.compose({ home: { needsYou: [{ kind: 'obligation', id: 'task:neuro:374', title: homeC.title, why: 'still open, 3 days past its date' }] } }, {}, { taskDue: new Map([[374, '2026-10-12']]) }, { now: s.now });
+  const h = again.candidates.find((c) => c.kind === 'home');
+  assert.match(h.facts.wordingConflict, /says “tomorrow” but it’s planned for 12 October 2026/);
+  const d = POL.decide(again, { surface: 'home-pi', now: s.now });
+  assert.equal(d.lead.title, 'Book my car in for its MOT');
+  assert.doesNotMatch(d.lead.why, /tomorrow|8 October|\.\./);
+  assert.deepEqual(d.corrections.map((c) => c.taskId), [374]);
+});

@@ -21,7 +21,7 @@
  */
 
 const CONTRACT = 'saim-attention-v1';
-const POLICY_VERSION = '2026-10-15.1';
+const POLICY_VERSION = '2026-10-15.2';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -162,7 +162,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     lead = leadOf(firstApproval.c, 'S6 judgement waiting', `${firstApproval.c.title} is waiting for you in NEURO${by}.`, [`${firstApproval.c.id}.status = prepared`]);
   } else if (rule('S7 top item', topItem || needsNow, topItem ? `the gate’s top item: “${topItem.title}”` : needsNow ? `“${needsNow.title}” needs you` : 'no top item in scope')) {
     const c = topItem || needsNow;
-    lead = leadOf(c, 'S7 top item', `${c.title}${c.facts.reason ? `: ${c.facts.reason}` : ''}.`, [topItem ? `${c.id}.gatePosition = primary` : `${c.id}.needsNow`]);
+    const why = c.facts.reason || c.facts.why || null;
+    lead = leadOf(c, 'S7 top item', `${String(leadTitle(c)).replace(/[.!?]+$/, '')}${why ? ` — ${why}` : ''}.`, [topItem ? `${c.id}.gatePosition = primary` : `${c.id}.needsNow`]);
   } else if (rule('S8 protected diary time', protectedTime, protectedTime ? `“${protectedTime.title}” is a running solo diary entry` : 'no protected time running')) {
     lead = leadOf(protectedTime, 'S8 protected diary time', 'The diary protects this time, but no task block says what it’s for.', [`${protectedTime.id}.running`]);
   } else if (rule('S9 block about to start', upcomingBlock, upcomingBlock ? `${upcomingBlock.id} starts at ${upcomingBlock.time.start}` : 'no block about to start')) {
@@ -220,7 +221,7 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // Corrections: data-quality facts SAiM will not repeat.
   const corrections = [];
   for (const c of cands) {
-    if (c.kind === 'commitment' && c.facts.wordingConflict) corrections.push({ ref: c.id, taskId: c.taskId, issue: c.facts.wordingConflict });
+    if (c.facts && c.facts.wordingConflict) corrections.push({ ref: c.id, taskId: c.taskId ?? null, issue: c.facts.wordingConflict });
   }
 
   return {
@@ -251,7 +252,9 @@ function leadTitle(c) {
     if (t.length > 1) return `${t.length} tasks`;
     return sayTitle(c.title);
   }
-  if (c.kind === 'commitment') return sayTitle(c.title);
+  // Anything that is a task underneath (a commitment, a household obligation) is
+  // said neutrally — SAiM never repeats scheduling talk that may have gone stale.
+  if (c.kind === 'commitment' || c.taskId != null) return sayTitle(c.title);
   return c.title;
 }
 
