@@ -55,8 +55,10 @@ async function fetchTile(b, attempt = 0) {
     return json.elements || [];
   } catch (e) {
     if (e.tooBig || /maxsize|memory/i.test(e.message)) throw Object.assign(e, { tooBig: true });
-    if (attempt >= 6) throw e;
-    const wait = Math.min(120000, 10000 * 2 ** attempt);
+    // Busy public servers are the normal case, not a failure: it waits (up to
+    // 15 min between tries) and carries on. Stopping on the 7th "busy" left the
+    // download at 21 of 506 tiles for two days (13 Oct 2026).
+    const wait = Math.min(15 * 60000, 10000 * 2 ** Math.min(attempt, 7));
     console.log(`[POIs] ${e.message} — retrying in ${Math.round(wait / 1000)}s`);
     await sleep(wait);
     return fetchTile(b, attempt + 1);
