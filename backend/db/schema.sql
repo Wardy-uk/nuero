@@ -936,6 +936,24 @@ CREATE TABLE IF NOT EXISTS health_samples (
 
 CREATE INDEX IF NOT EXISTS idx_health_samples_metric_time ON health_samples(metric, recorded_at DESC);
 
+-- HiLo readings imported from HiLo's own PDF report (15 Oct 2026,
+-- services/hilo-import.js). The values also go into health_samples (where
+-- UNIQUE(metric, recorded_at) folds them with Apple Health's copy); this ledger
+-- keeps the heart rate HiLo pairs with each reading and drives the write-back
+-- to Apple Health: pending → written (NEURO iOS wrote it) | present (Health
+-- already had a reading at that minute, e.g. from BPExtract).
+CREATE TABLE IF NOT EXISTS hilo_readings (
+  recorded_at TEXT PRIMARY KEY,          -- UTC, 'YYYY-MM-DD HH:MM:00', same form as health_samples
+  systolic INTEGER NOT NULL,
+  diastolic INTEGER NOT NULL,
+  heart_rate INTEGER,
+  health_state TEXT NOT NULL DEFAULT 'pending' CHECK (health_state IN ('pending', 'written', 'present')),
+  health_at TEXT,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_hilo_readings_state ON hilo_readings(health_state, recorded_at);
+
 -- Food entries, one row per HealthKit sample (12 Oct 2026).
 -- ⚠ health_samples' UNIQUE(metric, recorded_at) is right for a sensor and WRONG
 -- for a food log: MyFitnessPal stamps every entry logged in one sitting with the

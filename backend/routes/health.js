@@ -510,6 +510,59 @@ router.post('/ingest', (req, res) => {
   }
 });
 
+// POST /api/health/hilo/import — HiLo blood pressure report (the PDF HiLo
+// exports), shared from the phone. Keywords: hilo, blood pressure, bp import,
+// pdf report, aktiia. Body: the PDF itself (Content-Type application/pdf or
+// application/octet-stream), or JSON { pdfBase64 }. Stores every reading,
+// folding with any copy Apple Health already sent, and queues the rest for the
+// NEURO iOS app to write into Health.
+const hiloImport = require('../services/hilo-import');
+const hiloRaw = express.raw({ type: ['application/pdf', 'application/octet-stream'], limit: '20mb' });
+router.post('/hilo/import', hiloRaw, async (req, res) => {
+  try {
+    let buf = null;
+    if (Buffer.isBuffer(req.body) && req.body.length) buf = req.body;
+    else if (req.body && typeof req.body.pdfBase64 === 'string') {
+      const { pdfBase64 } = req.body;
+      buf = Buffer.from(pdfBase64.replace(/^data:[^,]*,/, ''), 'base64');
+    }
+    if (!buf || !buf.length) {
+      return res.status(400).json({ ok: false, error: 'Send the HiLo PDF as the request body (application/pdf), or JSON { pdfBase64 }.' });
+    }
+    const result = await hiloImport.importReport(buf);
+    if (!result.ok) return res.status(422).json(result);
+    console.log(`[HiLo] Report imported: ${result.read} read → ${result.new} new, ${result.alreadyHad} already had, ` +
+      `${result.conflicts.length} conflict(s), ${result.rejected.length} rejected (${result.from} → ${result.to})`);
+    res.json(result);
+  } catch (e) {
+    console.error('[HiLo] Import error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/health/hilo/status — how many HiLo readings NEURO holds and how many
+// are still waiting to be written into Apple Health.
+router.get('/hilo/status', (req, res) => {
+  try { res.json(hiloImport.status()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/health/hilo/to-health — HiLo readings Apple Health does not hold
+// yet, for the NEURO iOS app to write. Keywords: hilo, write back, healthkit.
+router.get('/hilo/to-health', (req, res) => {
+  try { res.json({ readings: hiloImport.pendingForHealth({ limit: req.query.limit }) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/health/hilo/to-health/ack — the phone reports which readings it
+// wrote into Apple Health and which Health already had. Body: { written, present }
+// (arrays of ISO UTC times as given by /to-health).
+router.post('/hilo/to-health/ack', (req, res) => {
+  try {
+    const { written, present } = req.body || {};
+    res.json(hiloImport.ackHealth({ written, present }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/health/today — today's rolled-up day, plus the readiness read.
 //
 // Never serves yesterday as today: a stale figure presented as current is the
