@@ -1,0 +1,55 @@
+{
+  "refused": null,
+  "rule": "S3 meeting",
+  "tone": "meeting",
+  "presence": "SAiM · desk active · in a meeting",
+  "state": "In a meeting · until 15:00",
+  "title": "Nick Catch Up",
+  "sentence": "You’re in Nick Catch Up until 15:00; I’m holding everything else.",
+  "when": "14:30–15:00",
+  "guard": null,
+  "unreadLead": null,
+  "actions": [],
+  "handoff": {
+    "kind": "meeting",
+    "heading": "The meeting",
+    "primary": {
+      "label": "Open meeting prep",
+      "type": "link",
+      "href": "neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D",
+      "app": null,
+      "where": "opens in a new tab"
+    },
+    "alternatives": [],
+    "why": "You’re in it — the meeting itself first, then the prep."
+  },
+  "ask": null,
+  "handoffNote": null,
+  "joinGap": "No join link — NEURO’s diary doesn’t keep meeting join links yet, or which app hosts the meeting, so SAiM won’t guess one.",
+  "rail": {
+    "next": {
+      "empty": true
+    },
+    "held": {
+      "count": 1,
+      "returns": "at 15:00",
+      "items": [
+        {
+          "title": "Payroll cut-off for overtime claims",
+          "why": "possible risk — not yet classified",
+          "risky": true
+        }
+      ]
+    },
+    "judgement": {
+      "items": []
+    }
+  },
+  "drive": {
+    "activity": "in-meeting",
+    "confidenceLevel": "high",
+    "quiet": true,
+    "degraded": false,
+    "pressing": false
+  }
+}

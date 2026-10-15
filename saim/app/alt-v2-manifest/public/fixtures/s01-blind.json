@@ -1,0 +1,153 @@
+{
+  "candidates": {
+    "contract": "neuro-candidates-v2",
+    "readAt": "2026-10-15T13:20:00.000Z",
+    "today": "2026-10-15",
+    "candidates": [],
+    "constraints": {
+      "poolReadable": false,
+      "homeReadable": false,
+      "diaryReadable": false,
+      "blocksReadable": false,
+      "approvalsReadable": false,
+      "commitmentsReadable": false,
+      "activity": "working",
+      "duty": {
+        "onDuty": true
+      },
+      "desk": {
+        "atDesk": true
+      },
+      "place": null,
+      "workingWindow": {
+        "hours": "08:00-18:00",
+        "todayIsWorking": true,
+        "todayStart": "2026-10-15T07:00:00.000Z",
+        "todayEnd": "2026-10-15T17:00:00.000Z",
+        "nextStart": "2026-10-16T07:00:00.000Z"
+      },
+      "targets": [
+        {
+          "role": "source",
+          "href": "neuro:?view=sources",
+          "label": "Sources in NEURO"
+        }
+      ]
+    },
+    "gaps": [
+      {
+        "input": "task-blocks",
+        "why": "unreadable"
+      },
+      {
+        "input": "calendar",
+        "why": "unreadable"
+      },
+      {
+        "input": "approvals",
+        "why": "unreadable"
+      }
+    ]
+  },
+  "saim": {
+    "contract": "saim-attention-v2",
+    "owner": "saim",
+    "policyVersion": "2026-10-15.7",
+    "decidedAt": "2026-10-15T13:20:00.000Z",
+    "surface": {
+      "id": "work-desktop",
+      "scope": "work",
+      "manifestation": {
+        "held": "list",
+        "actions": "all",
+        "deskLaunch": true,
+        "speech": false
+      }
+    },
+    "scope": {
+      "id": "work",
+      "excluded": {}
+    },
+    "lead": {
+      "ref": null,
+      "kind": "blind",
+      "title": null,
+      "rule": "S1 blind",
+      "why": "I can’t see your work right now — this isn’t an all-clear.",
+      "deciding": [
+        "constraints.poolReadable = false"
+      ]
+    },
+    "protected": null,
+    "held": [],
+    "judgement": [],
+    "next": null,
+    "recommended": null,
+    "alternatives": [],
+    "corrections": [],
+    "review": {
+      "unclassified": [],
+      "action": null
+    },
+    "known": {
+      "protected": {
+        "known": false,
+        "why": "couldn’t read the attention pool"
+      },
+      "held": {
+        "known": false,
+        "why": "couldn’t read the attention pool"
+      },
+      "judgement": {
+        "known": false,
+        "why": "couldn’t read the attention pool"
+      },
+      "next": {
+        "known": false,
+        "why": "couldn’t read the attention pool"
+      }
+    },
+    "display": {
+      "lead": {
+        "title": null,
+        "sentence": "I can’t see your work right now — this isn’t an all-clear.",
+        "when": null
+      },
+      "protected": null,
+      "held": [],
+      "judgement": [],
+      "next": null
+    },
+    "trace": [
+      {
+        "rule": "S1 blind",
+        "applies": true,
+        "why": "NEURO could not read the attention pool"
+      }
+    ]
+  },
+  "handoff": {
+    "contract": "saim-handoff-v1",
+    "owner": "saim",
+    "resolverVersion": "2026-10-15.4",
+    "decidedAt": "2026-10-15T13:20:00.000Z",
+    "decidedFor": null,
+    "rule": "S1 blind",
+    "handoff": {
+      "primary": {
+        "label": "Open Sources in NEURO",
+        "target": {
+          "type": "link",
+          "href": "neuro:?view=sources",
+          "role": "source"
+        }
+      },
+      "alternatives": [],
+      "why": "Where NEURO shows which feed stopped. SAiM can’t tell which connection failed, so it won’t suggest an app."
+    },
+    "reason": null,
+    "basis": [
+      "constraints.targets.source"
+    ]
+  }
+}

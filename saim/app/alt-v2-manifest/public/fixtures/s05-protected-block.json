@@ -1,0 +1,447 @@
+{
+  "candidates": {
+    "contract": "neuro-candidates-v2",
+    "readAt": "2026-10-15T13:20:00.000Z",
+    "today": "2026-10-15",
+    "candidates": [
+      {
+        "kind": "block",
+        "id": "block:130",
+        "blockId": 130,
+        "title": "Customer Care training plan and refreshers",
+        "time": {
+          "start": "14:00",
+          "end": "15:30",
+          "startAt": "2026-10-15T13:00:00.000Z",
+          "endAt": "2026-10-15T14:30:00.000Z"
+        },
+        "facts": {
+          "state": "running",
+          "tasks": [
+            {
+              "taskId": 600,
+              "text": "Customer Care training plan and refreshers",
+              "running": false,
+              "wordingConflict": null
+            }
+          ],
+          "session": null
+        },
+        "sphere": {
+          "value": "work",
+          "basis": "stored",
+          "why": "the task’s stored domain"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "task-blocks",
+          "readAt": "2026-10-15T13:20:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Customer Care training plan and refreshers",
+          "timing": "14:00–15:30",
+          "explanation": null
+        },
+        "handoffIntent": {
+          "kind": "work-step",
+          "activity": "draft",
+          "basis": "stated"
+        },
+        "targets": [
+          {
+            "role": "canonical",
+            "href": "neuro:?item=task%3A600",
+            "label": "This task in NEURO"
+          }
+        ],
+        "handoffGaps": [],
+        "activitySuggestions": []
+      },
+      {
+        "kind": "approval",
+        "id": "approval:pa_2",
+        "title": "chase agenda: The London Office Regroup",
+        "time": {
+          "deadlineAt": "2026-10-16T05:00:00.000Z"
+        },
+        "facts": {
+          "type": "chase_agenda",
+          "status": "prepared",
+          "subject": null,
+          "where": "Actions, in NEURO on the desktop",
+          "summary": null
+        },
+        "sphere": {
+          "value": "work",
+          "basis": "mailbox",
+          "why": "sends from your work mailbox"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "prepared_actions",
+          "readAt": "2026-10-15T13:20:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Ask for an agenda",
+          "timing": "expires 06:00 tomorrow",
+          "explanation": "Waiting for your approval in NEURO"
+        },
+        "handoffIntent": {
+          "kind": "approval"
+        },
+        "targets": [],
+        "handoffGaps": [
+          {
+            "field": "canonical",
+            "why": "the approval carries no valid action id"
+          }
+        ]
+      },
+      {
+        "kind": "commitment",
+        "id": "commitment:task:283",
+        "taskId": 283,
+        "title": "Nick Ward to send breakdown of Parsons contacts",
+        "time": {
+          "due": "2026-10-15",
+          "dueBasis": "set"
+        },
+        "facts": {
+          "daysLate": 0,
+          "counterpart": null,
+          "wordingConflict": null
+        },
+        "sphere": {
+          "value": "work",
+          "basis": "set",
+          "why": "NEURO’s domain resolution for this commitment"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "world-model",
+          "readAt": "2026-10-15T13:20:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Nick Ward to send breakdown of Parsons contacts",
+          "timing": "due today",
+          "explanation": null
+        },
+        "handoffIntent": {
+          "kind": "work-step",
+          "activity": null
+        },
+        "targets": [
+          {
+            "role": "canonical",
+            "href": "neuro:?item=task%3A283",
+            "label": "This task in NEURO"
+          }
+        ],
+        "handoffGaps": [
+          {
+            "field": "activity",
+            "why": "NEURO holds no structured activity for a task (no field states what kind of work it is)"
+          }
+        ],
+        "activitySuggestions": []
+      },
+      {
+        "kind": "commitment",
+        "id": "commitment:task:375",
+        "taskId": 375,
+        "title": "West Hants Tennis Club: resolve the outstanding ticket tomorrow (8 October 2026). Must do tomorrow.",
+        "time": {
+          "due": "2026-10-15",
+          "dueBasis": "set"
+        },
+        "facts": {
+          "daysLate": 0,
+          "counterpart": null,
+          "wordingConflict": "says “tomorrow” but it’s planned for today"
+        },
+        "sphere": {
+          "value": "work",
+          "basis": "set",
+          "why": "NEURO’s domain resolution for this commitment"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "world-model",
+          "readAt": "2026-10-15T13:20:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "West Hants Tennis Club: resolve the outstanding ticket tomorrow (8 October 2026). Must do tomorrow.",
+          "timing": "due today",
+          "explanation": null
+        },
+        "handoffIntent": {
+          "kind": "work-step",
+          "activity": null
+        },
+        "targets": [
+          {
+            "role": "canonical",
+            "href": "neuro:?item=task%3A375",
+            "label": "This task in NEURO"
+          }
+        ],
+        "handoffGaps": [
+          {
+            "field": "activity",
+            "why": "NEURO holds no structured activity for a task (no field states what kind of work it is)"
+          }
+        ],
+        "activitySuggestions": []
+      }
+    ],
+    "constraints": {
+      "poolReadable": true,
+      "homeReadable": true,
+      "diaryReadable": true,
+      "blocksReadable": true,
+      "approvalsReadable": true,
+      "commitmentsReadable": true,
+      "activity": "working",
+      "duty": {
+        "onDuty": true
+      },
+      "desk": {
+        "atDesk": true
+      },
+      "place": null,
+      "workingWindow": {
+        "hours": "08:00-18:00",
+        "todayIsWorking": true,
+        "todayStart": "2026-10-15T07:00:00.000Z",
+        "todayEnd": "2026-10-15T17:00:00.000Z",
+        "nextStart": "2026-10-16T07:00:00.000Z"
+      },
+      "targets": [
+        {
+          "role": "source",
+          "href": "neuro:?view=sources",
+          "label": "Sources in NEURO"
+        }
+      ]
+    },
+    "gaps": []
+  },
+  "saim": {
+    "contract": "saim-attention-v2",
+    "owner": "saim",
+    "policyVersion": "2026-10-15.7",
+    "decidedAt": "2026-10-15T13:20:00.000Z",
+    "surface": {
+      "id": "work-desktop",
+      "scope": "work",
+      "manifestation": {
+        "held": "list",
+        "actions": "all",
+        "deskLaunch": true,
+        "speech": false
+      }
+    },
+    "scope": {
+      "id": "work",
+      "excluded": {}
+    },
+    "lead": {
+      "ref": "block:130",
+      "kind": "block",
+      "title": "Customer Care training plan and refreshers",
+      "rule": "S5 protected block",
+      "why": "This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.",
+      "deciding": [
+        "block:130.state = running"
+      ]
+    },
+    "protected": {
+      "ref": "block:130",
+      "kind": "block",
+      "what": "Customer Care training plan and refreshers",
+      "until": "15:30"
+    },
+    "held": [
+      {
+        "ref": "commitment:task:283",
+        "kind": "commitment",
+        "title": "Nick Ward to send breakdown of Parsons contacts",
+        "why": "due today",
+        "returns": "at 15:30",
+        "wordingConflict": null
+      },
+      {
+        "ref": "commitment:task:375",
+        "kind": "commitment",
+        "title": "West Hants Tennis Club: resolve the outstanding ticket",
+        "why": "due today",
+        "returns": "at 15:30",
+        "wordingConflict": "says “tomorrow” but it’s planned for today"
+      }
+    ],
+    "judgement": [
+      {
+        "ref": "approval:pa_2",
+        "what": "chase agenda: The London Office Regroup",
+        "where": "Actions, in NEURO on the desktop",
+        "deadline": "2026-10-16T05:00:00.000Z",
+        "effectiveDeadline": "2026-10-15T17:00:00.000Z",
+        "effectiveBasis": "end of today’s working hours — it expires before you next start"
+      }
+    ],
+    "next": null,
+    "recommended": {
+      "say": "I’m on it",
+      "intent": {
+        "kind": "start-block",
+        "taskId": 600,
+        "text": "Customer Care training plan and refreshers",
+        "blockId": 130
+      }
+    },
+    "alternatives": [],
+    "corrections": [
+      {
+        "ref": "commitment:task:375",
+        "taskId": 375,
+        "issue": "says “tomorrow” but it’s planned for today"
+      }
+    ],
+    "review": {
+      "unclassified": [],
+      "action": null
+    },
+    "known": {
+      "protected": {
+        "known": true,
+        "why": null
+      },
+      "next": {
+        "known": true,
+        "why": null
+      },
+      "judgement": {
+        "known": true,
+        "why": null
+      },
+      "held": {
+        "known": true,
+        "why": null
+      }
+    },
+    "display": {
+      "lead": {
+        "title": "Customer Care training plan and refreshers",
+        "sentence": "This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.",
+        "when": "14:00–15:30"
+      },
+      "protected": {
+        "what": "Customer Care training plan and refreshers",
+        "until": "15:30"
+      },
+      "held": [
+        {
+          "title": "Nick Ward to send breakdown of Parsons contacts",
+          "why": "due today",
+          "returns": "at 15:30"
+        },
+        {
+          "title": "West Hants Tennis Club: resolve the outstanding ticket",
+          "why": "due today",
+          "returns": "at 15:30"
+        }
+      ],
+      "judgement": [
+        {
+          "what": "Ask for an agenda",
+          "by": "18:00 today",
+          "basis": "end of today’s working hours — it expires before you next start"
+        }
+      ],
+      "next": null
+    },
+    "trace": [
+      {
+        "rule": "S1 blind",
+        "applies": false,
+        "why": "pool read"
+      },
+      {
+        "rule": "S2 critical risk",
+        "applies": false,
+        "why": "no item carries critical risk in scope"
+      },
+      {
+        "rule": "S3 meeting",
+        "applies": false,
+        "why": "no meeting running in scope"
+      },
+      {
+        "rule": "S2u unclassified potential risk",
+        "applies": false,
+        "why": "no unclassified critical item in scope"
+      },
+      {
+        "rule": "S3a imminent meeting transition",
+        "applies": false,
+        "why": "no meeting with others within 10 min"
+      },
+      {
+        "rule": "S4 deadline inside the block",
+        "applies": false,
+        "why": "effective deadline 18:00 today (end of today’s working hours — it expires before you next start); block ends 15:30 + 15 min"
+      },
+      {
+        "rule": "S5 protected block",
+        "applies": true,
+        "why": "block:130 14:00–15:30 is running"
+      }
+    ]
+  },
+  "handoff": {
+    "contract": "saim-handoff-v1",
+    "owner": "saim",
+    "resolverVersion": "2026-10-15.4",
+    "decidedAt": "2026-10-15T13:20:00.000Z",
+    "decidedFor": "block:130",
+    "rule": "S5 protected block",
+    "handoff": {
+      "primary": {
+        "label": "Open Claude",
+        "target": {
+          "type": "desk",
+          "app": "claude",
+          "mode": "open"
+        }
+      },
+      "alternatives": [
+        {
+          "label": "Open Music",
+          "target": {
+            "type": "desk",
+            "app": "music",
+            "mode": "open"
+          }
+        },
+        {
+          "label": "Open Word",
+          "target": {
+            "type": "desk",
+            "app": "word",
+            "mode": "open"
+          }
+        }
+      ],
+      "why": "The app SAiM recommends for this step, and the ones that help."
+    },
+    "reason": null,
+    "basis": [
+      "block:130.handoffIntent.activity = draft",
+      "device.claude"
+    ]
+  }
+}

@@ -11,6 +11,7 @@
     "dev:alt": "vite --config vite.config.alt.js --mode alt",
     "build:alt2": "vite build --config vite.config.alt2.js --mode alt2",
     "dev:alt2": "vite --config vite.config.alt2.js --mode alt2",
+    "dev:alt2-manifest": "vite --config vite.config.alt2-manifest.js --mode alt2-manifest",
     "preview": "vite preview"
   },
   "dependencies": {

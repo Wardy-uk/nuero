@@ -1,0 +1,54 @@
+{
+  "refused": null,
+  "rule": "S1 blind",
+  "tone": "blind",
+  "presence": "SAiM · desk active · can’t see your work",
+  "state": "Can’t see your work",
+  "title": "I can’t see your work right now — this isn’t an all-clear.",
+  "sentence": null,
+  "when": null,
+  "guard": null,
+  "unreadLead": [
+    "your tasks and blocks",
+    "the diary",
+    "approvals waiting"
+  ],
+  "actions": [],
+  "handoff": {
+    "kind": "connection",
+    "heading": "Where to look",
+    "primary": {
+      "label": "Open Sources in NEURO",
+      "type": "link",
+      "href": "neuro:?view=sources",
+      "app": null,
+      "where": "opens in a new tab"
+    },
+    "alternatives": [],
+    "why": "Where NEURO shows which feed stopped. SAiM can’t tell which connection failed, so it won’t suggest an app."
+  },
+  "ask": null,
+  "handoffNote": null,
+  "joinGap": null,
+  "rail": {
+    "next": {
+      "unread": true,
+      "why": "couldn’t read the attention pool"
+    },
+    "held": {
+      "unread": true,
+      "why": "couldn’t read the attention pool"
+    },
+    "judgement": {
+      "unread": true,
+      "why": "couldn’t read the attention pool"
+    }
+  },
+  "drive": {
+    "activity": "working",
+    "confidenceLevel": "high",
+    "quiet": false,
+    "degraded": true,
+    "pressing": false
+  }
+}

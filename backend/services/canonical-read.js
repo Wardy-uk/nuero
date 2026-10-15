@@ -1429,6 +1429,17 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
     console.warn('[Canonical] SAiM attention policy failed:', e.message);
     payload.saim = null;
   }
+  // `handoff` (saim-handoff-v1, 15 Oct 2026): SAiM's resolver over the decision,
+  // the candidates and this laptop's own report. Executed here for parity, like
+  // the policy; owned by saim/policy. Additive; never allowed to fail Now.
+  try {
+    payload.handoff = payload.saim && payload.candidates
+      ? require('../../saim/policy/handoff.cjs').resolveHandoff({ decision: payload.saim, candidates: payload.candidates, device: require('./saim-device').report(nowMs), now: nowMs })
+      : null;
+  } catch (e) {
+    console.warn('[Canonical] SAiM hand-off failed:', e.message);
+    payload.handoff = null;
+  }
   try {
     payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });
     if (workOnly && payload.presentation) payload.presentation = workOnlyPresentation(payload.presentation);

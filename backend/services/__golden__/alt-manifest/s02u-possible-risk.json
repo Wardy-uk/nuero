@@ -1,0 +1,41 @@
+{
+  "refused": null,
+  "rule": "S2u unclassified potential risk",
+  "tone": "possible",
+  "presence": "SAiM · desk active · possible risk",
+  "state": "Possible risk · not yet classified",
+  "title": "Payroll cut-off for overtime claims",
+  "sentence": "Payroll cut-off for overtime claims — NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
+  "when": null,
+  "guard": {
+    "what": "Customer Care training plan and refreshers",
+    "until": "15:30",
+    "verb": "paused while you check this — not lost"
+  },
+  "unreadLead": null,
+  "actions": [],
+  "handoff": null,
+  "ask": null,
+  "handoffNote": "NEURO gave no link to this item.",
+  "joinGap": null,
+  "rail": {
+    "next": {
+      "empty": true
+    },
+    "held": {
+      "count": 0,
+      "returns": null,
+      "items": []
+    },
+    "judgement": {
+      "items": []
+    }
+  },
+  "drive": {
+    "activity": "firefighting",
+    "confidenceLevel": "high",
+    "quiet": false,
+    "degraded": false,
+    "pressing": false
+  }
+}

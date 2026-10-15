@@ -1,0 +1,267 @@
+{
+  "candidates": {
+    "contract": "neuro-candidates-v2",
+    "readAt": "2026-10-15T13:20:00.000Z",
+    "today": "2026-10-15",
+    "candidates": [
+      {
+        "kind": "block",
+        "id": "block:130",
+        "blockId": 130,
+        "title": "Customer Care training plan and refreshers",
+        "time": {
+          "start": "14:00",
+          "end": "15:30",
+          "startAt": "2026-10-15T13:00:00.000Z",
+          "endAt": "2026-10-15T14:30:00.000Z"
+        },
+        "facts": {
+          "state": "running",
+          "tasks": [
+            {
+              "taskId": 600,
+              "text": "Customer Care training plan and refreshers",
+              "running": false,
+              "wordingConflict": null
+            }
+          ],
+          "session": null
+        },
+        "sphere": {
+          "value": "work",
+          "basis": "stored",
+          "why": "the task’s stored domain"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "task-blocks",
+          "readAt": "2026-10-15T13:20:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Customer Care training plan and refreshers",
+          "timing": "14:00–15:30",
+          "explanation": null
+        },
+        "handoffIntent": {
+          "kind": "work-step",
+          "activity": null
+        },
+        "targets": [
+          {
+            "role": "canonical",
+            "href": "neuro:?item=task%3A600",
+            "label": "This task in NEURO"
+          }
+        ],
+        "handoffGaps": [
+          {
+            "field": "activity",
+            "why": "NEURO holds no structured activity for a task (no field states what kind of work it is)"
+          }
+        ],
+        "activitySuggestions": []
+      },
+      {
+        "kind": "attention-item",
+        "id": "item:r-payroll_cutoff",
+        "recordId": "r-payroll_cutoff",
+        "title": "Payroll cut-off for overtime claims",
+        "facts": {
+          "type": "payroll_cutoff",
+          "risk": "critical",
+          "riskBasis": "unclassified",
+          "urgency": null,
+          "neuroUrgency": "critical",
+          "reason": "closes at 15:00",
+          "gatePosition": "secondary",
+          "lifecycle": null
+        },
+        "sphere": {
+          "value": "unknown",
+          "basis": "none",
+          "why": "no evidence of which part of life this belongs to"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "attention.gate",
+          "readAt": "2026-10-15T13:20:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Payroll cut-off for overtime claims",
+          "timing": null,
+          "explanation": "closes at 15:00"
+        },
+        "handoffIntent": null,
+        "targets": [],
+        "handoffGaps": [
+          {
+            "field": "intent",
+            "why": "no hand-off is defined for a \"payroll_cutoff\" item"
+          }
+        ]
+      }
+    ],
+    "constraints": {
+      "poolReadable": true,
+      "homeReadable": true,
+      "diaryReadable": true,
+      "blocksReadable": true,
+      "approvalsReadable": true,
+      "commitmentsReadable": true,
+      "activity": "working",
+      "duty": {
+        "onDuty": true
+      },
+      "desk": {
+        "atDesk": true
+      },
+      "place": null,
+      "workingWindow": {
+        "hours": "08:00-18:00",
+        "todayIsWorking": true,
+        "todayStart": "2026-10-15T07:00:00.000Z",
+        "todayEnd": "2026-10-15T17:00:00.000Z",
+        "nextStart": "2026-10-16T07:00:00.000Z"
+      },
+      "targets": [
+        {
+          "role": "source",
+          "href": "neuro:?view=sources",
+          "label": "Sources in NEURO"
+        }
+      ]
+    },
+    "gaps": []
+  },
+  "saim": {
+    "contract": "saim-attention-v2",
+    "owner": "saim",
+    "policyVersion": "2026-10-15.7",
+    "decidedAt": "2026-10-15T13:20:00.000Z",
+    "surface": {
+      "id": "work-desktop",
+      "scope": "work",
+      "manifestation": {
+        "held": "list",
+        "actions": "all",
+        "deskLaunch": true,
+        "speech": false
+      }
+    },
+    "scope": {
+      "id": "work",
+      "excluded": {}
+    },
+    "lead": {
+      "ref": "item:r-payroll_cutoff",
+      "kind": "attention-item",
+      "title": "Payroll cut-off for overtime claims",
+      "rule": "S2u unclassified potential risk",
+      "why": "Payroll cut-off for overtime claims — NEURO rated it critical, but this kind of item (payroll_cutoff) hasn’t been classified yet, so I’m treating it as possible risk.",
+      "deciding": [
+        "item:r-payroll_cutoff.risk = critical",
+        "item:r-payroll_cutoff.riskBasis = unclassified"
+      ]
+    },
+    "protected": {
+      "ref": "block:130",
+      "kind": "block",
+      "what": "Customer Care training plan and refreshers",
+      "until": "15:30"
+    },
+    "held": [],
+    "judgement": [],
+    "next": null,
+    "recommended": null,
+    "alternatives": [],
+    "corrections": [],
+    "review": {
+      "unclassified": [
+        {
+          "type": "payroll_cutoff",
+          "count": 1,
+          "refs": [
+            "item:r-payroll_cutoff"
+          ],
+          "neuroUrgency": [
+            "critical"
+          ],
+          "ledThisDecision": true
+        }
+      ],
+      "action": "Classify these types in neuro-candidates (CLASSIFIED_TYPES / HOME_RISK), then review the policy."
+    },
+    "known": {
+      "protected": {
+        "known": true,
+        "why": null
+      },
+      "next": {
+        "known": true,
+        "why": null
+      },
+      "judgement": {
+        "known": true,
+        "why": null
+      },
+      "held": {
+        "known": true,
+        "why": null
+      }
+    },
+    "display": {
+      "lead": {
+        "title": "Payroll cut-off for overtime claims",
+        "sentence": "Payroll cut-off for overtime claims — NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
+        "when": null
+      },
+      "protected": {
+        "what": "Customer Care training plan and refreshers",
+        "until": "15:30"
+      },
+      "held": [],
+      "judgement": [],
+      "next": null
+    },
+    "trace": [
+      {
+        "rule": "S1 blind",
+        "applies": false,
+        "why": "pool read"
+      },
+      {
+        "rule": "S2 critical risk",
+        "applies": false,
+        "why": "no item carries critical risk in scope"
+      },
+      {
+        "rule": "S3 meeting",
+        "applies": false,
+        "why": "no meeting running in scope"
+      },
+      {
+        "rule": "S2u unclassified potential risk",
+        "applies": true,
+        "why": "“Payroll cut-off for overtime claims” — NEURO said critical, but type “payroll_cutoff” is unclassified"
+      }
+    ]
+  },
+  "handoff": {
+    "contract": "saim-handoff-v1",
+    "owner": "saim",
+    "resolverVersion": "2026-10-15.4",
+    "decidedAt": "2026-10-15T13:20:00.000Z",
+    "decidedFor": "item:r-payroll_cutoff",
+    "rule": "S2u unclassified potential risk",
+    "handoff": null,
+    "reason": "NEURO gave no link to this item.",
+    "basis": [
+      "item:r-payroll_cutoff.targets: no canonical"
+    ],
+    "neuroGaps": [
+      "intent"
+    ]
+  }
+}

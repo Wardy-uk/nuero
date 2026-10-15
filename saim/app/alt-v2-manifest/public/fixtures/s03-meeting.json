@@ -1,0 +1,281 @@
+{
+  "candidates": {
+    "contract": "neuro-candidates-v2",
+    "readAt": "2026-10-15T13:40:00.000Z",
+    "today": "2026-10-15",
+    "candidates": [
+      {
+        "kind": "meeting",
+        "id": "meeting:14:30:Nick Catch Up",
+        "eventId": "AAMkAGI2THVSAAA=",
+        "title": "Nick Catch Up",
+        "time": {
+          "start": "14:30",
+          "end": "15:00",
+          "startAt": "2026-10-15T13:30:00.000Z",
+          "endAt": "2026-10-15T14:00:00.000Z"
+        },
+        "facts": {
+          "running": true,
+          "othersAttending": true,
+          "showAs": "busy"
+        },
+        "sphere": {
+          "value": "work",
+          "basis": "classified",
+          "why": "you classified the Outlook calendar as work"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "calendar:graph",
+          "readAt": "2026-10-15T13:40:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Nick Catch Up",
+          "timing": "14:30–15:00",
+          "explanation": "With other people"
+        },
+        "handoffIntent": {
+          "kind": "meeting",
+          "provider": null
+        },
+        "targets": [
+          {
+            "role": "prep",
+            "href": "neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D",
+            "label": "Meeting prep"
+          }
+        ],
+        "handoffGaps": [
+          {
+            "field": "join",
+            "why": "the diary cache keeps no meeting join link"
+          },
+          {
+            "field": "provider",
+            "why": "the diary cache doesn’t record which meeting app hosts it"
+          }
+        ]
+      },
+      {
+        "kind": "attention-item",
+        "id": "item:r-payroll_cutoff",
+        "recordId": "r-payroll_cutoff",
+        "title": "Payroll cut-off for overtime claims",
+        "facts": {
+          "type": "payroll_cutoff",
+          "risk": "critical",
+          "riskBasis": "unclassified",
+          "urgency": null,
+          "neuroUrgency": "critical",
+          "reason": "closes at 15:00",
+          "gatePosition": "secondary",
+          "lifecycle": null
+        },
+        "sphere": {
+          "value": "unknown",
+          "basis": "none",
+          "why": "no evidence of which part of life this belongs to"
+        },
+        "actions": [],
+        "provenance": {
+          "source": "attention.gate",
+          "readAt": "2026-10-15T13:40:00.000Z"
+        },
+        "known": true,
+        "display": {
+          "title": "Payroll cut-off for overtime claims",
+          "timing": null,
+          "explanation": "closes at 15:00"
+        },
+        "handoffIntent": null,
+        "targets": [],
+        "handoffGaps": [
+          {
+            "field": "intent",
+            "why": "no hand-off is defined for a \"payroll_cutoff\" item"
+          }
+        ]
+      }
+    ],
+    "constraints": {
+      "poolReadable": true,
+      "homeReadable": true,
+      "diaryReadable": true,
+      "blocksReadable": true,
+      "approvalsReadable": true,
+      "commitmentsReadable": true,
+      "activity": "working",
+      "duty": {
+        "onDuty": true
+      },
+      "desk": {
+        "atDesk": true
+      },
+      "place": null,
+      "workingWindow": {
+        "hours": "08:00-18:00",
+        "todayIsWorking": true,
+        "todayStart": "2026-10-15T07:00:00.000Z",
+        "todayEnd": "2026-10-15T17:00:00.000Z",
+        "nextStart": "2026-10-16T07:00:00.000Z"
+      },
+      "targets": [
+        {
+          "role": "source",
+          "href": "neuro:?view=sources",
+          "label": "Sources in NEURO"
+        }
+      ]
+    },
+    "gaps": []
+  },
+  "saim": {
+    "contract": "saim-attention-v2",
+    "owner": "saim",
+    "policyVersion": "2026-10-15.7",
+    "decidedAt": "2026-10-15T13:40:00.000Z",
+    "surface": {
+      "id": "work-desktop",
+      "scope": "work",
+      "manifestation": {
+        "held": "list",
+        "actions": "all",
+        "deskLaunch": true,
+        "speech": false
+      }
+    },
+    "scope": {
+      "id": "work",
+      "excluded": {}
+    },
+    "lead": {
+      "ref": "meeting:14:30:Nick Catch Up",
+      "kind": "meeting",
+      "title": "Nick Catch Up",
+      "rule": "S3 meeting",
+      "why": "You’re in Nick Catch Up until 15:00; I’m holding everything else.",
+      "deciding": [
+        "meeting:14:30:Nick Catch Up.running",
+        "meeting:14:30:Nick Catch Up.othersAttending"
+      ]
+    },
+    "protected": {
+      "ref": "meeting:14:30:Nick Catch Up",
+      "kind": "meeting",
+      "what": "Nick Catch Up",
+      "until": "15:00"
+    },
+    "held": [
+      {
+        "ref": "item:r-payroll_cutoff",
+        "kind": "attention-item",
+        "title": "Payroll cut-off for overtime claims",
+        "why": "possible risk — not yet classified",
+        "returns": "at 15:00",
+        "wordingConflict": null
+      }
+    ],
+    "judgement": [],
+    "next": null,
+    "recommended": null,
+    "alternatives": [],
+    "corrections": [],
+    "review": {
+      "unclassified": [
+        {
+          "type": "payroll_cutoff",
+          "count": 1,
+          "refs": [
+            "item:r-payroll_cutoff"
+          ],
+          "neuroUrgency": [
+            "critical"
+          ],
+          "ledThisDecision": false
+        }
+      ],
+      "action": "Classify these types in neuro-candidates (CLASSIFIED_TYPES / HOME_RISK), then review the policy."
+    },
+    "known": {
+      "protected": {
+        "known": true,
+        "why": null
+      },
+      "next": {
+        "known": true,
+        "why": null
+      },
+      "judgement": {
+        "known": true,
+        "why": null
+      },
+      "held": {
+        "known": true,
+        "why": null
+      }
+    },
+    "display": {
+      "lead": {
+        "title": "Nick Catch Up",
+        "sentence": "You’re in Nick Catch Up until 15:00; I’m holding everything else.",
+        "when": "14:30–15:00"
+      },
+      "protected": {
+        "what": "Nick Catch Up",
+        "until": "15:00"
+      },
+      "held": [
+        {
+          "title": "Payroll cut-off for overtime claims",
+          "why": "possible risk — not yet classified",
+          "returns": "at 15:00"
+        }
+      ],
+      "judgement": [],
+      "next": null
+    },
+    "trace": [
+      {
+        "rule": "S1 blind",
+        "applies": false,
+        "why": "pool read"
+      },
+      {
+        "rule": "S2 critical risk",
+        "applies": false,
+        "why": "no item carries critical risk in scope"
+      },
+      {
+        "rule": "S3 meeting",
+        "applies": true,
+        "why": "“Nick Catch Up” is running with other people in it"
+      }
+    ]
+  },
+  "handoff": {
+    "contract": "saim-handoff-v1",
+    "owner": "saim",
+    "resolverVersion": "2026-10-15.4",
+    "decidedAt": "2026-10-15T13:40:00.000Z",
+    "decidedFor": "meeting:14:30:Nick Catch Up",
+    "rule": "S3 meeting",
+    "handoff": {
+      "primary": {
+        "label": "Open meeting prep",
+        "target": {
+          "type": "link",
+          "href": "neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D",
+          "role": "prep"
+        }
+      },
+      "alternatives": [],
+      "why": "You’re in it — the meeting itself first, then the prep."
+    },
+    "reason": null,
+    "basis": [
+      "targets.prep"
+    ]
+  }
+}

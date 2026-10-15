@@ -1,0 +1,35 @@
+/* Local adapter additions to the approved working composition. Tone sets the state colour only. */
+.mf { --mf-tone: var(--v2-accent); }
+.mf--risk { --mf-tone: #ef6a5a; }
+.mf--possible { --mf-tone: #f5c66b; }
+.mf--blind { --mf-tone: #8e98a6; }
+.mf--calm { --mf-tone: #8fb8a8; }
+.mf__state { color: var(--mf-tone); }
+.mf__dot { background: var(--mf-tone); box-shadow: 0 0 10px var(--mf-tone); }
+.mf--blind .mf__dot { background: transparent; border: 1.5px solid var(--mf-tone); box-shadow: none; }
+.mf--risk .wk__main { border-color: rgba(239, 106, 90, 0.45); }
+.mf--possible .wk__main { border-color: rgba(245, 198, 107, 0.35); }
+.mf__why { margin: 0.7em 0 0; font-size: 1.02em; color: var(--text); opacity: 0.82; max-width: 42em; }
+.mf__title--sentence { font-size: 1.85em; opacity: 0.92; }
+.mf__guard { margin-top: 1.5em; padding: 0.85em 1.1em; border-radius: 12px; background: rgba(255, 255, 255, 0.025); border: 1px dashed rgba(255, 255, 255, 0.14); }
+.mf__guardrow { margin: 0; display: flex; justify-content: space-between; gap: 1em; align-items: baseline; }
+.mf__guardwhat { font-size: 1.02em; color: var(--text); }
+.mf__guarduntil { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9em; }
+.mf__guardsay { margin: 0.3em 0 0; font-size: 0.85em; color: var(--muted); }
+.mf__noaction { margin: 1.5em 0 0; font-size: 0.92em; color: var(--muted); }
+.mf__gap { margin: 1em 0 0; font-size: 0.9em; color: var(--muted); border-left: 2px solid rgba(245, 198, 107, 0.5); padding-left: 0.8em; }
+.mf__blind { margin-top: 1.5em; padding: 0.9em 1.1em; border-radius: 12px; background: rgba(255, 255, 255, 0.025); border-left: 2px solid #8e98a6; }
+.mf__blind ul { margin: 0.2em 0 0; padding-left: 1.1em; font-size: 0.92em; }
+.mf__blindnote { margin: 0.7em 0 0; font-size: 0.88em; color: var(--text); opacity: 0.8; }
+.mf__unread { color: #b9c1cc !important; font-style: italic; }
+.mf__heldrisk { color: #f5c66b; }
+.mf__heldrisk .wk__muted { color: #f5c66b; opacity: 0.8; }
+.mf__judge + .mf__judge { margin-top: 0.7em; }
+.mf__dest--connection { border-left-color: #8e98a6; }
+.mf__dest--control { border-left-color: rgba(245, 198, 107, 0.6); }
+.mf__dest .wk__openwrap .wk__desk { font-size: 0.72em; }
+.mf__inert { text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.25); text-underline-offset: 3px; }
+.mf__ask .wk__acts { margin-top: 0.4em; }
+.mf__ask .wk__why { margin-top: 0.8em; font-size: 0.82em; opacity: 0.7; }
+.mf__local { position: fixed; top: 0.7rem; left: 1rem; z-index: 3; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: #9ad1a8; border: 1px solid rgba(154, 209, 168, 0.45); border-radius: 4px; padding: 0.12rem 0.45rem; }
+.mf__err { max-width: 720px; margin: 20vh auto 0; color: var(--text); font-family: 'IBM Plex Sans', system-ui, sans-serif; }

@@ -1,0 +1,85 @@
+{
+  "refused": null,
+  "rule": "S5 protected block",
+  "tone": "block",
+  "presence": "SAiM · desk active · working",
+  "state": "Active · until 15:30",
+  "title": "Customer Care training plan and refreshers",
+  "sentence": "This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.",
+  "when": "14:00–15:30",
+  "guard": null,
+  "unreadLead": null,
+  "actions": [
+    {
+      "say": "I’m on it"
+    }
+  ],
+  "handoff": {
+    "kind": "work",
+    "heading": "Best next place",
+    "primary": {
+      "label": "Open Claude",
+      "type": "desk",
+      "href": null,
+      "app": "claude",
+      "where": "opens on the laptop"
+    },
+    "alternatives": [
+      {
+        "label": "Open Music",
+        "type": "desk",
+        "href": null,
+        "app": "music",
+        "where": "opens on the laptop"
+      },
+      {
+        "label": "Open Word",
+        "type": "desk",
+        "href": null,
+        "app": "word",
+        "where": "opens on the laptop"
+      }
+    ],
+    "why": "The app SAiM recommends for this step, and the ones that help."
+  },
+  "ask": null,
+  "handoffNote": null,
+  "joinGap": null,
+  "rail": {
+    "next": {
+      "empty": true
+    },
+    "held": {
+      "count": 2,
+      "returns": "at 15:30",
+      "items": [
+        {
+          "title": "Nick Ward to send breakdown of Parsons contacts",
+          "why": "due today",
+          "risky": false
+        },
+        {
+          "title": "West Hants Tennis Club: resolve the outstanding ticket",
+          "why": "due today",
+          "risky": false
+        }
+      ]
+    },
+    "judgement": {
+      "items": [
+        {
+          "what": "Ask for an agenda",
+          "by": "18:00 today",
+          "basis": "end of today’s working hours — it expires before you next start"
+        }
+      ]
+    }
+  },
+  "drive": {
+    "activity": "in-focus-session",
+    "confidenceLevel": "high",
+    "quiet": false,
+    "degraded": false,
+    "pressing": false
+  }
+}
