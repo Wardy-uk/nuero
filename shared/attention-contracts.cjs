@@ -18,15 +18,26 @@
  * Producers: backend/services/neuro-candidates.js (neuro-candidates),
  * saim/policy/attention-policy.cjs (saim-attention).
  * Consumers: the policy (over candidates); later, the SAiM hand-off resolver and
- * the Alt adapter (over both). Reserved, not built: `saim-handoff-v1`.
+ * the Alt adapter (over both).
+ *
+ * Hand-off (15 Oct 2026): v2 candidates MAY carry `handoffIntent` and
+ * `targets`, and `constraints` MAY carry `targets` (the place to look when
+ * blind). They are optional — absent means "NEURO stated no intent / no link",
+ * which the resolver says honestly — but when present they must have the shape
+ * below or the whole payload is refused. `saim-device-v1` is the device's
+ * declared apps and their state; `saim-handoff-v1` is the resolver's output.
  */
 
 const NEURO_CANDIDATES = 'neuro-candidates-v2';
 const SAIM_ATTENTION = 'saim-attention-v1';
+const SAIM_DEVICE = 'saim-device-v1';
+const SAIM_HANDOFF = 'saim-handoff-v1';
 
 const SUPPORTED = Object.freeze({
   'neuro-candidates': Object.freeze([NEURO_CANDIDATES]),
   'saim-attention': Object.freeze([SAIM_ATTENTION]),
+  'saim-device': Object.freeze([SAIM_DEVICE]),
+  'saim-handoff': Object.freeze([SAIM_HANDOFF]),
 });
 
 /** Every candidate kind neuro-candidates-v2 may carry. An unknown kind is a refusal. */
@@ -34,6 +45,40 @@ const CANDIDATE_KINDS = Object.freeze(['block', 'meeting', 'protected-time', 'ap
 /** Kinds whose facts MUST carry the v2 risk split. */
 const RISK_KINDS = new Set(['attention-item', 'home']);
 const RISK_BASES = new Set(['classified', 'unclassified']);
+
+/** NEURO's structured hand-off intent — a closed vocabulary. */
+const INTENT_KINDS = Object.freeze(['work-step', 'meeting', 'approval', 'risk', 'none']);
+/** What a work step IS, as NEURO knows it from a stated field — never parsed from a title. */
+const ACTIVITIES = Object.freeze(['draft', 'write', 'spreadsheet', 'email', 'code', 'read', 'call']);
+/** The roles a NEURO-owned link can play. */
+const TARGET_ROLES = Object.freeze(['canonical', 'control', 'join', 'prep', 'source']);
+/** What a declared app can do. */
+const CAPABILITIES = Object.freeze(['ai', 'music', 'docs', 'sheets', 'mail', 'code', 'browser', 'notes', 'meeting:teams']);
+const HREF = /^(https?:\/\/|saim:)[^\s]+$/;
+
+function targetProblem(t, at) {
+  if (!isObj(t)) return `${at} is not an object`;
+  if (!TARGET_ROLES.includes(t.role)) return `${at}.role "${t.role}" is not a target role`;
+  if (typeof t.href !== 'string' || !HREF.test(t.href)) return `${at}.href is not an http(s) or saim: link`;
+  if (/\/approve\b/i.test(t.href)) return `${at}.href is an approve link — a hand-off never approves`;
+  if (t.label != null && !isStr(t.label)) return `${at}.label is not text`;
+  if (t.provider != null && !isStr(t.provider)) return `${at}.provider is not text`;
+  return null;
+}
+function targetsProblem(list, at) {
+  if (list === undefined) return null;
+  if (!Array.isArray(list)) return `${at} is not a list`;
+  for (let i = 0; i < list.length; i += 1) { const p = targetProblem(list[i], `${at}[${i}]`); if (p) return p; }
+  return null;
+}
+function intentProblem(x, at) {
+  if (x === undefined || x === null) return null;
+  if (!isObj(x)) return `${at} is not an object`;
+  if (!INTENT_KINDS.includes(x.kind)) return `${at}.kind "${x.kind}" is not an intent kind`;
+  if (x.kind === 'work-step' && !(x.activity === null || ACTIVITIES.includes(x.activity))) return `${at}.activity "${x.activity}" is not an activity`;
+  if (x.provider != null && !isStr(x.provider)) return `${at}.provider is not text`;
+  return null;
+}
 
 /** Every lead rule saim-attention-v1 may name. */
 const ATTENTION_RULES = Object.freeze([
@@ -60,6 +105,8 @@ function checkCandidates(input) {
   if (!isObj(k)) return refuse(F, 'constraints missing', input.contract);
   if (typeof k.poolReadable !== 'boolean') return refuse(F, 'constraints.poolReadable is not a boolean', input.contract);
   if (!(k.homeReadable === null || typeof k.homeReadable === 'boolean')) return refuse(F, 'constraints.homeReadable is not true/false/null', input.contract);
+  const kt = targetsProblem(k.targets, 'constraints.targets');
+  if (kt) return refuse(F, kt, input.contract);
   for (let i = 0; i < input.candidates.length; i += 1) {
     const c = input.candidates[i];
     const at = `candidates[${i}]`;
@@ -68,6 +115,8 @@ function checkCandidates(input) {
     if (!isStr(c.id)) return refuse(F, `${at}.id missing`, input.contract);
     if (!isObj(c.facts)) return refuse(F, `${at}.facts missing`, input.contract);
     if (!isObj(c.sphere) || !('value' in c.sphere)) return refuse(F, `${at}.sphere missing`, input.contract);
+    const ip = intentProblem(c.handoffIntent, `${at}.handoffIntent`) || targetsProblem(c.targets, `${at}.targets`);
+    if (ip) return refuse(F, ip, input.contract);
     if (RISK_KINDS.has(c.kind)) {
       if (!isStr(c.facts.risk)) return refuse(F, `${at}.facts.risk missing (v1 shape?)`, input.contract);
       if (!RISK_BASES.has(c.facts.riskBasis)) return refuse(F, `${at}.facts.riskBasis missing (v1 shape?)`, input.contract);
@@ -96,4 +145,50 @@ function checkAttention(d) {
   return { ok: true, family: F, contract: d.contract };
 }
 
-module.exports = { NEURO_CANDIDATES, SAIM_ATTENTION, SUPPORTED, CANDIDATE_KINDS, ATTENTION_RULES, checkCandidates, checkAttention };
+/**
+ * Check the device's declared apps (saim-device-v1). Per app: id, label,
+ * capabilities, available, running / foreground (true / false / null = unknown).
+ * `observedAt` is when the agent last reported; `known: false` = unreachable.
+ */
+function checkDevice(dev) {
+  const F = 'saim-device';
+  if (!isObj(dev)) return refuse(F, 'not an object', dev === null ? null : typeof dev);
+  if (!SUPPORTED[F].includes(dev.contract)) return refuse(F, 'unsupported contract', dev.contract == null ? null : String(dev.contract));
+  if (typeof dev.known !== 'boolean') return refuse(F, 'known is not a boolean', dev.contract);
+  if (!(dev.observedAt === null || isStr(dev.observedAt))) return refuse(F, 'observedAt is not a time or null', dev.contract);
+  if (!Array.isArray(dev.apps)) return refuse(F, 'apps is not a list', dev.contract);
+  const seen = new Set();
+  for (let i = 0; i < dev.apps.length; i += 1) {
+    const a = dev.apps[i]; const at = `apps[${i}]`;
+    if (!isObj(a) || !isStr(a.id) || !isStr(a.label)) return refuse(F, `${at} needs an id and a label`, dev.contract);
+    if (seen.has(a.id)) return refuse(F, `${at}.id "${a.id}" is declared twice`, dev.contract);
+    seen.add(a.id);
+    if (!Array.isArray(a.capabilities) || a.capabilities.some((c) => !CAPABILITIES.includes(c))) return refuse(F, `${at}.capabilities has an unknown capability`, dev.contract);
+    if (typeof a.available !== 'boolean') return refuse(F, `${at}.available is not a boolean`, dev.contract);
+    for (const k of ['running', 'foreground']) if (!(a[k] === null || typeof a[k] === 'boolean')) return refuse(F, `${at}.${k} is not true/false/null`, dev.contract);
+  }
+  return { ok: true, family: F, contract: dev.contract };
+}
+
+const DEST_TYPES = new Set(['desk', 'already', 'link', 'elsewhere']);
+/** Check a resolver output (saim-handoff-v1) — for the adapter, when built. */
+function checkHandoff(h) {
+  const F = 'saim-handoff';
+  if (!isObj(h)) return refuse(F, 'not an object', h === null ? null : typeof h);
+  if (!SUPPORTED[F].includes(h.contract)) return refuse(F, 'unsupported contract', h.contract == null ? null : String(h.contract));
+  if (h.owner !== 'saim' || !isStr(h.resolverVersion)) return refuse(F, 'owner/resolverVersion missing', h.contract);
+  if (h.handoff === null) return isStr(h.reason) ? { ok: true, family: F, contract: h.contract } : refuse(F, 'no hand-off without a reason', h.contract);
+  if (!isObj(h.handoff) || !isObj(h.handoff.primary) || !Array.isArray(h.handoff.alternatives)) return refuse(F, 'handoff malformed', h.contract);
+  if (h.handoff.alternatives.length > 3) return refuse(F, 'more than three alternatives', h.contract);
+  for (const d of [h.handoff.primary, ...h.handoff.alternatives]) {
+    if (!isObj(d) || !isStr(d.label) || !isObj(d.target) || !DEST_TYPES.has(d.target.type)) return refuse(F, 'destination malformed', h.contract);
+  }
+  if (h.handoff.alternatives.some((d) => d.target.type === 'already')) return refuse(F, 'an "already open" app is never an alternative', h.contract);
+  return { ok: true, family: F, contract: h.contract };
+}
+
+module.exports = {
+  NEURO_CANDIDATES, SAIM_ATTENTION, SAIM_DEVICE, SAIM_HANDOFF, SUPPORTED, CANDIDATE_KINDS, ATTENTION_RULES,
+  INTENT_KINDS, ACTIVITIES, TARGET_ROLES, CAPABILITIES,
+  checkCandidates, checkAttention, checkDevice, checkHandoff,
+};

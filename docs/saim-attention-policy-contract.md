@@ -187,6 +187,65 @@ S1 is judged on what the surface's scope depends on:
 - **Policy version:** `2026-10-15.6`.
 - **Tests:** `backend/services/attention-contracts.test.js` (10), with 6 mutations caught: the skipped check, any name accepted, the v1 shape undetected, the refusal as S11, `poolReadable` not required, and any rule accepted.
 
+## 6c. App hand-off: `saim-handoff-v1` (C4, 15 Oct 2026, resolver only, not wired)
+
+**Where:** `saim/policy/handoff.cjs`, pure and owned by SAiM. `resolveHandoff({ decision, candidates, device, now })` decides **where** Nick goes for the lead the policy already chose. It never picks the lead, records state or approves.
+
+**Owners:**
+- **NEURO** owns the structured intent on a candidate and the canonical / external links:
+  - `handoffIntent`: `{ kind: work-step | meeting | approval | risk | none, activity?, provider? }`;
+  - `targets[]`: `{ role: canonical | control | join | prep | source, href, label?, provider? }`;
+  - `constraints.targets` for the place to look when blind.
+
+  These fields are optional in `neuro-candidates-v2` (absent = "NEURO stated none"). When present they are shape-checked. An approve link or a non-http(s)/`saim:` href refuses the whole payload.
+- **The device** owns `saim-device-v1`: per app `capabilities`, `available`, `running` / `foreground` (true / false / null), plus `observedAt` and `known`.
+- **SAiM** owns the recommendation (the `ACTIVITY` table: draft, write, spreadsheet, email, code, read, call).
+
+**Rules:**
+- **Inputs:** validated candidates, decision and device. Anything incompatible is refused (`handoff: null` + `refused`).
+- **Never** reads titles, text, descriptions, facts or the lead's explanation.
+- Only **declared, available** apps are offered.
+- An app's state decides its button:
+
+  | App state | Shown as |
+  |---|---|
+  | foreground | **"Already open — carry on in X"** (no launch); dropped as an alternative |
+  | running, not foreground | **"Switch to X"** |
+  | unknown on a fresh device | "Open X" |
+
+- **Freshness:** a device observation older than 8 min (desktop-activity's `FRESH_MINUTES`, pinned), missing, from the future, or from an unreachable device means **no desk hand-off**, with the reason. NEURO links don't depend on the device.
+- **Limits:** a primary plus **at most three** alternatives, in the order AI → Music → one more relevant. AI is never repeated after an AI primary.
+- **By lead:**
+
+  | Lead | Destination |
+  |---|---|
+  | S1 | NEURO's `source` target only, never a desk app |
+  | S2 | `control`, else `canonical`; no alternatives |
+  | S2u | `canonical` only |
+  | S3 | join / meeting app (or already in it), then prep |
+  | S3a | prep, then join |
+  | S4 / S6 | exact `canonical` action |
+  | S5 / S7 / S9 | SAiM's app for the stated `activity` |
+  | S8 / S10 / S11 | no launcher |
+
+  Anything missing (intent, activity, link, capability, freshness) means no hand-off, with an honest `reason`.
+- **Output:** `{ contract, owner, resolverVersion, decidedFor, rule, handoff: null | { primary, alternatives[≤3], why }, reason, basis, refused? }`, validated by `checkHandoff`.
+
+**Tests:** `backend/services/saim-handoff.test.js`, 24 tests covering:
+- randomised titles (every text field scrambled → identical output);
+- an unavailable app;
+- stale, missing, future and unreachable state;
+- no redundant launch, and "switch to";
+- an undeclared app;
+- the cap over every activity × device subset;
+- each rule;
+- contract refusals;
+- a source scan with a positive control.
+
+11 of 12 mutations are caught. The survivor is the cap, which can't be exceeded by construction today; it is a stated second guard, also enforced by `checkHandoff`.
+
+**Not yet:** NEURO doesn't emit `handoffIntent` / `targets`, and nothing builds `saim-device-v1`. On real data every lead resolves to no hand-off, with its reason, until those are authorised.
+
 ## 7. Placement (if approved)
 
 - **Policy code:** `saim/policy/attention-policy.cjs`, pure. `require`d and executed by NEURO's backend for parity.
