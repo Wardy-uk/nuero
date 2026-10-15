@@ -55,6 +55,9 @@ const SUPPRESSIBLE = new Set([
   // "Things I could do for you" — weekly, only when something new passed the
   // usefulness test. An idea, never urgent.
   'capability_suggestions',
+  // The SOAP report (Thursday heads-up, Friday provisional ready, Monday sent/held).
+  // All daytime and once each; nothing about it is a 03:00 problem.
+  'soap_report',
 ]);
 
 const ROOTS = ['services', 'routes'];

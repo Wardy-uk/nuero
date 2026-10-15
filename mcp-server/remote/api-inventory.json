@@ -5075,6 +5075,41 @@
     "stream": false
   },
   {
+    "id": "get_soap",
+    "method": "GET",
+    "route": "/api/soap",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 23,
+    "description": "GET /api/soap. the newest SOAP report (final, else provisional), the weeks held, whether Nick is off on Monday, the recipients and the send.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_soap_by_weekFrom_by_kind",
+    "method": "GET",
+    "route": "/api/soap/:weekFrom/:kind",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 49,
+    "description": "GET /api/soap/:weekFrom/:kind. one SOAP report with Nick's words, its markdown and what still blocks sending.",
+    "params": [
+      "weekFrom",
+      "kind"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_standup",
     "method": "GET",
     "route": "/api/standup",
@@ -5310,7 +5345,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 262,
+    "line": 263,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -12465,6 +12500,65 @@
     "line": 59,
     "description": "POST /api/signals/life/not-now. quieten the question for an hour.",
     "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_soap_build",
+    "method": "POST",
+    "route": "/api/soap/build",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 37,
+    "description": "POST /api/soap/build. build (or rebuild) the SOAP report now. Body: { kind: 'provisional' (this week so far) | 'final' (last full week) }.",
+    "params": [],
+    "query": [],
+    "body": [
+      "kind"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_soap_by_weekFrom_manual",
+    "method": "POST",
+    "route": "/api/soap/:weekFrom/manual",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 58,
+    "description": "POST /api/soap/:weekFrom/manual. save Nick's words on a SOAP report: what he will do about each red, why a carried red is still red and its consequences, commentary on the weakest agent, notes. Omitted fields are left alone.",
+    "params": [
+      "weekFrom"
+    ],
+    "query": [],
+    "body": [
+      "carried",
+      "notes",
+      "reds",
+      "weakest"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_soap_by_weekFrom_queue_send",
+    "method": "POST",
+    "route": "/api/soap/:weekFrom/queue-send",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 71,
+    "description": "POST /api/soap/:weekFrom/queue-send. prepare the provisional SOAP report as a governed email to Ricky and Chris for Monday 08:00. Sends nothing; approve it in Actions.",
+    "params": [
+      "weekFrom"
+    ],
     "query": [],
     "body": [],
     "queryOpen": false,

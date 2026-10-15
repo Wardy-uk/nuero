@@ -1206,6 +1206,59 @@ function prepareWeeklyReport({ week, recipient, subject, markdown, html, snapsho
   }
 }
 
+/**
+ * 15 Oct 2026 — prepare the SOAP report send (soap-report.queueSend). Same
+ * freezing rules as the weekly risk report: the markdown Nick reads and the
+ * exact HTML sent are in the row, the verdicts it is held on and the Monday
+ * 08:00 it may not go before are bound into the hash. Queueing again with a
+ * changed report supersedes a pending one and EXPIRES an approved one.
+ */
+function prepareSoapReport({ weekFrom, recipients, subject, markdown, html, verdictHash, notBefore, now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(weekFrom || ''))) return { ok: false, code: 400, error: 'no report week' };
+  const to = (recipients || []).map((r) => ({ name: (r && r.name) || lcs(r && r.email), email: lcs(r && r.email) }));
+  if (!to.length || to.some((r) => !EMAIL_RE.test(r.email))) return { ok: false, code: 409, error: 'no valid recipient addresses' };
+  if (!String(markdown || '').trim() || !String(html || '').trim()) return { ok: false, code: 409, error: 'the report body is empty' };
+  if (!verdictHash || !notBefore || !(Date.parse(notBefore) > nowMs)) return { ok: false, code: 409, error: 'the send time has already passed' };
+  const reportVersion = shortSha(markdown);
+  const subjectKey = `soap:${weekFrom}`;
+  const live = _liveFor('send_soap_report', subjectKey);
+  let supersede = null;
+  if (live) {
+    const lt = parse(live.target_json) || {};
+    if (['executing', 'executed', 'execution_uncertain'].includes(live.status)) {
+      return { ok: false, code: 409, error: `this week's SOAP report is already ${live.status}`, action: shape(live) };
+    }
+    if (lt.reportVersion === reportVersion && lt.verdictHash === verdictHash) return { ok: true, already: true, action: shape(live) };
+    supersede = live.status === 'approved'
+      ? { ...live, how: 'expire', note: 'the report was regenerated after this was approved — its approval cannot send the new report' }
+      : { ...live, note: 'replaced by a regenerated report' };
+  }
+  const names = to.map((r) => r.name).join(' and ');
+  const target = { kind: 'soap-report', weekFrom, reportVersion, verdictHash, notBefore, displayName: names };
+  const draft = {
+    channel: 'email', voice: 'nick', format: 'html', generatedBy: 'soap-report.render (no model call)',
+    to, subject, body: String(markdown), html: String(html), placeholders: [],
+  };
+  const evidence = { origin: 'soap', weekFrom, reportVersion, verdictHash, notBefore };
+  try {
+    const action = _insertPrepared({
+      actionType: 'send_soap_report', subjectKey, findingId: subjectKey, subjectRef: subjectKey, target, draft, evidence,
+      origin: 'soap', reason: `SOAP report for w/c ${weekFrom}, to ${names} at Monday 08:00 — held if Monday's verdicts differ`,
+      idemRoot: `soap:${weekFrom}:${reportVersion}:${new Date(nowMs).toISOString()}`, nowMs, supersede,
+    });
+    return { ok: true, already: false, action, superseded: supersede ? supersede.action_id : null };
+  } catch (e) {
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+/** The governed SOAP send for a week, newest first (any status). */
+function soapReportFor(weekFrom) {
+  return shape(db.get(`SELECT * FROM prepared_actions WHERE action_type = 'send_soap_report' AND commitment_id = ?
+                       ORDER BY created_at DESC, version DESC LIMIT 1`, [`soap:${weekFrom}`]));
+}
+
 /** The governed weekly report action for a week, newest first (any status). */
 function weeklyReportFor(week) {
   return shape(db.get(`SELECT * FROM prepared_actions WHERE action_type = 'send_weekly_risk_report' AND commitment_id = ?
@@ -1330,7 +1383,7 @@ module.exports = {
   MIN_CONFIDENCE, RECENT_CHASE_DAYS, EXPIRY_HOURS, STATUSES, TERMINAL, LIVE,
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
-  prepareReply, prepareCompose, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
+  prepareReply, prepareCompose, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, prepareSoapReport, soapReportFor, agendaAsked,
   prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,

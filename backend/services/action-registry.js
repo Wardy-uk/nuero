@@ -221,6 +221,38 @@ const ACTION_TYPES = Object.freeze({
     execution: 'week not already sent, no newer version of the report prepared, same recipient, Nick has not sent it by hand since',
     label: 'Send the weekly risk report',
   }),
+  // 15 Oct 2026. The SOAP debrief to Ricky and Chris, sent ONLY when Nick is on
+  // leave on the Monday. He approves the Friday 16:00 PROVISIONAL — that exact
+  // HTML is what is sent (hashed, frozen like the weekly risk report), at
+  // `notBefore` (Monday 08:00), and only if the Monday final's VERDICTS still
+  // match the ones bound here. A changed verdict, or a final that could not read
+  // a verdict source, holds it: the report he approved is no longer true.
+  // The approval has to survive the weekend, hence the 72-hour lifetimes.
+  send_soap_report: Object.freeze({
+    type: 'send_soap_report',
+    authority: 'A4',
+    requiresApproval: true,
+    executable: true,
+    executor: 'microsoft.mail',
+    verification: 'sent-items',
+    channel: 'email',
+    retryPolicy: 'human-review',
+    uncertaintyPolicy: 'verify-only',
+    approvalTtlHours: 72,
+    preparedTtlHours: 72,
+    maxRecipients: 2,
+    targetIsRecipient: false,
+    cc: false,
+    attachments: false,
+    sendMode: 'new-message',
+    bodyFormat: 'html',
+    editable: false,
+    notEditableWhy: 'the report is generated — change it on the SOAP page and queue it again, which prepares a new version',
+    duplicate: 'one live send per report week',
+    preparation: 'the SOAP page\'s Queue send on a provisional: nothing left to write, both recipients resolved',
+    execution: 'not before Monday 08:00; the Monday final exists, read every verdict source, and has the same verdicts; not already sent by hand',
+    label: 'Send the SOAP report',
+  }),
   // ── Build 11K: calendar changes that reach other people ──────────────────
   //
   // Creating, moving or cancelling an event WITH ATTENDEES makes Graph email
@@ -485,6 +517,10 @@ function bindFor(actionType, target, draft) {
   if (actionType === 'compose_email') return { mailbox: t.mailbox || 'work' };
   if (actionType === 'send_weekly_risk_report') {
     return { week: t.week || null, reportVersion: t.reportVersion || null, htmlHash: d.html ? sha256(String(d.html)) : null };
+  }
+  // The week, the verdicts the send is held on, when it may go, and the exact HTML.
+  if (actionType === 'send_soap_report') {
+    return { weekFrom: t.weekFrom || null, verdictHash: t.verdictHash || null, notBefore: t.notBefore || null, htmlHash: d.html ? sha256(String(d.html)) : null };
   }
   // Build 11K: everything an attendee will see, or that decides which event
   // changes. Times are wall-clock in the stated zone, compared as strings.

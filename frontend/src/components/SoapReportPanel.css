@@ -1,0 +1,39 @@
+/* SOAP report screen. Amber and red are said in words as well as by edge colour. */
+
+.soap-panel { padding: 16px; max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; color: var(--text-primary); }
+.soap-top h1 { margin: 0; font-size: 1.3rem; }
+.soap-hint, .soap-meta { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
+.soap-error { color: var(--danger); margin: 0; }
+.soap-note { margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-secondary); font-size: 0.9rem; }
+
+.soap-body { display: flex; flex-direction: column; gap: 12px; }
+.soap-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.soap-head h2 { margin: 0; font-size: 1.1rem; }
+.soap-actions, .soap-foot { display: flex; flex-wrap: wrap; gap: 8px; }
+.soap-btn { background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; font: inherit; font-size: 0.85rem; }
+.soap-btn--primary { background: var(--accent); color: var(--bg-primary); }
+.soap-btn:disabled { opacity: 0.55; cursor: default; }
+
+.soap-banner { border: 1px solid var(--warning); border-left-width: 3px; border-radius: var(--radius-sm); padding: 10px 12px; background: var(--bg-secondary); font-size: 0.9rem; }
+
+.soap-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.soap-section--amber { border-left: 3px solid var(--warning); }
+.soap-section--red { border-left: 3px solid var(--danger); }
+.soap-section h3 { margin: 0 0 8px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.soap-section ul, .soap-section ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.soap-section p { margin: 0 0 6px; font-size: 0.9rem; }
+.soap-section label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; }
+.soap-section textarea { width: 100%; box-sizing: border-box; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font: inherit; font-size: 0.9rem; resize: vertical; }
+.soap-red { padding: 8px 0; border-top: 1px solid var(--border); }
+.soap-red:first-of-type { border-top: 0; padding-top: 0; }
+
+.soap-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.soap-table th, .soap-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.soap-table th { color: var(--text-secondary); font-weight: 600; }
+
+.soap-gap { color: var(--warning); font-size: 0.88rem; margin: 0; }
+.soap-gaps { border: 1px solid var(--warning); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.85rem; }
+.soap-gaps ul { margin: 4px 0; padding-left: 18px; }
+.soap-gaps p { margin: 4px 0 0; }
+.soap-blockers { margin: 0; padding-left: 18px; color: var(--warning); font-size: 0.85rem; }
+.soap-empty { display: flex; flex-direction: column; gap: 8px; }

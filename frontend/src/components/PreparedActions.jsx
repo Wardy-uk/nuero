@@ -79,6 +79,7 @@ const TYPE_WORDS = {
   compose_email: 'New email',
   chase_agenda: 'Ask an organiser for the agenda',
   send_weekly_risk_report: 'Weekly risk report',
+  send_soap_report: 'SOAP report',
   create_calendar_event: 'Calendar invite',
   reschedule_calendar_event: 'Move a meeting',
   cancel_calendar_event: 'Cancel a meeting',
@@ -178,7 +179,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
   // The weekly report is generated: it is regenerated on its panel, never
   // hand-edited here (that would break the markdown/HTML the approval binds).
   const calendar = CALENDAR_TYPES.has(type);
-  const editable = type !== 'send_weekly_risk_report' && !calendar;
+  const editable = type !== 'send_weekly_risk_report' && type !== 'send_soap_report' && !calendar;
   const d = action.draft || {};
   const canEditFailed = editable && action.status === 'failed' && action.retrySafe === true;
   const direct = !!onSendDirect && sends && DIRECT_ORIGINS.has(action.origin);
@@ -240,6 +241,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
         {type === 'reply_email' && ev.recipientsFrom && <div className="ap-field"><dt>Recipients from</dt><dd>{ev.recipientsFrom}</dd></div>}
         {type === 'chase_agenda' && <div className="ap-field"><dt>Meeting</dt><dd>{t.subject} · {String(t.start || '').slice(0, 16).replace('T', ' ')}</dd></div>}
         {type === 'send_weekly_risk_report' && <div className="ap-field"><dt>Report</dt><dd>w/c {t.week} · version {t.reportVersion}{t.snapshotDate ? ` · data as at ${t.snapshotDate}` : ''}{t.recipientSource === 'manual' ? ' · address typed by hand' : ''}</dd></div>}
+        {type === 'send_soap_report' && <div className="ap-field"><dt>Report</dt><dd>w/c {t.weekFrom} · provisional · sends {t.notBefore ? new Date(t.notBefore).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Monday 08:00'} — held if Monday's full-week verdicts differ</dd></div>}
         {ev.finding?.summary && <div className="ap-field"><dt>Why now</dt><dd>{ev.finding.summary}</dd></div>}
         {ev.progress?.state && <div className="ap-field"><dt>Progress seen</dt><dd>{ev.progress.state === 'no_evidence' ? 'nothing suggests it moved (your sent mail was checked)' : ev.progress.state}</dd></div>}
         {open && action.expiresAt && <div className="ap-field"><dt>Expires</dt><dd>{new Date(action.expiresAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</dd></div>}
@@ -276,7 +278,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
             {sends && calendar
               ? <>This makes <strong>exactly the calendar change above</strong> as you — Microsoft tells <span className="mono">{who}</span> — then reads the event back to confirm it. It is never done twice.</>
               : sends
-                ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
+                ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' || type === 'send_soap_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
                 : 'This records your approval. Nothing will be sent.'}
           </p>
           <label className="pa-code">

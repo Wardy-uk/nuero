@@ -276,7 +276,7 @@ const TOKEN = { 'x-neuro-api-token': 'tok' };
 test('1. all four outbound email types are registered, executable, A4, verified in Sent Items, with a per-type policy', () => {
   // Build 11K added the three calendar types; the four EMAIL types are unchanged.
   // 12 Oct 2026: + compose_email (Personal inbox → Compose), held to the same rules.
-  const EMAIL_TYPES = ['chase_commitment', 'reply_email', 'compose_email', 'chase_agenda', 'send_weekly_risk_report'];
+  const EMAIL_TYPES = ['chase_commitment', 'reply_email', 'compose_email', 'chase_agenda', 'send_weekly_risk_report', 'send_soap_report'];
   assert.deepEqual(registry.executableTypes().filter((t) => registry.policyFor(t).executor === 'microsoft.mail'), EMAIL_TYPES);
   assert.deepEqual(registry.validateRegistry(), []);
   for (const t of EMAIL_TYPES) {

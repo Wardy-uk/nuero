@@ -3385,6 +3385,19 @@ CREATE TABLE IF NOT EXISTS briefings (
   UNIQUE (kind, date_key)
 );
 
+-- The SOAP report (15 Oct 2026, services/soap-report.js). One row per week and
+-- kind: the Friday provisional and the Monday final describe the SAME Mon–Sun
+-- week. Rebuilding overwrites; Nick's words live in agent_state (soap_manual:).
+CREATE TABLE IF NOT EXISTS soap_reports (
+  week_from     TEXT NOT NULL,
+  kind          TEXT NOT NULL CHECK (kind IN ('provisional', 'final')),
+  week_to       TEXT NOT NULL,
+  generated_at  TEXT NOT NULL,
+  data_json     TEXT NOT NULL,
+  verdict_hash  TEXT NOT NULL,
+  PRIMARY KEY (week_from, kind)
+);
+
 -- Personal-mailbox outbox (12 Oct 2026). The SMTP "draft": a message composed
 -- and given its Message-ID BEFORE anything is sent, so every outcome after
 -- that (accepted, refused, timed out, process killed) can be checked against

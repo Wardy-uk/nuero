@@ -33,6 +33,7 @@ const TYPE_NOUN = {
   reply_email: 'reply',
   chase_agenda: 'agenda request',
   send_weekly_risk_report: 'weekly risk report',
+  send_soap_report: 'SOAP report',
 };
 
 const WHERE = 'Actions, in NEURO on the desktop';

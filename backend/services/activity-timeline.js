@@ -288,7 +288,7 @@ function fromSelfHeal(rows) {
 
 const TYPE_WORDS = {
   chase_commitment: 'a chase email', reply_email: 'an email reply', chase_agenda: 'an agenda request',
-  send_weekly_risk_report: 'the weekly risk report', create_calendar_event: 'a calendar invite',
+  send_weekly_risk_report: 'the weekly risk report', send_soap_report: 'the SOAP report', create_calendar_event: 'a calendar invite',
   reschedule_calendar_event: 'a meeting move', cancel_calendar_event: 'a meeting cancellation',
 };
 function _typeWords(t) { return TYPE_WORDS[t] || t.replace(/_/g, ' '); }

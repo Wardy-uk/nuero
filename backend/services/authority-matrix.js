@@ -86,7 +86,7 @@ const CAPABILITIES = Object.freeze({
   'nova.121': { authority: 'A3', effect: 'NOVA 1-2-1 sessions / cadence / transcript candidates', machine: 'refuse', approval: 'click', registry: 'external-writes:nova.121', ledger: false, verification: 'morning reconcile', idempotent: true },
   'vesta.share': { authority: 'A3', effect: 'share a catalogue on VESTA (public internet, read by the household)', machine: 'refuse', approval: 'click', registry: null, ledger: false, verification: null, idempotent: true },
 
-  'email.send': { authority: 'A4', effect: 'email to another person as Nick', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:chase_commitment,reply_email,compose_email,chase_agenda,send_weekly_risk_report', ledger: true, verification: 'Sent Items match', idempotent: 'one attempt per approved version' },
+  'email.send': { authority: 'A4', effect: 'email to another person as Nick', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:chase_commitment,reply_email,compose_email,chase_agenda,send_weekly_risk_report,send_soap_report', ledger: true, verification: 'Sent Items match', idempotent: 'one attempt per approved version' },
   'calendar.attendee.create': { authority: 'A4', effect: 'invite other people as Nick', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:create_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
   'calendar.attendee.reschedule': { authority: 'A4', effect: 'move a meeting other people are in', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:reschedule_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
   'calendar.attendee.cancel': { authority: 'A4', effect: 'cancel a meeting other people are in', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:cancel_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
@@ -132,6 +132,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/email/triage/dismiss/:emailId', 'mail.read-state'),
   R('POST', '/api/waiting-on/:key/chase', 'email.send'),
   R('POST', '/api/weekly-risk/queue-send', 'email.send'),
+  R('POST', '/api/soap/:weekFrom/queue-send', 'email.send'),
   R('POST', '/api/weekly-risk/test-send', 'email.self'),
 
   // Calendar.
@@ -365,7 +366,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   actions: 'internal.state', attention: 'internal.state', activity: 'internal.state', adhd: 'internal.state', canonical: 'internal.state',
   chat: 'internal.state', 'day-plan': 'internal.state', email: 'internal.state', friction: 'internal.state', outcomes: 'internal.state',
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
-  'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
+  'weekly-risk': 'internal.state', soap: 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
   outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write',

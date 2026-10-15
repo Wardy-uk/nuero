@@ -72,6 +72,7 @@ const WeatherPanel = lazyLoad(() => import('./components/WeatherPanel'));
 const PersonalInboxPanel = lazyLoad(() => import('./components/PersonalInboxPanel'));
 const HikeSafetyPanel = lazyLoad(() => import('./components/HikeSafetyPanel'));
 const BriefingsPanel = lazyLoad(() => import('./components/BriefingsPanel'));
+const SoapReportPanel = lazyLoad(() => import('./components/SoapReportPanel'));
 const MedicalPanel = lazyLoad(() => import('./components/MedicalPanel'));
 const SetupWizard = lazyLoad(() => import('./components/SetupWizard'));
 const InsightsPanel = lazyLoad(() => import('./components/InsightsPanel'));
@@ -407,6 +408,7 @@ function AuthenticatedApp() {
       case 'weather': return <WeatherPanel />;
       case 'personal-inbox': return <PersonalInboxPanel />;
       case 'briefings': return <BriefingsPanel />;
+      case 'soap': return <SoapReportPanel />;
       case 'medical': return <MedicalPanel />;
       case 'setup': return <SetupWizard onNavigate={handleNavigate} />;
       case 'escalations': return <EscalationPanel />;

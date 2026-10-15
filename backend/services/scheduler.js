@@ -1413,6 +1413,59 @@ function start() {
       why: 'The Monday weekly briefing for the 09:00 tech leadership meeting: CSAT, SLAs, volumes, backlog, leaderboard, Friday SLM points.',
       run: async () => { await require('./briefings').run('weekly'); },
     });
+    // 15 Oct 2026: the SOAP report for Ricky and Chris (services/soap-report.js).
+    // Monday 07:00 the full-week final, every week, for the in-person debrief.
+    // Thursday and Friday 16:00 the leave check: Thursday warns, Friday builds the
+    // provisional for Nick to approve when he is off on the Monday. 08:30 Monday
+    // says once what happened to an approved send.
+    require('./runtime-jobs').defineJob({
+      name: 'soap-final',
+      cron: '0 7 * * 1',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 4 * 60 * 60 * 1000,
+      maxAttempts: 3,
+      backoffMs: [5 * 60 * 1000, 10 * 60 * 1000],
+      timeoutMs: 8 * 60 * 1000,
+      why: 'The SOAP report for last Monday–Sunday, ready before the Monday debrief and the check an approved Friday send is held on.',
+      run: async () => { await require('./soap-report').mondayFinal(); },
+    });
+    require('./runtime-jobs').defineJob({
+      name: 'soap-leave-thursday',
+      cron: '0 16 * * 4',
+      class: 'best-effort',
+      catchUp: 'latest',
+      maxLagMs: 3 * 60 * 60 * 1000,
+      maxAttempts: 2,
+      backoffMs: [10 * 60 * 1000],
+      timeoutMs: 2 * 60 * 1000,
+      why: 'Warns on Thursday that Nick is off on Monday and the provisional SOAP comes tomorrow.',
+      run: async () => { await require('./soap-report').thursdayCheck(); },
+    });
+    require('./runtime-jobs').defineJob({
+      name: 'soap-leave-friday',
+      cron: '0 16 * * 5',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 4 * 60 * 60 * 1000,
+      maxAttempts: 2,
+      backoffMs: [10 * 60 * 1000],
+      timeoutMs: 8 * 60 * 1000,
+      why: 'When Nick is off on Monday, builds the provisional SOAP for him to approve for sending.',
+      run: async () => { await require('./soap-report').fridayCheck(); },
+    });
+    require('./runtime-jobs').defineJob({
+      name: 'soap-outcome',
+      cron: '30 8 * * 1',
+      class: 'best-effort',
+      catchUp: 'latest',
+      maxLagMs: 4 * 60 * 60 * 1000,
+      maxAttempts: 2,
+      backoffMs: [10 * 60 * 1000],
+      timeoutMs: 60 * 1000,
+      why: 'Tells Nick once whether the SOAP he approved on Friday was sent or held, and why.',
+      run: async () => { require('./soap-report').mondayOutcome(); },
+    });
     // Build 21/27: the vehicle's daily pass. Since Build 27 it reads nothing outside NEURO (Tally's
     // figures arrive through finance-refresh); kept here, beside finance-refresh, where it always ran.
     require('./runtime-jobs').defineJob({

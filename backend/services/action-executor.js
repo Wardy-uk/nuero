@@ -101,6 +101,8 @@ const DEFAULT_DEPS = {
   markChased: (key, nowMs) => require('./waiting-on').markChased(key, { now: nowMs }),
   agendaAssess: (ev, nowMs) => require('./meeting-triage').assess(ev, { now: new Date(nowMs) }),
   reportLocked: (week) => require('./weekly-risk').isLocked(week),
+  // The Monday final the SOAP send is checked against (null = not built yet).
+  soapFinal: (weekFrom) => require('./soap-report').finalFor(weekFrom),
   // What a send leaves behind in NEURO's own records, per type. Never mutates a
   // commitment, task or world-model row: sending is not finishing (8F).
   recordReply: (a) => {
@@ -359,6 +361,38 @@ const PREFLIGHT = {
     if (!sent) return stopWith('sent-mail-unreadable', 'could not read Sent Items to check you have not sent it by hand', false);
     const subj = lc(action.draft && action.draft.subject);
     if ((sent.subjects || []).some((s) => lc(s) === subj)) return stopWith('already-emailed', 'you have already sent this report by hand since it was prepared');
+    return { ok: true };
+  },
+
+  // 15 Oct 2026: the SOAP report Nick approved on the Friday. It WAITS (not
+  // terminal) until Monday 08:00 and for the Monday final to be built; it is
+  // HELD (terminal) when the final read every verdict source and its verdicts
+  // differ, or when the final could not read one — the approved report would no
+  // longer be a true account of the week.
+  async send_soap_report(action, policy, d, nowMs) {
+    const t = action.target || {};
+    const other = _otherSent(action);
+    if (other) return stopWith('duplicate', `this week's SOAP report is already ${other.status} (${other.action_id})`);
+    const notBefore = Date.parse(t.notBefore);
+    if (!Number.isFinite(notBefore)) return stopWith('no-send-time', 'the approved send time is unreadable');
+    if (nowMs < notBefore) return stopWith('not-yet', `waiting until ${new Date(notBefore).toISOString().slice(0, 16).replace('T', ' ')} UTC`, false);
+    let final;
+    try { final = d.soapFinal(t.weekFrom); } catch { final = undefined; }
+    if (final === undefined) return stopWith('final-unreadable', 'could not read Monday\'s SOAP report to check the verdicts', false);
+    if (!final) {
+      if (nowMs - notBefore < 4 * HOUR) return stopWith('final-missing', 'Monday\'s full-week report has not been built yet', false);
+      return stopWith('final-missing', 'Monday\'s full-week report was never built, so the verdicts could not be checked');
+    }
+    if (final.verdictComplete === false) {
+      const missing = (final.gaps || []).filter((g) => g.verdict).map((g) => g.source).join(', ');
+      return stopWith('final-incomplete', `Monday's report could not read ${missing || 'a verdict source'}, so the verdicts could not be checked`);
+    }
+    if (final.verdictHash !== t.verdictHash) return stopWith('verdicts-changed', 'the full week changed the verdicts (success, star, amber or red) since you approved the Friday copy');
+    const to = (action.draft && action.draft.to) || [];
+    const sent = await d.mailApi.sentToSince(to[0] && to[0].email, action.createdAt);
+    if (!sent) return stopWith('sent-mail-unreadable', 'could not read Sent Items to check you have not sent it by hand', false);
+    const subj = lc(action.draft && action.draft.subject);
+    if ((sent.subjects || []).some((s) => lc(s).startsWith(subj))) return stopWith('already-emailed', 'you have already sent this report by hand since it was prepared');
     return { ok: true };
   },
 };
