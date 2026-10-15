@@ -116,10 +116,13 @@ function Tasks({ tasks, gap, today }) {
 
 const STATE_WORD = { home: 'In', out: 'Out', unknown: '?' };
 
+// Who's in and the outside reading live in the TOP BAR, which is otherwise
+// just a clock: the jobs list gets the whole side column instead of being
+// squeezed under two cards (Nick, 15 Oct 2026: use the width).
 function Who({ who }) {
   if (!who) return null;
   return (
-    <section className="wall__card" aria-label="Who's in">
+    <section className="wall__topcard" aria-label="Who's in">
       <h2 className="wall__h">Who&rsquo;s in</h2>
       {!who.known && <Gap>{who.why || "I can't see the house"} &mdash; that isn&rsquo;t the same as everyone being out.</Gap>}
       {Array.isArray(who.people) && who.people.length > 0 && (
@@ -142,18 +145,21 @@ const tendency = (w) => (/^rising/.test(w) ? `↑ ${w}` : /^falling/.test(w) ? `
 function Station({ station }) {
   if (!station) return null;
   return (
-    <section className="wall__card" aria-label="Weather station">
+    <section className="wall__topcard wall__topcard--station" aria-label="Weather station">
       <h2 className="wall__h">Outside</h2>
       {!station.known ? <Gap>{station.why || 'the weather station could not be read'}.</Gap> : (
-        <>
+        <div className="wall__station">
           <p className="wall__temp">{station.tempC != null ? `${station.tempC.toFixed(1)}°` : '—'}</p>
-          <dl className="wall__readings">
-            {station.humidityPct != null && (<><dt>Humidity</dt><dd>{station.humidityPct}%</dd></>)}
-            {station.pressureHpa != null && (<><dt>Pressure</dt><dd>{station.pressureHpa} hPa{station.tendency ? `, ${tendency(station.tendency)}` : ''}</dd></>)}
-          </dl>
-          {station.verdict && <p className="wall__verdict">{station.verdict}</p>}
-          {station.indoorLikely && <p className="wall__note">The sensor reads like it&rsquo;s indoors.</p>}
-        </>
+          <div className="wall__readings">
+            <p className="wall__reading">
+              {[station.humidityPct != null ? `${station.humidityPct}% humidity` : null,
+                station.pressureHpa != null ? `${station.pressureHpa} hPa${station.tendency ? ` ${tendency(station.tendency)}` : ''}` : null]
+                .filter(Boolean).join(' · ')}
+            </p>
+            {station.verdict && <p className="wall__verdict">{station.verdict}</p>}
+            {station.indoorLikely && <p className="wall__note">The sensor reads like it&rsquo;s indoors.</p>}
+          </div>
+        </div>
       )}
     </section>
   );
@@ -168,17 +174,19 @@ export function WallView({ data, now, error = null, onExit = null }) {
   return (
     <div className="wall">
       <header className="wall__top">
-        <div className="wall__clock">{`${hh}:${mm}`}</div>
-        <div className="wall__today">{`${DAYS_LONG[now.getDay()]} ${now.getDate()} ${MONTHS_LONG[now.getMonth()]}`}</div>
+        <div className="wall__when">
+          <div className="wall__clock">{`${hh}:${mm}`}</div>
+          <div className="wall__today">{`${DAYS_LONG[now.getDay()]} ${now.getDate()} ${MONTHS_LONG[now.getMonth()]}`}</div>
+        </div>
+        {data && can('house') && <Who who={data.who} />}
+        {data && can('house') && <Station station={data.station} />}
         {error && <div className="wall__stale" role="status">Can&rsquo;t reach home &mdash; showing what I last had.</div>}
         {onExit && <button className="wall__exit" onClick={onExit} aria-label="Leave wall view">⋯</button>}
       </header>
       {!data ? <p className="wall__loading">Getting things…</p> : (
-        <main className="wall__body">
+        <main className={`wall__body${can('calendar') ? '' : ' wall__body--nocal'}`}>
           {can('calendar') && <Week week={data.week} today={data.today} gap={gapFor('week')} />}
           <aside className="wall__side">
-            {can('house') && <Who who={data.who} />}
-            {can('house') && <Station station={data.station} />}
             <Tasks tasks={data.tasks} gap={gapFor('tasks')} today={data.today} />
           </aside>
         </main>

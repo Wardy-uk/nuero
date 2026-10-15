@@ -95,3 +95,33 @@
   -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent);
   mask-image: linear-gradient(to bottom, #000 82%, transparent);
 }
+
+/* ── Top bar holds the clock, who's in and outside ───────────────────────── */
+.wall__top { align-items: stretch; gap: 14px; }
+.wall__when { display: flex; flex-direction: column; justify-content: center; padding-right: 8px; }
+.wall__when .wall__today { font-size: 20px; margin-top: 4px; }
+.wall__topcard {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
+}
+.wall__topcard .wall__h { margin-bottom: 6px; }
+.wall__topcard--station { flex: 1; }
+.wall__station { display: flex; align-items: center; gap: 16px; }
+.wall__station .wall__temp { font-size: 44px; }
+.wall__readings { display: block; margin: 0; min-width: 0; }
+.wall__reading { margin: 0; font-size: 16px; }
+.wall__station .wall__verdict { margin: 2px 0 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wall__top .wall__exit { margin-left: 0; align-self: center; }
+.wall__top .wall__stale { margin-left: 0; align-self: center; }
+.wall__body--nocal { grid-template-columns: 1fr; }
+.wall__side .wall__card { flex: 1; }
+
+@media (max-width: 900px) {
+  .wall__top { flex-wrap: wrap; }
+}
+
+/* Read from across the room. */
+.wall__event { font-size: 17px; }
+.wall__time { font-size: 14px; }
+.wall__task { font-size: 20px; }
+.wall__taskmeta { font-size: 14px; }
