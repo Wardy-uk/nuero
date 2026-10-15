@@ -164,6 +164,17 @@ test('a missed 1-2-1 is found when nothing is upcoming', async (t) => {
   assert.strictEqual(r.event.id, 'MISSED', 'the most recent missed one, not the oldest');
 });
 
+test('the Plaud admin write-up block is never taken for the 1-2-1', async (t) => {
+  // Found live: the 13:30 admin block after Heidi's 13:00 1-2-1 was "found" instead.
+  const microsoft = require('./microsoft');
+  t.mock.method(microsoft, 'fetchCalendarEvents', async () => ([
+    { id: 'REAL', date: '2026-10-14', start: '2026-10-14T13:00:00', end: '2026-10-14T13:30:00', subject: '1-2-1 — Nick / Heidi', showAs: 'busy', attendees: [], isAllDay: false },
+    { id: 'ADMIN', date: '2026-10-14', start: '2026-10-14T13:30:00', end: '2026-10-14T13:35:00', subject: 'Plaud admin — 1-2-1 — Nick / Heidi', showAs: 'busy', attendees: [], isAllDay: false },
+  ]));
+  const r = await booking.findOneToOne('Heidi Power', { from: new Date('2026-10-15T09:00:00') });
+  assert.strictEqual(r.event.id, 'REAL');
+});
+
 test('an upcoming 1-2-1 still wins over a missed one', async (t) => {
   const microsoft = require('./microsoft');
   t.mock.method(microsoft, 'fetchCalendarEvents', async () => ([

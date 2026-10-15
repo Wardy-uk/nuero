@@ -617,6 +617,8 @@ async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS, lookb
   const all = (events || [])
     .filter(e => !['cancelled'].includes(String(e.showAs || 'busy').toLowerCase()))
     .filter(e => !e.isAllDay)
+    // The 5-minute "Plaud admin — 1-2-1 — …" write-up block is not the 1-2-1.
+    .filter(e => !/^plaud admin/i.test(String(e.subject || '')))
     .filter((e) => {
       const looks121 = ONE_TO_ONE_SUBJECT.test(String(e.subject || ''));
       const byEmail = attendee.email
