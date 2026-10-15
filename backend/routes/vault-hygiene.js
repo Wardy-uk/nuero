@@ -112,12 +112,12 @@ router.post('/fix/apply', (req, res) => {
   }
 });
 
-// POST /api/vault-hygiene/connect-orphans  { nova?, daily? }
+// POST /api/vault-hygiene/connect-orphans  { nova?, daily?, dryRun? } — dryRun previews and writes nothing
 router.post('/connect-orphans', (req, res) => {
   if (!requireVault(req, res)) return;
   try {
-    const { nova, daily } = req.body || {};
-    const r = hygiene.connectOrphans(VAULT_PATH, { nova, daily });
+    const { nova, daily, dryRun } = req.body || {};
+    const r = hygiene.connectOrphans(VAULT_PATH, { nova, daily, dryRun: dryRun === true });
     try {
       const hooks = require('../services/vault-hooks');
       for (const t of r.touched || []) hooks.onVaultWrite(path.join(VAULT_PATH, t), 'vault-hygiene-connect');

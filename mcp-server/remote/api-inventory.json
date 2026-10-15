@@ -13843,11 +13843,12 @@
     "domain": "vault-hygiene",
     "source": "routes/vault-hygiene.js",
     "line": 116,
-    "description": "POST /api/vault-hygiene/connect-orphans.   { nova?, daily? }",
+    "description": "POST /api/vault-hygiene/connect-orphans.   { nova?, daily?, dryRun? } — dryRun previews and writes nothing",
     "params": [],
     "query": [],
     "body": [
       "daily",
+      "dryRun",
       "nova"
     ],
     "queryOpen": false,

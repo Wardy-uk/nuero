@@ -140,21 +140,34 @@ const OPTIONS = [
     title: 'Suggest people aliases',
     effect: 'read',
     what: 'Looks for name variants that are probably the same person — a shortened first name, or a PLAUD mis-transcription like "Naomi Winkworth" for Naomi Wentworth.',
-    changes: 'Nothing. It writes a report of suggestions for you to accept by hand in Obsidian.',
-    wont: 'It adds no aliases. A name two people could claim, a first name the roster already finds ambiguous, and anyone else’s full name are all rejected rather than offered.',
-    note: 'Adding an alias is deliberately a human step: an alias that points at the wrong person silently misfiles everything they are mentioned in.',
+    changes: 'Nothing on its own. It writes a report and lists each suggestion here with an "Add alias" button — one person at a time, each confirmed against the exact line it would write.',
+    wont: 'It adds nothing by itself and there is no "add all". A name two people could claim, a first name the roster already finds ambiguous, and anyone else’s full name are refused at the write as well as at the suggestion.',
+    note: 'Adding an alias is deliberately a human step: an alias that points at the wrong person silently misfiles everything they are mentioned in. The write is one line into that person’s aliases:, and every other alias on the note is left untouched.',
     run: () => callJson('/api/vault-hygiene/alias-suggest?threshold=0.82'),
     summarise: (r) => `${r.count} suggestion${r.count === 1 ? '' : 's'}`,
+  },
+  {
+    key: 'orphanplan',
+    title: 'Preview orphan connections',
+    effect: 'read',
+    what: 'Works out which orphan notes the connect step would link, and to what — NOVA notes to their hub, daily notes into their date chain.',
+    changes: 'Nothing at all. No note, no backup, no changelog.',
+    wont: 'It writes nothing. The list is the exact selection the connect step runs, so what you see is what it would do.',
+    note: 'Orphans outside Projects/NOVA/ and Daily/ are not touched by the connect step — they are listed on the scan above, and the real fix for most of them is a contextual link or a proper name in Obsidian.',
+    run: () => post('/api/vault-hygiene/connect-orphans', { dryRun: true }),
+    summarise: (r) => `${r.nova} NOVA note${r.nova === 1 ? '' : 's'} to link · ${r.daily} daily note${r.daily === 1 ? '' : 's'} to chain`,
+    feeds: 'orphans',
   },
   {
     key: 'orphans',
     title: 'Connect orphan notes',
     effect: 'write',
     confirm: true,
+    requires: 'orphanplan',
     what: 'Takes notes nothing links to and connects them into the graph — NOVA notes to their hub, daily notes into their date chain.',
     changes: 'Edits real notes, appending a link under a marker it owns. Backed up to Scripts/.lint-backups/ first, with a changelog.',
     wont: 'It never invents a link to a person or a project. This is the fallback for notes no contextual match could reach, so the links it adds are structural, not semantic.',
-    note: 'Run "Scan the graph" first if you want to see which notes are orphaned and why.',
+    note: 'Confirmed against the preview’s numbers. If the vault has changed since, it connects what is true now, not what the preview listed.',
     run: () => post('/api/vault-hygiene/connect-orphans'),
     summarise: (r) => `${r.nova} linked to NOVA · ${r.daily} daily notes chained`,
   },
@@ -387,6 +400,14 @@ export default function BrainHealthPanel() {
               </div>
             )}
 
+            {option.key === 'orphanplan' && state.result && Array.isArray(state.result.planned) && (
+              <PlannedList planned={state.result.planned} />
+            )}
+
+            {option.key === 'alias' && state.result && Array.isArray(state.result.suggestions) && (
+              <AliasControls suggestions={state.result.suggestions} />
+            )}
+
             {state.error && (
               <div className="brain__result brain__result--err">
                 ✕ {state.error}
@@ -484,6 +505,99 @@ function LinkRepairControls({ plan, value, onChange }) {
           listed in the Fix Plan report.
         </div>
       )}
+    </div>
+  );
+}
+
+/** What the connect step would do, line by line — capped, with the rest counted. */
+function PlannedList({ planned }) {
+  if (!planned.length) return <div className="brain__picker-empty">Nothing to connect — the connect step would change no note.</div>;
+  const shown = planned.slice(0, 25);
+  return (
+    <div className="brain__picker">
+      <div className="brain__picker-h">Would link</div>
+      {shown.map(p => (
+        <div className="brain__guess" key={p.path} title={p.path}>
+          <span className="brain__guess-old">{basename(p.path)}</span>
+          <span className="brain__guess-arrow">→</span>
+          <span className="brain__guess-new">{p.kind === 'daily' ? `chain: ${p.link}` : p.link}</span>
+        </div>
+      ))}
+      {planned.length > shown.length && (
+        <div className="brain__picker-note">+{planned.length - shown.length} more.</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One suggestion, one write. Uses the People page's own alias door
+ * (/api/people-gap/alias) rather than a second writer: a dry run returns the
+ * literal frontmatter line, the confirm quotes it, and a refusal (someone
+ * else's name, an ambiguous first name) is printed as the answer, not a fault.
+ */
+function AliasControls({ suggestions }) {
+  const [rows, setRows] = useState({}); // candidate -> { busy, preview, done, refused, error }
+  const set = (c, v) => setRows(r => ({ ...r, [c]: { ...(r[c] || {}), ...v } }));
+
+  async function call(s, dryRun) {
+    set(s.candidate, { busy: true, error: null, refused: null });
+    try {
+      const res = await apiFetch('/api/people-gap/alias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person: s.person, alias: s.candidate, dryRun }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.status === 409) { set(s.candidate, { busy: false, refused: (data && data.reason) || 'refused' }); return; }
+      if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+      if (data.already) { set(s.candidate, { busy: false, preview: null, done: 'Already an alias — nothing written.' }); return; }
+      if (dryRun) { set(s.candidate, { busy: false, preview: data }); return; }
+      set(s.candidate, { busy: false, preview: null, done: `Written to ${data.path}` });
+    } catch (e) {
+      set(s.candidate, { busy: false, error: e.message });
+    }
+  }
+
+  if (!suggestions.length) return <div className="brain__picker-empty">No suggestions.</div>;
+  return (
+    <div className="brain__picker">
+      <div className="brain__picker-h">
+        Suggestions <span className="brain__h-note">— read the quote, then add only the ones that really are that person.</span>
+      </div>
+      {suggestions.map(s => {
+        const st = rows[s.candidate] || {};
+        return (
+          <div className="brain__alias" key={s.candidate}>
+            <div className="brain__guess">
+              <span className="brain__guess-old">{s.candidate}</span>
+              <span className="brain__guess-arrow">→</span>
+              <span className="brain__guess-new">{s.person}</span>
+              <span className="brain__guess-sim">{Math.round(s.score * 100)}%</span>
+              {!st.done && !st.refused && !st.preview && (
+                <button type="button" className="brain__run" disabled={st.busy} onClick={() => call(s, true)}>
+                  {st.busy ? '…' : 'Add alias…'}
+                </button>
+              )}
+            </div>
+            {s.sample && <div className="brain__alias-sample">“…{s.sample}…”</div>}
+            {st.preview && (
+              <div className="brain__confirm">
+                <div className="brain__confirm-line">
+                  Adds <code>{st.preview.line}</code> to <strong>{st.preview.path}</strong>.
+                </div>
+                <div className="brain__confirm-actions">
+                  <button type="button" className="brain__confirm-go" disabled={st.busy} onClick={() => call(s, false)}>Yes, add it</button>
+                  <button type="button" className="brain__confirm-no" onClick={() => set(s.candidate, { preview: null })}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {st.done && <div className="brain__result">✓ {st.done}</div>}
+            {st.refused && <div className="brain__result brain__result--err">Not added — {st.refused}.</div>}
+            {st.error && <div className="brain__result brain__result--err">✕ {st.error} <span className="brain__result-extra">Nothing was changed.</span></div>}
+          </div>
+        );
+      })}
     </div>
   );
 }

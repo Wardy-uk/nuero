@@ -414,3 +414,15 @@
 }
 
 .brain__result-extra--warn { color: var(--warning); }
+
+/* Alias suggestions — one row per suggestion, its evidence quoted beneath. */
+.brain__alias { padding: 2px 0; }
+.brain__alias .brain__guess { cursor: default; }
+.brain__alias .brain__run { margin-left: auto; }
+.brain__alias-sample {
+  padding: 0 6px 4px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.brain__alias code { font-size: 11px; }

@@ -1007,7 +1007,7 @@ const DAILY_NAV_MARKER = '<!-- daily-nav -->';
  *   B) Daily notes   → append a prev/next nav chain
  * Append-only, backs up each touched file, idempotent (marker-guarded).
  */
-function connectOrphans(root, { nova = true, daily = true } = {}) {
+function connectOrphans(root, { nova = true, daily = true, dryRun = false } = {}) {
   const files = walk(root);
   const notes = new Map(), idx = new Map();
   for (const f of files) {
@@ -1023,7 +1023,12 @@ function connectOrphans(root, { nova = true, daily = true } = {}) {
 
   const stamp = tsStamp();
   const backupDir = path.join(root, ...BACKUP_REL, stamp);
-  const append = (f, block) => {
+  // A preview runs the SAME selection and writes nothing — no backup, no
+  // changelog, no note — so what it lists is exactly what the run would do.
+  const planned = [];
+  const append = (f, block, kind, link) => {
+    planned.push({ path: rel(root, f), kind, link });
+    if (dryRun) return;
     const bk = path.join(backupDir, rel(root, f));
     ensureDir(path.dirname(bk));
     fs.copyFileSync(f, bk);
@@ -1041,7 +1046,7 @@ function connectOrphans(root, { nova = true, daily = true } = {}) {
       if (!rel(root, f).startsWith('Projects/NOVA/')) continue;
       if (!isOrphan(f)) continue;
       if (notes.get(f).text.includes('[[MOC - NOVA]]') || notes.get(f).text.includes(HUB_MARKER)) continue;
-      append(f, `\n${HUB_MARKER}\n_Part of [[MOC - NOVA]]_\n`);
+      append(f, `\n${HUB_MARKER}\n_Part of [[MOC - NOVA]]_\n`, 'nova', 'MOC - NOVA');
       novaCount++; touched.push(rel(root, f));
       log.push(`- NOVA link: \`${rel(root, f)}\``);
     }
@@ -1062,16 +1067,18 @@ function connectOrphans(root, { nova = true, daily = true } = {}) {
       else if (next) nav = `_[[${next}]] →_`;
       else if (prev) nav = `_← [[${prev}]]_`;
       else continue;
-      append(f, `\n${DAILY_NAV_MARKER}\n${nav}\n`);
+      append(f, `\n${DAILY_NAV_MARKER}\n${nav}\n`, 'daily', [prev, next].filter(Boolean).join(' / '));
       chainCount++; touched.push(rel(root, f));
     }
   }
+
+  if (dryRun) return { dryRun: true, nova: novaCount, daily: chainCount, planned, touched: [] };
 
   log.push('', `## Linked ${novaCount} NOVA orphans to [[MOC - NOVA]]`, `## Chained ${chainCount} Daily notes (prev/next)`, '', `_Backups: \`${rel(root, backupDir)}\`. Appends only; no note overwritten or deleted._`);
   ensureDir(path.join(root, ...REPORT_REL));
   const changelogPath = path.join(root, ...REPORT_REL, `Connect Changelog ${todayStr()}.md`);
   fs.writeFileSync(changelogPath, log.join('\n'), 'utf8');
-  return { nova: novaCount, daily: chainCount, touched, backupDir: rel(root, backupDir), changelogPath: rel(root, changelogPath) };
+  return { nova: novaCount, daily: chainCount, planned, touched, backupDir: rel(root, backupDir), changelogPath: rel(root, changelogPath) };
 }
 
 // ── Capability: graph config (.obsidian/graph.json) ─────────────────────────
