@@ -178,7 +178,7 @@ test('the registry knows send_soap_report: A4, two recipients, html, bound to ve
   assert.deepEqual(registry.validateRegistry(), []);
   const p = registry.policyFor('send_soap_report');
   assert.equal(p.authority, 'A4');
-  assert.equal(p.maxRecipients, 2);
+  assert.equal(p.maxRecipients, 3, 'Chris, Ricky and Liam');
   assert.ok(p.approvalTtlHours >= 66, 'a Friday 16:00 approval must survive to Monday 08:00 plus the hold window');
   const t = { weekFrom: '2026-10-12', verdictHash: 'a', notBefore: '2026-10-19T07:00:00.000Z' };
   const d = { to: [{ email: 'x@y.z' }], subject: 's', body: 'b', html: '<p>x</p>' };
@@ -259,3 +259,37 @@ test('the Monday build retries a verdict source that failed, and stops once it r
   assert.equal(r.verdictComplete, true);
   assert.equal(soap.finalFor(r.from).verdictComplete, true, 'the stored final is the complete one');
 });
+
+test('a sent week FREEZES: no rebuild, no edits, the sent words are shown; reopen unfreezes and keeps the record', async () => {
+  const wk = '2026-10-12';
+  const before = soap.view(wk, 'provisional');
+  assert.ok(before, 'the provisional stored by the routes test');
+  const r = soap.markSentByHand(wk, 'provisional', {});
+  assert.equal(r.ok, true);
+  assert.equal(r.sent.reportedByNick, true);
+  assert.equal(soap.isLocked(wk), true);
+  await assert.rejects(() => soap.build({ kind: 'provisional', now: FRIDAY, overrides: okOverrides() }), /frozen/);
+  const m = await post(`/api/soap/${wk}/manual`, { notes: 'late change' });
+  assert.equal(m.status, 409);
+  assert.equal((await post(`/api/soap/${wk}/mark-sent`, { kind: 'provisional' })).status, 409, 'cannot be sent twice');
+  const reo = await post(`/api/soap/${wk}/reopen`);
+  assert.equal(reo.status, 200);
+  assert.equal(soap.isLocked(wk), false);
+  assert.ok(soap.sentRecord(wk).reopenedAt, 'reopening keeps the fact that it was sent');
+});
+
+test('publish writes the note to the vault and records it', async () => {
+  const wk = '2026-10-12';
+  const r = await post(`/api/soap/${wk}/publish`, { kind: 'provisional' });
+  assert.equal(r.status, 200);
+  const abs = path.join(process.env.OBSIDIAN_VAULT_PATH, r.body.path);
+  assert.match(fs.readFileSync(abs, 'utf-8'), /^---\ntype: report\nreport: soap/);
+  assert.ok(soap.view(wk, 'provisional').published.publishedAt);
+});
+
+test('the executor records a governed send, so the page and Actions cannot disagree', () => {
+  const ex = require('./action-executor');
+  assert.match(require('fs').readFileSync(require.resolve('./action-executor'), 'utf-8'), /send_soap_report'\) \{\n\s+d\.recordSoap\(a\)/);
+  assert.ok(ex);
+});
+

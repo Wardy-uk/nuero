@@ -103,6 +103,10 @@ const DEFAULT_DEPS = {
   reportLocked: (week) => require('./weekly-risk').isLocked(week),
   // The Monday final the SOAP send is checked against (null = not built yet).
   soapFinal: (weekFrom) => require('./soap-report').finalFor(weekFrom),
+  recordSoap: (a) => require('./soap-report').markSent(a.target.weekFrom, {
+    actionId: a.actionId, kind: a.target.kind || 'provisional', subject: a.draft.subject, body: a.draft.body,
+    recipients: (a.draft.to || []).map((r) => r.name || r.email),
+  }),
   // What a send leaves behind in NEURO's own records, per type. Never mutates a
   // commitment, task or world-model row: sending is not finishing (8F).
   recordReply: (a) => {
@@ -548,6 +552,8 @@ function _recordChase(actionId, d, nowMs) {
       d.recordReply(a);
     } else if (a.actionType === 'send_weekly_risk_report') {
       d.recordReport(a);
+    } else if (a.actionType === 'send_soap_report') {
+      d.recordSoap(a);
     } else if (registry.isCalendarType(a.actionType)) {
       d.recordCalendar(a);
     }

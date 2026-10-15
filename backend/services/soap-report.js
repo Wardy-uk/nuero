@@ -1,12 +1,14 @@
 'use strict';
 
 /**
- * The SOAP report — the weekly debrief for Ricky and Chris (15 Oct 2026).
+ * The SOAP report — the weekly debrief for Chris, Ricky and Liam (15 Oct 2026).
  *
- * Nick's brief: a Monday-morning debrief, usually delivered in person, so it
- * must exist in NEURO before 08:00. When he is on annual leave on the Monday it
- * goes by email instead — and he approves THAT on the Friday, from a
- * provisional copy frozen at 17:00.
+ * Nick's brief: a Monday-morning debrief, emailed EVERY Monday (Nick, 15 Oct:
+ * "regardless of whether I'm off"). He approves it on the Friday from a
+ * provisional frozen at 17:00; it goes at 08:00 Monday if the full week's
+ * verdicts still match, and otherwise he approves the Monday final instead.
+ * A sent week FREEZES (the words that left are what the page shows) until he
+ * reopens it — the Weekly Risk report's rule.
  *
  * The ground rules the report follows (from the request it answers): commentary
  * strictly on the week's SUCCESS, the STAR of the week, what is turning AMBER
@@ -54,7 +56,9 @@ const AMBER_BAND = 20; // weekly-risk's rule: within 20 points of target is ambe
 const STAR_LIMIT_SUCCESS = 6;
 const WORST_CUSTOMERS = 5;
 const RECIPIENTS_KEY = 'soap_recipients';
-const DEFAULT_RECIPIENTS = Object.freeze(['Chris Middleton', 'Ricky Bostock']);
+const DEFAULT_RECIPIENTS = Object.freeze(['Chris Middleton', 'Ricky Bostock', 'Liam Sims']);
+const SENT_KEY = (weekFrom) => `soap_sent:${weekFrom}`;
+const PUBLISH_KEY = (weekFrom, kind) => `soap_published:${weekFrom}:${kind}`;
 const MANUAL_PREFIX = 'soap_manual:';
 const SEND_AT_HOUR = 8; // Monday 08:00
 
@@ -513,6 +517,10 @@ function list(limit = 12) {
 
 /** Build and store a report. The previous week's reds are carried in from its final (else its provisional). */
 async function build({ kind, now = new Date(), overrides = {} } = {}) {
+  const wk = weekFor(kind, now);
+  if (isLocked(wk.from)) {
+    throw Object.assign(new Error(`the week of ${wk.from} was sent and is frozen — reopen it to rebuild`), { status: 409 });
+  }
   const report = await gather({ kind, now, overrides });
   const prevFrom = addDays(report.from, -7);
   const prev = get(prevFrom, 'final') || get(prevFrom, 'provisional');
@@ -532,7 +540,130 @@ function view(weekFrom, kind) {
   const r = get(weekFrom, kind);
   if (!r) return null;
   const manual = getManual(weekFrom);
-  return { report: r, manual, markdown: render(r, manual), blockers: blockers(r, manual) };
+  const sent = sentRecord(weekFrom);
+  const locked = isLocked(weekFrom);
+  // A sent week shows the words that LEFT, not a re-render that could differ.
+  const markdown = locked && sent && sent.body ? sent.body : render(r, manual);
+  return {
+    report: r, manual, markdown, blockers: blockers(r, manual),
+    locked, sent: sentSummary(sent), published: publishedAt(weekFrom, kind),
+  };
+}
+
+// ── Publish, test, sent record (the Weekly Risk report's controls) ───────────
+
+/** Write the report to the vault, one note per week and kind. Publishing is not sending. */
+function publish(weekFrom, kind) {
+  const fs = require('fs');
+  const path = require('path');
+  const v = view(weekFrom, kind);
+  if (!v) return { ok: false, code: 404, error: 'no report for that week' };
+  const vault = process.env.OBSIDIAN_VAULT_PATH || '';
+  if (!vault) return { ok: false, code: 409, error: 'OBSIDIAN_VAULT_PATH is not set — nowhere to publish' };
+  const rel = path.join('Projects', 'SOAP Reports', `SOAP — w-c ${weekFrom}${kind === 'provisional' ? ' (provisional)' : ''}.md`);
+  const abs = path.join(vault, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  const fm = `---\ntype: report\nreport: soap\nweek: ${weekFrom}\nkind: ${kind}\n---\n`;
+  fs.writeFileSync(abs, fm + v.markdown + '\n', 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(abs, 'soap-report'); } catch { /* indexing is not worth failing a publish for */ }
+  const rec = { path: rel, publishedAt: new Date().toISOString() };
+  db.setState(PUBLISH_KEY(weekFrom, kind), JSON.stringify(rec));
+  return { ok: true, ...rec };
+}
+
+function publishedAt(weekFrom, kind) {
+  try { return JSON.parse(db.getState(PUBLISH_KEY(weekFrom, kind)) || 'null'); } catch { return null; }
+}
+
+const esc = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+/**
+ * Email Nick a copy to see how it lands. Takes NO recipient: email-sender's
+ * sendMail is self-only, so this cannot reach anyone else and needs no
+ * approval. Ignores the blockers on purpose, and says so in a banner.
+ */
+async function testSend(weekFrom, kind) {
+  const v = view(weekFrom, kind);
+  if (!v) return { ok: false, code: 404, error: 'no report for that week' };
+  const emailSender = require('./email-sender');
+  const names = recipientNames().join(', ');
+  const todo = v.blockers.length
+    ? `<div style="font-size:13px;color:#8a1c1c;margin-top:10px"><strong>Not finished — ${v.blockers.length} thing(s) to write:</strong><ul style="margin:6px 0 0;padding-left:20px">${v.blockers.map((b) => `<li>${esc(b)}</li>`).join('')}</ul></div>`
+    : '<div style="font-size:13px;color:#1a7f37;margin-top:10px">Everything is written — this is what they would receive.</div>';
+  const banner = `<div style="background:#fff4e5;border:1px solid #f0b429;border-radius:6px;padding:14px 16px;margin-bottom:20px">`
+    + `<div style="font-weight:700;font-size:14px;color:#8a5a00">TEST COPY — this did not go to ${esc(names)}</div>${todo}</div>`;
+  const md = v.locked ? v.markdown : render(v.report, v.manual, { forEmail: true });
+  const result = await emailSender.sendMail({
+    to: [{ name: 'Nick Ward', email: emailSender.OWN_ADDRESS }],
+    subject: `[TEST] SOAP — week of ${shortDate(weekFrom)}${kind === 'provisional' ? ' (provisional)' : ''}`,
+    body: require('./weekly-risk').toEmailHtml(md, banner),
+    html: true,
+  });
+  if (!result.sent) {
+    const reasons = { auth: 'Not signed in to Microsoft — reconnect 365.', scope: 'Mail.Send not granted — re-consent to Microsoft.', empty_body: 'The report body was empty.' };
+    return { ok: false, code: 502, error: reasons[result.reason] || `Send failed (${result.reason})` };
+  }
+  return { ok: true, to: emailSender.OWN_ADDRESS, unfinished: v.blockers.length };
+}
+
+function sentRecord(weekFrom) {
+  try { return JSON.parse(db.getState(SENT_KEY(weekFrom)) || 'null'); } catch { return null; }
+}
+
+/** Sent, and not since reopened. "Was it sent" never becomes untrue; "may it rebuild" can. */
+function isLocked(weekFrom) {
+  const r = sentRecord(weekFrom);
+  return Boolean(r && !r.reopenedAt);
+}
+
+/**
+ * Record a send. Called by the EXECUTOR after a governed send (so the Actions
+ * queue and this page cannot disagree), or by markSentByHand for a send Nick
+ * made himself, stamped as such. Never allowed to fail a send that has gone.
+ */
+function markSent(weekFrom, { actionId = null, recipients = [], subject = null, body = null, kind = null, sentAt = null, reportedByNick = false } = {}) {
+  try {
+    const existing = sentRecord(weekFrom);
+    const rec = {
+      weekFrom, kind, sentAt: sentAt || new Date().toISOString(), actionId, recipients, subject, body,
+      reportedByNick, sendCount: ((existing && existing.sendCount) || 0) + 1, reopenedAt: null,
+    };
+    db.setState(SENT_KEY(weekFrom), JSON.stringify(rec));
+    return rec;
+  } catch (e) {
+    console.warn('[SOAP] could not record the send:', e.message);
+    return null;
+  }
+}
+
+/** Nick sent it from Outlook: record it, freezing the words currently shown. Sends nothing. */
+function markSentByHand(weekFrom, kind, { sentAt = null } = {}) {
+  const v = view(weekFrom, kind);
+  if (!v) return { ok: false, code: 404, error: 'no report for that week' };
+  if (v.locked) return { ok: false, code: 409, error: 'that week is already recorded as sent', sent: v.sent };
+  const rec = markSent(weekFrom, {
+    kind, recipients: recipientNames(), subject: `SOAP — week of ${shortDate(weekFrom)}`,
+    body: render(v.report, v.manual, { forEmail: true }), sentAt, reportedByNick: true,
+  });
+  if (!rec) return { ok: false, code: 500, error: 'could not record the send' };
+  return { ok: true, sent: sentSummary(rec) };
+}
+
+function reopen(weekFrom) {
+  const r = sentRecord(weekFrom);
+  if (!r) return { ok: false, code: 409, error: 'that week has not been sent, so there is nothing to reopen' };
+  if (r.reopenedAt) return { ok: true, already: true, sent: sentSummary(r) };
+  const next = { ...r, reopenedAt: new Date().toISOString() };
+  db.setState(SENT_KEY(weekFrom), JSON.stringify(next));
+  return { ok: true, sent: sentSummary(next) };
+}
+
+function sentSummary(r) {
+  if (!r) return null;
+  return {
+    sentAt: r.sentAt, kind: r.kind || null, recipients: r.recipients || [], subject: r.subject || null,
+    sendCount: r.sendCount || 1, reopenedAt: r.reopenedAt || null, reportedByNick: !!r.reportedByNick, actionId: r.actionId || null,
+  };
 }
 
 // ── Recipients ───────────────────────────────────────────────────────────────
@@ -561,39 +692,26 @@ function resolveRecipients() {
   return { recipients: out, problems };
 }
 
-// ── Leave ────────────────────────────────────────────────────────────────────
-
-/** Is Nick off on the coming Monday? Manual leave flag first, then People HR via NOVA. */
-function offOnMonday(now = new Date()) {
-  const monday = addDays(mondayOf(ymd(now)), 7);
-  const [y, m, d] = monday.split('-').map(Number);
-  const at = new Date(y, m - 1, d, 9, 0, 0);
-  try {
-    const leave = require('./nudges').getLeave(at);
-    if (leave.onLeave) return { monday, off: true, known: true, source: 'manual', detail: `annual leave until ${leave.until}` };
-  } catch { /* fall through to People HR */ }
-  const av = require('./team-availability');
-  const mine = av.selfAbsenceOn(monday, av.snapshot(now));
-  return { monday, off: !!mine.off, known: !!mine.known, source: 'peoplehr', detail: mine.detail || mine.reason || null };
-}
-
 // ── Sending (prepares only — the executor sends) ─────────────────────────────
 
 /**
  * Freeze the provisional into a governed `send_soap_report` action. Refuses
  * while anything blocks it or a recipient cannot be resolved.
  */
-function queueSend(weekFrom, { now = Date.now() } = {}) {
-  const v = view(weekFrom, 'provisional');
-  if (!v) return { ok: false, code: 404, error: 'no provisional report for that week — build it first' };
+function queueSend(weekFrom, { kind = 'provisional', now = Date.now() } = {}) {
+  const v = view(weekFrom, kind);
+  if (!v) return { ok: false, code: 404, error: `no ${kind} report for that week — build it first` };
+  if (v.locked) return { ok: false, code: 409, error: 'that week is already sent — reopen it to send again' };
   if (v.blockers.length) return { ok: false, code: 409, error: 'the report is not finished', blockers: v.blockers };
   const { recipients, problems } = resolveRecipients();
   if (problems.length) return { ok: false, code: 409, error: 'a recipient cannot be resolved', blockers: problems };
   const markdown = render(v.report, v.manual, { forEmail: true });
   const html = require('./weekly-risk').toEmailHtml(markdown);
+  // A provisional waits for Monday 08:00; a final goes as soon as it is approved.
   return require('./prepared-actions').prepareSoapReport({
-    weekFrom, recipients, markdown, html, verdictHash: v.report.verdictHash,
-    notBefore: sendAtFor(weekFrom), subject: `SOAP — week of ${shortDate(v.report.from)}`, now,
+    weekFrom, kind, recipients, markdown, html, verdictHash: v.report.verdictHash,
+    notBefore: kind === 'provisional' ? sendAtFor(weekFrom) : new Date(now).toISOString(),
+    subject: `SOAP — week of ${shortDate(v.report.from)}`, now,
   });
 }
 
@@ -606,28 +724,21 @@ function _push(title, body) {
   }
 }
 
-/** Thursday 16:00: say early that Friday's provisional is coming. */
-async function thursdayCheck({ now = new Date() } = {}) {
-  const off = offOnMonday(now);
-  if (off.off) _push('SAiM — SOAP report', `You're off Monday (${off.detail || off.source}). The provisional SOAP will be frozen at 17:00 tomorrow for you to check and approve for sending to Ricky and Chris.`);
-  else if (!off.known) console.warn(`[SOAP] Thursday check could not tell whether Monday is a day off: ${off.detail}`);
-  return off;
-}
-
-/** Friday 17:00: when Nick is off Monday, freeze the provisional and ask (Nick approves at 17:00). */
-async function fridayCheck({ now = new Date() } = {}) {
-  const off = offOnMonday(now);
-  if (!off.off) {
-    if (!off.known) console.warn(`[SOAP] Friday check could not tell whether Monday is a day off: ${off.detail}`);
-    return { off, built: false };
-  }
+/**
+ * Friday 17:00, EVERY week (Nick, 15 Oct 2026: "send every Monday regardless"):
+ * freeze the provisional for Nick to approve. It goes at 08:00 Monday if the
+ * full week's verdicts still match.
+ */
+async function fridayFreeze({ now = new Date() } = {}) {
+  const wk = weekFor('provisional', now);
+  if (isLocked(wk.from)) return { built: false, reason: 'already sent' };
   const report = await build({ kind: 'provisional', now });
   const v = view(report.from, 'provisional');
   const todo = v.blockers.length;
   _push('SAiM — SOAP report', todo
-    ? `You're off Monday. The provisional SOAP is ready — ${todo} thing(s) to write before it can be queued for Monday 08:00.`
-    : `You're off Monday. The provisional SOAP is ready — check it, then Queue send and approve it in Actions.`);
-  return { off, built: true, blockers: todo };
+    ? `This week's SOAP is frozen — ${todo} thing(s) to write, then Queue send and approve it for Monday 08:00.`
+    : `This week's SOAP is frozen — check it, then Queue send and approve it for Monday 08:00.`);
+  return { built: true, blockers: todo };
 }
 
 /**
@@ -652,16 +763,21 @@ function mondayOutcome({ now = new Date() } = {}) {
   const weekFrom = weekFor('final', now).from;
   const a = db.get(`SELECT action_id, status, outcome_detail, last_block FROM prepared_actions WHERE action_type = 'send_soap_report'
                     AND commitment_id = ? ORDER BY created_at DESC LIMIT 1`, [`soap:${weekFrom}`]);
-  if (!a) return null;
   const key = `soap_outcome_told:${weekFrom}`;
   if (db.getState(key)) return a;
+  if (!a) {
+    if (isLocked(weekFrom)) return null; // sent by hand and recorded
+    _push('SAiM — SOAP report', 'No SOAP send was approved for this morning. Open the SOAP page: the full-week report is ready to Queue send and approve now.');
+    db.setState(key, new Date(now).toISOString());
+    return null;
+  }
   let msg = null;
-  if (['executed', 'verified'].includes(a.status)) msg = 'The SOAP report went to Ricky and Chris at 08:00.';
+  if (['executed', 'verified'].includes(a.status)) msg = `The SOAP report went to ${recipientNames().join(', ')}.`;
   else if (['cancelled', 'expired', 'failed'].includes(a.status)) {
     const prov = get(weekFrom, 'provisional');
     const fin = get(weekFrom, 'final');
     const diff = prov && fin ? verdictDiff(prov.verdicts, fin.verdicts) : [];
-    msg = `The SOAP report was NOT sent: ${a.outcome_detail || a.status}.${diff.length ? ` What changed — ${diff.join(' | ')}` : ''}`;
+    msg = `The SOAP report was NOT sent: ${a.outcome_detail || a.status}.${diff.length ? ` What changed — ${diff.join(' | ')}` : ''} The full-week report is ready to Queue send and approve now.`;
   }
   else if (a.status === 'approved') msg = `The SOAP report is approved but has not gone yet: ${a.last_block || 'waiting'}.`;
   else if (a.status === 'prepared') msg = 'The SOAP report was queued but never approved, so it was not sent.';
@@ -672,6 +788,6 @@ function mondayOutcome({ now = new Date() } = {}) {
 module.exports = {
   weekFor, sendAtFor, slaDaily, parseDue, initiatives, findingKey, slaLight, verdicts, verdictHash, verdictDiff,
   carriedForward, blockers, render, emptyManual, getManual, setManual, gather, build, get, finalFor, latest, list, view,
-  recipientNames, resolveRecipients, offOnMonday, queueSend, thursdayCheck, fridayCheck, mondayFinal, mondayOutcome,
+  recipientNames, resolveRecipients, queueSend, publish, publishedAt, testSend, sentRecord, isLocked, markSent, markSentByHand, reopen, sentSummary, fridayFreeze, mondayFinal, mondayOutcome,
   EXCLUDED_KINDS, AMBER_BAND, WORST_CUSTOMERS, DEFAULT_RECIPIENTS,
 };

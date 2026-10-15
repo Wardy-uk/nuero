@@ -1415,9 +1415,8 @@ function start() {
     });
     // 15 Oct 2026: the SOAP report for Ricky and Chris (services/soap-report.js).
     // Monday 07:00 the full-week final, every week, for the in-person debrief.
-    // Thursday 16:00 and Friday 17:00 the leave check: Thursday warns, Friday freezes the
-    // provisional for Nick to approve when he is off on the Monday. 08:30 Monday
-    // says once what happened to an approved send.
+    // Friday 17:00 every week the provisional is frozen for Nick to approve; it is
+    // sent at 08:00 Monday if the verdicts hold. 08:30 Monday says once what happened.
     require('./runtime-jobs').defineJob({
       name: 'soap-final',
       cron: '0 7 * * 1',
@@ -1431,19 +1430,7 @@ function start() {
       run: async () => { await require('./soap-report').mondayFinal(); },
     });
     require('./runtime-jobs').defineJob({
-      name: 'soap-leave-thursday',
-      cron: '0 16 * * 4',
-      class: 'best-effort',
-      catchUp: 'latest',
-      maxLagMs: 3 * 60 * 60 * 1000,
-      maxAttempts: 2,
-      backoffMs: [10 * 60 * 1000],
-      timeoutMs: 2 * 60 * 1000,
-      why: 'Warns on Thursday that Nick is off on Monday and the provisional SOAP comes tomorrow.',
-      run: async () => { await require('./soap-report').thursdayCheck(); },
-    });
-    require('./runtime-jobs').defineJob({
-      name: 'soap-leave-friday',
+      name: 'soap-friday-freeze',
       cron: '0 17 * * 5',
       class: 'freshness-sensitive',
       catchUp: 'latest',
@@ -1451,8 +1438,8 @@ function start() {
       maxAttempts: 2,
       backoffMs: [10 * 60 * 1000],
       timeoutMs: 8 * 60 * 1000,
-      why: 'When Nick is off on Monday, builds the provisional SOAP for him to approve for sending.',
-      run: async () => { await require('./soap-report').fridayCheck(); },
+      why: 'Freezes this week\'s provisional SOAP for Nick to approve; it goes at 08:00 Monday if the verdicts hold.',
+      run: async () => { await require('./soap-report').fridayFreeze(); },
     });
     require('./runtime-jobs').defineJob({
       name: 'soap-outcome',

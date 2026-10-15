@@ -37,3 +37,7 @@
 .soap-gaps p { margin: 4px 0 0; }
 .soap-blockers { margin: 0; padding-left: 18px; color: var(--warning); font-size: 0.85rem; }
 .soap-empty { display: flex; flex-direction: column; gap: 8px; }
+.soap-btn--done { border-color: var(--success); color: var(--success); }
+.soap-btn--sent { border-color: var(--warning); color: var(--warning); cursor: default; }
+.soap-btn--right { margin-left: auto; }
+.soap-preview { white-space: pre-wrap; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-family: var(--font-mono); font-size: 0.8rem; max-height: 480px; overflow: auto; margin: 0; }

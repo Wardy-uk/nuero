@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import './SoapReportPanel.css';
 
-// ── SOAP report — the Monday debrief for Ricky and Chris (15 Oct 2026) ─────
+// ── SOAP report — the Monday debrief for Chris, Ricky and Liam (15 Oct 2026) ─
 //
 // ⚠ THE SERVER DECIDES the verdicts (services/soap-report.js). This screen
 // renders them and collects the only things NEURO cannot know: what Nick will
@@ -31,9 +31,8 @@ function Gap({ text }) {
   return <p className="soap-gap">Not available — {text}</p>;
 }
 
-export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onBuild, onQueue }) {
+export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onBuild, onQueue, onPublish, onTest, onMarkSent, onReopen, preview, onPreview }) {
   const v = data.current;
-  const off = data.offMonday;
   const send = data.send;
   if (!v) {
     return (
@@ -48,25 +47,29 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
   }
   const r = v.report;
   const vd = r.verdicts;
+  const locked = !!v.locked;
+  const names = data.recipients.map((x) => x.name.split(' ')[0]).join(', ') || 'them';
   const g = r.gapsBySection || {};
   const setRed = (key, action) => setDraft((d) => ({ ...d, reds: { ...d.reds, [key]: { action } } }));
   const setCarried = (key, field, val) => setDraft((d) => ({ ...d, carried: { ...d.carried, [key]: { ...(d.carried[key] || {}), [field]: val } } }));
 
   return (
     <div className="soap-body">
-      {off && off.off && (
-        <div className="soap-banner" role="note">
-          You’re off on Monday {off.monday} ({off.detail || off.source}). Queue the provisional by Friday and approve it — it goes to Ricky and Chris at 08:00 Monday only if the full week’s verdicts match.
-        </div>
-      )}
-      {off && !off.known && <p className="soap-meta">Couldn’t tell whether you’re off on Monday: {off.detail}.</p>}
 
       <div className="soap-head">
         <h2>Week of {r.from} — {r.kind === 'provisional' ? `provisional, data to ${r.upTo}` : 'final'}</h2>
         <span className="soap-meta">Built {when(r.generatedAt)}</span>
       </div>
+      {locked && (
+        <div className="soap-banner" role="note">
+          Sent {v.sent ? new Date(v.sent.sentAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}{v.sent && v.sent.reportedByNick ? ' (recorded by you)' : ''}. This week is finished: what you see is what was sent, frozen, not a rebuild. Reopen it if something needs changing.
+        </div>
+      )}
+      {!locked && v.sent && v.sent.reopenedAt && (
+        <div className="soap-banner" role="note">Reopened after it was sent — the figures may no longer match what {names} received.</div>
+      )}
       <div className="soap-actions">
-        <button className="soap-btn" disabled={busy} onClick={() => onBuild(r.kind)}>Rebuild</button>
+        <button className="soap-btn" disabled={busy || locked} onClick={() => onBuild(r.kind)}>Rebuild</button>
         {r.kind === 'final' && <button className="soap-btn" disabled={busy} onClick={() => onBuild('provisional')}>Build this week so far</button>}
         {r.kind === 'provisional' && <button className="soap-btn" disabled={busy} onClick={() => onBuild('final')}>Build last week</button>}
       </div>
@@ -187,21 +190,28 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       )}
 
       <div className="soap-foot">
-        <button className="soap-btn soap-btn--primary" disabled={busy || !dirty} onClick={onSave}>{dirty ? 'Save your words' : 'Saved'}</button>
-        {r.kind === 'provisional' && (
-          <button className="soap-btn" disabled={busy || dirty || v.blockers.length > 0 || data.recipientProblems.length > 0} onClick={onQueue}>
-            Queue send for Monday 08:00
-          </button>
-        )}
+        <button className="soap-btn soap-btn--primary" disabled={busy || !dirty || locked} onClick={onSave}>{dirty ? 'Save' : 'Saved'}</button>
+        <button className={`soap-btn${v.published ? ' soap-btn--done' : ''}`} disabled={busy} onClick={onPublish}>{v.published ? '✓ Published to vault' : 'Publish to vault'}</button>
+        {locked
+          ? <span className="soap-btn soap-btn--sent">✓ Sent to {names}</span>
+          : <button className="soap-btn" disabled={busy || dirty || v.blockers.length > 0 || data.recipientProblems.length > 0} onClick={onQueue}>
+              {r.kind === 'provisional' ? 'Queue send for Monday 08:00' : 'Queue send now'}
+            </button>}
+        <button className="soap-btn" disabled={busy} onClick={onTest}>Test send to me</button>
+        <button className="soap-btn" disabled={busy} onClick={onPreview}>{preview !== null ? 'Hide preview' : 'Preview note'}</button>
+        {!locked && <button className="soap-btn" disabled={busy || dirty} onClick={onMarkSent}>I sent it myself</button>}
+        {locked && <button className="soap-btn soap-btn--right" disabled={busy} onClick={onReopen}>Reopen this week</button>}
       </div>
-      {r.kind === 'provisional' && v.blockers.length > 0 && (
+      {v.published && <p className="soap-meta">Published {new Date(v.published.publishedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} to {v.published.path}.</p>}
+      {preview !== null && <pre className="soap-preview">{preview}</pre>}
+      {!locked && v.blockers.length > 0 && (
         <ul className="soap-blockers">{v.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
       )}
       {data.recipientProblems.length > 0 && (
         <ul className="soap-blockers">{data.recipientProblems.map((b, i) => <li key={i}>Recipient — {b}</li>)}</ul>
       )}
       {data.recipients.length > 0 && <p className="soap-meta">Goes to {data.recipients.map((x) => `${x.name} <${x.email}>`).join(' and ')}.</p>}
-      {send && <p className="soap-meta">Send: <strong>{STATUS_WORDS[send.status] || send.status}</strong>{send.outcomeDetail ? ` — ${send.outcomeDetail}` : ''}</p>}
+      {send && <p className="soap-meta">Send ({send.target && send.target.kind === 'final' ? 'full week' : 'provisional'}): <strong>{STATUS_WORDS[send.status] || send.status}</strong>{send.outcomeDetail ? ` — ${send.outcomeDetail}` : ''}</p>}
     </div>
   );
 }
@@ -215,6 +225,7 @@ export default function SoapReportPanel() {
   const [saved, setSaved] = useState(asDraft(null));
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -229,6 +240,25 @@ export default function SoapReportPanel() {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const week = data && data.current && data.current.report.from;
+  const kind = data && data.current && data.current.report.kind;
+
+  const act = async (path, body, okNote) => {
+    setBusy(true); setNote(null);
+    try {
+      const j = await apiFetch(`/api/soap/${week}/${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+      }).then((r) => r.json());
+      if (!j.ok) throw new Error((j.blockers && j.blockers.join('; ')) || j.error || 'refused');
+      setNote(typeof okNote === 'function' ? okNote(j) : okNote);
+      await load();
+    } catch (e) { setNote(`Not done — ${e.message}`); }
+    setBusy(false);
+  };
+  const publish = () => act('publish', { kind }, (j) => `Published to ${j.path}.`);
+  const testSend = () => act('test-send', { kind }, (j) => `Test copy sent to ${j.to}${j.unfinished ? ` — ${j.unfinished} thing(s) still to write, the mail says so` : ''}.`);
+  const markSent = () => act('mark-sent', { kind }, 'Recorded as sent by you. The week is now frozen.');
+  const reopen = () => act('reopen', {}, 'Reopened — you can rebuild and send again.');
+  const togglePreview = () => setPreview(preview !== null ? null : (data.current && data.current.markdown) || '');
 
   const save = async () => {
     setBusy(true); setNote(null);
@@ -255,9 +285,13 @@ export default function SoapReportPanel() {
   const queue = async () => {
     setBusy(true); setNote(null);
     try {
-      const j = await apiFetch(`/api/soap/${week}/queue-send`, { method: 'POST' }).then((r) => r.json());
+      const j = await apiFetch(`/api/soap/${week}/queue-send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }),
+      }).then((r) => r.json());
       if (!j.ok) throw new Error((j.blockers && j.blockers.join('; ')) || j.error || 'not queued');
-      setNote(j.already ? 'Already queued — approve it in Actions.' : 'Queued. Approve it in Actions with your approval code; it goes at 08:00 Monday.');
+      setNote(j.already ? 'Already queued — approve it in Actions.' : kind === 'provisional'
+        ? 'Queued. Approve it in Actions with your approval code; it goes at 08:00 Monday if the verdicts hold.'
+        : 'Queued. Approve it in Actions with your approval code; it goes as soon as you approve.');
       await load();
     } catch (e) { setNote(`Not queued — ${e.message}`); }
     setBusy(false);
@@ -267,11 +301,12 @@ export default function SoapReportPanel() {
     <div className="soap-panel">
       <div className="soap-top">
         <h1>SOAP report</h1>
-        <p className="soap-hint">Monday debrief for Ricky and Chris: success, star, amber, red.</p>
+        <p className="soap-hint">Monday debrief for Chris, Ricky and Liam: success, star, amber, red. Frozen Friday 17:00, sent Monday 08:00 once you approve.</p>
       </div>
       {error && <p className="soap-error">Couldn’t load the SOAP report — {error}</p>}
       {note && <p className="soap-note" role="status">{note}</p>}
-      {data && <SoapReportView data={data} draft={draft} setDraft={setDraft} dirty={dirty} busy={busy} onSave={save} onBuild={build} onQueue={queue} />}
+      {data && <SoapReportView data={data} draft={draft} setDraft={setDraft} dirty={dirty} busy={busy} onSave={save} onBuild={build} onQueue={queue}
+        onPublish={publish} onTest={testSend} onMarkSent={markSent} onReopen={reopen} preview={preview} onPreview={togglePreview} />}
     </div>
   );
 }

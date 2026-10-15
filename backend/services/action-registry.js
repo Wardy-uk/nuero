@@ -221,8 +221,8 @@ const ACTION_TYPES = Object.freeze({
     execution: 'week not already sent, no newer version of the report prepared, same recipient, Nick has not sent it by hand since',
     label: 'Send the weekly risk report',
   }),
-  // 15 Oct 2026. The SOAP debrief to Ricky and Chris, sent ONLY when Nick is on
-  // leave on the Monday. He approves the Friday 16:00 PROVISIONAL — that exact
+  // 15 Oct 2026. The SOAP debrief to Chris, Ricky and Liam, every Monday. He
+  // approves the Friday 17:00 PROVISIONAL — that exact
   // HTML is what is sent (hashed, frozen like the weekly risk report), at
   // `notBefore` (Monday 08:00), and only if the Monday final's VERDICTS still
   // match the ones bound here. A changed verdict, or a final that could not read
@@ -240,7 +240,7 @@ const ACTION_TYPES = Object.freeze({
     uncertaintyPolicy: 'verify-only',
     approvalTtlHours: 72,
     preparedTtlHours: 72,
-    maxRecipients: 2,
+    maxRecipients: 3,
     targetIsRecipient: false,
     cc: false,
     attachments: false,
@@ -249,7 +249,7 @@ const ACTION_TYPES = Object.freeze({
     editable: false,
     notEditableWhy: 'the report is generated — change it on the SOAP page and queue it again, which prepares a new version',
     duplicate: 'one live send per report week',
-    preparation: 'the SOAP page\'s Queue send on a provisional: nothing left to write, both recipients resolved',
+    preparation: 'the SOAP page\'s Queue send (provisional for Monday 08:00, or the final to go now): nothing left to write, every recipient resolved',
     execution: 'not before Monday 08:00; the Monday final exists, read every verdict source, and has the same verdicts; not already sent by hand',
     label: 'Send the SOAP report',
   }),
@@ -520,7 +520,7 @@ function bindFor(actionType, target, draft) {
   }
   // The week, the verdicts the send is held on, when it may go, and the exact HTML.
   if (actionType === 'send_soap_report') {
-    return { weekFrom: t.weekFrom || null, verdictHash: t.verdictHash || null, notBefore: t.notBefore || null, htmlHash: d.html ? sha256(String(d.html)) : null };
+    return { weekFrom: t.weekFrom || null, kind: t.kind || 'provisional', verdictHash: t.verdictHash || null, notBefore: t.notBefore || null, htmlHash: d.html ? sha256(String(d.html)) : null };
   }
   // Build 11K: everything an attendee will see, or that decides which event
   // changes. Times are wall-clock in the stated zone, compared as strings.

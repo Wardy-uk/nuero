@@ -133,6 +133,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/waiting-on/:key/chase', 'email.send'),
   R('POST', '/api/weekly-risk/queue-send', 'email.send'),
   R('POST', '/api/soap/:weekFrom/queue-send', 'email.send'),
+  R('POST', '/api/soap/:weekFrom/test-send', 'email.self'),
   R('POST', '/api/weekly-risk/test-send', 'email.self'),
 
   // Calendar.

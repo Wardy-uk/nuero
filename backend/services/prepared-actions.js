@@ -1213,13 +1213,14 @@ function prepareWeeklyReport({ week, recipient, subject, markdown, html, snapsho
  * 08:00 it may not go before are bound into the hash. Queueing again with a
  * changed report supersedes a pending one and EXPIRES an approved one.
  */
-function prepareSoapReport({ weekFrom, recipients, subject, markdown, html, verdictHash, notBefore, now = Date.now() } = {}) {
+function prepareSoapReport({ weekFrom, kind = 'provisional', recipients, subject, markdown, html, verdictHash, notBefore, now = Date.now() } = {}) {
   const nowMs = msOf(now);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(weekFrom || ''))) return { ok: false, code: 400, error: 'no report week' };
   const to = (recipients || []).map((r) => ({ name: (r && r.name) || lcs(r && r.email), email: lcs(r && r.email) }));
   if (!to.length || to.some((r) => !EMAIL_RE.test(r.email))) return { ok: false, code: 409, error: 'no valid recipient addresses' };
   if (!String(markdown || '').trim() || !String(html || '').trim()) return { ok: false, code: 409, error: 'the report body is empty' };
-  if (!verdictHash || !notBefore || !(Date.parse(notBefore) > nowMs)) return { ok: false, code: 409, error: 'the send time has already passed' };
+  if (!verdictHash || !Number.isFinite(Date.parse(notBefore))) return { ok: false, code: 409, error: 'no send time' };
+  if (kind === 'provisional' && !(Date.parse(notBefore) > nowMs)) return { ok: false, code: 409, error: 'Monday 08:00 has passed — queue the final instead' };
   const reportVersion = shortSha(markdown);
   const subjectKey = `soap:${weekFrom}`;
   const live = _liveFor('send_soap_report', subjectKey);
@@ -1229,22 +1230,24 @@ function prepareSoapReport({ weekFrom, recipients, subject, markdown, html, verd
     if (['executing', 'executed', 'execution_uncertain'].includes(live.status)) {
       return { ok: false, code: 409, error: `this week's SOAP report is already ${live.status}`, action: shape(live) };
     }
-    if (lt.reportVersion === reportVersion && lt.verdictHash === verdictHash) return { ok: true, already: true, action: shape(live) };
+    if (lt.reportVersion === reportVersion && lt.verdictHash === verdictHash && (lt.kind || 'provisional') === kind) return { ok: true, already: true, action: shape(live) };
     supersede = live.status === 'approved'
       ? { ...live, how: 'expire', note: 'the report was regenerated after this was approved — its approval cannot send the new report' }
       : { ...live, note: 'replaced by a regenerated report' };
   }
   const names = to.map((r) => r.name).join(' and ');
-  const target = { kind: 'soap-report', weekFrom, reportVersion, verdictHash, notBefore, displayName: names };
+  const target = { kind, weekFrom, reportVersion, verdictHash, notBefore, displayName: names };
   const draft = {
     channel: 'email', voice: 'nick', format: 'html', generatedBy: 'soap-report.render (no model call)',
     to, subject, body: String(markdown), html: String(html), placeholders: [],
   };
-  const evidence = { origin: 'soap', weekFrom, reportVersion, verdictHash, notBefore };
+  const evidence = { origin: 'soap', kind, weekFrom, reportVersion, verdictHash, notBefore };
   try {
     const action = _insertPrepared({
       actionType: 'send_soap_report', subjectKey, findingId: subjectKey, subjectRef: subjectKey, target, draft, evidence,
-      origin: 'soap', reason: `SOAP report for w/c ${weekFrom}, to ${names} at Monday 08:00 — held if Monday's verdicts differ`,
+      origin: 'soap', reason: kind === 'provisional'
+        ? `SOAP report for w/c ${weekFrom}, to ${names} at Monday 08:00 — held if Monday's verdicts differ`
+        : `SOAP report for w/c ${weekFrom} (full week), to ${names} — sends on approval`,
       idemRoot: `soap:${weekFrom}:${reportVersion}:${new Date(nowMs).toISOString()}`, nowMs, supersede,
     });
     return { ok: true, already: false, action, superseded: supersede ? supersede.action_id : null };
