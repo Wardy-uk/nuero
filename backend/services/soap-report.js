@@ -6,7 +6,7 @@
  * Nick's brief: a Monday-morning debrief, usually delivered in person, so it
  * must exist in NEURO before 08:00. When he is on annual leave on the Monday it
  * goes by email instead — and he approves THAT on the Friday, from a
- * provisional copy built at 16:00.
+ * provisional copy frozen at 17:00.
  *
  * The ground rules the report follows (from the request it answers): commentary
  * strictly on the week's SUCCESS, the STAR of the week, what is turning AMBER
@@ -31,7 +31,7 @@
  * ── Provisional vs final ───────────────────────────────────────────────────
  *
  * Both describe the SAME Monday–Sunday week (`week_from`). The provisional is
- * built on the Friday at 16:00 from Monday-to-now; the final is built the
+ * built on the Friday at 17:00 from Monday-to-now; the final is built the
  * following Monday at 07:00 from the whole week. When Nick has approved the
  * provisional for sending, the executor sends EXACTLY what he approved at
  * 08:00 Monday — and only if the final's VERDICTS (success, star, ambers, reds)
@@ -332,7 +332,7 @@ function render(report, manual, { forEmail = false } = {}) {
     : `SOAP — week of ${shortDate(report.from)}–${shortDate(report.to)}`;
   L.push(`# ${title}`, '');
   if (report.kind === 'provisional' && forEmail) {
-    L.push('> Built on the Friday from Monday to Friday 16:00; the weekend is not in these figures. Sent on Monday only because the verdicts below were unchanged by the full week.', '');
+    L.push('> Built on the Friday from Monday to Friday 17:00; the weekend is not in these figures. Sent on Monday only because the verdicts below were unchanged by the full week.', '');
   }
 
   L.push('## ✅ Success', '');
@@ -609,12 +609,12 @@ function _push(title, body) {
 /** Thursday 16:00: say early that Friday's provisional is coming. */
 async function thursdayCheck({ now = new Date() } = {}) {
   const off = offOnMonday(now);
-  if (off.off) _push('SAiM — SOAP report', `You're off Monday (${off.detail || off.source}). The provisional SOAP will be ready at 16:00 tomorrow for you to check and approve for sending to Ricky and Chris.`);
+  if (off.off) _push('SAiM — SOAP report', `You're off Monday (${off.detail || off.source}). The provisional SOAP will be frozen at 17:00 tomorrow for you to check and approve for sending to Ricky and Chris.`);
   else if (!off.known) console.warn(`[SOAP] Thursday check could not tell whether Monday is a day off: ${off.detail}`);
   return off;
 }
 
-/** Friday 16:00: when Nick is off Monday, build the provisional and ask. */
+/** Friday 17:00: when Nick is off Monday, freeze the provisional and ask (Nick approves at 17:00). */
 async function fridayCheck({ now = new Date() } = {}) {
   const off = offOnMonday(now);
   if (!off.off) {

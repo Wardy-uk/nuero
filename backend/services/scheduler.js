@@ -1415,7 +1415,7 @@ function start() {
     });
     // 15 Oct 2026: the SOAP report for Ricky and Chris (services/soap-report.js).
     // Monday 07:00 the full-week final, every week, for the in-person debrief.
-    // Thursday and Friday 16:00 the leave check: Thursday warns, Friday builds the
+    // Thursday 16:00 and Friday 17:00 the leave check: Thursday warns, Friday freezes the
     // provisional for Nick to approve when he is off on the Monday. 08:30 Monday
     // says once what happened to an approved send.
     require('./runtime-jobs').defineJob({
@@ -1444,7 +1444,7 @@ function start() {
     });
     require('./runtime-jobs').defineJob({
       name: 'soap-leave-friday',
-      cron: '0 16 * * 5',
+      cron: '0 17 * * 5',
       class: 'freshness-sensitive',
       catchUp: 'latest',
       maxLagMs: 4 * 60 * 60 * 1000,
