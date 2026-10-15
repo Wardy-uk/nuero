@@ -161,7 +161,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             <ol>{r.customers.rows.map((c) => <li key={c.bcAccountNumber || c.name}><strong>{c.name}</strong>{c.why ? ` — ${c.why}` : ''}</li>)}</ol>
           </>
         ) : r.customers && (r.customers.status === 'none_qualify' || r.customers.status === 'stale')
-          ? <p className="soap-meta">No customer has an unhappy current ticket (Frustrated or worse){r.customers.stale ? ' (NOVA says this list is stale)' : ''}.</p>
+          ? <p className="soap-meta">No customer has 2 or more unhappy current tickets (Frustrated or worse){r.customers.stale ? ' (NOVA says this list is stale)' : ''}.</p>
           : <Gap text={g.customers || 'NOVA did not answer'} />}
       </section>
 
