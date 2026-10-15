@@ -154,8 +154,17 @@ async function _processWrite(relativePath, source) {
   //
   // ⚠ A GUARD, NOT AN EARLY RETURN — step 5 below still logs the write. An early
   // return here would silently stop the activity feed recording enrichment writes.
+  //
+  // ⚠ NOR ON A VAULT-HYGIENE WRITE (15 Oct 2026). ctx-link / fix / connect-orphans
+  // only add or repair LINKS, but they change the body, so the content-hash gate let
+  // every touched note through as "changed" — and those are old reference notes
+  // nothing had ever scanned (outside the 7-day window). One "Apply links" on
+  // 15 Oct raised 108 candidates from a July "Week 1 Plan" and eleven HR
+  // development plans. A link is not a commitment.
   if (source === 'knowledge-ai-enrichment') {
     console.log(`${tag} Skipped action candidates for ${relativePath} — enrichment writes NEURO's own sections`);
+  } else if (String(source || '').startsWith('vault-hygiene-')) {
+    console.log(`${tag} Skipped action candidates for ${relativePath} — a hygiene write only changes links`);
   } else try {
     const actionCandidates = require('./action-candidates');
     // ⚠ ExcludingNova, matching the nightly sweep (item 21). Without it a
