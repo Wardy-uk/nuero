@@ -204,3 +204,51 @@ test('accepting a non-build suggestion makes exactly one task, carrying why', ()
   assert.equal(rows.length, 1);
   assert.match(rows[0].text, /so NEURO can/);
 });
+
+// ── ruled out, already have, and the three places it surfaces ──────────────
+
+test('a ruled-out need is refused by the server, whatever the model says (the first live run named Strava)', () => {
+  const j = cap.judge(good({ need: { kind: 'integration', what: 'Export hikes to Strava', how: 'connect it' } }), EV);
+  assert.equal(j.ok, false);
+  assert.match(j.why, /Strava is ruled out/);
+  assert.equal(cap.judge(good({ title: 'Hike sweat correlation' }), EV).ok, false);
+});
+
+test('an open card a newer rule rules out is WITHDRAWN with the reason, never deleted', () => {
+  const items = [{ id: 'cap:a', status: 'open', title: 'x', need: { what: 'a Strava export' } }, { id: 'cap:b', status: 'open', title: 'y', need: { what: 'a bedroom sensor' } }];
+  const out = cap.withdrawRuledOut(items, '2026-10-15T08:00:00Z');
+  assert.equal(out[0].status, 'withdrawn');
+  assert.match(out[0].reason, /Strava/);
+  assert.equal(out[1].status, 'open');
+});
+
+test('the prompt says what NEURO already has and what is ruled out', () => {
+  const p = cap.buildPrompt({ evidence: [], decided: [], captured: [] });
+  assert.match(p, /ALREADY HAS/);
+  assert.match(p, /hike GPS tracks/);
+  assert.match(p, /Strava is ruled out/);
+});
+
+test('the Monday brief offers ONE open suggestion, as personal (never the work email), and only on a Monday', () => {
+  const gather = require('./briefing-gather');
+  const gaps = [];
+  const monday = gather.capabilities(new Date('2026-10-19T08:00:00'), gaps);
+  const open = cap.openSummary();
+  if (open.length) {
+    assert.equal(monday.length, 1);
+    assert.equal(monday[0].sphere, 'personal');
+    assert.equal(monday[0].kind, 'capability');
+  }
+  assert.deepEqual(gather.capabilities(new Date('2026-10-20T08:00:00'), gaps), []);
+  assert.deepEqual(gaps, []);
+});
+
+test('chat carries the open suggestions and is told to offer only those', () => {
+  const block = require('./claude')._internals.capabilityBlock();
+  if (cap.openSummary().length) {
+    assert.match(block, /on file in NEURO Health/);
+    assert.match(block, /never suggest a new capability that is not on this list/);
+  } else {
+    assert.equal(block, '');
+  }
+});

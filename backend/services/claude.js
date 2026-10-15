@@ -795,7 +795,24 @@ async function _buildChatPrompt(userMessage, mode, withTools = false) {
       + '. Say you could not look.']);
   }
 
-  return `${basePrompt}${withTools ? TOOL_PROMPT : ''}\n\n---\n${rightNowBlock()}\n\nCONTEXT:\n${systemContext}${houseBlock}`;
+  return `${basePrompt}${withTools ? TOOL_PROMPT : ''}\n\n---\n${rightNowBlock()}\n\nCONTEXT:\n${systemContext}${houseBlock}${capabilityBlock()}`;
+}
+
+// Capability suggestions on file ("I could do X, but I need Y"). Offered ONLY at
+// the moment she cannot answer, and only from this list — chat never invents a
+// new one; the weekly pass does that, under the usefulness test
+// (services/capability-gaps.js). Never allowed to fail the turn.
+function capabilityBlock() {
+  try {
+    const open = require('./capability-gaps').openSummary({ limit: 6 });
+    if (!open.length) return '';
+    return nlJoin(['', 'THINGS I COULD DO WITH SOMETHING NEW (on file in NEURO Health):',
+      ...open.map((o) => `- ${o.title}: I could ${o.unlocks} Needs: ${o.need}.`),
+      'If you cannot answer because NEURO lacks something and ONE of these covers it, say so in one sentence after your answer (e.g. "I could, with <the need> - it is on the list in NEURO Health."). Offer at most one, only when directly relevant, and never suggest a new capability that is not on this list.']);
+  } catch (e) {
+    console.warn('[Chat] could not read capability suggestions:', e.message);
+    return '';
+  }
 }
 
 /**
@@ -1039,5 +1056,5 @@ module.exports = {
   isConfigured,
   streamChat,
   syncChat,
-  _internals: { parseDecisions, rightNowBlock },
+  _internals: { parseDecisions, rightNowBlock, capabilityBlock },
 };

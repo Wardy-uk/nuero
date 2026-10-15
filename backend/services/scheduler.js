@@ -489,17 +489,18 @@ function start() {
     } catch (e) { console.error('[Scheduler] Nightly sweep failed:', e.message); }
   });
 
-  // Monday 8:20am — capability suggestions: "I could do X, but I need Y". One
-  // cloud call a week. Pushes ONCE, and only when something new passed the
+  // Monday 7:40am — capability suggestions: "I could do X, but I need Y". One
+  // cloud call a week, BEFORE the 08:00 brief so Monday's brief offers this
+  // week's top one. Pushes ONCE, and only when something new passed the
   // usefulness test — a weekly "nothing new" is noise.
-  scheduleWeekly('capability-suggestions', '20 8 * * 1', 1, 8, 20, async () => {
+  scheduleWeekly('capability-suggestions', '40 7 * * 1', 1, 7, 40, async () => {
     try {
       const r = await require('./capability-gaps').refresh();
       if (r.ok && r.added > 0) {
         require('./webpush').sendToAll(
           'SAiM — Things I could do for you',
           `${r.added} new idea${r.added === 1 ? '' : 's'} for what I could do, and what I'd need for it.`,
-          { type: 'capability_suggestions', url: '/?view=setup' }
+          { type: 'capability_suggestions', url: '/?view=pi-health' }
         ).catch(() => {});
       } else if (!r.ok) {
         console.warn(`[Scheduler] Capability suggestions: ${r.why}`);

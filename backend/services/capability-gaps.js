@@ -51,6 +51,28 @@ const EFFORTS = ['small', 'medium', 'large'];
 // / `captured` are context — a sensor being stale is not, by itself, a reason
 // he would want anything.
 const PERSONAL_KINDS = ['goal', 'profile', 'health', 'asked', 'miss'];
+// What NEURO ALREADY HAS. The first live run (13 Oct 2026) suggested capturing
+// hikes with "Apple Watch GPS + heart rate" — which NEURO already does — so the
+// model is told, and a suggestion whose NEED is one of these is pointless.
+// Update this list when a new source lands.
+const ALREADY_HAVE = [
+  'Apple Watch: heart rate, HRV, sleep stages, VO2 max, stand, workouts — and hike GPS tracks via the NEURO iOS app',
+  'HiLo cuffless blood-pressure bracelet (via Apple Health)',
+  'MyFitnessPal food logging (via Apple Health); weigh-ins via Apple Health',
+  'Life360 location for Nick; Ember (the dog) has a Tractive GPS tracker',
+  'Home Assistant: lights, Hive heating with a temperature sensor on every radiator, presence, BLE room sensors',
+  'A Blue Maestro portable temperature/humidity/pressure logger, and an outdoor weather station',
+  'Desktop activity agent on the Windows laptop (foreground app); RescueTime',
+  'Plaud meeting recorder; Outlook calendar/mail; Jira; iPhone calendar and reminders; Tally finance',
+  'Car journeys from Life360, with Nick approving each one',
+];
+// What Nick has RULED OUT, with why. Enforced by judge(), not just stated:
+// the first live run recommended exporting to Strava anyway.
+const RULED_OUT = [
+  { re: /\bstrava\b/i, why: 'Strava is ruled out — its API is paywalled' },
+  { re: /\bsweat\b/i, why: 'no consumer wearable measures sweat — an invented sensor' },
+];
+
 const MAX_SUGGESTIONS_PER_RUN = 8;
 const MAX_OPEN = 20;
 const MAX_KEPT_DECIDED = 60;
@@ -95,6 +117,8 @@ function judge(raw, evidenceById) {
   if (!changes) return { ok: false, why: `"${title}": does not say what you would do differently` };
   if (!NEED_KINDS.includes(kind)) return { ok: false, why: `"${title}": need kind "${need.kind}" is not one of ${NEED_KINDS.join('/')}` };
   if (!what) return { ok: false, why: `"${title}": does not say what is needed` };
+  const ruled = ruledOutBy({ title, need: { what, how: need.how } });
+  if (ruled) return { ok: false, why: `"${title}": ${ruled}` };
   const anchors = [...new Set((Array.isArray(raw.anchors) ? raw.anchors : []).map(String))];
   if (!anchors.length) return { ok: false, why: `"${title}": cites no evidence` };
   const unknown = anchors.filter((id) => !evidenceById.has(id));
@@ -111,6 +135,26 @@ function judge(raw, evidenceById) {
       anchorText: anchors.map((id) => ({ id, kind: evidenceById.get(id).kind, text: clip(evidenceById.get(id).text, 200) })),
     },
   };
+}
+
+/** Why a suggestion is ruled out, or null. Checks the title and the need. PURE. */
+function ruledOutBy(s) {
+  const hay = `${s.title || ''} ${(s.need && s.need.what) || ''} ${(s.need && s.need.how) || ''}`;
+  const hit = RULED_OUT.find((r) => r.re.test(hay));
+  return hit ? hit.why : null;
+}
+
+/**
+ * Withdraw OPEN suggestions that a rule added since now rules out. They are
+ * marked `withdrawn` with the reason, never deleted, so Nick can see why a card
+ * went. PURE.
+ */
+function withdrawRuledOut(items, now) {
+  return items.map((x) => {
+    if (x.status !== 'open') return x;
+    const why = ruledOutBy(x);
+    return why ? { ...x, status: 'withdrawn', reason: why, decidedAt: now } : x;
+  });
 }
 
 /** Parse the model's answer. A truncated or unreadable answer is refused, never partially kept. PURE. */
@@ -179,6 +223,11 @@ function buildPrompt({ evidence, decided, captured }) {
   lines.push('1. anchors: cite evidence ids below. At least one must be a goal, profile, health, asked or miss item — something HE cares about. Never suggest a generic gadget ("a CO2 sensor would let me tell you to open a window") unless his own evidence points at it.');
   lines.push('2. unlocks: the specific thing NEURO could then tell him or do, that it cannot today.');
   lines.push('3. changes: what he would actually do differently with that. If nothing would change, drop the idea.');
+  lines.push('NEURO ALREADY HAS these — never suggest one of them as the need:');
+  for (const h of ALREADY_HAVE) lines.push(`- ${h}`);
+  lines.push('RULED OUT — never suggest:');
+  for (const r of RULED_OUT) lines.push(`- ${r.why}`);
+  lines.push('Only name real products and real capabilities that exist today. Never invent what a device measures.');
   lines.push('Prefer the cheapest need that unlocks it. Do not suggest anything already set up, already captured in the tracker, or already rejected for the same reason. Do not diagnose health conditions; a health anchor is a reason to measure, not a verdict.');
   lines.push('');
   lines.push('EVIDENCE (id — kind — text):');
@@ -310,6 +359,21 @@ function list() {
   return { ok: true, known: true, open, decided, lastRun: store.lastRun, needKinds: NEED_KINDS };
 }
 
+/**
+ * The open suggestions, short, for another surface to offer ONE at the right
+ * moment (chat when she cannot answer; the Monday briefing). A cheap KV read;
+ * an unreadable store returns [] — the offer is a nicety and must never cost
+ * the surface that carries it.
+ */
+function openSummary({ limit = 6 } = {}) {
+  try {
+    return load().items.filter((x) => x.status === 'open').slice(0, limit).map((x) => ({
+      id: x.id, title: x.title, kind: x.need && x.need.kind, need: x.need && x.need.what,
+      unlocks: x.unlocks, changes: x.changes, anchors: (x.anchorText || []).map((a) => a.kind),
+    }));
+  } catch { return []; }
+}
+
 let _running = false;
 
 /**
@@ -361,6 +425,7 @@ async function refresh({ now = new Date(), ask = null } = {}) {
     }
     if (refused.length) console.warn(`[CapabilityGaps] refused ${refused.length}: ${refused.join(' | ')}`);
     const merged = merge(store, judged, at);
+    merged.items = withdrawRuledOut(merged.items, at);
     const lastRun = {
       at, ok: true, why: null, gaps: pack.gaps,
       evidenceCount: pack.evidence.length,
@@ -416,7 +481,7 @@ function decide(id, { decision, reason = null, now = new Date() } = {}) {
 }
 
 module.exports = {
-  judge, fingerprint, anchorHash, parseProposals, merge, buildPrompt,
+  judge, ruledOutBy, withdrawRuledOut, ALREADY_HAVE, RULED_OUT, openSummary, fingerprint, anchorHash, parseProposals, merge, buildPrompt,
   gatherEvidence, list, refresh, decide,
   NEED_KINDS, PERSONAL_KINDS, DECISIONS, MISS_RE, STORE_KEY,
 };

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiUrl } from '../api';
 import { assessWorker } from '../../../shared/worker-health.cjs';
 import './PiHealthPanel.css';
+import CapabilityGaps from './CapabilityGaps';
 
 const REFRESH_MS = 10000;
 
@@ -362,6 +363,11 @@ export default function PiHealthPanel() {
       {/* Her senses FIRST. The Pi being warm has never been the interesting
           question — whether she can still see anything is. */}
       <SignalsSection />
+
+      {/* What she could do with senses and abilities she has not got yet —
+          the next question after "can she still see". Built from the same
+          evidence as Her senses, so it lives beside it. */}
+      <div className="ph-card"><CapabilityGaps /></div>
 
       {/* ---- FOCUS BAND: the verdict, then only what needs attention ---- */}
       <section className={`ph-focus ph-status-${overallStatus}`}>

@@ -383,6 +383,31 @@ async function weatherLine(today, gaps) {
  * Everything for one morning. `overrides` replaces any source by name — tests
  * use it so no gatherer touches a real system.
  */
+/**
+ * One "I could do X for you, with Y" suggestion (capability-gaps.js), MONDAYS
+ * only — a weekly thought, not a daily nag. Sphere `personal`, so it never rides
+ * the work-only email. Priority sits just above the bar on purpose: two "not
+ * useful" presses on this kind take it below, which is the briefing's own
+ * learning doing the job. An unreadable store proposes nothing and is named.
+ */
+function capabilities(now, gaps) {
+  if (now.getDay() !== 1) return [];
+  try {
+    const top = require('./capability-gaps').openSummary({ limit: 1 })[0];
+    if (!top) return [];
+    return [{
+      key: `capability:${top.id}`, kind: 'capability', sphere: 'personal', priority: 32,
+      title: `Something I could do for you: ${top.title}`,
+      detail: `${top.unlocks} Needs: ${top.need}.`,
+      why: top.changes || null,
+      source: 'capability suggestions', link: 'pi-health',
+    }];
+  } catch (e) {
+    gaps.push({ source: 'capability suggestions', why: e.message });
+    return [];
+  }
+}
+
 async function gatherDaily({ now = new Date(), overrides = {} } = {}) {
   const today = todayLocal(now);
   const gaps = [];
@@ -415,6 +440,7 @@ async function gatherDaily({ now = new Date(), overrides = {} } = {}) {
     ...use('commitments', () => commitments(gaps))(),
     ...use('radar', () => radar(now, today, gaps))(),
     ...use('health', () => health(now, today, gaps))(),
+    ...use('capabilities', () => capabilities(now, gaps))(),
   ];
   const weather = await use('weather', () => weatherLine(today, gaps))();
 
@@ -423,6 +449,6 @@ async function gatherDaily({ now = new Date(), overrides = {} } = {}) {
 
 module.exports = {
   gatherDaily, dayTypeFor, todayLocal, hhmm, fmtHours,
-  diary, tasks, escalations, urgentEmail, oneToOnes, teamOff, commitments, radar, health, weatherLine,
+  diary, tasks, escalations, urgentEmail, oneToOnes, teamOff, commitments, radar, health, capabilities, weatherLine,
   CORE_HEALTH_METRICS, withinLead,
 };
