@@ -159,8 +159,10 @@ async function buildContext(kind) {
     ctx.escalations = wm.unseenEscalationList || [];
     ctx.calendar = (wm.calendar || [])
       .filter(e => !e.is_all_day)
-      .slice(0, 8)
-      .map(e => ({ subject: e.subject, start: e.start_time }));
+      // 15 Oct 2026: was slice(0, 8) with start times only — Lunch was the
+      // 10th event of the day, so she never saw it, then misjudged it.
+      .slice(0, 20)
+      .map(e => ({ subject: e.subject, start: e.start_time, end: e.end_time }));
     ctx.plan = wm.ninetyDayPlan
       ? { day: wm.ninetyDayPlan.currentDay, done: wm.ninetyDayPlan.totalDone, total: wm.ninetyDayPlan.totalTasks }
       : null;
@@ -456,7 +458,9 @@ function _renderContext(ctx) {
     parts.push(`ESCALATIONS unanswered: ${ctx.escalations.slice(0, 4).map(e => `${e.key} (${e.summary})`).join('; ')}`);
   }
   if (ctx.calendar?.length) {
-    parts.push(`\nTODAY'S CALENDAR: ${ctx.calendar.map(e => `${new Date(e.start).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} ${e.subject}`).join(', ')}`);
+    // Times are SLICED out of the wall-clock string, never parsed (the BST rule).
+    const hm = (s) => (typeof s === 'string' && /T\d{2}:\d{2}/.test(s)) ? s.slice(11, 16) : '?';
+    parts.push(`\nTODAY'S CALENDAR (start-end; an event ending at 13:00 does NOT occupy 13:00): ${ctx.calendar.map(e => `${hm(e.start)}${e.end ? `-${hm(e.end)}` : ''} ${e.subject}`).join(', ')}`);
     parts.push(`(Meeting load is a real constraint — do not let him commit to more than the free time allows.)`);
   }
   if (ctx.musts?.length) {
@@ -503,7 +507,7 @@ Run it roughly like this, adapting to his answers:
 - If he says he is struggling, drop the process. Ask what is in the way. The ritual matters less than the answer.
 - Never guess a commitment key or task id — use the ones in the context.
 - A carried line marked [task #N] or [likely task #N] IS that task, not a new one. Pass its task_id to resolve_commitment, and name the task in passing ("that's #30, the Krista one") so he can say if it is not. If he says it is not, resolve it without task_id. Never call create_task for work that is already a task.
-- When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. If he names no start time, call check_diary for that day and offer him a real gap ("tomorrow 09:30-11:00 is free — want it there?"); book it only once he agrees.
+- When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. When he names a time, book it — do NOT judge clashes yourself; block_time and check_diary decide that, and an event that ENDS at a time does not occupy it (Lunch 12:00-13:00 leaves 13:00 free). Only push back if block_time refuses. If he names no start time, call check_diary for that day and offer him a real gap ("tomorrow 09:30-11:00 is free — want it there?"); book it only once he agrees.
 - You can see his calendar for the next fortnight through check_diary. Never say you don't have a day's calendar without calling it first.
 - When he wants a meeting WITH someone, get the title, time, length and who, then call create_meeting. It prepares the invite for him to approve in Actions with his approval code — say exactly that ("it's in Actions for you to approve"). Never say it is booked or sent, and never tell him you can't create invites. If a name does not resolve, ask him which person or for their address.
 - Never say something is booked, blocked or in the diary unless block_time came back ok. If it refused, tell him why in plain words.
