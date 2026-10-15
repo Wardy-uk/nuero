@@ -216,15 +216,17 @@ function _record(title, data, outcome, reason, sentCount = 0, failedCount = 0) {
  * that is the exact failure the push log was added to make visible.
  */
 /**
- * If `ref` names a recovery (`<key>:resolved`), resolve the open record for
- * `<key>`. Never throws — a recovery push must still go out.
+ * A recovery (`<key>:resolved`) resolves the open alert for `<key>`, and an
+ * alert resolves the open recovery notice for `<key>:resolved`. Never throws.
  */
 function _closeRecovered(lifecycle, type, ref) {
   try {
+    // Symmetric: an alert closes its old recovery notice too, or the SECOND
+    // "back to normal" for the same condition is "already notified" as well.
     const m = /^(.+):resolved$/.exec(String(ref || ''));
-    if (!m) return;
-    const row = db.getOpenAttentionRecord(lifecycle.dedupeKeyForPush(type, m[1]));
-    if (row) lifecycle.act(row.id, 'resolve', { resolution: 'gone', note: 'condition cleared' });
+    const other = m ? m[1] : `${ref}:resolved`;
+    const row = db.getOpenAttentionRecord(lifecycle.dedupeKeyForPush(type, other));
+    if (row) lifecycle.act(row.id, 'resolve', { resolution: 'gone', note: m ? 'condition cleared' : 'condition returned' });
   } catch (e) {
     console.warn('[WebPush] could not close the recovered alert:', e.message);
   }

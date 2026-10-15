@@ -1,4 +1,6 @@
-# attention-decision-v1 — one primary for every SAiM surface
+# attention-decision-v1 — SUPERSEDED
+
+> **Superseded 15 Oct 2026** by [saim-attention-policy-contract.md](saim-attention-policy-contract.md): NEURO supplies facts (`neuro-candidates-v1`), SAiM owns the judgement (`saim/policy/attention-policy.cjs`, `saim-attention-v1`). The code this described was removed before it shipped. Kept for the 17:11 trace and the reasoning.
 
 **Status:** defined in NEURO (`backend/services/attention-decision.js`), composed onto
 `GET /api/canonical/now` as `decision`. **No surface consumes it yet**, and it is **not

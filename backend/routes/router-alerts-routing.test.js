@@ -157,4 +157,9 @@ test('a watchdog recovery closes the alert it recovers from', async () => {
   resetGovernor();
   await alert();
   assert.equal(lastPush('sense_alert').outcome, PASSED, 'the next occurrence alerts again');
+
+  // ...and its recovery is announced again too.
+  resetGovernor();
+  await webpush.sendToAll('✅ Back: Home router', 'Reporting again.', { type: 'sense_alert', key: 'sense:router:resolved' });
+  assert.equal(lastPush('sense_alert').outcome, PASSED, 'the second recovery is announced');
 });

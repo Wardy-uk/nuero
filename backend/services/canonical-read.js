@@ -1300,7 +1300,7 @@ let _radarMemo = null;
 let _homeMemo = null;
 let _outdoorMemo = null;
 let _leisureMemo = null;
-async function now({ now: nowMs = Date.now(), decision = null, workOnly = false } = {}) {
+async function now({ now: nowMs = Date.now(), decision = null, workOnly = false, surface = null } = {}) {
   const gaps = [];
   let dec = decision;
   if (!dec) {
@@ -1406,17 +1406,28 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false 
     for (const k of WORK_ONLY_DROPPED) payload[k] = null;
     payload.workOnly = true;
   }
-  // 14 Oct 2026: ONE answer to what SAiM leads with (attention-decision-v1).
-  // Every surface is to render this rather than choose its own primary.
-  // Additive; never allowed to fail Now.
+  // 15 Oct 2026 — the attention contract (docs/saim-attention-policy-contract.md).
+  // TWO fields, two owners, never merged:
+  //   `candidates` — NEURO's facts and constraints (neuro-candidates-v1);
+  //   `saim`       — SAiM's judgement over them (saim-attention-v1), executed
+  //                  here for parity, owned by saim/policy. For one surface.
+  // Additive; neither is allowed to fail Now.
   try {
-    const ad = require('./attention-decision');
-    const live = ad.gather({ now: nowMs });
-    payload.decision = ad.decide(payload, live, { now: nowMs });
-    if (live.gaps.length) payload.decision.gaps = live.gaps;
+    const nc = require('./neuro-candidates');
+    const g = nc.gather({ now: nowMs });
+    payload.candidates = nc.compose(payload, g, g.facts, { now: nowMs });
   } catch (e) {
-    console.warn('[Canonical] attention decision failed:', e.message);
-    payload.decision = null;
+    console.warn('[Canonical] NEURO candidates failed:', e.message);
+    payload.candidates = null;
+  }
+  try {
+    payload.saim = payload.candidates
+      ? require('../../saim/policy/attention-policy.cjs').decide(payload.candidates, { surface: surface || 'work-desktop', now: nowMs })
+      : null;
+    if (payload.saim && !surface) payload.saim.surface.defaulted = true;
+  } catch (e) {
+    console.warn('[Canonical] SAiM attention policy failed:', e.message);
+    payload.saim = null;
   }
   try {
     payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });

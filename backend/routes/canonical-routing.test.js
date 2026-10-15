@@ -241,12 +241,19 @@ test('Now composition over real projection rows: cross-domain, decision verbatim
   assert.ok(!offIds.includes('commitment:task:figs'), 'off duty holds the management-log (work) one');
 });
 
-test('14 Oct 2026: /now carries ONE attention decision (attention-decision-v1) with a primary, context and a trace', async () => {
+test('15 Oct 2026: /now carries NEURO candidates and SAiM’s decision as SEPARATE fields, scoped by surface', async () => {
   const { status, json } = await get('/api/canonical/now');
   assert.equal(status, 200);
-  assert.ok(json.decision, 'decision present — null would mean the composition threw');
-  assert.equal(json.decision.contract, 'attention-decision-v1');
-  assert.ok(json.decision.primary && json.decision.primary.rule, 'the rule that chose the primary is named');
-  assert.ok(Array.isArray(json.decision.trace) && json.decision.trace.length >= 1);
-  assert.ok(json.decision.context && 'block' in json.decision.context);
+  assert.equal(json.candidates && json.candidates.contract, 'neuro-candidates-v1', 'null would mean composition threw');
+  assert.ok(Array.isArray(json.candidates.candidates));
+  assert.equal(json.saim && json.saim.contract, 'saim-attention-v1');
+  assert.equal(json.saim.owner, 'saim');
+  assert.equal(json.saim.surface.id, 'work-desktop');
+  assert.equal(json.saim.surface.defaulted, true);
+  assert.ok(json.saim.lead && json.saim.lead.rule);
+  assert.ok(!('lead' in json.candidates), 'NEURO’s field carries no judgement');
+  const home = await get('/api/canonical/now?surface=home-pi');
+  assert.equal(home.json.saim.scope.id, 'home');
+  const bad = await get('/api/canonical/now?surface=kitchen-toaster');
+  assert.equal(bad.status, 400);
 });
