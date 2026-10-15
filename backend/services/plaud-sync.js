@@ -419,6 +419,43 @@ function retryV2Enabled() {
   return String(process.env.PLAUD_SYNC_RETRY_V2 || '').toLowerCase() === 'true';
 }
 
+/**
+ * PLAUD_REPULL_V2 (15 Oct 2026, default OFF — its OWN switch, so the re-pull fixes never
+ * arrive implicitly with a deploy). On, a manual re-pull:
+ *   - writes INTO the note the recording already has (by plaud_id), so a second re-pull
+ *     is a no-op instead of a "<title> 2.md" twin;
+ *   - resolves a bare ledger id to PLAUD's of_ id (a bare id 404s — how the 7 Jul meeting
+ *     and 3cfce28 came to be recorded as failures);
+ *   - keys a failure by the canonical id and records the recording's date;
+ *   - clears that recording's pending/speaker holds once it is pulled;
+ *   - scopes the follow-up link pass to the notes it wrote (unscoped, it edited 5
+ *     unrelated notes on the live vault).
+ * Off, the re-pull behaves exactly as it did before 15 Oct 2026.
+ */
+function repullV2Enabled() {
+  return String(process.env.PLAUD_REPULL_V2 || '').toLowerCase() === 'true';
+}
+
+/** PURE. Recordings by id; with `canonical`, ALSO by canonical id (first listed wins). */
+function indexRecordings(recordings, { canonical = true } = {}) {
+  const byId = new Map();
+  for (const r of recordings || []) {
+    if (!r || !r.id) continue;
+    byId.set(r.id, r);
+    if (canonical) { const c = canonicalPlaudId(r.id); if (c && !byId.has(c)) byId.set(c, r); }
+  }
+  return byId;
+}
+
+/**
+ * PURE. The listed recording an id names. With `canonical`, a bare id finds its of_
+ * recording and an of_ id finds a bare one; an unlisted id comes back as itself, which
+ * PLAUD will answer for (or refuse) on its own.
+ */
+function resolveRecording(byId, id, { canonical = true } = {}) {
+  return byId.get(id) || (canonical ? byId.get(canonicalPlaudId(id)) : null) || { id };
+}
+
 /** PLAUD answered get_file with an EXPLICIT empty inventory: nothing to fetch yet. */
 function isUntranscribed(details) {
   return Boolean(details) && Array.isArray(details.source_list) && Array.isArray(details.note_list)
@@ -1521,19 +1558,18 @@ async function processRecordingFresh(client, recording, syncState, existingIndex
   const speakerNaming = assessSpeakerNaming(transcriptSegments);
 
   const baseName = buildNoteBaseName(details);
-  // ⚠ IDEMPOTENT (15 Oct 2026): write INTO the note this recording already has, found by
+  const v2 = repullV2Enabled();
+  // ⚠ IDEMPOTENT (15 Oct 2026, PLAUD_REPULL_V2): write INTO the note this recording already has, found by
   // plaud_id — the routine sync's rule. Always writing a fresh copy to the summary folder
   // and routing it made a second re-pull land as "<title> 2.md" beside the first
   // (proved in a scratch vault). Archive is not indexed, so an archived copy is never
   // written to or resurrected.
-  const index = existingIndex || buildExistingNoteIndex();
-  const targets = getExistingNoteTargets(
-    index[key], 1,
-    `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`,
-    `${normalizeVaultPath(getTranscriptFolder())}/${baseName}.md`
-  );
-  const summaryRelativePath = targets.summaryPaths[0];
-  const transcriptRelativePath = targets.transcriptPath;
+  const freshSummary = `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`;
+  const freshTranscript = `${normalizeVaultPath(getTranscriptFolder())}/${baseName}.md`;
+  const index = v2 ? (existingIndex || buildExistingNoteIndex()) : null;
+  const targets = v2 ? getExistingNoteTargets(index[key], 1, freshSummary, freshTranscript) : null;
+  const summaryRelativePath = v2 ? targets.summaryPaths[0] : freshSummary;
+  const transcriptRelativePath = v2 ? targets.transcriptPath : freshTranscript;
 
   const summaryWrite = writeFile(summaryRelativePath, renderSummaryNote(details, preferredSummary, summaryBody, transcriptRelativePath));
   const transcriptWrite = writeFile(transcriptRelativePath, renderTranscriptNote(details, summaryRelativePath, transcriptBody, speakerNaming));
@@ -1563,10 +1599,12 @@ async function processRecordingFresh(client, recording, syncState, existingIndex
     summaryPreferenceLabel: describeSummaryChoice(preferredSummary),
   };
   delete syncState.failedRecordings[key];
-  if (syncState.pendingRecordings) delete syncState.pendingRecordings[key];
-  if (syncState.pendingSpeakers) delete syncState.pendingSpeakers[key];
+  if (v2) {
+    if (syncState.pendingRecordings) delete syncState.pendingRecordings[key];
+    if (syncState.pendingSpeakers) delete syncState.pendingSpeakers[key];
+  }
   writeSyncState(syncState);
-  index[key] = { summaries: [finalSummaryRelativePath], transcripts: [transcriptRelativePath] };
+  if (index) index[key] = { summaries: [finalSummaryRelativePath], transcripts: [transcriptRelativePath] };
   return finalSummaryRelativePath;
 }
 
@@ -1608,23 +1646,26 @@ async function repullPlaudRecordings({ ids = null, limit = null, clientFactory =
       const recordings = await listRecordings(client);
       // Keyed by the CANONICAL id too: a bare id (as the ledger stores it) must resolve to
       // PLAUD's of_ id, or the call 404s and is logged as a failure of a live recording.
-      const byId = new Map();
-      for (const r of recordings) { byId.set(r.id, r); byId.set(canonicalPlaudId(r.id), r); }
-      const existingIndex = buildExistingNoteIndex();
+      const v2 = repullV2Enabled();
+      const byId = indexRecordings(recordings, { canonical: v2 });
+      const existingIndex = v2 ? buildExistingNoteIndex() : null;
       const pulledPaths = [];
 
       for (const id of targetIds) {
-        const recording = byId.get(id) || byId.get(canonicalPlaudId(id)) || { id };
+        const recording = resolveRecording(byId, id, { canonical: v2 });
         try {
           const routed = await processRecordingFresh(client, recording, syncState, existingIndex);
-          const k = recordingKey(recording);
-          pulledPaths.push(routed, existingIndex[k] && existingIndex[k].transcripts[0]);
+          if (v2) {
+            const k = recordingKey(recording);
+            pulledPaths.push(routed, existingIndex[k] && existingIndex[k].transcripts[0]);
+          }
           pulled += 1;
         } catch (error) {
           failed += 1;
           const message = error.message || String(error);
           console.error(`[PlaudSync] Re-pull ${id} failed:`, message);
-          syncState.failedRecordings[recordingKey(recording)] = { failedAt: new Date().toISOString(), message, title: recording.name || id, startAt: recording.start_at || null };
+          if (v2) syncState.failedRecordings[recordingKey(recording)] = { failedAt: new Date().toISOString(), message, title: recording.name || id, startAt: recording.start_at || null };
+          else syncState.failedRecordings[id] = { failedAt: new Date().toISOString(), message, title: recording.name || id };
           writeSyncState(syncState);
           failures.push({ id, title: recording.name || id, error: message });
         }
@@ -1639,7 +1680,8 @@ async function repullPlaudRecordings({ ids = null, limit = null, clientFactory =
       if (pulled > 0) {
         // Scoped to the notes THIS re-pull wrote — unscoped, it also edited every other note
         // with a pending link (5 unrelated notes on the live vault, 15 Oct 2026).
-        try { require('./vault-hygiene').contextualLinkApply(getVaultPath(), { roots: ['Meetings', 'Plaud'], only: pulledPaths.filter(Boolean) }); }
+        const linkOpts = v2 ? { roots: ['Meetings', 'Plaud'], only: pulledPaths.filter(Boolean) } : { roots: ['Meetings', 'Plaud'] };
+        try { require('./vault-hygiene').contextualLinkApply(getVaultPath(), linkOpts); }
         catch (e) { console.error('[PlaudSync] auto contextual-link failed:', e.message); }
       }
 
@@ -2095,6 +2137,9 @@ module.exports = {
     incrementalDateFrom,
     isUntranscribed,
     retryV2Enabled,
+    repullV2Enabled,
+    indexRecordings,
+    resolveRecording,
     listRecordings,
     buildNoteBaseName,
     isRetryableError,

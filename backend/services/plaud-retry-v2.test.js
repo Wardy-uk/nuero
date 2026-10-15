@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * PLAUD backlog fixes (15 Oct 2026) — prepared behind PLAUD_SYNC_RETRY_V2, default OFF.
+ * PLAUD backlog fixes (15 Oct 2026). Items 1–2 sit behind PLAUD_SYNC_RETRY_V2 and item 3
+ * behind its OWN switch, PLAUD_REPULL_V2 — both default OFF, and both halves are pinned.
  *
  *   1. RETRY COST: a recording whose get_file inventory is explicitly empty (no transcript
  *      blocks, no notes) is "not ready" without get_note and four get_transcript tries.
@@ -162,8 +163,80 @@ test('a failure entry records the recording’s date (inert while the flag is of
   assert.equal(f.startAt, '2026-07-07T08:03:03');
 });
 
-// ── Re-pull idempotency ──────────────────────────────────────────────────
-test('re-pull twice: the SAME two notes, no " 2" twin, one ledger entry', async () => {
+// ── Re-pull fixes: their OWN switch, PLAUD_REPULL_V2 ───────────────────────
+async function withRepullV2(fn) {
+  process.env.PLAUD_REPULL_V2 = 'true';
+  try { return await fn(); } finally { delete process.env.PLAUD_REPULL_V2; }
+}
+
+test('PLAUD_REPULL_V2 is its own switch: off by default, and PLAUD_SYNC_RETRY_V2 does not turn it on', () => {
+  assert.equal(I.repullV2Enabled(), false);
+  process.env.PLAUD_SYNC_RETRY_V2 = 'true';
+  try { assert.equal(I.repullV2Enabled(), false); } finally { delete process.env.PLAUD_SYNC_RETRY_V2; }
+});
+
+// ── Bare-ID normalisation, directly (the failure that stranded the 7 Jul meeting) ──
+test('resolveRecording: a BARE ledger id finds PLAUD’s of_ recording', () => {
+  const live = { id: OF, name: 'live' };
+  const byId = I.indexRecordings([live]);
+  assert.equal(I.resolveRecording(byId, BARE), live);
+  assert.equal(I.resolveRecording(byId, BARE).id, OF, 'the id sent to PLAUD is the of_ one');
+});
+
+test('resolveRecording: an of_ id finds itself, and finds a recording PLAUD lists bare', () => {
+  const ofRec = { id: OF };
+  assert.equal(I.resolveRecording(I.indexRecordings([ofRec]), OF), ofRec);
+  const bareRec = { id: BARE };
+  assert.equal(I.resolveRecording(I.indexRecordings([bareRec]), OF), bareRec);
+});
+
+test('resolveRecording: an unlisted id comes back as itself, never as some other recording', () => {
+  const byId = I.indexRecordings([{ id: OF }]);
+  assert.deepEqual(I.resolveRecording(byId, 'ffff0000ffff0000ffff0000ffff0000'), { id: 'ffff0000ffff0000ffff0000ffff0000' });
+});
+
+test('resolveRecording without canonical (the pre-fix lookup) leaves a bare id unresolved', () => {
+  const byId = I.indexRecordings([{ id: OF }], { canonical: false });
+  assert.deepEqual(I.resolveRecording(byId, BARE, { canonical: false }), { id: BARE });
+});
+
+test('indexRecordings: an exact id always finds its own listing — a canonical alias never overwrites it', () => {
+  const ofRec = { id: OF, name: 'of' };
+  const bareRec = { id: BARE, name: 'bare' };
+  for (const order of [[ofRec, bareRec], [bareRec, ofRec]]) {
+    const byId = I.indexRecordings(order);
+    assert.equal(byId.get(OF), ofRec);
+    assert.equal(byId.get(BARE), bareRec);
+  }
+});
+
+// ── Flag OFF: the re-pull is exactly the pre-15-Oct behaviour ──────────────
+test('flag OFF: a bare id is sent to PLAUD as-is and recorded as a failure under the bare id', async () => {
+  resetState();
+  const fc = fakeClient([fullFile]);
+  const r = await ps.repullPlaudRecordings({ ids: [BARE], clientFactory: fc.factory });
+  assert.equal(r.failed, 1);
+  assert.ok(fc.calls.includes(`get_file:${BARE}`));
+  assert.ok(!fc.calls.includes(`get_file:${OF}`));
+  assert.ok(I.readSyncState().failedRecordings[BARE]);
+});
+
+test('flag OFF: a second re-pull still lands as a " 2" twin, and the link pass is unscoped', async () => {
+  const ID = '9999aaaa000011112222333344445555';
+  const file = { ...fullFile, id: `of_${ID}`, name: '07-09 Weekly Meeting: Flag Off Check' };
+  resetState();
+  linkCalls.length = 0;
+  const before = new Set(listVault());
+  await ps.repullPlaudRecordings({ ids: [file.id], clientFactory: fakeClient([file]).factory });
+  await ps.repullPlaudRecordings({ ids: [file.id], clientFactory: fakeClient([file]).factory });
+  const added = listVault().filter((f) => !before.has(f) && f.startsWith('Meetings/'));
+  assert.equal(added.length, 2, 'old behaviour: two meeting notes');
+  assert.ok(added.some((f) => / 2\.md$/.test(f)));
+  assert.ok(linkCalls.every((o) => o.only === undefined), 'old behaviour: unscoped');
+});
+
+// ── Flag ON ──────────────────────────────────────────────────────────────
+test('flag ON — re-pull twice: the SAME two notes, no " 2" twin, one ledger entry', () => withRepullV2(async () => {
   // Its own recording, so nothing an earlier test pulled is mistaken for this one's output.
   const ID = 'eeeeffff000011112222333344445555';
   const file = { ...fullFile, id: `of_${ID}`, name: '07-08 Weekly Meeting: Idempotency Check' };
@@ -182,29 +255,33 @@ test('re-pull twice: the SAME two notes, no " 2" twin, one ledger entry', async 
   const st = I.readSyncState();
   assert.deepEqual(Object.keys(st.syncedRecordings), [ID]);
   assert.equal(st.failedRecordings[ID], undefined, 'the old failure is cleared by a successful pull');
-});
+}));
 
-test('re-pull: a BARE ledger id resolves to PLAUD’s of_ id — never a 404 recorded as a failure', async () => {
-  resetState();
+test('flag ON — a BARE ledger id is pulled through PLAUD’s of_ id, never a 404 recorded as a failure', () => withRepullV2(async () => {
+  resetState({ failedRecordings: { [BARE]: { failedAt: '2026-08-12T13:22:22.690Z', message: 'timed out' } } });
   const fc = fakeClient([fullFile]);
   const r = await ps.repullPlaudRecordings({ ids: [BARE], clientFactory: fc.factory });
   assert.equal(r.failed, 0);
   assert.ok(fc.calls.includes(`get_file:${OF}`));
-});
+  assert.ok(!fc.calls.includes(`get_file:${BARE}`), 'the bare id never reaches PLAUD');
+  const st = I.readSyncState();
+  assert.ok(st.syncedRecordings[BARE], 'ledgered under the canonical id');
+  assert.equal(st.failedRecordings[BARE], undefined);
+}));
 
-test('re-pull: the follow-up link pass is scoped to the notes this re-pull wrote', async () => {
+test('flag ON — the follow-up link pass is scoped to the notes this re-pull wrote', () => withRepullV2(async () => {
   resetState();
   linkCalls.length = 0;
   await ps.repullPlaudRecordings({ ids: [OF], clientFactory: fakeClient([fullFile]).factory });
   assert.equal(linkCalls.length, 1);
   assert.ok(Array.isArray(linkCalls[0].only) && linkCalls[0].only.length === 2, 'only the meeting note and its transcript');
   assert.ok(linkCalls[0].only.every((p) => p.startsWith('Meetings/') || p.startsWith('Plaud/Transcripts/')));
-});
+}));
 
-test('re-pull: a failure is keyed by the CANONICAL id and keeps the recording date', async () => {
+test('flag ON — a failure is keyed by the CANONICAL id and keeps the recording date', () => withRepullV2(async () => {
   resetState();
   const fc = fakeClient([]);
   await ps.repullPlaudRecordings({ ids: [`of_dddd${'0'.repeat(28)}`], clientFactory: fc.factory });
   const keys = Object.keys(I.readSyncState().failedRecordings);
   assert.deepEqual(keys, [`dddd${'0'.repeat(28)}`]);
-});
+}));
