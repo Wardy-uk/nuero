@@ -308,3 +308,58 @@ test('distribution list: names only, refused (not clamped) when empty, duplicate
   const got = await fetch(`${base}/api/soap/recipients`).then((r) => r.json());
   assert.deepEqual(got.names, ['Liam Sims', 'Nobody Here']);
 });
+
+test('plan RAG: green with nothing past due, amber up to 10% of open actions, red beyond (Nick, 15 Oct)', () => {
+  assert.equal(soap.planRag(42, 0).rag, 'green');
+  assert.equal(soap.planRag(42, 4).rag, 'amber', '4 of 42 is 9.5%');
+  assert.equal(soap.planRag(42, 5).rag, 'red', '5 of 42 is 11.9%');
+  assert.equal(soap.planRag(0, 0).rag, 'green');
+});
+
+test('per-queue table: only SLA compliance rows, and a queue that solved nothing is null — never 0', () => {
+  const rows = soap.perQueueRows({ kpis: [
+    { colA: 'SLA', key: 'nt_sla_res_tier_2_compliance', label: 'Resolution compliance % (Tier 2)', value: 45.3, target: 95, rag: 'red' },
+    { colA: 'SLA', key: 'nt_sla_res_tier_3_compliance', label: 'Resolution compliance % (Tier 3)', value: null, target: 95, rag: null },
+    { colA: 'SLA', key: 'nt_sla_res_tier_2_breached', label: 'breached', value: 12 },
+    { colA: 'Volume', key: 'nt_x_compliance', label: 'not SLA', value: 1 },
+  ] });
+  assert.deepEqual(rows.map((r) => [r.key, r.value]), [['nt_sla_res_tier_2_compliance', 45.3], ['nt_sla_res_tier_3_compliance', null]]);
+});
+
+test('sentiment stays four separate measures, never one averaged figure', () => {
+  const s = soap.sentimentSummary({ window: { days: 7 },
+    portalCsat: { ok: true, data: { sent: 427, responded: 2, responseRatePct: 0.5, thin: true } },
+    ai: { ok: true, data: { scored: 3, negative: 1, average: -0.2 } },
+    jiraCsat: { ok: false, error: 'Timeout' },
+    surveys: { ok: true, data: { byCategory: { team_satisfaction: [{ title: 'Support Team Satisfaction', responses: 10, avgScore: 3.04, thin: false }] } } },
+    unavailable: [{ name: 'jiraCsat' }] });
+  assert.deepEqual(s.survey, { sent: 427, responded: 2, ratePct: 0.5, thin: true });
+  assert.equal(s.tickets.negative, 1);
+  assert.equal(s.team.avg, 3.04);
+  assert.deepEqual(s.unavailable, ['jiraCsat']);
+  assert.equal(s.average, undefined, 'no combined figure');
+});
+
+test('the SOAP carries the new sections; resolved findings and escalation reasons stay out', async () => {
+  const r = await soap.gather({ kind: 'final', now: MONDAY, overrides: okOverrides({
+    kpi: async () => ({ positives: [], csatRows: [{ label: 'CSAT average score', now: '4.2 (3 ratings)', was: '—', delta: '—' }],
+      ageing: [{ kpi: 'Oldest actionable (days): Tier 2', value: 196, target: 5, ratio: 39.2 }],
+      findings: [finding('warn', 'reason-capture-broken', '96% of escalations logged as unknown'), finding('escalate', 'ageing-backlog', 'Tier 2 ageing 12 days')] }),
+    perQueue: async () => ({ kpis: [{ colA: 'SLA', key: 'nt_sla_res_tier_2_compliance', label: 'Resolution compliance % (Tier 2)', value: 45.3, target: 95, rag: 'red' }] }),
+    perQueuePrior: async () => ({ kpis: [{ colA: 'SLA', key: 'nt_sla_res_tier_2_compliance', label: 'Resolution compliance % (Tier 2)', value: 58, target: 95, rag: 'red' }] }),
+    winning: async () => ({ status: 'ok', rows: [{ rank: 1, name: 'Fine & Country', why: '2 of 2 tickets resolved this week ending Neutral' }] }),
+    findings: async () => [{ id: 1, title: 'Open one', severity: 'high', status: 'open' }, { id: 2, title: 'Closed one', severity: 'high', status: 'resolved' }],
+    leading: async () => ({ available: true, asOf: '2026-10-18', indicators: [], quiet: ['A', 'T1'] }),
+    slm: async () => ({ known: true, highlights: ['KBA usage up'], lowlights: ['Tier 2 res'], blockers: ['200 dev tickets'] }),
+    sentiment: async () => ({ portalCsat: { ok: true, data: { sent: 10, responded: 1, responseRatePct: 10, thin: true } }, unavailable: [] }),
+  }) });
+  assert.equal(r.perQueue[0].was, 58);
+  assert.deepEqual(r.findings.map((f) => f.title), ['Open one']);
+  assert.ok(!r.verdicts.ambers.some((a) => /logged as unknown/.test(a.text)), 'escalation reasons are out of the SOAP');
+  const md = soap.render({ ...r, carried: [] }, soap.emptyManual());
+  for (const h of ['SLA compliance by queue', 'Ageing vs target', 'Volumes and backlog', 'CSAT', 'Sentiment', 'Customers winning after support', 'Open findings', 'Leading indicators', 'Friday Support Leadership Meeting', 'Completed this week']) {
+    assert.ok(md.includes(h), `missing section: ${h}`);
+  }
+  assert.match(md, /\| Tier 2 \| 196 \| 5 \| 39.2× \|/);
+  assert.match(md, /No early warning this week \(2 checks running/);
+});

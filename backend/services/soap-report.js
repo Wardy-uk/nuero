@@ -67,7 +67,17 @@ const SEND_AT_HOUR = 8; // Monday 08:00
 const EXCLUDED_KINDS = new Set([
   'overtime-checklist-gap', 'overtime-outstanding', 'wtr-limit', 'commitment-backlog',
   'task-unclassified', 'management-overdue', 'log-latency', 'people-hr-gap',
+  // Escalation reasons are marked out of the SOAP (Nick, 15 Oct 2026); they stay in the weekly report.
+  'reason-capture-broken',
 ]);
+const WINNING_CUSTOMERS = 3;
+const OPEN_FINDINGS = 8;
+// Plan RAG (Nick, 15 Oct 2026): green nothing past due; amber up to 10% of open actions past due; red beyond.
+const PLAN_AMBER_SHARE = 0.10;
+const VOLUME_LABELS = Object.freeze({
+  raised: 'Tickets raised', closed: 'Tickets closed', backlogSupport: 'Backlog — Support',
+  backlogDevelopment: 'Backlog — Development', backlogTotal: 'Backlog — total open',
+});
 
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const pad = (n) => String(n).padStart(2, '0');
@@ -166,6 +176,37 @@ function parseDue(text, today) {
   return best;
 }
 
+/** Plan RAG from past-due share of open actions. PURE. */
+function planRag(open, pastDue) {
+  if (!open) return { rag: 'green', share: 0 };
+  const share = pastDue / open;
+  return { rag: pastDue === 0 ? 'green' : share <= PLAN_AMBER_SHARE ? 'amber' : 'red', share: Math.round(share * 1000) / 10 };
+}
+
+/** NOVA's weekly per-queue SLA compliance rows. PURE. null value = the queue solved nothing (no data, not 0). */
+function perQueueRows(period) {
+  return ((period && period.kpis) || [])
+    .filter((k) => k.colA === 'SLA' && /_compliance$/.test(String(k.key || '')))
+    .map((k) => ({ key: k.key, label: k.label, value: k.value === null || k.value === undefined ? null : Number(k.value), target: k.target ?? null, rag: k.rag || null }));
+}
+
+/** Sentiment, as four separate measures — never averaged into one. PURE over NOVA's /sentiment-signals. */
+function sentimentSummary(sig) {
+  if (!sig) return null;
+  const d = (b) => (b && b.ok ? b.data : null);
+  const csat = d(sig.portalCsat);
+  const ai = d(sig.ai);
+  const surveys = d(sig.surveys);
+  const team = surveys && surveys.byCategory && Array.isArray(surveys.byCategory.team_satisfaction) ? surveys.byCategory.team_satisfaction[0] : null;
+  return {
+    days: sig.window && sig.window.days || null,
+    survey: csat ? { sent: csat.sent, responded: csat.responded, ratePct: csat.responseRatePct, thin: !!csat.thin } : null,
+    tickets: ai ? { scored: ai.scored, negative: ai.negative, average: ai.average } : null,
+    team: team ? { title: team.title, responses: team.responses, avg: team.avgScore, thin: !!team.thin } : null,
+    unavailable: (sig.unavailable || []).map((u) => u.name),
+  };
+}
+
 function initiatives(plan, week) {
   const actions = (plan && Array.isArray(plan.actions) ? plan.actions : [])
     .filter((a) => a.ownership === 'mine' && a.status !== 'Not adding' && !a.sameAs);
@@ -191,6 +232,8 @@ function initiatives(plan, week) {
     overdue: overdue.sort((a, b) => a.due.localeCompare(b.due)),
     open,
     readAt: plan && plan.readAt || null,
+    completedThisWeek: doneThisWeek.length,
+    rag: planRag(open.length, overdue.length),
   };
 }
 
@@ -377,11 +420,55 @@ function render(report, manual, { forEmail = false } = {}) {
     L.push('');
   }
 
+  const na = (sec, fallback) => `- Not available — ${report.gapsBySection[sec] || fallback}`;
+  const pctOr = (x) => (x === null || x === undefined ? 'no data' : `${x}%`);
+  const light = (r) => (r === 'green' ? '🟢' : r === 'amber' ? '🟠' : r === 'red' ? '🔴' : '');
+
+  L.push('## SLA compliance by queue (this week vs last)', '');
+  if (report.perQueue && report.perQueue.length) {
+    L.push('| Queue | This week | Last week | Target |', '|---|---|---|---|');
+    for (const q of report.perQueue) L.push(`| ${q.label} | ${light(q.rag)} ${pctOr(q.value)} | ${pctOr(q.was)} | ${q.target !== null ? `${q.target}%` : '—'} |`);
+    L.push('', '_"no data" means the queue solved nothing that week._');
+  } else L.push(na('perQueue', 'NOVA did not answer'));
+  L.push('');
+
   L.push('## SLA adherence, day on day (Support: CC + T2 + Production)', '');
   if (report.slaDaily && report.slaDaily.length) {
     L.push('| Day | FRT | Resolution |', '|---|---|---|');
     for (const d of report.slaDaily) L.push(`| ${d.label} | ${fmtPct(d.frt)} | ${fmtPct(d.res)} |`);
   } else L.push(`- Not available — ${report.gapsBySection.sla || 'no daily SLA figures were returned'}`);
+  L.push('');
+
+  L.push('## Ageing vs target (oldest actionable ticket per queue)', '');
+  if (report.ageing && report.ageing.length) {
+    L.push('| Queue | Days | Target | Over by |', '|---|---|---|---|');
+    for (const a of report.ageing) L.push(`| ${String(a.kpi).replace(/^Oldest actionable \(days\):\s*/i, '')} | ${a.value} | ${a.target} | ${a.ratio}× |`);
+    L.push('', '_NOVA advises confirming extreme figures are genuine backlog, not a due-date configuration artefact._');
+  } else if (report.ageing) L.push('- No queue is carrying tickets past its target age.');
+  else L.push(na('kpi', 'NOVA did not answer'));
+  L.push('');
+
+  L.push('## Volumes and backlog', '');
+  if (report.volumes && report.volumes.length) {
+    L.push('| | This week | Last week |', '|---|---|---|');
+    for (const r of report.volumes) L.push(`| ${r.label} | ${r.now === null ? 'no data' : r.now}${!r.flow && r.asOf ? ` (at ${shortDate(r.asOf)})` : ''} | ${r.was === null ? 'no data' : r.was} |`);
+  } else L.push(na('sla', 'NOVA did not answer'));
+  L.push('');
+
+  L.push('## CSAT', '');
+  if (report.csat && report.csat.length) {
+    for (const r of report.csat) L.push(`- ${r.label}: ${r.now} (last week ${r.was}) ${r.delta}`);
+  } else L.push(na('kpi', 'NOVA did not answer'));
+  L.push('');
+
+  L.push('## Sentiment (last 7 days)', '');
+  const se = report.sentiment;
+  if (se) {
+    if (se.survey) L.push(`- Customer survey: ${se.survey.responded} replies from ${se.survey.sent} sent (${se.survey.ratePct}%)${se.survey.thin ? ' — too few to quote a score' : ''}.`);
+    if (se.tickets) L.push(`- Customer sentiment on problem tickets: ${se.tickets.scored} scored, ${se.tickets.negative} negative${se.tickets.average !== null && se.tickets.average !== undefined ? `, average ${se.tickets.average}` : ''}.`);
+    if (se.team) L.push(`- Team: ${se.team.title} — average ${se.team.avg} from ${se.team.responses} responses${se.team.thin ? ' (thin)' : ''}.`);
+    if (se.unavailable.length) L.push(`- Not read: ${se.unavailable.join(', ')}.`);
+  } else L.push(na('sentiment', 'NOVA did not answer'));
   L.push('');
 
   L.push('## Agents', '');
@@ -409,13 +496,50 @@ function render(report, manual, { forEmail = false } = {}) {
   else L.push(`- Not available — ${report.gapsBySection.customers || 'NOVA did not answer'}`);
   L.push('');
 
+  L.push(`## Customers winning after support`, '');
+  const wn = report.winning;
+  if (wn && wn.rows && wn.rows.length) {
+    for (const c of wn.rows) L.push(`${c.rank}. **${c.name}** — ${c.why}`);
+  } else if (wn && wn.status === 'none_qualify') L.push('- No customer had 2 or more tickets resolved this week ending better than they started.');
+  else L.push(na('winning', 'NOVA did not answer'));
+  L.push('');
+
   L.push('## Improvement initiatives', '');
   const p = report.plan;
   if (p && p.known) {
-    L.push(`- ${p.totals.done} of ${p.totals.mine} of my plan actions done; ${p.open.length} open${p.overdue.length ? `, ${p.overdue.length} past due` : ''}.`);
+    const rag = p.rag || planRag(p.open.length, p.overdue.length);
+    L.push(`- **Plan status: ${light(rag.rag)} ${String(rag.rag).toUpperCase()}** — ${p.overdue.length} of ${p.open.length} open actions past due.`);
+    L.push(`- **Completed this week: ${p.completedThisWeek ?? p.doneThisWeek.length}.** ${p.totals.done} of ${p.totals.mine} done overall.`);
     for (const d of p.doneThisWeek) L.push(`- Delivered this week: ${d.id} — ${d.action}`);
     for (const o of p.overdue.slice(0, 5)) L.push(`- Past due (${o.dueText}): ${o.id} — ${o.action}${o.percent !== null ? ` (${o.percent}%)` : ''}`);
   } else L.push(`- Not available — ${report.gapsBySection.plan || 'VANTAGE did not answer'}`);
+  L.push('');
+
+  L.push('## Open findings', '');
+  if (report.findings && report.findings.length) {
+    for (const f of report.findings) L.push(`- ${f.severity ? `**${f.severity}** — ` : ''}${f.title}${f.foundOn ? ` (since ${shortDate(f.foundOn)})` : ''}`);
+    if (report.findingsOpen > report.findings.length) L.push(`- …and ${report.findingsOpen - report.findings.length} more open.`);
+  } else if (report.findings) L.push('- No open findings.');
+  else L.push(na('findings', 'VANTAGE did not answer'));
+  L.push('');
+
+  L.push('## Leading indicators', '');
+  const ld = report.leading;
+  if (ld && ld.available) {
+    if (ld.fired.length) for (const i of ld.fired) L.push(`- **${i.title}**${i.change ? ` — ${i.change}` : ''}${i.horizonDays ? ` (useful for ~${i.horizonDays} days, confidence ${i.confidence})` : ''}`);
+    else L.push(`- No early warning this week (${ld.quiet} checks running, all quiet).`);
+  } else L.push(na('leading', 'VANTAGE did not answer'));
+  L.push('');
+
+  L.push('## Friday Support Leadership Meeting', '');
+  const sl = report.slm;
+  if (sl) {
+    for (const [h, list] of [['Highlights', sl.highlights], ['Lowlights', sl.lowlights], ['Blockers', sl.blockers]]) {
+      L.push(`**${h}**`);
+      if (list && list.length) for (const x of list) L.push(`- ${x}`);
+      else L.push('- None.');
+    }
+  } else L.push(na('slm', 'no meeting note found'));
   L.push('');
 
   if (m.notes) L.push('## Notes', '', m.notes, '');
@@ -458,8 +582,22 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
 
   const metrics = [['frt', 'FRT'], ['res', 'Resolution']];
   const series = await pull('series', 'sla', 'daily SLA counts from NOVA', () => nova.call(
-    `/api/neuro-bridge/kpi-org-series?days=21&keys=${bw.supportSlaKeys().join(',')}&to=${week.upTo}`,
+    `/api/neuro-bridge/kpi-org-series?days=21&keys=${[...bw.supportSlaKeys(), ...Object.values(bw.VOLUME_KEYS)].join(',')}&to=${week.upTo}`,
   ), { verdict: true });
+  const volumes = series ? bw.volumesFor(series, {
+    report: { from: week.from, to: week.upTo }, prior: { from: addDays(week.from, -7), to: addDays(week.from, -1) },
+  }).map((r) => ({ ...r, label: VOLUME_LABELS[r.name] || r.label })) : null;
+
+  // The weekly per-queue table: met ÷ (met + breached) over the week, NOVA's own rollup.
+  const periodNow = await pull('perQueue', 'perQueue', 'per-queue SLA compliance from NOVA',
+    () => nova.call(`/api/neuro-bridge/kpi-org-period?period=week&anchor=${week.to}`));
+  const periodWas = periodNow ? await pull('perQueuePrior', 'perQueue', 'per-queue SLA compliance (previous week) from NOVA',
+    () => nova.call(`/api/neuro-bridge/kpi-org-period?period=week&anchor=${addDays(week.from, -1)}`)) : null;
+  const was = new Map(perQueueRows(periodWas).map((r) => [r.key, r.value]));
+  const perQueue = periodNow ? perQueueRows(periodNow).map((r) => ({ ...r, was: was.has(r.key) ? was.get(r.key) : null })) : null;
+
+  const sentimentRaw = await pull('sentiment', 'sentiment', 'sentiment from NOVA', () => nova.call('/api/neuro-bridge/sentiment-signals?days=7'));
+  const sentiment = sentimentSummary(sentimentRaw);
   const daily = series ? slaDaily(series, week, { queues: bw.SUPPORT_QUEUES, metrics }) : null;
   const supportSla = series ? bw.supportCompliance(series, {
     report: { from: week.from, to: week.upTo }, prior: { from: addDays(week.from, -7), to: addDays(week.from, -1) },
@@ -485,11 +623,44 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
     rows: (custRaw.rows || []).slice(0, WORST_CUSTOMERS),
   } : null;
 
+  const winRaw = await pull('winning', 'winning', 'winning customers from NOVA',
+    () => nova.call(`/api/neuro-bridge/customers/winning?limit=${WINNING_CUSTOMERS}&anchor=${week.upTo}`));
+  const winning = winRaw ? { status: winRaw.status, from: winRaw.from || null, to: winRaw.to || null, rows: (winRaw.rows || []).slice(0, WINNING_CUSTOMERS) } : null;
+
+  const vantage = require('./vantage-client');
+  const findingsRaw = await pull('findings', 'findings', 'findings from VANTAGE', () => vantage.get('/api/findings'));
+  const sev = { high: 0, medium: 1, low: 2 };
+  const findings = Array.isArray(findingsRaw) ? findingsRaw
+    .filter((f) => f.status !== 'resolved')
+    .sort((a, b) => (sev[a.severity] ?? 3) - (sev[b.severity] ?? 3) || String(b.found_on || '').localeCompare(String(a.found_on || '')))
+    .slice(0, OPEN_FINDINGS)
+    .map((f) => ({ id: f.id, title: f.title, severity: f.severity || null, foundOn: f.found_on || null, source: f.source || null }))
+    : null;
+  const findingsOpen = Array.isArray(findingsRaw) ? findingsRaw.filter((f) => f.status !== 'resolved').length : null;
+
+  const leadRaw = await pull('leading', 'leading', 'leading indicators from VANTAGE', () => vantage.get('/api/leading'));
+  const leading = leadRaw ? {
+    available: leadRaw.available !== false, asOf: leadRaw.asOf || null,
+    fired: (leadRaw.indicators || []).filter((i) => i.shadow !== true).map((i) => ({
+      title: i.title, severity: i.severity || null, change: i.change || null, horizonDays: i.horizonDays ?? null,
+      confidence: i.confidence ? i.confidence.level : null, action: i.action || null,
+    })),
+    quiet: Array.isArray(leadRaw.quiet) ? leadRaw.quiet.length : 0,
+  } : null;
+  if (leading && !leading.available) { gaps.push({ source: 'leading indicators from VANTAGE', why: 'VANTAGE says its feed is unavailable', verdict: false }); gapsBySection.leading = 'VANTAGE says its feed is unavailable'; }
+
+  const slm = await use('slm', () => bw.slmPoints(process.env.OBSIDIAN_VAULT_PATH || null, { from: week.from, to: week.upTo }))();
+  if (slm && !slm.known) { gaps.push({ source: 'the Friday Support Leadership Meeting', why: slm.why, verdict: false }); gapsBySection.slm = slm.why; }
+
   const v = verdicts({ assessment, supportSla, leaderboard, plan });
   return {
     kind, from: week.from, to: week.to, upTo: week.upTo, generatedAt: new Date(now).toISOString(),
     verdicts: v, verdictHash: verdictHash(v), verdictComplete: !gaps.some((g) => g.verdict),
     slaDaily: daily, supportSla, leaderboard, plan, customers, gaps, gapsBySection,
+    perQueue, ageing: assessment ? assessment.ageing || [] : null, volumes,
+    csat: assessment ? assessment.csatRows || [] : null, sentiment, winning,
+    findings, findingsOpen, leading,
+    slm: slm && slm.known ? { highlights: slm.highlights, lowlights: slm.lowlights, blockers: slm.blockers, note: slm.note && slm.note.name || null } : null,
   };
 }
 
@@ -807,6 +978,7 @@ function mondayOutcome({ now = new Date() } = {}) {
 }
 
 module.exports = {
+  planRag, perQueueRows, sentimentSummary,
   weekFor, sendAtFor, slaDaily, parseDue, initiatives, findingKey, slaLight, verdicts, verdictHash, verdictDiff,
   carriedForward, blockers, render, emptyManual, getManual, setManual, gather, build, get, finalFor, latest, list, view,
   recipientNames, setRecipientNames, resolveRecipients, queueSend, publish, publishedAt, testSend, sentRecord, isLocked, markSent, markSentByHand, reopen, sentSummary, fridayFreeze, mondayFinal, mondayOutcome,

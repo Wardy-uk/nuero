@@ -24,6 +24,7 @@ const STATUS_WORDS = {
   rejected: 'Rejected',
 };
 
+const LIGHT = { green: '🟢', amber: '🟠', red: '🔴' };
 const pct = (x) => (x && x.pct != null ? `${x.pct}%` : '—');
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -124,6 +125,26 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       )}
 
       <section className="soap-section">
+        <h3>SLA compliance by queue</h3>
+        {r.perQueue && r.perQueue.length ? (
+          <>
+            <table className="soap-table">
+              <thead><tr><th>Queue</th><th>This week</th><th>Last week</th><th>Target</th></tr></thead>
+              <tbody>{r.perQueue.map((q) => (
+                <tr key={q.key}>
+                  <td>{q.label}</td>
+                  <td>{LIGHT[q.rag] || ''} {q.value == null ? 'no data' : `${q.value}%`}</td>
+                  <td>{q.was == null ? 'no data' : `${q.was}%`}</td>
+                  <td>{q.target != null ? `${q.target}%` : '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+            <p className="soap-meta">“no data” means the queue solved nothing that week.</p>
+          </>
+        ) : <Gap text={g.perQueue || 'NOVA did not answer'} />}
+      </section>
+
+      <section className="soap-section">
         <h3>SLA adherence, day on day (CC + T2 + Production)</h3>
         {r.slaDaily && r.slaDaily.length ? (
           <table className="soap-table">
@@ -131,6 +152,46 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             <tbody>{r.slaDaily.map((d) => <tr key={d.day}><td>{d.label}</td><td>{pct(d.frt)}</td><td>{pct(d.res)}</td></tr>)}</tbody>
           </table>
         ) : <Gap text={g.sla || 'no daily SLA figures'} />}
+      </section>
+
+      <section className="soap-section">
+        <h3>Ageing vs target (oldest actionable ticket per queue)</h3>
+        {r.ageing && r.ageing.length ? (
+          <>
+            <table className="soap-table">
+              <thead><tr><th>Queue</th><th>Days</th><th>Target</th><th>Over by</th></tr></thead>
+              <tbody>{r.ageing.map((a) => (
+                <tr key={a.kpi}><td>{String(a.kpi).replace(/^Oldest actionable \(days\):\s*/i, '')}</td><td>{a.value}</td><td>{a.target}</td><td>{a.ratio}×</td></tr>
+              ))}</tbody>
+            </table>
+            <p className="soap-meta">NOVA advises confirming extreme figures are genuine backlog, not a due-date configuration artefact.</p>
+          </>
+        ) : r.ageing ? <p className="soap-meta">No queue is carrying tickets past its target age.</p> : <Gap text={g.kpi || 'NOVA did not answer'} />}
+      </section>
+
+      <section className="soap-section">
+        <h3>Volumes and backlog</h3>
+        {r.volumes && r.volumes.length ? (
+          <table className="soap-table">
+            <thead><tr><th></th><th>This week</th><th>Last week</th></tr></thead>
+            <tbody>{r.volumes.map((v2) => (
+              <tr key={v2.name}><td>{v2.label}</td><td>{v2.now == null ? 'no data' : v2.now}</td><td>{v2.was == null ? 'no data' : v2.was}</td></tr>
+            ))}</tbody>
+          </table>
+        ) : <Gap text={g.sla || 'NOVA did not answer'} />}
+      </section>
+
+      <section className="soap-section">
+        <h3>CSAT and sentiment</h3>
+        {r.csat && r.csat.length ? <ul>{r.csat.map((c) => <li key={c.key || c.label}>{c.label}: {c.now} (last week {c.was}) {c.delta}</li>)}</ul> : <Gap text={g.kpi || 'NOVA did not answer'} />}
+        {r.sentiment ? (
+          <ul>
+            {r.sentiment.survey && <li>Customer survey (7 days): {r.sentiment.survey.responded} replies from {r.sentiment.survey.sent} sent ({r.sentiment.survey.ratePct}%){r.sentiment.survey.thin ? ' — too few to quote a score' : ''}</li>}
+            {r.sentiment.tickets && <li>Sentiment on problem tickets: {r.sentiment.tickets.scored} scored, {r.sentiment.tickets.negative} negative{r.sentiment.tickets.average != null ? `, average ${r.sentiment.tickets.average}` : ''}</li>}
+            {r.sentiment.team && <li>Team: {r.sentiment.team.title} — average {r.sentiment.team.avg} from {r.sentiment.team.responses} responses</li>}
+            {r.sentiment.unavailable.length > 0 && <li className="soap-gap">Not read: {r.sentiment.unavailable.join(', ')}</li>}
+          </ul>
+        ) : <Gap text={g.sentiment || 'NOVA did not answer'} />}
       </section>
 
       <section className="soap-section">
@@ -166,14 +227,50 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       </section>
 
       <section className="soap-section">
+        <h3>Customers winning after support</h3>
+        {r.winning && r.winning.rows && r.winning.rows.length
+          ? <ol>{r.winning.rows.map((c) => <li key={c.bcAccountNumber || c.name}><strong>{c.name}</strong> — {c.why}</li>)}</ol>
+          : r.winning && r.winning.status === 'none_qualify'
+            ? <p className="soap-meta">No customer had 2 or more tickets resolved this week ending better than they started.</p>
+            : <Gap text={g.winning || 'NOVA did not answer'} />}
+      </section>
+
+      <section className="soap-section">
         <h3>Improvement initiatives</h3>
         {r.plan && r.plan.known ? (
           <ul>
-            <li>{r.plan.totals.done} of {r.plan.totals.mine} done · {r.plan.open.length} open{r.plan.overdue.length ? ` · ${r.plan.overdue.length} past due` : ''}</li>
+            {r.plan.rag && <li><strong>Plan status: {LIGHT[r.plan.rag.rag]} {String(r.plan.rag.rag).toUpperCase()}</strong> — {r.plan.overdue.length} of {r.plan.open.length} open actions past due</li>}
+            <li><strong>Completed this week: {r.plan.completedThisWeek != null ? r.plan.completedThisWeek : r.plan.doneThisWeek.length}</strong> · {r.plan.totals.done} of {r.plan.totals.mine} done overall</li>
             {r.plan.doneThisWeek.map((d) => <li key={`d${d.id}`}>Delivered this week: {d.id} — {d.action}</li>)}
             {r.plan.overdue.slice(0, 5).map((o) => <li key={`o${o.id}`}>Past due ({o.dueText}): {o.id} — {o.action}{o.percent != null ? ` (${o.percent}%)` : ''}</li>)}
           </ul>
         ) : <Gap text={g.plan || 'VANTAGE did not answer'} />}
+      </section>
+
+      <section className="soap-section">
+        <h3>Open findings</h3>
+        {r.findings && r.findings.length ? (
+          <ul>
+            {r.findings.map((f) => <li key={f.id}>{f.severity ? <strong>{f.severity} — </strong> : null}{f.title}{f.foundOn ? <span className="soap-meta"> (since {f.foundOn})</span> : null}</li>)}
+            {r.findingsOpen > r.findings.length && <li className="soap-meta">…and {r.findingsOpen - r.findings.length} more open in VANTAGE</li>}
+          </ul>
+        ) : r.findings ? <p className="soap-meta">No open findings.</p> : <Gap text={g.findings || 'VANTAGE did not answer'} />}
+      </section>
+
+      <section className="soap-section">
+        <h3>Leading indicators</h3>
+        {r.leading && r.leading.available ? (
+          r.leading.fired.length
+            ? <ul>{r.leading.fired.map((i, k) => <li key={k}><strong>{i.title}</strong>{i.change ? ` — ${i.change}` : ''}{i.horizonDays ? <span className="soap-meta"> (useful for ~{i.horizonDays} days, confidence {i.confidence})</span> : null}</li>)}</ul>
+            : <p className="soap-meta">No early warning this week ({r.leading.quiet} checks running, all quiet).</p>
+        ) : <Gap text={g.leading || 'VANTAGE did not answer'} />}
+      </section>
+
+      <section className="soap-section">
+        <h3>Friday Support Leadership Meeting</h3>
+        {r.slm ? [['Highlights', r.slm.highlights], ['Lowlights', r.slm.lowlights], ['Blockers', r.slm.blockers]].map(([h, list]) => (
+          <div key={h}><p><strong>{h}</strong></p>{list && list.length ? <ul>{list.map((x, k) => <li key={k}>{x}</li>)}</ul> : <p className="soap-meta">None.</p>}</div>
+        )) : <Gap text={g.slm || 'no meeting note found'} />}
       </section>
 
       <section className="soap-section">
