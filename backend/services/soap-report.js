@@ -401,7 +401,7 @@ function render(report, manual, { forEmail = false } = {}) {
   if (wc && wc.rows && wc.rows.length) {
     L.push(`As at ${String(wc.generatedAt || '').slice(0, 16).replace('T', ' ')}, in NOVA's order${wc.stale ? ' — NOVA says this list is stale' : ''}.`, '');
     for (const c of wc.rows) L.push(`${c.rank}. **${c.name}**${c.why ? ` — ${c.why}` : ''}`);
-  } else if (wc && (wc.status === 'none_qualify' || wc.status === 'stale')) L.push(`- No customer has a negative current sentiment${wc.stale ? ' (NOVA says this list is stale)' : ''}.`);
+  } else if (wc && (wc.status === 'none_qualify' || wc.status === 'stale')) L.push(`- No customer has an unhappy current ticket (Frustrated or worse)${wc.stale ? ' (NOVA says this list is stale)' : ''}.`);
   else L.push(`- Not available — ${report.gapsBySection.customers || 'NOVA did not answer'}`);
   L.push('');
 
