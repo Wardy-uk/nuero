@@ -407,6 +407,25 @@ const DEFAULT_SYNC_LOOKBACK_DAYS = Number(process.env.PLAUD_SYNC_LOOKBACK_DAYS |
 const FAILED_RETRY_MAX_AGE_DAYS = Number(process.env.PLAUD_FAILED_RETRY_DAYS || 90);
 
 /**
+ * PLAUD_SYNC_RETRY_V2 (15 Oct 2026, default OFF — prepared, not enabled):
+ *   1. a recording PLAUD's own get_file says has NO transcript blocks and NO notes is
+ *      "not ready" at once — no get_note, no four get_transcript tries with 15 s of
+ *      back-off. Measured live: 13 such recordings cost ~78 MCP calls every 15 minutes.
+ *   2. a failure's retry window reaches back to the RECORDING's date, not the day the
+ *      failure was logged — a 7 Jul meeting that failed on 12 Aug was never listed again.
+ * Off, the sync behaves exactly as before.
+ */
+function retryV2Enabled() {
+  return String(process.env.PLAUD_SYNC_RETRY_V2 || '').toLowerCase() === 'true';
+}
+
+/** PLAUD answered get_file with an EXPLICIT empty inventory: nothing to fetch yet. */
+function isUntranscribed(details) {
+  return Boolean(details) && Array.isArray(details.source_list) && Array.isArray(details.note_list)
+    && details.source_list.length === 0 && details.note_list.length === 0;
+}
+
+/**
  * The window an incremental sync lists.
  *
  * ⚠ IT MUST REACH BACK FAR ENOUGH TO INCLUDE OUTSTANDING FAILURES, and until 2026-09-01
@@ -432,7 +451,7 @@ const FAILED_RETRY_MAX_AGE_DAYS = Number(process.env.PLAUD_FAILED_RETRY_DAYS || 
  * margin). (The 24 Sep 2026 1-2-1s that prompted this were actually lost to the page
  * limit — see listRecordings — but this gap was real too.)
  */
-function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = DEFAULT_SYNC_LOOKBACK_DAYS, failedRecordings = null, pendingRecordings = null) {
+function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = DEFAULT_SYNC_LOOKBACK_DAYS, failedRecordings = null, pendingRecordings = null, { byRecordingDate = retryV2Enabled() } = {}) {
   if (!incremental || !lastSuccessfulSyncAt) return undefined;
 
   const last = new Date(lastSuccessfulSyncAt);
@@ -450,7 +469,15 @@ function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = D
     if (Number.isNaN(failedAt.getTime())) continue;
     if (failedAt.getTime() < cutoff) continue;
     // A day of margin: the recording is older than the moment its retry failed.
-    const reach = new Date(failedAt.getTime() - 86400000);
+    let reach = new Date(failedAt.getTime() - 86400000);
+    // Eligibility stays the FAILURE's age (a retry owed recently); the reach is the
+    // RECORDING's date when the entry carries it, or a recording older than its own
+    // failure is never listed again (the 7 Jul meeting, failed 12 Aug).
+    const startAt = new Date(entry && entry.startAt);
+    if (byRecordingDate && !Number.isNaN(startAt.getTime())) {
+      const fromStart = new Date(startAt.getTime() - 86400000);
+      if (fromStart < reach) reach = fromStart;
+    }
     if (reach < from) from = reach;
   }
 
@@ -991,7 +1018,7 @@ function getExistingNoteTargets(existingNotes, summaryCount, defaultSummaryPath,
   };
 }
 
-async function syncPlaudRecordings({ incremental = true } = {}) {
+async function syncPlaudRecordings({ incremental = true, clientFactory = createClient } = {}) {
   const runningState = readRunningState();
   if (runningState.active && !runningState.stale) {
     return { started: false, skipped: true, reason: 'Sync already running' };
@@ -1011,7 +1038,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
     ensureFolder(normalizeVaultPath(getTranscriptFolder()));
     const existingNotesByPlaudId = buildExistingNoteIndex();
 
-    const { client, transport } = await createClient();
+    const { client, transport } = await clientFactory();
     try {
       // The failure ledger widens the window — see incrementalDateFrom.
       const dateFrom = incrementalDateFrom(
@@ -1051,6 +1078,18 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
             ),
             recording.id
           );
+          if (retryV2Enabled() && isUntranscribed(details)) {
+            skipped += 1;
+            if (!syncState.pendingRecordings) syncState.pendingRecordings = {};
+            syncState.pendingRecordings[key] = {
+              startAt: details.start_at || recording.start_at || null,
+              firstSeenAt: (syncState.pendingRecordings[key] || {}).firstSeenAt || new Date().toISOString(),
+              title: recording.name || recording.id
+            };
+            writeSyncState(syncState);
+            console.log(`[PlaudSync] ${recording.id} not transcribed in PLAUD yet (empty inventory) — retry next cycle`);
+            continue;
+          }
           const noteList = await withRetry(`get_note ${recording.id}`, () =>
             callTool(client, 'get_note', { file_id: recording.id })
           );
@@ -1196,7 +1235,8 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
             failedAt: new Date().toISOString(),
             attempts: (prior.attempts || 0) + 1,
             message,
-            title: recording.name || recording.id
+            title: recording.name || recording.id,
+            startAt: recording.start_at || prior.startAt || null
           };
           writeSyncState(syncState);
           failures.push({
@@ -1458,7 +1498,7 @@ async function reconcilePlaudRecordings({ minJaccard = 0.5, write = true } = {})
 // Fetch + render + stage + route a single recording FRESH. Mirrors the inner body
 // of syncPlaudRecordings but always writes to default (new) paths and updates the
 // shared ledger so a crash resumes. Returns the routed summary path.
-async function processRecordingFresh(client, recording, syncState) {
+async function processRecordingFresh(client, recording, syncState, existingIndex = null) {
   // Canonical for OUR state; recording.id stays raw for every PLAUD call. Repull is the
   // path that would re-duplicate the whole vault if the ledger and the id disagreed.
   const key = recordingKey(recording);
@@ -1481,8 +1521,19 @@ async function processRecordingFresh(client, recording, syncState) {
   const speakerNaming = assessSpeakerNaming(transcriptSegments);
 
   const baseName = buildNoteBaseName(details);
-  const summaryRelativePath = `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`;
-  const transcriptRelativePath = `${normalizeVaultPath(getTranscriptFolder())}/${baseName}.md`;
+  // ⚠ IDEMPOTENT (15 Oct 2026): write INTO the note this recording already has, found by
+  // plaud_id — the routine sync's rule. Always writing a fresh copy to the summary folder
+  // and routing it made a second re-pull land as "<title> 2.md" beside the first
+  // (proved in a scratch vault). Archive is not indexed, so an archived copy is never
+  // written to or resurrected.
+  const index = existingIndex || buildExistingNoteIndex();
+  const targets = getExistingNoteTargets(
+    index[key], 1,
+    `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`,
+    `${normalizeVaultPath(getTranscriptFolder())}/${baseName}.md`
+  );
+  const summaryRelativePath = targets.summaryPaths[0];
+  const transcriptRelativePath = targets.transcriptPath;
 
   const summaryWrite = writeFile(summaryRelativePath, renderSummaryNote(details, preferredSummary, summaryBody, transcriptRelativePath));
   const transcriptWrite = writeFile(transcriptRelativePath, renderTranscriptNote(details, summaryRelativePath, transcriptBody, speakerNaming));
@@ -1512,7 +1563,10 @@ async function processRecordingFresh(client, recording, syncState) {
     summaryPreferenceLabel: describeSummaryChoice(preferredSummary),
   };
   delete syncState.failedRecordings[key];
+  if (syncState.pendingRecordings) delete syncState.pendingRecordings[key];
+  if (syncState.pendingSpeakers) delete syncState.pendingSpeakers[key];
   writeSyncState(syncState);
+  index[key] = { summaries: [finalSummaryRelativePath], transcripts: [transcriptRelativePath] };
   return finalSummaryRelativePath;
 }
 
@@ -1524,7 +1578,7 @@ async function processRecordingFresh(client, recording, syncState) {
  * @param {string[]} [opts.ids]   Recording ids to pull. Omit to reconcile first.
  * @param {number}   [opts.limit] Cap recordings this run (for safe batched runs).
  */
-async function repullPlaudRecordings({ ids = null, limit = null } = {}) {
+async function repullPlaudRecordings({ ids = null, limit = null, clientFactory = createClient } = {}) {
   const runningState = readRunningState();
   if (runningState.active && !runningState.stale) {
     return { started: false, skipped: true, reason: 'PLAUD sync/repull already running' };
@@ -1548,22 +1602,29 @@ async function repullPlaudRecordings({ ids = null, limit = null } = {}) {
   try {
     ensureFolder(normalizeVaultPath(getSummaryFolder()));
     ensureFolder(normalizeVaultPath(getTranscriptFolder()));
-    const { client, transport } = await createClient();
+    const { client, transport } = await clientFactory();
     try {
       // Index the live recording list once so we have each id's metadata.
       const recordings = await listRecordings(client);
-      const byId = new Map(recordings.map((r) => [r.id, r]));
+      // Keyed by the CANONICAL id too: a bare id (as the ledger stores it) must resolve to
+      // PLAUD's of_ id, or the call 404s and is logged as a failure of a live recording.
+      const byId = new Map();
+      for (const r of recordings) { byId.set(r.id, r); byId.set(canonicalPlaudId(r.id), r); }
+      const existingIndex = buildExistingNoteIndex();
+      const pulledPaths = [];
 
       for (const id of targetIds) {
-        const recording = byId.get(id) || { id };
+        const recording = byId.get(id) || byId.get(canonicalPlaudId(id)) || { id };
         try {
-          await processRecordingFresh(client, recording, syncState);
+          const routed = await processRecordingFresh(client, recording, syncState, existingIndex);
+          const k = recordingKey(recording);
+          pulledPaths.push(routed, existingIndex[k] && existingIndex[k].transcripts[0]);
           pulled += 1;
         } catch (error) {
           failed += 1;
           const message = error.message || String(error);
           console.error(`[PlaudSync] Re-pull ${id} failed:`, message);
-          syncState.failedRecordings[id] = { failedAt: new Date().toISOString(), message, title: recording.name || id };
+          syncState.failedRecordings[recordingKey(recording)] = { failedAt: new Date().toISOString(), message, title: recording.name || id, startAt: recording.start_at || null };
           writeSyncState(syncState);
           failures.push({ id, title: recording.name || id, error: message });
         }
@@ -1576,7 +1637,9 @@ async function repullPlaudRecordings({ ids = null, limit = null } = {}) {
 
       // Phase 2: auto-link the freshly re-pulled meetings.
       if (pulled > 0) {
-        try { require('./vault-hygiene').contextualLinkApply(getVaultPath(), { roots: ['Meetings', 'Plaud'] }); }
+        // Scoped to the notes THIS re-pull wrote — unscoped, it also edited every other note
+        // with a pending link (5 unrelated notes on the live vault, 15 Oct 2026).
+        try { require('./vault-hygiene').contextualLinkApply(getVaultPath(), { roots: ['Meetings', 'Plaud'], only: pulledPaths.filter(Boolean) }); }
         catch (e) { console.error('[PlaudSync] auto contextual-link failed:', e.message); }
       }
 
@@ -2021,6 +2084,8 @@ module.exports = {
     // archived note must never be a candidate.
     readMarkdownFiles,
     buildExistingNoteIndex,
+    // Exported so the re-pull idempotency pin drives the REAL recovery path.
+    processRecordingFresh,
     titleTokens,
     jaccard,
     recordingDateStr,
@@ -2028,6 +2093,8 @@ module.exports = {
     parseLeadingJson,
     assertUsableDetails,
     incrementalDateFrom,
+    isUntranscribed,
+    retryV2Enabled,
     listRecordings,
     buildNoteBaseName,
     isRetryableError,
