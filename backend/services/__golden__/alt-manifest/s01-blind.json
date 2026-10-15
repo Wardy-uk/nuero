@@ -2,7 +2,7 @@
   "refused": null,
   "rule": "S1 blind",
   "tone": "blind",
-  "presence": "SAiM · desk active · can’t see your work",
+  "presence": "SAiM · desk state not current · can’t see your work",
   "state": "Can’t see your work",
   "title": "I can’t see your work right now — this isn’t an all-clear.",
   "sentence": null,

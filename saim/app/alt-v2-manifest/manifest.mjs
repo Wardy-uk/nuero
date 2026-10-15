@@ -14,7 +14,56 @@
 import CONTRACTS from '../../../shared/attention-contracts.cjs';
 import DISPLAY from '../../../shared/display-text.cjs';
 
-const shown = (s) => (typeof s === 'string' && s && DISPLAY.isSafeDisplay(s) ? s : null);
+const OPENERS = Object.freeze({ '"': '"', '\'': '\'', '“': '”', '‘': '’', '(': ')', '[': ']', '«': '»' });
+
+/**
+ * Display-only tidy (16 Oct 2026): drop leading STRUCTURAL punctuation a source record
+ * carried by accident — a bullet, dash or colon, or an opening quote/bracket that is
+ * never closed ("NT-24162: Survey…). A balanced quote or bracket is kept. The source
+ * record is never touched; this only changes what this screen shows.
+ */
+export function tidyText(s) {
+  let t = String(s).trim();
+  for (let guard = 0; guard < 6 && t; guard += 1) {
+    const c = t[0];
+    if (/^[-–—•*·:;,.>|]/.test(c)) { t = t.slice(1).trimStart(); continue; }
+    if (OPENERS[c] && !t.slice(1).includes(OPENERS[c])) { t = t.slice(1).trimStart(); continue; }
+    break;
+  }
+  return t;
+}
+
+const shown = (s) => {
+  if (typeof s !== 'string' || !s || !DISPLAY.isSafeDisplay(s)) return null;
+  const t = tidyText(s);
+  return t || null;
+};
+
+/**
+ * The desk, from NEURO's current-work read (`work.deskKnown` is true only for a
+ * laptop report inside the freshness window; `work.atDesk` only when an app is in
+ * front, not locked or idle). Anything else is "not current" — never presence.
+ */
+export function deskWord(work) {
+  if (!work || work.deskKnown !== true) return 'desk state not current';
+  return work.atDesk === true ? 'desk active' : 'laptop not in use';
+}
+
+/** A held title that is only a type token (`capacity`, `todo`) or the generic fallback is not a label. */
+export function heldLabel(title) {
+  const t = shown(title);
+  if (!t || /^[a-z0-9_-]+$/.test(t) || /^held( back| item)?$/i.test(t)) return null;
+  return t;
+}
+
+/** A held reason, as a person reads it. The gate's off-duty status line is reworded; others are already sentences. */
+export function heldWhy(why) {
+  const w = shown(why);
+  if (!w) return null;
+  if (/^not working — /.test(w)) return 'held while you’re off duty';
+  if (/^[a-z0-9_-]+$/.test(w)) return null;
+  return w;
+}
 
 /** One row per rule: the state the fixed frame shows. Words are this file's own. */
 export const STATE = Object.freeze({
@@ -63,7 +112,7 @@ const WHERE = Object.freeze({ desk: 'opens on the laptop', link: 'opens in a new
 function refusal(why, problem) {
   return {
     refused: { why, problem: problem || null },
-    tone: 'blind', presence: 'SAiM · desk active · can’t read SAiM’s decision', state: 'Can’t read SAiM’s decision',
+    tone: 'blind', presence: 'SAiM · can’t read SAiM’s decision', state: 'Can’t read SAiM’s decision',
     title: 'I can’t read SAiM’s decision right now — this isn’t an all-clear.', sentence: null,
     guard: null, actions: [], handoff: null, ask: null, handoffNote: null, joinGap: null,
     rail: { next: { unread: true, why: 'nothing was read' }, held: { unread: true, why: 'nothing was read' }, judgement: { unread: true, why: 'nothing was read' } },
@@ -148,8 +197,14 @@ export function manifest(payload) {
     next: sec('next', () => (disp.next ? { title: shown(disp.next.title), when: shown(disp.next.when) } : { empty: true })),
     held: sec('held', () => {
       if (!Array.isArray(disp.held)) return { count: disp.held.count, returns: null, items: [], more: [] };
-      const all = disp.held.map((x) => ({ title: shown(x.title) || 'Held item', why: shown(x.why), risky: x.why === 'possible risk — not yet classified' }));
-      return { count: all.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: all.slice(0, HELD_VISIBLE), more: all.slice(HELD_VISIBLE) };
+      // Only items with a real label are listed; the rest are counted, never shown by their type word.
+      // A possible risk is never collapsed away: without a label it is still listed, under this file's own words.
+      const all = disp.held.map((x) => {
+        const risky = x.why === 'possible risk — not yet classified';
+        return { title: heldLabel(x.title) || (risky ? 'An item without a name' : null), why: heldWhy(x.why), risky };
+      });
+      const named = all.filter((x) => x.title);
+      return { count: all.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: named.slice(0, HELD_VISIBLE), more: named.slice(HELD_VISIBLE), unnamed: all.length - named.length };
     }),
     judgement: sec('judgement', () => ({ items: disp.judgement.map((j) => ({ what: shown(j.what) || 'An action waiting for your approval', by: shown(j.by), basis: shown(j.basis) })) })),
   };
@@ -158,7 +213,7 @@ export function manifest(payload) {
     refused: null,
     rule: d.lead.rule,
     tone: st.tone,
-    presence: `SAiM · desk active · ${st.word}`,
+    presence: `SAiM · ${deskWord(p.work)} · ${st.word}`,
     state: st.label(disp),
     title: title || shown(disp.lead.sentence),
     sentence: title ? shown(disp.lead.sentence) : null,

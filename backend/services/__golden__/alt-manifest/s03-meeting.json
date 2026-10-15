@@ -2,7 +2,7 @@
   "refused": null,
   "rule": "S3 meeting",
   "tone": "meeting",
-  "presence": "SAiM · desk active · in a meeting",
+  "presence": "SAiM · desk state not current · in a meeting",
   "state": "In a meeting · until 15:00",
   "title": "Nick Catch Up",
   "sentence": "You’re in it until 15:00; I’m holding everything else.",
@@ -41,7 +41,8 @@
           "risky": true
         }
       ],
-      "more": []
+      "more": [],
+      "unnamed": 0
     },
     "judgement": {
       "items": []

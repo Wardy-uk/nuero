@@ -2,7 +2,7 @@
   "refused": null,
   "rule": "S5 protected block",
   "tone": "block",
-  "presence": "SAiM · desk active · working",
+  "presence": "SAiM · desk state not current · working",
   "state": "Active · until 15:30",
   "title": "Customer Care training plan and refreshers",
   "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
@@ -73,7 +73,8 @@
           "risky": false
         }
       ],
-      "more": []
+      "more": [],
+      "unnamed": 0
     },
     "judgement": {
       "items": [

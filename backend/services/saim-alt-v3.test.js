@@ -251,3 +251,74 @@ test('v2 is unchanged when no page is supplied: its entry passes no override', (
   assert.match(app, /renderSaim = null/);
   assert.match(app, /driveFor \? driveFor\(day\.canonical\) : driveFrom\(day\.canonical, isPressing\)/);
 });
+
+// ── Display fixes from the first real-data inspection (16 Oct 2026) ─────────
+
+const s05 = () => JSON.parse(fs.readFileSync(path.join(ADAPTER_DIR, 'public', 'fixtures', 's05-protected-block.json'), 'utf8'));
+const FRESH_AT_DESK = { known: true, atDesk: true, deskKnown: true, host: 'MacBook Air' };
+
+test('header: “desk active” only for a current report with an app in front; otherwise never presence', () => {
+  assert.equal(M.deskWord(FRESH_AT_DESK), 'desk active');
+  assert.equal(M.deskWord({ deskKnown: true, atDesk: false }), 'laptop not in use');
+  for (const w of [null, undefined, {}, { deskKnown: false, atDesk: false }, { deskKnown: false, atDesk: true }, { known: false }]) {
+    assert.equal(M.deskWord(w), 'desk state not current', JSON.stringify(w));
+  }
+  const p = s05();
+  assert.equal(M.manifest({ ...p, work: FRESH_AT_DESK }).presence, 'SAiM · desk active · working');
+  assert.equal(M.manifest({ ...p, work: { ...FRESH_AT_DESK, deskKnown: false } }).presence, 'SAiM · desk state not current · working');
+  assert.equal(M.manifest(p).presence, 'SAiM · desk state not current · working', 'no work block: not current');
+  assert.doesNotMatch(M.manifest({ ...p, candidates: null }).presence, /desk active/, 'the refusal claims no desk at all');
+});
+
+// The exact held shape the live payload carried at 18:42 on 15 Oct 2026 (types and the gate's status line).
+const LIVE_HELD = [
+  { title: 'capacity', why: 'not working — driving', returns: 'after this' },
+  { title: 'capacity', why: 'not working — driving', returns: 'after this' },
+  { title: 'todo', why: 'not working — driving', returns: 'after this' },
+  { title: 'email', why: 'not working — driving', returns: 'after this' },
+];
+const withHeld = (held) => { const p = s05(); p.saim = { ...p.saim, display: { ...p.saim.display, held } }; return p; };
+
+test('held: type words and the gate’s status line are never shown — unnamed items collapse into a count', () => {
+  const vm = M.manifest(withHeld(LIVE_HELD));
+  assert.equal(vm.refused, null);
+  assert.deepEqual({ count: vm.rail.held.count, items: vm.rail.held.items, more: vm.rail.held.more, unnamed: vm.rail.held.unnamed }, { count: 4, items: [], more: [], unnamed: 4 });
+  const h = html(vm, LIVE()).replace(/<[^>]+>/g, ' ');
+  assert.match(h, /4 items held — back after this\./);
+  assert.match(h, /None has a name SAiM can show — they’re in NEURO\./);
+  for (const raw of ['capacity', 'todo', 'not working', 'driving']) assert.equal(h.includes(raw), false, `“${raw}” never shown`);
+});
+
+test('held: a real label is listed with a human reason; the off-duty status line is reworded', () => {
+  const vm = M.manifest(withHeld([
+    { title: 'Survey West Hants responses not showing on CSV', why: 'Sized at 4h', returns: 'at 17:30' },
+    { title: 'Reply to Simon', why: 'not working — driving', returns: 'at 17:30' },
+    { title: 'todo', why: 'not working — driving', returns: 'at 17:30' },
+  ]));
+  assert.deepEqual(vm.rail.held.items.map((x) => [x.title, x.why]), [['Survey West Hants responses not showing on CSV', 'Sized at 4h'], ['Reply to Simon', 'held while you’re off duty']]);
+  assert.equal(vm.rail.held.unnamed, 1);
+  assert.match(html(vm, LIVE()), /1 more without a name SAiM can show/);
+  assert.equal(M.heldLabel('Held back'), null, 'the generic fallback is not a label');
+  assert.equal(M.heldWhy('a focus session is running — held until it ends'), 'a focus session is running — held until it ends', 'a sentence is kept');
+});
+
+test('held: an unnamed POSSIBLE RISK is never collapsed away', () => {
+  const vm = M.manifest(withHeld([{ title: 'email', why: 'possible risk — not yet classified', returns: 'after this' }]));
+  assert.deepEqual(vm.rail.held.items.map((x) => [x.title, x.risky]), [['An item without a name', true]]);
+  assert.equal(vm.rail.held.unnamed, 0);
+});
+
+test('leading structural punctuation is removed for display; a balanced quote or bracket is kept', () => {
+  assert.equal(M.tidyText('"NT-24162: Survey West Hants Responses not showing on CSV and Being...'), 'NT-24162: Survey West Hants Responses not showing on CSV and Being...');
+  assert.equal(M.tidyText('“Unclosed curly'), 'Unclosed curly');
+  assert.equal(M.tidyText('- • : Reply to Simon'), 'Reply to Simon');
+  assert.equal(M.tidyText('(no closing bracket'), 'no closing bracket');
+  assert.equal(M.tidyText('"Quoted" project review'), '"Quoted" project review');
+  assert.equal(M.tidyText('“Quoted” review'), '“Quoted” review');
+  assert.equal(M.tidyText('(Draft) plan'), '(Draft) plan');
+  assert.equal(M.tidyText('Book my car in for its MOT'), 'Book my car in for its MOT');
+  const vm = M.manifest(withHeld([{ title: '"NT-24162: Survey West Hants Responses', why: 'Sized at 4h', returns: 'at 17:30' }]));
+  assert.equal(vm.rail.held.items[0].title, 'NT-24162: Survey West Hants Responses', 'display only: the payload is untouched');
+  const p = withHeld([{ title: '"NT-24162: Survey West Hants Responses', why: 'Sized at 4h', returns: 'at 17:30' }]);
+  assert.equal(p.saim.display.held[0].title, '"NT-24162: Survey West Hants Responses', 'source data is not modified');
+});

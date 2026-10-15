@@ -164,6 +164,11 @@ export default function ManifestView({ v, live = null }) {
                     <ul className="wk__held">{x.more.map((h, i) => <HeldRow key={i} h={h} />)}</ul>
                   </details>
                 )}
+                {x.unnamed > 0 && (
+                  <p className="wk__railmeta mf__unnamed">{x.unnamed === x.count
+                    ? 'None has a name SAiM can show — they’re in NEURO.'
+                    : `${x.unnamed} more without a name SAiM can show — they’re in NEURO.`}</p>
+                )}
               </>
             )}
           </RailBox>
