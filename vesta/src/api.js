@@ -74,6 +74,21 @@ export const login = (username, pin) =>
 
 export const home = (token) => call('/home', { token });
 
+/** The family wall: week, top tasks, who's in, station. Polled every minute. */
+export const wall = (token) => call('/wall', { token });
+
+// The wall is a choice made ON THIS DEVICE — the kitchen iPad, not her phone.
+const WALL_KEY = 'vesta_wall';
+export function getWallMode() {
+  try {
+    if (/[?&]wall(=1|&|$)/.test(window.location.search)) return true;
+    return localStorage.getItem(WALL_KEY) === '1';
+  } catch { return false; }
+}
+export function setWallMode(on) {
+  try { on ? localStorage.setItem(WALL_KEY, '1') : localStorage.removeItem(WALL_KEY); } catch { /* private mode */ }
+}
+
 /** Nick's armed walk, polled while he is out (the `hike` scope). */
 export const hike = (token) => call('/hike', { token });
 

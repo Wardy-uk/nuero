@@ -114,6 +114,114 @@ function redactDay(events = []) {
     .sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
 }
 
+// ── The family wall (15 Oct 2026) ────────────────────────────────────────────
+//
+// Nick: an always-on iPad in the house showing the week's calendar, the top
+// family tasks, who is in, and the weather station. It is VESTA, not SAiM — a
+// shared screen must hold a household login, never his.
+
+const _p2 = (n) => String(n).padStart(2, '0');
+
+/** `n` consecutive YYYY-MM-DD keys from `startKey`. PURE. Built from LOCAL date
+ *  parts only — no time of day, so no offset can move a key. */
+function dayKeys(startKey, n = 7) {
+  const [y, m, d] = String(startKey).split('-').map(Number);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = new Date(y, m - 1, d + i);
+    out.push(`${t.getFullYear()}-${_p2(t.getMonth() + 1)}-${_p2(t.getDate())}`);
+  }
+  return out;
+}
+
+/**
+ * Which of `keys` a redacted event falls on. PURE, string comparisons only.
+ * An all-day event's end date is EXCLUSIVE (Graph and EventKit both); a timed
+ * event ending at exactly midnight does not reach into the next day.
+ */
+function daysOf(e, keys) {
+  const s = String(e.start || '').slice(0, 10);
+  if (!s) return [];
+  let last = String(e.end || '').slice(0, 10) || s;
+  const endsAtMidnight = String(e.end || '').slice(11, 16) === '00:00';
+  if ((e.allDay || endsAtMidnight) && last > s) {
+    const i = keys.indexOf(last);
+    last = i > 0 ? keys[i - 1] : (last > keys[keys.length - 1] ? keys[keys.length - 1] : s);
+  }
+  if (last < s) last = s;
+  return keys.filter((k) => k >= s && k <= last);
+}
+
+/**
+ * A week of the diary, one entry per day, REDACTED by `redactDay` — the same
+ * rule as today's list, so a work subject cannot reach the wall by a second
+ * door. PURE.
+ */
+function redactWeek(rows = [], startKey, n = 7) {
+  const keys = dayKeys(startKey, n);
+  const byDay = Object.fromEntries(keys.map((k) => [k, []]));
+  for (const e of redactDay(rows)) {
+    for (const k of daysOf(e, keys)) byDay[k].push(e);
+  }
+  // All-day first, then by start time — how a wall calendar reads.
+  return keys.map((date) => ({
+    date,
+    events: byDay[date].sort((a, b) => (Number(b.allDay) - Number(a.allDay)) || String(a.start || '').localeCompare(String(b.start || ''))),
+  }));
+}
+
+/**
+ * The family tasks worth a wall, from `capture-links.submissions()`. PURE.
+ * Open only; dated before undated, soonest first; then newest. A task due
+ * before today is `overdue`, never silently re-dated.
+ */
+function topTasks(tasks = [], todayKey, limit = 8) {
+  const open = (tasks || []).filter((t) => t && (t.status === 'to do' || t.status === 'in progress'));
+  open.sort((a, b) => {
+    const ad = a.dueDate || '9999-99-99';
+    const bd = b.dueDate || '9999-99-99';
+    return ad.localeCompare(bd) || String(b.addedAt || '').localeCompare(String(a.addedAt || ''));
+  });
+  return {
+    total: open.length,
+    tasks: open.slice(0, limit).map((t) => ({
+      id: t.id,
+      text: t.text,
+      status: t.status,
+      dueDate: t.dueDate || null,
+      overdue: !!(t.dueDate && t.dueDate < todayKey),
+      dueToday: t.dueDate === todayKey,
+      who: Array.isArray(t.assigneeLabels) ? t.assigneeLabels : [],
+    })),
+  };
+}
+
+/**
+ * Who is in, from `household.read()`. PURE.
+ *
+ * ⚠ NAMES AND A STATE ONLY — no rooms, no "at work" detail, no photos, no
+ * timestamps. Visitors appear only while positively home (an "Out" for someone
+ * who is always out is noise, and `unknown` hides them too). A failed source
+ * is `known: false`, never everybody out.
+ */
+function whoIsIn(hh) {
+  if (!hh || !Array.isArray(hh.members)) return { known: false, why: "can't see the house" };
+  const people = hh.members
+    .filter((m) => m && m.name && (m.role !== 'visitor' || m.state === 'home'))
+    .filter((m) => m.role !== 'companion' || m.state !== 'untracked')
+    .map((m) => ({
+      name: m.name,
+      role: m.role === 'companion' ? 'companion' : 'person',
+      state: m.state === 'home' ? 'home' : m.state === 'away' ? 'out' : 'unknown',
+    }));
+  return {
+    known: !!hh.known,
+    why: hh.known ? null : "can't see the house just now",
+    homeCount: people.filter((p) => p.role === 'person' && p.state === 'home').length,
+    people,
+  };
+}
+
 // ── The kitchen is a CATALOGUE ───────────────────────────────────────────────
 //
 // Nick, 31 Aug 2026, while this was being built: *"this should be a more
@@ -236,6 +344,11 @@ module.exports = {
   // pure
   redactEvent,
   redactDay,
+  redactWeek,
+  dayKeys,
+  daysOf,
+  topTasks,
+  whoIsIn,
   domainOf,
   suggestMeals,
   // stateful

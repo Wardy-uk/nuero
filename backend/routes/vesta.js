@@ -6,6 +6,7 @@
  *
  *   POST /api/v/login    { username, pin } → a signed session token
  *   GET  /api/v/home     → everything this account may see, in one call
+ *   GET  /api/v/wall     → the family wall: week, top tasks, who's in, station
  *   POST /api/v/tasks    { text, for } → add a task
  *   POST /api/v/kitchen  { place, name } → something went in
  *   POST /api/v/kitchen/used { place, name } → something got eaten
@@ -241,6 +242,68 @@ router.get('/calendar', requireAccount, (req, res) => {
     // your diary" and "nothing on that day" must not render alike.
     res.status(500).json({ ok: false, error: 'I could not read the diary just now.' });
   }
+});
+
+/**
+ * The family wall — the always-on screen in the house, polled every minute.
+ * One call, every block guarded on its own scope and reporting its own failure:
+ *   tasks    — always (what an account IS); the top OPEN ones, soonest first
+ *   week     — `calendar`: seven days from `from` (default today), REDACTED by
+ *              the same `redactDay` as /home, so "Busy" stays "Busy"
+ *   who, station — `house`: names + home/out/unknown, and the weather station
+ * A block the account cannot see is ABSENT, never empty.
+ */
+router.get('/wall', requireAccount, (req, res) => {
+  const today = _today();
+  const from = String((req.query && req.query.from) || '') || today;
+  if (!DATE_RE.test(from)) {
+    return res.status(400).json({ ok: false, error: 'that is not a date I understand' });
+  }
+  const out = { ok: true, label: req.account.label, scopes: capture.scopesOf(req.account), today, gaps: [], at: new Date().toISOString() };
+
+  try {
+    out.tasks = vesta.topTasks(capture.submissions(req.account), today);
+  } catch (e) {
+    out.tasks = null;
+    out.gaps.push({ block: 'tasks', why: 'could not read the tasks' });
+    console.error('[Vesta] Wall tasks failed:', e.message);
+  }
+
+  if (capture.hasScope(req.account, 'calendar')) {
+    try {
+      const keys = vesta.dayKeys(from, 7);
+      // Read from a week EARLIER: the cache is keyed on start time, and a
+      // holiday that began last Saturday is still on this week's wall.
+      const [y, m, d] = from.split('-').map(Number);
+      const back = new Date(y, m - 1, d - 7);
+      const lookback = `${back.getFullYear()}-${_pad(back.getMonth() + 1)}-${_pad(back.getDate())}`;
+      const rows = db.getCalendarEvents(`${lookback}T00:00:00`, `${keys[6]}T23:59:59`) || [];
+      out.week = vesta.redactWeek(rows, from, 7);
+    } catch (e) {
+      // ⚠ `null` with a reason — an unreadable diary is not an empty week.
+      out.week = null;
+      out.gaps.push({ block: 'week', why: 'could not read the diary' });
+      console.error('[Vesta] Wall week failed:', e.message);
+    }
+  }
+
+  if (capture.hasScope(req.account, 'house')) {
+    try {
+      out.who = vesta.whoIsIn(require('../services/household').read());
+    } catch (e) {
+      out.who = { known: false, why: "can't see the house" };
+      out.gaps.push({ block: 'who', why: "can't see the house" });
+      console.error('[Vesta] Wall household failed:', e.message);
+    }
+    try {
+      out.station = require('../services/home-board').readStation(Date.now());
+    } catch (e) {
+      out.station = { known: false, why: 'the weather station could not be read' };
+      console.error('[Vesta] Wall station failed:', e.message);
+    }
+  }
+
+  res.json(out);
 });
 
 // GET /api/v/hike — Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.
