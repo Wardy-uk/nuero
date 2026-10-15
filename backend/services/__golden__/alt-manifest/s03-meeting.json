@@ -9,6 +9,7 @@
   "when": "14:30–15:00",
   "guard": null,
   "unreadLead": null,
+  "protecting": true,
   "actions": [],
   "handoff": {
     "kind": "meeting",

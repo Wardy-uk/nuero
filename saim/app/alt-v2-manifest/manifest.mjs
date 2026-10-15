@@ -61,6 +61,11 @@ export function leadSentence(s) {
   return s;
 }
 
+/** The rail line when SAiM is protecting nothing: the other items are waiting, not held. */
+export function waitingLine(n) {
+  return `${n} other commitment${n === 1 ? "" : "s"} waiting`;
+}
+
 /** The rail line for held items with no label SAiM can show. */
 export function unnamedLine(n) {
   return `${n} other commitment${n === 1 ? '' : 's'} held — details in NEURO.`;
@@ -241,6 +246,8 @@ export function manifest(payload) {
     when: shown(disp.lead.when),
     guard: disp.protected && !leadIsGuard ? { what: shown(disp.protected.what) || 'Protected time', until: shown(disp.protected.until), verb: GUARD_VERB[d.lead.rule] || 'still protected' } : null,
     unreadLead: blind ? ['your tasks and blocks', 'the diary', 'approvals waiting'] : null,
+    // Holding/back-at language needs a boundary SAiM has set: a protected meeting, block or timed diary time.
+    protecting: Boolean(d.protected),
     actions,
     handoff, ask, handoffNote, joinGap,
     rail,

@@ -13,6 +13,7 @@
     "the diary",
     "approvals waiting"
   ],
+  "protecting": false,
   "actions": [],
   "handoff": {
     "kind": "connection",

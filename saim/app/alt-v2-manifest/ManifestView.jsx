@@ -1,6 +1,6 @@
 import { actable } from './manifest.mjs';
 import { deskStateText, deskStateBusy } from '../alt-v2/model.mjs';
-import { unnamedLine } from './manifest.mjs';
+import { unnamedLine, waitingLine } from './manifest.mjs';
 
 // The approved `working` desktop composition (wk__* geometry, unchanged) showing
 // ONE adapter view-model. It renders the view-model and decides nothing.
@@ -132,8 +132,10 @@ export default function ManifestView({ v, live = null }) {
           <RailBox label="Next" section={r.next} empty="Nothing else in the diary today.">
             {(x) => <><p className="wk__railtitle">{x.title}</p>{x.when && <p className="wk__railmeta">{x.when}</p>}</>}
           </RailBox>
-          <RailBox label="Holding the day" section={r.held} empty="Nothing held back." isEmpty={(x) => !x.count}>
-            {(x) => (
+          {/* "Holding the day" / "held — back …" only while SAiM protects a meeting, a block or timed
+              diary time (v.protecting). Without one, nothing is being held: the rest is simply waiting. */}
+          <RailBox label={v.protecting ? 'Holding the day' : 'Also waiting'} section={r.held} empty={v.protecting ? 'Nothing held back.' : 'Nothing else waiting.'} isEmpty={(x) => !x.count}>
+            {(x) => (v.protecting ? (
               <>
                 <p className="wk__railsub">{`${x.count} ${x.count === 1 ? 'item' : 'items'} held${x.returns ? ` — back ${x.returns}` : ''}.`}</p>
                 {x.items.length > 0 && (
@@ -147,7 +149,14 @@ export default function ManifestView({ v, live = null }) {
                 )}
                 {x.unnamed > 0 && <p className="wk__railmeta mf__unnamed">{unnamedLine(x.unnamed)}</p>}
               </>
-            )}
+            ) : (
+              <>
+                <p className="wk__railsub">{waitingLine(x.count)}</p>
+                {x.items.length > 0 && (
+                  <ul className="wk__held">{[...x.items, ...(x.more || [])].map((h, i) => <li key={i} className={h.risky ? 'mf__heldrisk' : ''}><span>{h.title}</span>{h.risky && <span className="wk__muted"> — possible risk, not yet classified</span>}</li>)}</ul>
+                )}
+              </>
+            ))}
           </RailBox>
           <RailBox label="Needs your judgement" section={r.judgement} empty="Nothing waiting for your judgement." isEmpty={(x) => !x.items.length}>
             {(x) => x.items.map((j, i) => (

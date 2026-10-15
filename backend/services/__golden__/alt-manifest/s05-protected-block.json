@@ -9,6 +9,7 @@
   "when": "14:00–15:30",
   "guard": null,
   "unreadLead": null,
+  "protecting": true,
   "actions": [
     {
       "say": "I’m on it",

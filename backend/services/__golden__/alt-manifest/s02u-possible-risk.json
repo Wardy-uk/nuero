@@ -13,6 +13,7 @@
     "verb": "paused while you check this — not lost"
   },
   "unreadLead": null,
+  "protecting": true,
   "actions": [],
   "handoff": null,
   "ask": null,

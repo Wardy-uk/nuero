@@ -366,3 +366,26 @@ test('leading structural punctuation is removed for display; a balanced quote or
   const p = withHeld([{ title: '"NT-24162: Survey West Hants Responses', why: 'Sized at 4h', returns: 'at 17:30' }]);
   assert.equal(p.saim.display.held[0].title, '"NT-24162: Survey West Hants Responses', 'source data is not modified');
 });
+
+// ── Held vs waiting: “held” needs a boundary SAiM has set (16 Oct 2026) ─────
+
+test('top of the list with nothing protected: the rail says the rest is WAITING — never held, never back after', () => {
+  const p = withHeld(LIVE_HELD);
+  p.saim = { ...p.saim, protected: null, display: { ...p.saim.display, protected: null } };
+  const vm = M.manifest(p);
+  assert.equal(vm.protecting, false);
+  const h = html(vm, LIVE()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  assert.match(h, /Also waiting 4 other commitments waiting/);
+  for (const word of ['Holding the day', 'held', 'back after', 'back at', 'details in NEURO']) assert.equal(h.includes(word), false, `no “${word}” without a protected context`);
+  assert.equal(M.waitingLine(1), '1 other commitment waiting');
+});
+
+test('a protected block or meeting keeps “Holding the day” and its back-at time', () => {
+  const block = html(GOLDEN('s05-protected-block'), LIVE()).replace(/<[^>]+>/g, ' ');
+  assert.equal(GOLDEN('s05-protected-block').protecting, true);
+  assert.match(block, /Holding the day/);
+  assert.match(block, /items? held — back /);
+  const meeting = html(GOLDEN('s03-meeting'), LIVE()).replace(/<[^>]+>/g, ' ');
+  assert.equal(GOLDEN('s03-meeting').protecting, true);
+  assert.match(meeting, /Holding the day/);
+});
