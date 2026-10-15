@@ -151,42 +151,86 @@ test('“already in front” is a statement, never a launch', () => {
   assert.equal(buttonsNamed(h, 'Open Claude').length, 0);
 });
 
-// ── The one-tap activity answer ─────────────────────────────────────────────
+// ── An activity SAiM does not know: one route, choices behind "Choose a way in…" ──
 
-const ASK = { question: 'What will you use?', taskId: 600, deviceSpecific: true, options: [
+// The view-model's own shape (manifest() drops "Not sure" and adds the task's link).
+const ASK = { question: 'What will you use?', taskId: 600, neuroHref: 'neuro:?item=task%3A600', deviceSpecific: true, options: [
   { choice: 'draft', label: 'Claude', suggested: true, basis: 'from where it came from' },
   { choice: 'write', label: 'Word', suggested: false, basis: null },
-  { choice: 'unsure', label: 'Not sure — open the task in NEURO', suggested: false, basis: null },
 ] };
-const askVm = () => ({ ...GOLDEN('s05-protected-block'), handoff: null, ask: ASK, handoffNote: null });
+const askVm = () => ({ ...GOLDEN('s05-protected-block'), handoff: null, ask: ASK, handoffNote: 'NEURO doesn’t know what kind of work this is yet, so SAiM won’t guess an app.' });
 
-test('ask: each option sends Nick’s choice for THAT task, and only when pressed', () => {
+test('unknown activity: “Open task in NEURO” is the one primary route, to that exact task', () => {
+  const h = html(askVm(), LIVE());
+  assert.match(h, /<a class="wk__open" href="https:\/\/neuro\.example\/\?item=task%3A600" target="_blank" rel="noopener noreferrer">Open task in NEURO<\/a>/);
+  assert.equal((h.match(/class="wk__open"/g) || []).length, 1, 'exactly one primary control');
+  assert.match(h, /NEURO doesn’t know what kind of work this is yet/);
+  assert.equal(/Not sure/.test(h), false, '“Not sure” is not another decision');
+});
+
+test('unknown activity: the choices sit behind a CLOSED “Choose a way in…”, never as the main screen', () => {
+  const h = html(askVm(), LIVE());
+  const det = h.match(/<details class="mf__way"([^>]*)>([\s\S]*?)<\/details>/);
+  assert.ok(det, 'the options are inside the disclosure');
+  assert.equal(/\bopen\b/.test(det[1]), false, 'closed until Nick opens it');
+  assert.match(det[2], /<summary>Choose a way in…<\/summary>/);
+  const outside = h.replace(det[0], '');
+  assert.equal(buttonsNamed(outside, 'Claude').length + buttonsNamed(outside, 'Word').length, 0, 'no activity button outside the disclosure');
+  assert.equal(/wk__act--lead/.test(det[2]), false, 'no option is styled as a lead action');
+});
+
+test('unknown activity: a choice is saved only when pressed, for THAT task', () => {
   const sent = [];
   const tree = View({ v: askVm(), live: LIVE({ onChoose: (t, c) => sent.push([t, c]) }) });
   assert.deepEqual(sent, [], 'rendering writes nothing');
   const els = clickables(tree);
+  assert.equal(els.some((e) => label(e).startsWith('Open task')), false, 'the NEURO route is a link, not a write');
   els.find((e) => label(e).startsWith('Word')).props.onClick();
-  els.find((e) => label(e).startsWith('Not sure')).props.onClick();
-  assert.deepEqual(sent, [[600, 'write'], [600, 'unsure']]);
-  assert.match(html(askVm(), LIVE()), /Nothing is saved until you choose\./);
+  assert.deepEqual(sent, [[600, 'write']]);
 });
 
-test('ask: no task id, no choice, or the preview — the options are inert', () => {
+test('unknown activity: no link, no task id, or the preview — nothing is pressable that cannot work', () => {
+  const noLink = { ...askVm(), ask: { ...ASK, neuroHref: null } };
+  const hn = html(noLink, LIVE());
+  assert.equal(/<a [^>]*href=/.test(hn), false);
+  assert.ok(!enabled(buttonsNamed(hn, 'Open task in NEURO')[0]));
   const noTask = { ...askVm(), ask: { ...ASK, taskId: null } };
   for (const b of buttonsNamed(html(noTask, LIVE()), 'Claude')) assert.ok(!enabled(b));
-  const noChoice = { ...askVm(), ask: { ...ASK, options: [{ choice: null, label: 'Claude', suggested: false, basis: null }] } };
-  assert.ok(!enabled(buttonsNamed(html(noChoice, LIVE()), 'Claude')[0]));
-  for (const b of buttonsNamed(html(askVm(), null), 'Word')) assert.ok(!enabled(b), 'preview: inert');
+  const hp = html(askVm(), null);
+  assert.equal(/<a [^>]*href=/.test(hp), false, 'preview: no live link');
+  for (const b of buttonsNamed(hp, 'Word')) assert.ok(!enabled(b), 'preview: inert');
 });
 
-test('the view-model carries the ask’s task id and each option’s choice from the resolver', () => {
-  // A synthetic resolver ask, run through the real adapter mapping.
+test('view-model: the ask carries the task’s canonical NEURO link and drops “Not sure”', () => {
   const p = JSON.parse(fs.readFileSync(path.join(ADAPTER_DIR, 'public', 'fixtures', 's05-protected-block.json'), 'utf8'));
   p.handoff = { ...p.handoff, handoff: null, reason: 'NEURO doesn’t know what kind of work this is yet, so SAiM won’t guess an app.', ask: { question: 'What will you use?', taskId: 600, deviceSpecific: true, options: [{ choice: 'draft', label: 'Claude', suggested: true, basis: 'source' }, { choice: 'unsure', label: 'Not sure — open the task in NEURO' }] } };
   const vm = M.manifest(p);
   assert.equal(vm.refused, null);
   assert.equal(vm.ask.taskId, 600);
-  assert.deepEqual(vm.ask.options.map((o) => o.choice), ['draft', 'unsure']);
+  assert.equal(vm.ask.neuroHref, 'neuro:?item=task%3A600');
+  assert.deepEqual(vm.ask.options.map((o) => o.choice), ['draft']);
+  p.handoff.ask.taskId = null;
+  const noId = M.manifest(p);
+  assert.equal(noId.ask ? noId.ask.neuroHref : null, null, 'no task id: no link is invented (the contract may refuse the ask outright)');
+});
+
+test('known activity: the approved primary app + limited alternatives pattern is unchanged', () => {
+  const h = html(GOLDEN('s05-protected-block'), LIVE());
+  assert.ok(enabled(buttonsNamed(h, 'Open Claude')[0]));
+  assert.equal(/Choose a way in/.test(h), false);
+  assert.equal(/Open task in NEURO/.test(h), false);
+});
+
+test('copy: the overdue sentence and the unnamed held line', () => {
+  assert.equal(M.leadSentence('still open, 3 days past its date'), 'Still open — three days overdue.');
+  assert.equal(M.leadSentence('still open, 1 day past its date'), 'Still open — one day overdue.');
+  assert.equal(M.leadSentence('still open, 40 days past its date'), 'Still open — 40 days overdue.');
+  assert.equal(M.leadSentence('due today'), 'due today', 'anything else is untouched');
+  assert.equal(M.unnamedLine(4), '4 other commitments held — details in NEURO.');
+  assert.equal(M.unnamedLine(1), '1 other commitment held — details in NEURO.');
+  const p = JSON.parse(fs.readFileSync(path.join(ADAPTER_DIR, 'public', 'fixtures', 's05-protected-block.json'), 'utf8'));
+  p.saim = { ...p.saim, display: { ...p.saim.display, lead: { ...p.saim.display.lead, sentence: 'still open, 3 days past its date' } } };
+  assert.equal(M.manifest(p).sentence, 'Still open — three days overdue.', 'applied to the lead');
 });
 
 // ── The page and its one write ──────────────────────────────────────────────
@@ -285,7 +329,7 @@ test('held: type words and the gate’s status line are never shown — unnamed 
   assert.deepEqual({ count: vm.rail.held.count, items: vm.rail.held.items, more: vm.rail.held.more, unnamed: vm.rail.held.unnamed }, { count: 4, items: [], more: [], unnamed: 4 });
   const h = html(vm, LIVE()).replace(/<[^>]+>/g, ' ');
   assert.match(h, /4 items held — back after this\./);
-  assert.match(h, /None has a name SAiM can show — they’re in NEURO\./);
+  assert.match(h, /4 other commitments held — details in NEURO\./);
   for (const raw of ['capacity', 'todo', 'not working', 'driving']) assert.equal(h.includes(raw), false, `“${raw}” never shown`);
 });
 
@@ -297,7 +341,7 @@ test('held: a real label is listed with a human reason; the off-duty status line
   ]));
   assert.deepEqual(vm.rail.held.items.map((x) => [x.title, x.why]), [['Survey West Hants responses not showing on CSV', 'Sized at 4h'], ['Reply to Simon', 'held while you’re off duty']]);
   assert.equal(vm.rail.held.unnamed, 1);
-  assert.match(html(vm, LIVE()), /1 more without a name SAiM can show/);
+  assert.match(html(vm, LIVE()), /1 other commitment held — details in NEURO\./);
   assert.equal(M.heldLabel('Held back'), null, 'the generic fallback is not a label');
   assert.equal(M.heldWhy('a focus session is running — held until it ends'), 'a focus session is running — held until it ends', 'a sentence is kept');
 });

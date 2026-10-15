@@ -42,3 +42,10 @@
 .mf__altbtn:disabled { cursor: default; opacity: 0.6; }
 .mf__alt { color: var(--text); text-decoration-color: rgba(255, 255, 255, 0.35); text-underline-offset: 3px; }
 a.wk__open { text-decoration: none; display: inline-block; }
+.mf__way { margin-top: 0.9em; }
+.mf__way > summary { cursor: pointer; font-size: 0.88em; color: var(--muted); list-style: none; }
+.mf__way > summary::-webkit-details-marker { display: none; }
+.mf__way > summary::after { content: ' ▸'; }
+.mf__way[open] > summary::after { content: ' ▾'; }
+.mf__way .wk__acts { margin-top: 0.6em; }
+.mf__way .wk__why { margin-top: 0.6em; font-size: 0.8em; opacity: 0.7; }

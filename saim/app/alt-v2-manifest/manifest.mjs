@@ -13,6 +13,7 @@
 
 import CONTRACTS from '../../../shared/attention-contracts.cjs';
 import DISPLAY from '../../../shared/display-text.cjs';
+import LINKS from '../../../shared/neuro-links.cjs';
 
 const OPENERS = Object.freeze({ '"': '"', '\'': '\'', '“': '”', '‘': '’', '(': ')', '[': ']', '«': '»' });
 
@@ -47,6 +48,22 @@ const shown = (s) => {
 export function deskWord(work) {
   if (!work || work.deskKnown !== true) return 'desk state not current';
   return work.atDesk === true ? 'desk active' : 'laptop not in use';
+}
+
+const NUMBER_WORD = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const numberWord = (n) => NUMBER_WORD[n] || String(n);
+
+/** Display copy for the lead's supporting sentence (16 Oct 2026): NEURO's terse overdue phrase as a sentence. */
+export function leadSentence(s) {
+  if (!s) return s;
+  const m = /^still open, (\d+) days? past its date\.?$/i.exec(s);
+  if (m) { const n = Number(m[1]); return `Still open — ${numberWord(n)} day${n === 1 ? '' : 's'} overdue.`; }
+  return s;
+}
+
+/** The rail line for held items with no label SAiM can show. */
+export function unnamedLine(n) {
+  return `${n} other commitment${n === 1 ? '' : 's'} held — details in NEURO.`;
 }
 
 /** A held title that is only a type token (`capacity`, `todo`) or the generic fallback is not a label. */
@@ -177,7 +194,11 @@ export function manifest(payload) {
       ask = {
         question: shown(ho.ask.question) || 'What will you use?',
         taskId: Number.isInteger(ho.ask.taskId) ? ho.ask.taskId : null,
-        options: ho.ask.options.map((o) => ({ choice: typeof o.choice === 'string' ? o.choice : null, label: shown(o.label), suggested: Boolean(o.suggested), basis: o.basis === 'source' ? 'from where it came from' : o.basis === 'observed' ? 'from what you used before' : null })).filter((o) => o.label),
+        // The honest route for an activity nobody has stated is the task itself, in NEURO — the resolver only
+        // asks when there is one exact task, so its canonical link is built from that id, never guessed.
+        neuroHref: Number.isInteger(ho.ask.taskId) ? LINKS.linkFor('task', ho.ask.taskId) : null,
+        // "Not sure" is not a separate decision here: opening the task in NEURO is that path.
+        options: ho.ask.options.filter((o) => o && o.choice !== 'unsure').map((o) => ({ choice: typeof o.choice === 'string' ? o.choice : null, label: shown(o.label), suggested: Boolean(o.suggested), basis: o.basis === 'source' ? 'from where it came from' : o.basis === 'observed' ? 'from what you used before' : null })).filter((o) => o.label),
         deviceSpecific: Boolean(ho.ask.deviceSpecific),
       };
     }
@@ -216,7 +237,7 @@ export function manifest(payload) {
     presence: `SAiM · ${deskWord(p.work)} · ${st.word}`,
     state: st.label(disp),
     title: title || shown(disp.lead.sentence),
-    sentence: title ? shown(disp.lead.sentence) : null,
+    sentence: title ? leadSentence(shown(disp.lead.sentence)) : null,
     when: shown(disp.lead.when),
     guard: disp.protected && !leadIsGuard ? { what: shown(disp.protected.what) || 'Protected time', until: shown(disp.protected.until), verb: GUARD_VERB[d.lead.rule] || 'still protected' } : null,
     unreadLead: blind ? ['your tasks and blocks', 'the diary', 'approvals waiting'] : null,

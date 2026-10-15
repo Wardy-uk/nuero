@@ -1,5 +1,6 @@
 import { actable } from './manifest.mjs';
 import { deskStateText, deskStateBusy } from '../alt-v2/model.mjs';
+import { unnamedLine } from './manifest.mjs';
 
 // The approved `working` desktop composition (wk__* geometry, unchanged) showing
 // ONE adapter view-model. It renders the view-model and decides nothing.
@@ -112,28 +113,8 @@ export default function ManifestView({ v, live = null }) {
 
           {v.joinGap && <p className="mf__gap" role="note">{v.joinGap}</p>}
 
-          {v.ask && (
-            <div className="wk__place mf__ask">
-              <p className="wk__label">{v.ask.question}</p>
-              <div className="wk__acts">
-                {v.ask.options.map((o) => {
-                  const on = Boolean(live && live.onChoose && v.ask.taskId != null && o.choice);
-                  return (
-                    <button key={o.label} type="button" disabled={!on || busy} className={`wk__act${o.suggested ? ' wk__act--lead' : ''}`}
-                      title={o.basis ? `Suggested ${o.basis}` : (on ? undefined : INERT)}
-                      onClick={on ? () => live.onChoose(v.ask.taskId, o.choice) : undefined}>
-                      {o.label}{o.suggested ? ' · suggested' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="wk__why">
-                {v.ask.deviceSpecific ? 'Your answer is saved for this task; SAiM picks the app on each device.' : 'The laptop’s report is out of date, so these are kinds of work, not apps.'}
-                {live ? ' Nothing is saved until you choose.' : ' (Answers aren’t saved in this read-only preview.)'}
-              </p>
-              {live && live.choiceNote && <p className="wk__docknote" role="status">{live.choiceNote}</p>}
-            </div>
-          )}
+          {v.ask && <AskWayIn v={v} live={live} busy={busy} />}
+          {live && live.choiceNote && !v.ask && <p className="wk__docknote" role="status">{live.choiceNote}</p>}
           {!v.handoff && !v.ask && v.handoffNote && <p className="mf__noaction">{v.handoffNote}</p>}
 
           <div className="wk__dockwrap">
@@ -164,11 +145,7 @@ export default function ManifestView({ v, live = null }) {
                     <ul className="wk__held">{x.more.map((h, i) => <HeldRow key={i} h={h} />)}</ul>
                   </details>
                 )}
-                {x.unnamed > 0 && (
-                  <p className="wk__railmeta mf__unnamed">{x.unnamed === x.count
-                    ? 'None has a name SAiM can show — they’re in NEURO.'
-                    : `${x.unnamed} more without a name SAiM can show — they’re in NEURO.`}</p>
-                )}
+                {x.unnamed > 0 && <p className="wk__railmeta mf__unnamed">{unnamedLine(x.unnamed)}</p>}
               </>
             )}
           </RailBox>
@@ -182,6 +159,56 @@ export default function ManifestView({ v, live = null }) {
           </RailBox>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/**
+ * An activity SAiM does not know (16 Oct 2026): ONE clear route — the task in NEURO —
+ * and the activity choices behind a closed "Choose a way in…" control. Nothing is saved
+ * unless Nick opens it and presses an option. "Not sure" is not offered: the NEURO
+ * route IS the honest path when nobody has classified the work.
+ */
+function AskWayIn({ v, live, busy }) {
+  const a = v.ask;
+  const href = live && a.neuroHref ? live.linkFor(a.neuroHref) : null;
+  return (
+    <div className="wk__place mf__dest mf__dest--work mf__ask">
+      <p className="wk__label">Best next place</p>
+      <div className="wk__placerow">
+        <div>
+          <p className="wk__app">The task in NEURO</p>
+          {v.handoffNote && <p className="wk__why">{v.handoffNote}</p>}
+        </div>
+        <span className="wk__openwrap">
+          {href
+            ? <a className="wk__open" href={href} target="_blank" rel="noopener noreferrer">Open task in NEURO</a>
+            : <button type="button" className="wk__open" disabled title={live ? 'This screen can’t open that' : INERT}>Open task in NEURO</button>}
+          <span className="wk__desk">opens in a new tab</span>
+        </span>
+      </div>
+      {a.options.length > 0 && (
+        <details className="mf__way">
+          <summary>Choose a way in…</summary>
+          <div className="wk__acts">
+            {a.options.map((o) => {
+              const on = Boolean(live && live.onChoose && a.taskId != null && o.choice);
+              return (
+                <button key={o.label} type="button" disabled={!on || busy} className="wk__act"
+                  title={o.basis ? `Suggested ${o.basis}` : (on ? undefined : INERT)}
+                  onClick={on ? () => live.onChoose(a.taskId, o.choice) : undefined}>
+                  {o.label}{o.suggested ? ' · suggested' : ''}
+                </button>
+              );
+            })}
+          </div>
+          <p className="wk__why">
+            {a.deviceSpecific ? 'Saved for this task; SAiM then picks the app on each device.' : 'The laptop’s report is out of date, so these are kinds of work, not apps.'}
+            {live ? ' Nothing is saved unless you pick one.' : ' (Answers aren’t saved in this read-only preview.)'}
+          </p>
+        </details>
+      )}
+      {live && live.choiceNote && <p className="wk__docknote" role="status">{live.choiceNote}</p>}
     </div>
   );
 }
