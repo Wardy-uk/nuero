@@ -216,6 +216,63 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
   );
 }
 
+// The distribution list: People-note names. The address shown is the one the
+// note holds — what the send will use. A name with no note is shown, not hidden.
+function Distribution({ onChanged }) {
+  const [info, setInfo] = useState(null);
+  const [names, setNames] = useState([]);
+  const [adding, setAdding] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const j = await apiFetch('/api/soap/recipients').then((r) => r.json()).catch(() => null);
+    if (j && j.ok) { setInfo(j); setNames(j.names); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  if (!info) return null;
+  const dirty = JSON.stringify(names) !== JSON.stringify(info.names);
+  const addressOf = (n) => (info.recipients.find((r) => r.name.toLowerCase() === n.toLowerCase()) || {}).email;
+  const problemOf = (n) => info.problems.find((p) => p.toLowerCase().startsWith(`${n.toLowerCase()}:`));
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const j = await apiFetch('/api/soap/recipients', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names }),
+      }).then((r) => r.json());
+      if (!j.ok) throw new Error(j.error || 'not saved');
+      setInfo({ ...info, ...j }); setNames(j.names);
+      setMsg(j.problems.length ? `Saved — ${j.problems.length} name(s) do not resolve yet, so Queue send will refuse until they do.` : 'Saved.');
+      if (onChanged) onChanged();
+    } catch (e) { setMsg(`Not saved — ${e.message}`); }
+    setBusy(false);
+  };
+  const add = () => {
+    const n = adding.replace(/\s+/g, ' ').trim();
+    if (!n || names.some((x) => x.toLowerCase() === n.toLowerCase())) return;
+    setNames([...names, n]); setAdding('');
+  };
+  return (
+    <section className="soap-section soap-dist">
+      <h3>Distribution list</h3>
+      <ul className="soap-dist-list">
+        {names.map((n) => (
+          <li key={n}>
+            <span><strong>{n}</strong> {info.names.includes(n) ? (addressOf(n) ? <span className="soap-meta">&lt;{addressOf(n)}&gt;</span> : <span className="soap-gap">{(problemOf(n) || '').replace(/^[^:]*:\s*/, '') || 'no address'}</span>) : <span className="soap-meta">(not saved yet)</span>}</span>
+            <button className="soap-btn soap-btn--small" disabled={busy || names.length <= 1} onClick={() => setNames(names.filter((x) => x !== n))}>Remove</button>
+          </li>
+        ))}
+      </ul>
+      <div className="soap-dist-add">
+        <input value={adding} placeholder="People-note name, e.g. Liam Sims" onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
+        <button className="soap-btn soap-btn--small" disabled={busy || !adding.trim() || names.length >= info.max} onClick={add}>Add</button>
+        <button className="soap-btn soap-btn--primary soap-btn--small" disabled={busy || !dirty} onClick={save}>{dirty ? 'Save list' : 'Saved'}</button>
+      </div>
+      <p className="soap-meta">Names must match a People note with an <code>email:</code> line — the address comes from the note. Up to {info.max}. A queued send keeps the list it was queued with; queue again after changing it.</p>
+      {msg && <p className="soap-meta">{msg}</p>}
+    </section>
+  );
+}
+
 const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '' });
 
 export default function SoapReportPanel() {
@@ -305,6 +362,7 @@ export default function SoapReportPanel() {
       </div>
       {error && <p className="soap-error">Couldn’t load the SOAP report — {error}</p>}
       {note && <p className="soap-note" role="status">{note}</p>}
+      <Distribution onChanged={load} />
       {data && <SoapReportView data={data} draft={draft} setDraft={setDraft} dirty={dirty} busy={busy} onSave={save} onBuild={build} onQueue={queue}
         onPublish={publish} onTest={testSend} onMarkSent={markSent} onReopen={reopen} preview={preview} onPreview={togglePreview} />}
     </div>

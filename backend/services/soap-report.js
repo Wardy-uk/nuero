@@ -677,6 +677,27 @@ function recipientNames() {
 }
 
 /**
+ * Set the SOAP distribution list (Nick, 15 Oct 2026: "configurable somewhere").
+ * People-note NAMES, never addresses: the address comes from the note, so the
+ * card shows where it goes and a typo cannot become a stranger's inbox. A name
+ * no note answers is ACCEPTED and reported (the note may be written next), but
+ * Queue send refuses until every name resolves. Refused, not clamped: an empty
+ * list, a duplicate, or more than the registry allows.
+ */
+function setRecipientNames(names) {
+  const max = require('./action-registry').policyFor('send_soap_report').maxRecipients;
+  if (!Array.isArray(names)) throw Object.assign(new Error('names must be a list'), { status: 400 });
+  const clean = names.map((n) => String(n || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (!clean.length) throw Object.assign(new Error('the list cannot be empty'), { status: 400 });
+  if (clean.length > max) throw Object.assign(new Error(`at most ${max} people`), { status: 400 });
+  if (clean.some((n) => n.length > 80 || /[@<>]/.test(n))) throw Object.assign(new Error('use People-note names, not email addresses'), { status: 400 });
+  const lower = clean.map((n) => n.toLowerCase());
+  if (new Set(lower).size !== lower.length) throw Object.assign(new Error('a name is listed twice'), { status: 400 });
+  db.setState(RECIPIENTS_KEY, JSON.stringify(clean));
+  return clean;
+}
+
+/**
  * Each recipient by EXACT People-note name with one address. A name the vault
  * cannot answer is a blocker with the reason — never a guess.
  */
@@ -788,6 +809,6 @@ function mondayOutcome({ now = new Date() } = {}) {
 module.exports = {
   weekFor, sendAtFor, slaDaily, parseDue, initiatives, findingKey, slaLight, verdicts, verdictHash, verdictDiff,
   carriedForward, blockers, render, emptyManual, getManual, setManual, gather, build, get, finalFor, latest, list, view,
-  recipientNames, resolveRecipients, queueSend, publish, publishedAt, testSend, sentRecord, isLocked, markSent, markSentByHand, reopen, sentSummary, fridayFreeze, mondayFinal, mondayOutcome,
+  recipientNames, setRecipientNames, resolveRecipients, queueSend, publish, publishedAt, testSend, sentRecord, isLocked, markSent, markSentByHand, reopen, sentSummary, fridayFreeze, mondayFinal, mondayOutcome,
   EXCLUDED_KINDS, AMBER_BAND, WORST_CUSTOMERS, DEFAULT_RECIPIENTS,
 };

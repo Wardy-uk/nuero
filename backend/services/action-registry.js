@@ -240,7 +240,7 @@ const ACTION_TYPES = Object.freeze({
     uncertaintyPolicy: 'verify-only',
     approvalTtlHours: 72,
     preparedTtlHours: 72,
-    maxRecipients: 3,
+    maxRecipients: 10,
     targetIsRecipient: false,
     cc: false,
     attachments: false,

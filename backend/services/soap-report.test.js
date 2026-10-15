@@ -178,7 +178,7 @@ test('the registry knows send_soap_report: A4, two recipients, html, bound to ve
   assert.deepEqual(registry.validateRegistry(), []);
   const p = registry.policyFor('send_soap_report');
   assert.equal(p.authority, 'A4');
-  assert.equal(p.maxRecipients, 3, 'Chris, Ricky and Liam');
+  assert.equal(p.maxRecipients, 10, 'a configurable list, up to ten');
   assert.ok(p.approvalTtlHours >= 66, 'a Friday 16:00 approval must survive to Monday 08:00 plus the hold window');
   const t = { weekFrom: '2026-10-12', verdictHash: 'a', notBefore: '2026-10-19T07:00:00.000Z' };
   const d = { to: [{ email: 'x@y.z' }], subject: 's', body: 'b', html: '<p>x</p>' };
@@ -293,3 +293,18 @@ test('the executor records a governed send, so the page and Actions cannot disag
   assert.ok(ex);
 });
 
+
+test('distribution list: names only, refused (not clamped) when empty, duplicated, an address, or too long; unresolved names are reported', async () => {
+  assert.equal((await post('/api/soap/recipients', { names: [] })).status, 400);
+  assert.equal((await post('/api/soap/recipients', { names: ['Chris Middleton', 'chris middleton'] })).status, 400);
+  assert.equal((await post('/api/soap/recipients', { names: ['chris@nurtur.tech'] })).status, 400);
+  assert.equal((await post('/api/soap/recipients', { names: Array.from({ length: 11 }, (_, i) => `Person ${i}`) })).status, 400);
+  fs.writeFileSync(path.join(process.env.OBSIDIAN_VAULT_PATH, 'People', 'Liam Sims.md'), '---\nemail: liams@example.com\n---\n');
+  const ok = await post('/api/soap/recipients', { names: ['Liam Sims', 'Nobody Here'] });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body.names, ['Liam Sims', 'Nobody Here']);
+  assert.deepEqual(ok.body.recipients, [{ name: 'Liam Sims', email: 'liams@example.com' }]);
+  assert.match(ok.body.problems[0], /^Nobody Here:/);
+  const got = await fetch(`${base}/api/soap/recipients`).then((r) => r.json());
+  assert.deepEqual(got.names, ['Liam Sims', 'Nobody Here']);
+});

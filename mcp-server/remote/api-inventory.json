@@ -5096,12 +5096,28 @@
     "route": "/api/soap/:weekFrom/:kind",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 50,
+    "line": 68,
     "description": "GET /api/soap/:weekFrom/:kind. one SOAP report with Nick's words, its markdown (the sent words once sent), what still blocks sending, and its publish/sent state.",
     "params": [
       "weekFrom",
       "kind"
     ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_soap_recipients",
+    "method": "GET",
+    "route": "/api/soap/recipients",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 38,
+    "description": "GET /api/soap/recipients. the SOAP distribution list: the People-note names, the address each resolves to, and any name that does not resolve.",
+    "params": [],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -12513,7 +12529,7 @@
     "route": "/api/soap/build",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 38,
+    "line": 56,
     "description": "POST /api/soap/build. build (or rebuild) the SOAP report now. Body: { kind: 'provisional' (this week so far) | 'final' (last full week) }. Refused while the week is sent and frozen.",
     "params": [],
     "query": [],
@@ -12531,7 +12547,7 @@
     "route": "/api/soap/:weekFrom/manual",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 59,
+    "line": 77,
     "description": "POST /api/soap/:weekFrom/manual. save Nick's words on a SOAP report: what he will do about each red, why a carried red is still red and its consequences, commentary on the weakest agent, notes. Omitted fields are left alone.",
     "params": [
       "weekFrom"
@@ -12554,7 +12570,7 @@
     "route": "/api/soap/:weekFrom/mark-sent",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 107,
+    "line": 125,
     "description": "POST /api/soap/:weekFrom/mark-sent. record a SOAP report Nick sent himself (from Outlook). Body: { kind, sentAt? }. Records only; sends nothing. Freezes the week.",
     "params": [
       "weekFrom"
@@ -12575,7 +12591,7 @@
     "route": "/api/soap/:weekFrom/publish",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 73,
+    "line": 91,
     "description": "POST /api/soap/:weekFrom/publish. write the SOAP report to the vault (Projects/SOAP Reports). Body: { kind }. Publishing is not sending.",
     "params": [
       "weekFrom"
@@ -12595,7 +12611,7 @@
     "route": "/api/soap/:weekFrom/queue-send",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 97,
+    "line": 115,
     "description": "POST /api/soap/:weekFrom/queue-send. prepare the SOAP report as a governed email to Chris, Ricky and Liam. Body: { kind: 'provisional' (goes Monday 08:00 if the verdicts hold) | 'final' (goes on approval) }. Sends nothing; approve it in Actions.",
     "params": [
       "weekFrom"
@@ -12615,7 +12631,7 @@
     "route": "/api/soap/:weekFrom/reopen",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 117,
+    "line": 135,
     "description": "POST /api/soap/:weekFrom/reopen. unfreeze a sent SOAP week so it can be rebuilt and sent again. Keeps the record that it was sent.",
     "params": [
       "weekFrom"
@@ -12633,7 +12649,7 @@
     "route": "/api/soap/:weekFrom/test-send",
     "domain": "soap",
     "source": "routes/soap.js",
-    "line": 83,
+    "line": 101,
     "description": "POST /api/soap/:weekFrom/test-send. email Nick (and only Nick) a test copy of the SOAP report to see how it lands. Body: { kind }. Unfinished sections are listed in a banner.",
     "params": [
       "weekFrom"
@@ -12641,6 +12657,24 @@
     "query": [],
     "body": [
       "kind"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_soap_recipients",
+    "method": "POST",
+    "route": "/api/soap/recipients",
+    "domain": "soap",
+    "source": "routes/soap.js",
+    "line": 44,
+    "description": "POST /api/soap/recipients. set the SOAP distribution list. Body: { names: ['Chris Middleton', ...] } — People-note names, never addresses. Nick only; refused to machine clients.",
+    "params": [],
+    "query": [],
+    "body": [
+      "names"
     ],
     "queryOpen": false,
     "bodyOpen": true,

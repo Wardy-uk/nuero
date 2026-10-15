@@ -34,6 +34,24 @@ router.get('/', (req, res) => {
   }
 });
 
+// GET /api/soap/recipients — the SOAP distribution list: the People-note names, the address each resolves to, and any name that does not resolve.
+router.get('/recipients', (req, res) => {
+  const { recipients, problems } = soap.resolveRecipients();
+  res.json({ ok: true, names: soap.recipientNames(), recipients, problems, max: require('../services/action-registry').policyFor('send_soap_report').maxRecipients });
+});
+
+// POST /api/soap/recipients — set the SOAP distribution list. Body: { names: ['Chris Middleton', ...] } — People-note names, never addresses. Nick only; refused to machine clients.
+router.post('/recipients', (req, res) => {
+  const { names } = req.body || {};
+  try {
+    soap.setRecipientNames(names);
+    const { recipients, problems } = soap.resolveRecipients();
+    res.json({ ok: true, names: soap.recipientNames(), recipients, problems });
+  } catch (e) {
+    res.status(e.status || 500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/soap/build — build (or rebuild) the SOAP report now. Body: { kind: 'provisional' (this week so far) | 'final' (last full week) }. Refused while the week is sent and frozen.
 router.post('/build', async (req, res) => {
   const { kind } = req.body || {};
