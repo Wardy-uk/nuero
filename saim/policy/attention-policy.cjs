@@ -21,10 +21,17 @@
  */
 
 const CONTRACT = 'saim-attention-v1';
-const POLICY_VERSION = '2026-10-15.2';
+const POLICY_VERSION = '2026-10-15.3';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
+
+/**
+ * How close a meeting with other people must be before it becomes the lead
+ * (S3a) — including over a running task block. Matches the window in which
+ * NEURO itself calls a meeting imminent (decision-engine, ≤ 10 min).
+ */
+const MEETING_TRANSITION_MINUTES = 10;
 
 const SURFACES = Object.freeze({
   'work-desktop': { scope: 'work', manifestation: { held: 'list', actions: 'all', deskLaunch: true, speech: false } },
@@ -48,7 +55,7 @@ function relevantToWork(c) {
   if (isRunning(c)) return true;
   if (c.kind === 'block' || c.kind === 'meeting' || c.kind === 'protected-time') return true; // today's diary by construction
   if (c.kind === 'commitment') return c.facts.daysLate >= 0;
-  if (c.kind === 'attention-item') return c.facts.severity === 'critical';
+  if (c.kind === 'attention-item') return c.facts.risk === 'critical' || Boolean(c.facts.urgency);
   return c.facts && c.facts.needsNow === true;
 }
 
@@ -126,7 +133,20 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const upcomingBlock = of('block').find((c) => c.facts.state === 'upcoming') || null;
   const runningMeeting = of('meeting').find((c) => c.facts.running) || null;
   const protectedTime = runningBlock ? null : of('protected-time').find((c) => c.facts.running) || null;
-  const critical = of('attention-item').find((c) => c.facts.severity === 'critical') || null;
+  // S2 is GENUINE RISK only. An item NEURO rated critical for its clock (an
+  // imminent meeting, the pre-11 standup) carries `risk: 'none'` and an
+  // `urgency` instead, and never reaches S2.
+  const critical = of('attention-item').find((c) => c.facts.risk === 'critical') || null;
+  // S3a: a meeting with other people starting within MEETING_TRANSITION_MINUTES.
+  // From the diary when it was read; from NEURO's meeting card otherwise.
+  const soonMin = (c) => { const t = ms(c.time && c.time.startAt); return t == null ? null : (t - now) / 60000; };
+  const diaryTransition = of('meeting').filter((c) => !c.facts.running && c.facts.othersAttending === true)
+    .map((c) => ({ c, min: soonMin(c) })).filter((x) => x.min != null && x.min >= -1 && x.min <= MEETING_TRANSITION_MINUTES)
+    .sort((a, b) => a.min - b.min)[0] || null;
+  const cardTransition = of('attention-item').find((c) => c.facts.urgency === 'meeting-transition' && c.facts.othersAttending !== false) || null;
+  const transition = diaryTransition
+    ? { c: diaryTransition.c, min: Math.max(0, Math.round(diaryTransition.min)), card: of('attention-item').find((a) => a.facts.type === 'meeting' && a.title === diaryTransition.c.title) || null }
+    : cardTransition ? { c: cardTransition, min: cardTransition.time && Number.isFinite(cardTransition.time.minutesAway) ? Math.max(0, cardTransition.time.minutesAway) : null, card: cardTransition } : null;
   const approvals = of('approval').map((a) => ({ c: a, eff: effectiveDeadline(a.time && a.time.deadlineAt, ww, now) }))
     .sort((x, y) => (ms(x.eff && x.eff.at) ?? Infinity) - (ms(y.eff && y.eff.at) ?? Infinity));
   const topItem = of('attention-item').find((c) => c.facts.gatePosition === 'primary') || null;
@@ -147,10 +167,17 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   if (rule('S1 blind', blind, blind ? 'NEURO could not read the attention pool' : sf.scope === 'home' ? 'not applied in home scope' : 'pool read')) {
     lead = leadOf(null, 'S1 blind', 'I can’t see your work right now — this isn’t an all-clear.', ['constraints.poolReadable = false']);
     lead.kind = 'blind';
-  } else if (rule('S2 critical', critical, critical ? `“${critical.title}” is rated critical` : 'no critical item in scope')) {
-    lead = leadOf(critical, 'S2 critical', `${critical.title} is critical${critical.facts.reason ? `: ${critical.facts.reason}` : ''}.`, [`${critical.id}.severity = critical`]);
+  } else if (rule('S2 critical risk', critical, critical ? `“${critical.title}” carries critical risk (${critical.facts.type})` : 'no item carries critical risk in scope')) {
+    lead = leadOf(critical, 'S2 critical risk', `${critical.title} is critical${critical.facts.reason ? `: ${critical.facts.reason}` : ''}.`, [`${critical.id}.risk = critical`]);
   } else if (rule('S3 meeting', runningMeeting, runningMeeting ? `“${runningMeeting.title}” is running with other people in it` : 'no meeting running in scope')) {
     lead = leadOf(runningMeeting, 'S3 meeting', `You’re in ${runningMeeting.title} until ${runningMeeting.time.end}; I’m holding everything else.`, [`${runningMeeting.id}.running`, `${runningMeeting.id}.othersAttending`]);
+  } else if (rule('S3a imminent meeting transition', transition,
+    transition ? `“${transition.c.title}” with other people starts ${transition.min == null ? 'now' : `in ${transition.min} min`} (≤ ${MEETING_TRANSITION_MINUTES})${runningBlock ? ` — outranks ${runningBlock.id}` : ''}` : `no meeting with others within ${MEETING_TRANSITION_MINUTES} min`)) {
+    const when = transition.min ? `in ${transition.min} minute${transition.min === 1 ? '' : 's'}` : 'now';
+    lead = leadOf(transition.c, 'S3a imminent meeting transition',
+      `${transition.c.title} starts ${when}${runningBlock ? `; I’ll hold ${leadTitle(runningBlock)} for after it` : ''}.`,
+      [`${transition.c.id}.startAt = ${transition.c.time && transition.c.time.startAt}`, `${transition.c.id}.othersAttending`]);
+    lead.transition = { kind: 'meeting', startsInMinutes: transition.min };
   } else if (rule('S4 deadline inside the block', interrupting,
     runningBlock ? (firstApproval ? (firstApproval.eff ? `effective deadline ${hhmmOf(firstApproval.eff.at)} ${dayWord(firstApproval.eff.at, now)} (${firstApproval.eff.basis}); block ends ${runningBlock.time.end} + ${BLOCK_END_MARGIN_MINUTES} min` : 'approval has no deadline') : 'no approval waiting in scope') : 'no block running')) {
     lead = leadOf(interrupting.c, 'S4 deadline inside the block', `${interrupting.c.title} has to be dealt with before ${hhmmOf(interrupting.eff.at)}, and this block runs to ${runningBlock.time.end}.`,
@@ -191,6 +218,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const held = [];
   for (const c of cands) {
     if (c.id === lead.ref || (guard && c.id === guard.id)) continue;
+    // NEURO's meeting card is the same meeting as the diary entry — never held twice.
+    if (c.kind === 'attention-item' && c.facts.type === 'meeting' && (c.title === lead.title || of('meeting').some((m) => m.title === c.title))) continue;
     let why = null;
     if (c.kind === 'ritual') why = c.facts.reason || 'outstanding';
     else if (c.kind === 'attention-item') why = c.facts.reason || `${c.facts.type || 'item'} from NEURO`;
@@ -209,6 +238,7 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // Recommended action, then alternatives — limited by the manifestation, never by changing the lead.
   const leadCand = cands.find((c) => c.id === lead.ref) || null;
   let options = actionsFor(leadCand);
+  if (lead.rule === 'S3a imminent meeting transition' && transition && transition.card && transition.card !== leadCand) options = [...actionsFor(transition.card), ...options];
   const m = sf.manifestation;
   let recommended = options[0] || null;
   let alternatives = options.slice(1);
@@ -271,4 +301,4 @@ function actionsFor(c) {
   return out;
 }
 
-module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, decide, inScope, effectiveDeadline, sayTitle };
+module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, MEETING_TRANSITION_MINUTES, decide, inScope, effectiveDeadline, sayTitle };

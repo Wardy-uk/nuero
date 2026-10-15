@@ -1,8 +1,10 @@
 # SAiM Attention Policy — decision contract (DRAFT for approval)
 
-**Status:** approved in principle 14 Oct 2026 (effective-deadline rule and the 17:11 outcome); §3 amended 15 Oct 2026 (scope). Nothing is wired. The local commit `59836e22`
-(`attention-decision-v1`) is evidence only. If this contract is approved, that code moves
-under SAiM ownership as described in §7.
+**Status:** approved in principle 14 Oct 2026 (effective-deadline rule and the 17:11 outcome); §3 amended 15 Oct 2026 (scope); risk/urgency split and S3a added 15 Oct 2026. The architecture boundary was approved in principle on 15 Oct 2026.
+
+- **No UI is wired:** no surface reads `candidates` or `saim`.
+- **Live on the Pi:** the first version of both fields went out on 15 Oct inside another session's push. It is additive and nothing reads it.
+- **Not live:** the risk/urgency split and S3a are on the local branch `saim-risk-urgency`. Pushes and deployments from this work are frozen.
 
 **Ownership.** NEURO owns facts and constraints. SAiM owns attention judgement: what she
 leads with, what she asks Nick to do now, what she protects, and how that shows on each
@@ -23,7 +25,7 @@ NEURO hands the policy one object, `neuro-candidates-v1`. Every candidate carrie
 | **block** | blockId, window (start/end), state (upcoming / running / interrupted / complete), tasks (ids, wording), focus-session state | task-blocks, focus-session |
 | **meeting** | title, window, running, other people in it (yes / no / unknown), occurrence key | calendar cache |
 | **approval** | count, action types, earliest expiry (`expires_at`), where it is approved, whether sending is switched on | prepared_actions |
-| **attention item** | recordId, type, title, severity (normal / high / critical), reason, lifecycle state, allowed actions | decision-engine + attention lifecycle |
+| **attention item** | recordId, type, title, **risk** (none / low / medium / high / critical), **urgency** (`meeting-transition`, `ritual-due` or none), NEURO's original urgency word (`neuroUrgency`, for provenance), reason, lifecycle state, allowed actions; for a meeting card: start, minutes away, other people attending | decision-engine + attention lifecycle |
 | **ritual** | which ritual (standup / EOD), outstanding yes/no | ritual state |
 | **commitment** | taskId, wording, planned date and its basis, direction, counterpart, open/done | world model |
 | **protected time** | solo diary entry running now, title, window | calendar cache |
@@ -40,8 +42,9 @@ names the facts that decided it.
 | # | Rule | Explanation (template) |
 |---|---|---|
 | S1 | **Blind** — NEURO's attention read failed | "I can't see your work right now — this isn't an all-clear." |
-| S2 | **Critical** — an item NEURO rated critical | "{title} is critical: {reason}." |
+| S2 | **Critical risk** — an item whose *risk* is critical (genuine harm, never a clock) | "{title} is critical: {reason}." |
 | S3 | **In a meeting** — running, other people in it | "You're in {title} until {end}; I'm holding everything else." |
+| S3a | **Imminent meeting transition** — a meeting with other people starting within 10 minutes | "{title} starts in {n} minutes; I'll hold {block} for after it." |
 | S4 | **Deadline inside the block** — an approval whose *effective deadline* falls before the block ends + 15 min | "{approval} has to go before {deadline}, and this block runs to {end}." |
 | S5 | **Protected block** — a task block is running | "This is the time you blocked for {task}. I'm holding the rest until {end}." |
 | S6 | **Judgement waiting** — an approval, with no block running | "{approval} is waiting for you in NEURO, before {deadline}." |
@@ -54,6 +57,27 @@ names the facts that decided it.
 **Effective deadline.** If an approval's `expires_at` falls before Nick's next working
 start, its effective deadline is the end of today's working hours. If he can't act on it
 overnight, the deadline that matters is when he stops work.
+
+**Risk vs urgency (15 Oct 2026).** NEURO's decision-engine used one word, `critical`, for two different facts. NEURO now splits it:
+
+| decision-engine source | was | risk | urgency |
+|---|---|---|---|
+| unseen escalations | critical | **critical** | — |
+| NOVA flag, risk ≥ 80 or legal | critical | **critical** | — |
+| weekly risk report late | critical | **critical** | — |
+| meeting with others ≤ 10 min away | critical | none | `meeting-transition` |
+| standup nudge before 11:00 | critical | none | `ritual-due` |
+| any type not listed | critical | **critical** (kept, so unexamined harm is never hidden) | — |
+
+S2 reads **risk only**. A meeting about to start reaches the lead through S3a, and the standup through the ritual and held rules. It never goes through S2.
+
+**S3a against an active task block.**
+- Within 10 minutes of a meeting with other people, the meeting leads, even over a running block. People are waiting on a fixed clock. The block stays the **protected** context, and held items return when it does.
+- More than 10 minutes out, the block leads (S5). The meeting is shown as **next**, with its countdown.
+- Genuine risk (S2) and a meeting already running (S3) still outrank S3a.
+- S3a outranks an approval deadline inside the block (S4), because the meeting has the nearer fixed time and other people.
+- The 10 minutes is NEURO's own imminence window (decision-engine), so "imminent" means one thing everywhere.
+- When the diary was not read, NEURO's meeting card alone can still trigger S3a.
 
 Wherever S2–S4 interrupt a block, the block stays in **protected context**. It is never
 dropped.

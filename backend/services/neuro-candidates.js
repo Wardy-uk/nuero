@@ -6,7 +6,7 @@
  *
  * NEURO owns FACTS and CONSTRAINTS. This module says what is true right now —
  * the running block, meetings, approvals and their deadlines, commitments,
- * attention items with their severity, what the gate held back, rituals, home
+ * attention items with their risk and urgency, what the gate held back, rituals, home
  * and family context — each with its provenance, whether it was read, and its
  * SPHERE (work / personal / home / family / unknown) with the basis for it.
  *
@@ -109,8 +109,23 @@ function wordingConflict(text, dueDate, now) {
 
 const TASK_BLOCK_EVENT = /^task block:\s*/i;
 const RITUAL = (title) => (/\beod\b|end.of.day/i.test(title || '') ? 'eod' : /stand-?up/i.test(title || '') ? 'standup' : null);
+/**
+ * decision-engine types whose `critical` means "the clock forces it now", never
+ * "this can do harm". Measured 15 Oct 2026 — the five places decision-engine
+ * says critical: unseen escalations, NOVA flags (risk ≥ 80 or legal) and a late
+ * weekly-risk report are RISK; an imminent meeting with others (≤ 10 min) and the
+ * pre-11 standup nudge are URGENCY. Anything not listed here keeps its word as
+ * risk — reclassifying a type nobody looked at could hide real harm.
+ */
+const URGENCY_NOT_RISK = Object.freeze({ meeting: 'meeting-transition', nudge: 'ritual-due' });
+/** Graph wall-clock string → ISO instant in the backend's zone (sliced, not offset-shifted). */
+const localInstant = (s) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(s || ''));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString() : null;
+};
+
 // Attention-item types whose subject is the work itself (decision-engine sources).
-const WORK_TYPES = new Set(['escalation', 'email', 'capacity', 'approval', 'weekly-risk', 'source-blind']);
+const WORK_TYPES = new Set(['escalation', 'nova_flag', 'email', 'capacity', 'approval', 'weekly_risk', 'weekly-risk', 'source-blind']);
 
 /**
  * @param {object} payload  the canonical Now payload (attention.gate decision + situation)
@@ -207,9 +222,24 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
   const items = [...(card && card.kind === 'item' ? [{ ...card, gatePosition: 'primary' }] : []),
     ...(p.secondary || []).filter((s) => s && s.kind === 'item').map((s) => ({ ...s, gatePosition: 'secondary' }))];
   for (const it of items) {
+    const raw = String(it.urgency || 'normal').toLowerCase();
+    const notRisk = URGENCY_NOT_RISK[it.type] || null;
+    const meta = it.meta || {};
     candidates.push({
       kind: 'attention-item', id: `item:${it.recordId || it.id}`, recordId: it.recordId || null, title: it.title || it.say || null,
-      facts: { type: it.type || null, severity: String(it.urgency || 'normal').toLowerCase(), reason: it.reason || it.say || null, gatePosition: it.gatePosition, lifecycle: it.lifecycle || null },
+      time: it.type === 'meeting' && meta.start ? { start: slice(meta.start), startAt: localInstant(meta.start), minutesAway: Number.isFinite(meta.minutesAway) ? meta.minutesAway : null } : undefined,
+      facts: {
+        type: it.type || null,
+        // NEURO's one `urgency` word mixed two facts (15 Oct 2026). `risk` is how
+        // much harm the thing can do; `urgency` is how soon the clock forces it.
+        // An imminent meeting and the pre-11 standup are rated `critical` by
+        // decision-engine for their CLOCK, not for harm — so they carry no risk.
+        risk: notRisk ? 'none' : raw,
+        urgency: notRisk && raw === 'critical' ? notRisk : null,
+        neuroUrgency: raw,
+        othersAttending: it.type === 'meeting' ? (meta.withOthers === true ? true : meta.withOthers === false ? false : null) : undefined,
+        reason: it.reason || it.say || null, gatePosition: it.gatePosition, lifecycle: it.lifecycle || null,
+      },
       sphere: it.domain ? sphere(sphereOfDomain(it.domain), 'stated', 'the item states its domain')
         : WORK_TYPES.has(it.type) ? sphere('work', 'item-type', `a ${it.type} item is work by source`) : sphere(null),
       actions: utter.filter((u) => u.intent.recordId && u.intent.recordId === it.recordId).map((u) => ({ say: u.say, intent: u.intent })),

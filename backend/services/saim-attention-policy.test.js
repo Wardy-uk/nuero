@@ -142,8 +142,8 @@ test('an approval whose effective deadline falls inside the block interrupts it 
 test('a running meeting with others outranks the block; a critical item outranks both', () => {
   const s = scenario({ calendar: [cal(17, 0, 17, 25, 'Weekly support leads', true)] });
   assert.equal(decide(s, 'work-desktop').lead.rule, 'S3 meeting');
-  s.candidates.candidates.push({ kind: 'attention-item', id: 'item:9', recordId: 9, title: 'NT-1 breaching', facts: { severity: 'critical', reason: 'SLA breached', gatePosition: 'secondary' }, sphere: work, actions: [], provenance: { source: 'attention.gate' } });
-  assert.equal(decide(s, 'work-desktop').lead.rule, 'S2 critical');
+  s.candidates.candidates.push({ kind: 'attention-item', id: 'item:9', recordId: 9, title: 'NT-1 breaching', facts: { type: 'escalation', risk: 'critical', urgency: null, reason: 'SLA breached', gatePosition: 'secondary' }, sphere: work, actions: [], provenance: { source: 'attention.gate' } });
+  assert.equal(decide(s, 'work-desktop').lead.rule, 'S2 critical risk');
 });
 
 // ── Scope ───────────────────────────────────────────────────────────────────
@@ -230,4 +230,92 @@ test('live 15 Oct: a household obligation is said neutrally and its stale wordin
   assert.equal(d.lead.title, 'Book my car in for its MOT');
   assert.doesNotMatch(d.lead.why, /tomorrow|8 October|\.\./);
   assert.deepEqual(d.corrections.map((c) => c.taskId), [374]);
+});
+
+// ── Risk vs urgency (15 Oct 2026) ───────────────────────────────────────────
+
+const card = (type, urgency, title, extra = {}) => ({ kind: 'item', type, urgency, title, recordId: `r-${type}`, reason: extra.reason || null, meta: extra.meta || null });
+
+test('candidates: NEURO’s one “critical” word becomes risk OR urgency, by what it actually measured', () => {
+  const s = scenario();
+  const facts = (it) => NC.compose({ secondary: [it] }, {}, {}, { now: s.now }).candidates[0].facts;
+  assert.deepEqual([facts(card('escalation', 'critical', 'NT-1')).risk, facts(card('escalation', 'critical', 'NT-1')).urgency], ['critical', null]);
+  assert.equal(facts(card('nova_flag', 'critical', 'Legal')).risk, 'critical');
+  assert.equal(facts(card('weekly_risk', 'critical', 'Weekly Risk report is late')).risk, 'critical');
+  const m = facts(card('meeting', 'critical', 'The London Office Regroup', { meta: { start: '2026-10-15T09:00:00.0000000', minutesAway: 0, withOthers: true } }));
+  assert.deepEqual([m.risk, m.urgency, m.neuroUrgency, m.othersAttending], ['none', 'meeting-transition', 'critical', true]);
+  const n = facts(card('nudge', 'critical', 'Do your standup'));
+  assert.deepEqual([n.risk, n.urgency], ['none', 'ritual-due']);
+  assert.equal(facts(card('meeting', 'high', 'Later')).urgency, null, 'only an imminent (critical) meeting is a transition');
+  assert.equal(facts(card('mystery', 'critical', 'Unknown type')).risk, 'critical', 'an unlisted type keeps its word as risk');
+});
+
+function morning({ minutesToMeeting = 0, block = true, diary = true, escalation = false } = {}) {
+  const now = at(9, 0, 15);
+  const start = now + minutesToMeeting * 60000;
+  const hhmm = (t) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const startIso = (t) => `2026-10-15T${hhmm(t)}:00.0000000`;
+  const payload = {
+    poolAvailable: true,
+    context: { activity: 'pre-meeting' },
+    primary: { kind: 'item', type: 'meeting', urgency: minutesToMeeting <= 10 ? 'critical' : 'high', title: 'The London Office Regroup', recordId: 'att_m', reason: 'Starting now', meta: { start: startIso(start), minutesAway: minutesToMeeting, withOthers: true } },
+    secondary: [card('nudge', 'critical', 'Do your standup', { reason: '2 minutes — do it before anything else' }),
+      ...(escalation ? [card('escalation', 'critical', 'NT-99 escalated by the customer')] : [])],
+    dropped: [],
+    utterances: [{ say: 'Join / prep now', intent: { kind: 'navigate', tab: 'prep', recordId: 'att_m' } }],
+    approvals: { known: true, needsApproval: 0, needsReview: 0 },
+    situation: { sections: { commitments: [] } },
+  };
+  const rows = block ? [{ blockId: 120, dateKey: '2026-10-15', startTime: '08:30', endTime: '09:45', status: 'scheduled', passed: false, tasks: [{ taskId: 500, text: 'Draft the Q4 rota' }] }] : [];
+  const live = { rows, session: null, block: block ? { blockId: 120, startTime: '08:30', endTime: '09:45', running: true, tasks: [{ taskId: 500, text: 'Draft the Q4 rota', running: false }], allTicked: false } : null };
+  const facts = {
+    calendar: diary ? [{ eventId: 'e1', source: 'graph', subject: 'The London Office Regroup', start: startIso(start), end: startIso(start + 30 * 60000), startAt: new Date(start).toISOString(), endAt: new Date(start + 30 * 60000).toISOString(), allDay: false, showAs: 'busy', attendeesOther: true, sphere: { value: 'work', basis: 'classified' } }] : [],
+    calendarKnown: diary, approvals: [], taskDomains: new Map([[500, { domain: 'work', basis: 'default' }]]),
+    workingWindow: { todayEnd: iso(18, 0, 15), nextStart: iso(8, 0, 16) },
+  };
+  return { candidates: NC.compose(payload, live, facts, { now }), now };
+}
+
+test('live 15 Oct: the London Office Regroup is never S2 — S3a two minutes out, S3 once it has started', () => {
+  assert.equal(decide(morning({ minutesToMeeting: 0 }), 'work-desktop').lead.rule, 'S3 meeting', 'the diary says it is running');
+  const d = decide(morning({ minutesToMeeting: 2 }), 'work-desktop');
+  assert.equal(d.lead.rule, 'S3a imminent meeting transition');
+  assert.equal(d.lead.title, 'The London Office Regroup');
+  assert.match(d.lead.why, /starts in 2 minutes; I’ll hold Draft the Q4 rota for after it/);
+  assert.equal(d.recommended.say, 'Join / prep now', 'NEURO’s meeting card supplies the action');
+  assert.equal(d.trace.find((t) => t.rule === 'S2 critical risk').applies, false);
+  assert.ok(!d.held.some((h) => h.title === 'The London Office Regroup'), 'the card is not held as a second copy');
+  assert.ok(d.held.some((h) => h.title === 'Do your standup'), 'the pre-11 standup is urgency, held — not risk');
+});
+
+test('S3a precedence against an active task block: within 10 minutes the meeting leads and the block stays protected', () => {
+  const d = decide(morning({ minutesToMeeting: 8 }), 'work-desktop');
+  assert.equal(d.lead.rule, 'S3a imminent meeting transition');
+  assert.equal(d.lead.transition.startsInMinutes, 8);
+  assert.equal(d.protected.ref, 'block:120', 'the block is still what SAiM guards');
+  assert.match(d.trace.find((t) => t.rule.startsWith('S3a')).why, /outranks block:120/);
+});
+
+test('S3a precedence against an active task block: beyond 10 minutes the block leads and the meeting is next', () => {
+  const d = decide(morning({ minutesToMeeting: 25 }), 'work-desktop');
+  assert.equal(d.lead.rule, 'S5 protected block');
+  assert.equal(d.next.title, 'The London Office Regroup');
+  assert.equal(d.next.inMinutes, 25);
+});
+
+test('genuine risk still outranks an imminent meeting and a running block', () => {
+  const d = decide(morning({ minutesToMeeting: 2, escalation: true }), 'work-desktop');
+  assert.equal(d.lead.rule, 'S2 critical risk');
+  assert.equal(d.lead.title, 'NT-99 escalated by the customer');
+});
+
+test('diary unread: NEURO’s meeting card alone still triggers the transition', () => {
+  const d = decide(morning({ minutesToMeeting: 3, diary: false }), 'work-desktop');
+  assert.equal(d.lead.rule, 'S3a imminent meeting transition');
+  assert.equal(d.lead.ref, 'item:att_m');
+});
+
+test('home scope: an imminent work meeting never leads at home', () => {
+  const d = decide(morning({ minutesToMeeting: 2 }), 'home-pi');
+  assert.notEqual(d.lead.rule, 'S3a imminent meeting transition');
 });
