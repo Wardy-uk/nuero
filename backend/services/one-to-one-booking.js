@@ -744,7 +744,7 @@ async function reschedule({ person, eventId, start, end, reason = null, skipClas
   // Re-check right before preparing: the proposal may have sat on screen a while.
   if (!skipClashCheck) {
     const clash = await findClashExcluding(start, end, eventId);
-    if (clash) return { ok: false, error: `That slot clashes with "${clash}"` };
+    if (clash) return { ok: false, clash, error: `That slot clashes with "${clash}"` };
   }
 
   // The event as it is NOW — time and attendees — is bound into the approval;

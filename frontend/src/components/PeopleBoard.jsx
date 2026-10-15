@@ -614,6 +614,9 @@ function RescheduleDialog({ name, onClose, onMoved }) {
   const [error, setError] = useState('');
   const [moving, setMoving] = useState(false);
   const [moved, setMoved] = useState(null);
+  // The name of what the chosen slot clashes with, once the server has said so.
+  // Pressing confirm again then means "I know — move it anyway".
+  const [clash, setClash] = useState(null);
 
   useEffect(() => {
     fetch(apiUrl('/api/1to1/propose-reschedule'), {
@@ -645,10 +648,16 @@ function RescheduleDialog({ name, onClose, onMoved }) {
           start: iso.start,
           end: iso.end,
           reason: reason.trim() || undefined,
+          allowClash: clash ? true : undefined,
         }),
       });
       const d = await res.json();
-      if (!d.ok) { setError(d.error || 'Move failed'); setMoving(false); return; }
+      if (!d.ok) {
+        if (d.clash) setClash(d.clash);
+        setError(d.clash ? `That slot clashes with "${d.clash}". Move it there anyway?` : (d.error || 'Move failed'));
+        setMoving(false);
+        return;
+      }
       // 9 Oct 2026: this click is the decision — confirm and move it now.
       const x = await executeDirect(d.action);
       if (x.needsConfirm) setError('This action needs confirming again.');
@@ -709,7 +718,7 @@ function RescheduleDialog({ name, onClose, onMoved }) {
               date={slot.date}
               time={slot.time}
               durationMinutes={proposal.durationMinutes}
-              onChange={setSlot}
+              onChange={(s) => { setSlot(s); setClash(null); setError(''); }}
             />
             <input
               className="book-reason"
@@ -739,7 +748,7 @@ function RescheduleDialog({ name, onClose, onMoved }) {
             <div className="book-actions">
               <button className="btn" onClick={onClose} disabled={moving}>Cancel</button>
               <button className="btn btn-primary" onClick={confirm} disabled={moving}>
-                {moving ? 'Moving...' : 'Confirm & send update'}
+                {moving ? 'Moving...' : clash ? 'Move anyway & send update' : 'Confirm & send update'}
               </button>
             </div>
           </div>

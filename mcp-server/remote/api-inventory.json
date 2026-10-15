@@ -500,7 +500,7 @@
     "route": "/api/1to1/moves/:person",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 414,
+    "line": 415,
     "description": "GET /api/1to1/moves/:person.",
     "params": [
       "person"
@@ -6792,7 +6792,7 @@
     "route": "/api/1to1/cancel",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 400,
+    "line": 401,
     "description": "POST /api/1to1/cancel. cancel a 1-2-1 that is in the diary (cancel one-to-one, call off a 1:1). PREPARES a governed cancel_calendar_event bound to the real event; the screen that pressed Cancel then confirms that exact action with a one-use intent grant, Graph tells the attendee, and it is read back",
     "params": [],
     "query": [],
@@ -6812,7 +6812,7 @@
     "route": "/api/1to1/notes",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 423,
+    "line": 424,
     "description": "POST /api/1to1/notes.",
     "params": [],
     "query": [],
@@ -6956,6 +6956,7 @@
     "params": [],
     "query": [],
     "body": [
+      "allowClash",
       "end",
       "eventId",
       "person",

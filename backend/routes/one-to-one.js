@@ -384,11 +384,12 @@ router.post('/reschedule', async (req, res) => {
   // not make Graph email invites to real people. Nick, in NEURO, still can.
   if (req.apiClient) return res.status(403).json({ ok: false, sent: false, error: "Sending calendar invites as Nick needs Nick, in NEURO - a machine client cannot do it on his behalf (Build 8)." });
   try {
-    const { person, eventId, start, end, reason } = req.body || {};
+    // allowClash: Nick has seen "that slot clashes with X" and chosen it anyway (15 Oct 2026).
+    const { person, eventId, start, end, reason, allowClash } = req.body || {};
     if (!person || !eventId || !start || !end) {
       return res.status(400).json({ ok: false, error: 'person, eventId, start and end are required' });
     }
-    const result = await booking.reschedule({ person, eventId, start, end, reason });
+    const result = await booking.reschedule({ person, eventId, start, end, reason, skipClashCheck: allowClash === true });
     res.json(result);
   } catch (e) {
     console.error('[1to1/reschedule]', e);
