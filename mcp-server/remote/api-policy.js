@@ -92,6 +92,8 @@ export const interactive = {
   post_canonical_companions_by_id_walks_remove: 'Taking back a walk mark is Nick\'s statement. He does it in NEURO → Life → Companions.',
   post_canonical_vehicle_links: 'Which vehicle an admin item concerns is Nick\'s explicit choice. He links it in NEURO → Life → Personal admin.',
   post_canonical_vehicle_links_remove: 'Removing a vehicle link is Nick\'s choice. He does it in NEURO → Life → Personal admin.',
+  post_task_activity_by_taskId: 'What kind of work a task is is Nick\'s own word — he says it once when SAiM asks, or in NEURO. Suggestions never set it.',
+  post_task_activity_observations_by_observationId_review: 'Accepting an observed app use makes it Nick\'s choice for the task, so only he does it.',
   post_canonical_personal_admin_annotations: 'Whether a personal-admin item is waiting, blocked or routine, its kind, and its lead time are Nick\'s own word. He sets them in NEURO → Life → Personal admin.',
   // Build 21: the vehicle record, its dates, mileage, history, official
   // readings and every finance classification or rule are Nick's statements.

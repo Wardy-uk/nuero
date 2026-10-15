@@ -168,7 +168,7 @@ test('a task block, an approval and a meeting: exact links where NEURO holds the
   const b = H.resolveHandoff({ decision: block.decision, candidates: block.candidates, device: device(Date.parse(block.decision.decidedAt)), now: Date.parse(block.decision.decidedAt) });
   assert.equal(b.rule, 'S5 protected block');
   assert.equal(b.handoff, null, 'still no app: NEURO states no activity for a task');
-  assert.match(b.reason, /didn’t say what kind of work/);
+  assert.match(b.reason, /doesn’t know what kind of work/);
   assert.deepEqual(b.neuroGaps, ['activity']);
   const ap = SC.SCENARIOS.find((s) => s.id === '2b').build();
   const a = H.resolveHandoff({ decision: ap.decision, candidates: ap.candidates, device: device(Date.parse(ap.decision.decidedAt)), now: Date.parse(ap.decision.decidedAt) });

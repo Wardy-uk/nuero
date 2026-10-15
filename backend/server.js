@@ -167,6 +167,7 @@ app.use('/api/ai/settings', require('./routes/ai-settings'));
 app.use('/api/pin', require('./routes/pin'));
 app.use('/api/meeting-prep', require('./routes/meeting-prep-view'));
 app.use('/api/links', require('./routes/links')); // exact-item deep links (neuro:?item=kind:id)
+app.use('/api/task-activity', require('./routes/task-activity')); // what kind of work a task is — Nick's choice + evidence
 app.use('/api/person', require('./routes/person-detail'));
 // Build 15D: the Activity timeline. Mounted ahead of the activity router so a
 // future parameterised path there can never swallow /timeline.

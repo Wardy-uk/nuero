@@ -162,7 +162,7 @@ test('an undeclared app is never offered', () => {
 
 test('missing intent, unknown activity or intent "none" → no hand-off, said honestly', () => {
   assert.match(run(setup('1', { intent: null })).reason, /stated no next step/);
-  assert.match(run(setup('1', { intent: { kind: 'work-step', activity: null } })).reason, /didn’t say what kind of work/);
+  assert.match(run(setup('1', { intent: { kind: 'work-step', activity: null } })).reason, /doesn’t know what kind of work/);
   assert.match(run(setup('1', { intent: { kind: 'none' } })).reason, /nowhere to go/);
 });
 

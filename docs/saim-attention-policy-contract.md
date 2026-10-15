@@ -367,6 +367,52 @@ An invalid id produces no link: the gap is said instead (fixture ids like `pa_3`
 - `neuro-handoff.test.js` (12).
 - 17 of 17 mutations caught. The full backend suite is 6,632 pass / 0 fail, and the MCP inventory is refreshed (NEURO only; VANTAGE reverted).
 
+## 6f. Task activity: Nick's choice, suggestions and observed evidence (15 Oct 2026; A + C + B, not D; not wired)
+
+**Model** (`shared/task-activity.cjs`, pure; `backend/services/task-activity.js`; tables):
+
+| Table | What it holds | Who writes it |
+|---|---|---|
+| `task_activity` | One row per task: `choice` (draft / write / spreadsheet / email / code / read / call / **unsure**), `via` (neuro / saim / observation-review), `stated_at` | **only** Nick: `setChoice`, or accepting an observation |
+| `task_activity_events` | Every statement, clear, observation and review | append-only (triggers) |
+| `task_activity_observations` | App use seen during a focus session on a task: `apps_json` (process names + active minutes, never titles), the suggestion, status pending / accepted / dismissed | recorded at every session end; **never** writes a choice |
+
+**Precedence:**
+1. **Nick's choice is authoritative.** It is the only thing that sets `handoffIntent.activity` (`basis: 'stated'`). "unsure" is a choice: activity null with `unsure: true`.
+2. **Suggestions never set anything.** They ride beside the intent as `activitySuggestions: [{ activity, basis: 'source' | 'observed', ref? }]`:
+   - **source** is a route: `email-promotion`, `personal-email-promotion`, or an `email:` origin → email. Jira, meeting and vault origins suggest nothing.
+   - **observed** is a pending observation whose one mapped activity holds **at least 10 minutes and at least 50%** of active time. Browsers and Teams are evidence of nothing.
+   - An unknown activity value or basis degrades the hand-off and never refuses the payload.
+3. **No title, note or description is read** (D declined). This is pinned by a source scan and a "wording that would fool a parser" fixture.
+4. **The app stays SAiM's per-device judgement.** NEURO stores an activity, never an app.
+
+**Observation** is `observeWindow`: an interval belongs to the earlier sample; a gap of more than 8 minutes is not desk time; idle (10 minutes or more) or locked is not use; the window is the session's own. It is hooked into `focus-session`'s single end path and can never fail the session. `reviewObservation`: **accept** turns the suggestion into Nick's choice (`via: 'observation-review'`); **dismiss** drops the suggestion. An observation with no suggestion can't be accepted (409).
+
+**SAiM's resolver** (`2026-10-15.4`) for a work step:
+
+| Case | What SAiM does |
+|---|---|
+| Activity stated | This device's app for it, as before |
+| `unsure` + a task link | Primary **"Open the task in NEURO"**, and no question |
+| Otherwise | No hand-off, plus an **ask** (below) |
+
+The **ask** is `{ question: 'What will you use?', taskId, options, deviceSpecific }`:
+- Suggestions come **first and marked**, and are **never pre-chosen**.
+- Each option is labelled with this device's declared, available app, or with the plain activity when the device report is stale.
+- The last option is always "Not sure — open the task in NEURO".
+- It is asked only when there is one exact task to store the answer against.
+
+`checkHandoff` validates the ask shape.
+
+**Routes** (behind the PIN; POSTs machine-refused in the authority matrix and interactive in the MCP gateway):
+- `GET /api/task-activity/:taskId`: choice, resolved view, observations, history.
+- `POST /api/task-activity/:taskId` `{ choice, via? }`: `null` clears; `choice` is required; unknown values are refused, never normalised.
+- `POST /api/task-activity/observations/:observationId/review` `{ decision: accept | dismiss }`.
+
+**Tests:** `task-activity.test.js` (13: precedence, source mapping, the observation window and thresholds, the stored choice and its history, evidence is never a choice, the focus-session hook, composer → resolver for stated / source / observed / unsure / no task / malformed, and routes including machine refusal and 401). 13 of 13 mutations caught; all earlier sets still caught. Full backend suite: 6,645 pass, 0 fail.
+
+**Not built:** the adapter UI that shows the ask and posts the answer; a NEURO screen for reviewing observations; the live Pi data.
+
 ## 7. Placement (if approved)
 
 - **Policy code:** `saim/policy/attention-policy.cjs`, pure. `require`d and executed by NEURO's backend for parity.

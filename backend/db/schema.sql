@@ -3441,3 +3441,50 @@ CREATE TABLE IF NOT EXISTS personal_inbox (
   fetched_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_personal_inbox_mailbox ON personal_inbox(mailbox, received);
+
+-- ── Task activity (15 Oct 2026): what kind of work a task is ────────────────
+-- shared/task-activity.cjs holds the precedence. Nick's CHOICE is the only thing
+-- that sets a task's activity; suggestions (where it came from, app use seen in a
+-- focus session) are evidence beside it and never written here for him.
+CREATE TABLE IF NOT EXISTS task_activity (
+  task_id        INTEGER PRIMARY KEY,
+  choice         TEXT NOT NULL CHECK (choice IN ('draft', 'write', 'spreadsheet', 'email', 'code', 'read', 'call', 'unsure')),
+  via            TEXT NOT NULL CHECK (via IN ('neuro', 'saim', 'observation-review')),
+  observation_id INTEGER,                   -- set when the choice was Nick accepting an observation
+  stated_at      TEXT NOT NULL
+);
+-- Every statement and review, kept. Append-only.
+CREATE TABLE IF NOT EXISTS task_activity_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id    INTEGER NOT NULL,
+  event      TEXT NOT NULL CHECK (event IN ('stated', 'cleared', 'observed', 'observation-accepted', 'observation-dismissed')),
+  choice     TEXT,
+  via        TEXT,
+  ref        TEXT,
+  at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_activity_events_task ON task_activity_events(task_id, id);
+CREATE TRIGGER IF NOT EXISTS task_activity_events_no_update BEFORE UPDATE ON task_activity_events
+BEGIN SELECT RAISE(ABORT, 'task_activity_events is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS task_activity_events_no_delete BEFORE DELETE ON task_activity_events
+BEGIN SELECT RAISE(ABORT, 'task_activity_events is append-only'); END;
+-- App use the laptop saw during a focus session on a task. SOFT evidence: shown
+-- for review, accepted or dismissed by Nick, never turned into a choice by itself.
+-- Process names and minutes only — no window titles (desktop-activity's rule).
+CREATE TABLE IF NOT EXISTS task_activity_observations (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id            INTEGER NOT NULL,
+  session_id         TEXT NOT NULL,
+  started_at         TEXT NOT NULL,
+  ended_at           TEXT NOT NULL,
+  apps_json          TEXT NOT NULL,          -- [{ app, minutes }]
+  suggested_activity TEXT CHECK (suggested_activity IS NULL OR suggested_activity IN ('draft', 'write', 'spreadsheet', 'email', 'code', 'read', 'call')),
+  suggested_minutes  REAL,
+  suggested_share    REAL,
+  status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'dismissed')),
+  reviewed_at        TEXT,
+  created_at         TEXT NOT NULL,
+  UNIQUE (task_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_activity_obs_task ON task_activity_observations(task_id, status);
+

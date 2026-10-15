@@ -5379,9 +5379,27 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 263,
+    "line": 264,
     "description": "GET /api/status.",
     "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_activity_by_taskId",
+    "method": "GET",
+    "route": "/api/task-activity/:taskId",
+    "domain": "task-activity",
+    "source": "routes/task-activity.js",
+    "line": 16,
+    "description": "GET /api/task-activity/:taskId. what kind of work a task is: Nick's stated activity choice (or \"not sure\"), suggestions (where it came from, app use observed in focus sessions) with their basis, observations and history. Task activity.",
+    "params": [
+      "taskId"
+    ],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -13013,6 +13031,47 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_activity_by_taskId",
+    "method": "POST",
+    "route": "/api/task-activity/:taskId",
+    "domain": "task-activity",
+    "source": "routes/task-activity.js",
+    "line": 22,
+    "description": "POST /api/task-activity/:taskId. Nick states a task's activity (draft, write, spreadsheet, email, code, read, call) or \"unsure\" (open the task in NEURO), or clears it with null. Authoritative; suggestions never set it. Task activity choice. Body { choice, via?: 'neuro' | 'saim' }.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [
+      "choice",
+      "via"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_activity_observations_by_observationId_review",
+    "method": "POST",
+    "route": "/api/task-activity/observations/:observationId/review",
+    "domain": "task-activity",
+    "source": "routes/task-activity.js",
+    "line": 10,
+    "description": "POST /api/task-activity/observations/:observationId/review. Nick reviews observed app use from a focus session: accept (its suggested activity becomes his choice for the task) or dismiss. Task activity, observation review. Body { decision: 'accept' | 'dismiss' }.",
+    "params": [
+      "observationId"
+    ],
+    "query": [],
+    "body": [
+      "decision"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

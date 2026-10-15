@@ -96,6 +96,19 @@ function intentProblem(x, at) {
   if (!INTENT_KINDS.includes(x.kind)) return `${at}.kind "${x.kind}" is not an intent kind`;
   if (x.kind === 'work-step' && !(x.activity === null || ACTIVITIES.includes(x.activity))) return `${at}.activity "${x.activity}" is not an activity`;
   if (x.provider != null && !isStr(x.provider)) return `${at}.provider is not text`;
+  if (x.unsure != null && typeof x.unsure !== 'boolean') return `${at}.unsure is not true/false`;
+  if (x.unsure === true && x.activity != null) return `${at} is unsure but names an activity`;
+  return null;
+}
+const SUGGESTION_BASES = new Set(['source', 'observed']);
+function suggestionsProblem(list, at) {
+  if (list === undefined) return null;
+  if (!Array.isArray(list)) return `${at} is not a list`;
+  for (let i = 0; i < list.length; i += 1) {
+    const s = list[i];
+    if (!isObj(s) || !ACTIVITIES.includes(s.activity) || !SUGGESTION_BASES.has(s.basis)) return `${at}[${i}] needs an activity and a basis (source / observed)`;
+    if (s.ref != null && !isStr(s.ref)) return `${at}[${i}].ref is not text`;
+  }
   return null;
 }
 
@@ -193,7 +206,18 @@ function checkHandoff(h) {
   if (!isObj(h)) return refuse(F, 'not an object', h === null ? null : typeof h);
   if (!SUPPORTED[F].includes(h.contract)) return refuse(F, 'unsupported contract', h.contract == null ? null : String(h.contract));
   if (h.owner !== 'saim' || !isStr(h.resolverVersion)) return refuse(F, 'owner/resolverVersion missing', h.contract);
-  if (h.handoff === null) return isStr(h.reason) ? { ok: true, family: F, contract: h.contract } : refuse(F, 'no hand-off without a reason', h.contract);
+  if (h.handoff === null) {
+    if (!isStr(h.reason)) return refuse(F, 'no hand-off without a reason', h.contract);
+    if (h.ask != null) {
+      const a = h.ask;
+      const CHOICES = [...ACTIVITIES, 'unsure'];
+      if (!isObj(a) || !isStr(a.question) || !Number.isInteger(a.taskId) || !Array.isArray(a.options) || !a.options.length) return refuse(F, 'ask malformed', h.contract);
+      if (a.options.some((o) => !isObj(o) || !CHOICES.includes(o.choice) || !isStr(o.label))) return refuse(F, 'ask option malformed', h.contract);
+      if (a.options[a.options.length - 1].choice !== 'unsure') return refuse(F, 'the last ask option must be "Not sure"', h.contract);
+      if (new Set(a.options.map((o) => o.choice)).size !== a.options.length) return refuse(F, 'an ask option repeats', h.contract);
+    }
+    return { ok: true, family: F, contract: h.contract };
+  }
   if (!isObj(h.handoff) || !isObj(h.handoff.primary) || !Array.isArray(h.handoff.alternatives)) return refuse(F, 'handoff malformed', h.contract);
   if (h.handoff.alternatives.length > 3) return refuse(F, 'more than three alternatives', h.contract);
   for (const d of [h.handoff.primary, ...h.handoff.alternatives]) {
@@ -207,7 +231,7 @@ module.exports = {
   NEURO_CANDIDATES, SAIM_ATTENTION, SAIM_DEVICE, SAIM_HANDOFF, SUPPORTED, CANDIDATE_KINDS, ATTENTION_RULES,
   INTENT_KINDS, ACTIVITIES, TARGET_ROLES, CAPABILITIES,
   checkCandidates, checkAttention, checkDevice, checkHandoff,
-  handoffProblem: (c) => intentProblem(c && c.handoffIntent, 'handoffIntent') || targetsProblem(c && c.targets, 'targets') || gapsProblem(c && c.handoffGaps, 'handoffGaps'),
+  handoffProblem: (c) => intentProblem(c && c.handoffIntent, 'handoffIntent') || targetsProblem(c && c.targets, 'targets') || gapsProblem(c && c.handoffGaps, 'handoffGaps') || suggestionsProblem(c && c.activitySuggestions, 'activitySuggestions'),
   GAP_FIELDS,
   targetsProblem,
 };

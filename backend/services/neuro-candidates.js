@@ -324,7 +324,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
 
   // Hand-off fields (structured intent + exact links + explicit gaps) — additive
   // v2 data, NEURO facts only. SAiM's resolver recommends; NEURO never does.
-  for (const c of candidates) Object.assign(c, NH.handoffFor(c, itemMeta.get(c.id) || null, { jiraBase: facts.jiraBase || null }));
+  for (const c of candidates) Object.assign(c, NH.handoffFor(c, itemMeta.get(c.id) || null, { jiraBase: facts.jiraBase || null, taskActivity: facts.taskActivity || null }));
 
   return {
     contract: CONTRACT,
@@ -392,6 +392,9 @@ function gather({ now = Date.now() } = {}) {
     }
   } catch (e) { gaps.push({ input: 'task-domains', why: e.message }); }
   // Planned dates of household obligations that are tasks — so their wording can be checked against them.
+  // Task activity (15 Oct 2026): Nick's stated choice per open task, and the
+  // suggestions beside it (source, observed). Precedence: shared/task-activity.cjs.
+  try { out.facts.taskActivity = require('./task-activity').forOpenTasks(); } catch (e) { out.facts.taskActivity = null; gaps.push({ input: 'task-activity', why: e.message }); }
   out.facts.taskDue = new Map();
   try {
     const home = require('./home').readCached({ now });

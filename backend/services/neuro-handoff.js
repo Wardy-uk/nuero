@@ -56,11 +56,23 @@ function jiraBrowse(jiraBase, key, given) {
 }
 
 const workStep = (activity, basis, gaps, targets = []) => ({ handoffIntent: { kind: 'work-step', activity, ...(basis ? { basis } : {}) }, targets: targets.filter(Boolean), handoffGaps: gaps });
-/** A task work step: the exact task link when there is one task id, else the gap. */
-const taskStep = (taskId, noLinkWhy, activity = null, basis = null) => {
+/**
+ * A task work step. The activity is NICK'S CHOICE or nothing (shared/task-activity.cjs):
+ * `act` is resolveActivity()'s answer for this task. Suggestions (source, observed)
+ * never fill `activity` — they travel as `activitySuggestions`.
+ */
+const taskStep = (taskId, noLinkWhy, act = null) => {
   const t = exact('canonical', 'task', taskId, 'This task in NEURO');
-  const gaps = activity ? [] : [gap('activity', NO_TASK_ACTIVITY)];
-  return workStep(activity, basis, t ? gaps : [...gaps, gap('canonical', noLinkWhy)], [t]);
+  const a = act || null;
+  const activity = a && a.activity ? a.activity : null;
+  const intent = { kind: 'work-step', activity, ...(a && a.basis ? { basis: a.basis } : {}), ...(a && a.unsure ? { unsure: true } : {}) };
+  const gaps = activity ? [] : [gap('activity', a && a.unsure ? 'Nick said he isn’t sure what this needs' : NO_TASK_ACTIVITY)];
+  return {
+    handoffIntent: intent,
+    targets: t ? [t] : [],
+    handoffGaps: t ? gaps : [...gaps, gap('canonical', noLinkWhy)],
+    activitySuggestions: a && !activity ? a.suggestions.map((s) => ({ ...s })) : [],
+  };
 };
 /** A meeting: prep at the exact diary event when NEURO holds its id. */
 const meetingStep = (eventId) => {
@@ -75,15 +87,17 @@ const meetingStep = (eventId) => {
  * @param {{ jiraBase?: string }} opts
  * @returns {{ handoffIntent: object|null, targets: object[], handoffGaps: object[] }}
  */
-function handoffFor(c, meta = null, { jiraBase = null } = {}) {
+function handoffFor(c, meta = null, { jiraBase = null, taskActivity = null } = {}) {
   const m = meta || {};
+  const actFor = (id) => (taskActivity && id != null && taskActivity.get(Number(id))) || null;
   switch (c.kind) {
     case 'block': {
       const tasks = (c.facts && Array.isArray(c.facts.tasks)) ? c.facts.tasks : [];
-      return taskStep(tasks.length === 1 ? tasks[0].taskId : null, NO_BLOCK_TASK);
+      const one = tasks.length === 1 ? tasks[0].taskId : null;
+      return taskStep(one, NO_BLOCK_TASK, actFor(one));
     }
     case 'commitment':
-      return taskStep(c.taskId, NO_TASK_LINK);
+      return taskStep(c.taskId, NO_TASK_LINK, actFor(c.taskId));
     case 'meeting':
       return meetingStep(c.eventId);
     case 'protected-time':
@@ -103,11 +117,11 @@ function handoffFor(c, meta = null, { jiraBase = null } = {}) {
           ...(t ? [] : [gap('canonical', 'the hazard carries no sensor id to link to')]),
         ] };
       }
-      if (k === 'obligation') return taskStep(c.taskId, NO_TASK_LINK);
+      if (k === 'obligation') return taskStep(c.taskId, NO_TASK_LINK, actFor(c.taskId));
       return { handoffIntent: null, targets: [], handoffGaps: [gap('intent', `no hand-off is defined for a household ${k || 'item'}`)] };
     }
     case 'attention-item':
-      return itemHandoff(c.facts && c.facts.type, m, jiraBase);
+      return itemHandoff(c.facts && c.facts.type, m, jiraBase, actFor);
     case 'held':
     case 'personal-date':
     default:
@@ -116,7 +130,7 @@ function handoffFor(c, meta = null, { jiraBase = null } = {}) {
 }
 
 /** By decision-engine item TYPE — a structured field, never the card's wording. */
-function itemHandoff(type, m, jiraBase) {
+function itemHandoff(type, m, jiraBase, actFor = () => null) {
   switch (type) {
     case 'escalation': {
       // decision-engine sets ticket_key only when exactly one escalation is unseen.
@@ -147,7 +161,7 @@ function itemHandoff(type, m, jiraBase) {
     }
     case 'todo':
       // decision-engine's todo cards carry a slug, not a task id.
-      return taskStep(m.taskId, NO_TASK_LINK);
+      return taskStep(m.taskId, NO_TASK_LINK, actFor(m.taskId));
     case 'meeting':
       // decision-engine names a meeting item `cal-<event id>` — a structured id, not wording.
       return meetingStep(typeof m.engineId === 'string' && m.engineId.startsWith('cal-') ? m.engineId.slice(4) : null);

@@ -300,6 +300,10 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/projects/:projectId/status', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/projects/:projectId/repos', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/projects/:projectId/tasks', 'internal.state', { machine: 'refuse' }),
+  // Task activity (15 Oct 2026): Nick's choice is authoritative, and accepting an
+  // observation IS his choice — no machine states either for him.
+  R('POST', '/api/task-activity/observations/:observationId/review', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/task-activity/:taskId', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/projects/:projectId/next', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/projects/:projectId/blockers', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/projects/:projectId/blockers/:blockerId/resolve', 'internal.state', { machine: 'refuse' }),

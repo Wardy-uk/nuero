@@ -35,10 +35,11 @@
  */
 
 const CONTRACTS = require('../../shared/attention-contracts.cjs');
+const LINKS = require('../../shared/neuro-links.cjs');
 const { SURFACES } = require('./attention-policy.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_HANDOFF;
-const RESOLVER_VERSION = '2026-10-15.3';
+const RESOLVER_VERSION = '2026-10-15.4';
 const MAX_ALTERNATIVES = 3;
 
 /**
@@ -197,7 +198,16 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
   if (rule === 'S5 protected block' || rule === 'S7 top item' || rule === 'S9 block about to start') {
     if (!intent || intent.kind !== 'work-step') return none(out, 'NEURO stated no next step to open anything for.', [`${lead.ref}.handoffIntent missing`]);
     const spec = intent.activity ? ACTIVITY[intent.activity] : null;
-    if (!spec) return none(out, 'NEURO didn’t say what kind of work this is, so SAiM won’t guess an app.', [`${lead.ref}.handoffIntent.activity = null`]);
+    if (!spec) {
+      const taskLink = targetOf(leadCand, 'canonical');
+      // "Not sure — open the task in NEURO": Nick's own answer, so it is a hand-off, not a gap.
+      if (intent.unsure && taskLink) {
+        return done(linkDest(taskLink, 'Open the task in NEURO'), [], 'You said you’re not sure what this needs — the task is in NEURO.', [`${lead.ref}.handoffIntent.unsure`]);
+      }
+      const r = none(out, intent.unsure ? 'You said you’re not sure what this needs, and NEURO gave no link to the task.' : 'NEURO doesn’t know what kind of work this is yet, so SAiM won’t guess an app.', [`${lead.ref}.handoffIntent.activity = null`]);
+      const ask = intent.unsure ? null : askFor(leadCand, taskLink, deviceProblem ? null : apps);
+      return ask ? { ...r, ask } : r;
+    }
     if (deviceProblem) return none(out, `SAiM can’t recommend an app — ${deviceProblem}.`, ['device']);
     const primaryApp = spec.needs.map(withCap).find(Boolean) || null;
     if (!primaryApp) return none(out, `Nothing declared on this device can do this (${spec.needs.join(' or ')}).`, ['device']);
@@ -235,6 +245,36 @@ function limitAlternatives(primary, alternatives) {
     if (alts.length === MAX_ALTERNATIVES) break;
   }
   return alts;
+}
+
+/**
+ * "What will you use?" — SAiM's one-tap question for a task whose activity
+ * nobody has stated (option C). Nick answers with an ACTIVITY, stored per task
+ * (POST /api/task-activity/:taskId); the app is SAiM's per-device judgement, so
+ * an option is labelled with this device's app when one is declared and
+ * available, and with the plain activity otherwise. NEURO's suggestions
+ * (source / observed) come FIRST and are marked — they are never pre-chosen.
+ * The last option is always "Not sure — open the task in NEURO". Only asked
+ * when there is one exact task to store the answer against.
+ */
+const ACTIVITY_WORD = Object.freeze({ draft: 'Drafting with AI', write: 'Writing', spreadsheet: 'A spreadsheet', email: 'Email', code: 'Code', read: 'Reading', call: 'A call' });
+function askFor(cand, taskLink, apps) {
+  const parsed = taskLink ? LINKS.parseNeuroHref(taskLink.href) : null;
+  if (!parsed || !parsed.item || parsed.item.kind !== 'task') return null;
+  const suggested = new Map();
+  for (const s of (cand && Array.isArray(cand.activitySuggestions) ? cand.activitySuggestions : [])) if (!suggested.has(s.activity)) suggested.set(s.activity, s.basis);
+  const order = [...suggested.keys(), ...Object.keys(ACTIVITY).filter((a) => !suggested.has(a))];
+  const options = order.map((activity) => {
+    const app = apps ? ACTIVITY[activity].needs.map((cap) => apps.find((a) => a.capabilities.includes(cap))).find(Boolean) : null;
+    return {
+      choice: activity,
+      label: app ? app.label : ACTIVITY_WORD[activity],
+      ...(app ? { app: app.id } : {}),
+      ...(suggested.has(activity) ? { suggested: true, basis: suggested.get(activity) } : {}),
+    };
+  });
+  options.push({ choice: 'unsure', label: 'Not sure — open the task in NEURO' });
+  return { question: 'What will you use?', taskId: Number(parsed.item.id), options, deviceSpecific: Boolean(apps) };
 }
 
 function key(d) { return d.target.type === 'link' ? `link:${d.target.href}` : `app:${d.target.app}`; }

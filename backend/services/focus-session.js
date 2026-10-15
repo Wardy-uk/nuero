@@ -803,6 +803,9 @@ function _end(reason, now) {
 
   _archive(session, now);
   _write(null);
+  // What the laptop saw during the session becomes SOFT evidence about the task's
+  // activity (task_activity_observations) — reviewable, never a choice. Never fails the end.
+  try { require('./task-activity').observeSession(session, { now }); } catch { /* evidence only */ }
   return { ok: true, session: view, actualMinutes: view.elapsedMinutes };
 }
 
