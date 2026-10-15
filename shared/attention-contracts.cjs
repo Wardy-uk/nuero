@@ -242,6 +242,7 @@ function checkHandoff(h) {
   if (h.handoff.alternatives.length > 3) return refuse(F, 'more than three alternatives', h.contract);
   for (const d of [h.handoff.primary, ...h.handoff.alternatives]) {
     if (!isObj(d) || !isStr(d.label) || !isObj(d.target) || !DEST_TYPES.has(d.target.type)) return refuse(F, 'destination malformed', h.contract);
+    if (d.name !== undefined && !isStr(d.name)) return refuse(F, 'destination name malformed', h.contract);
   }
   if (h.handoff.alternatives.some((d) => d.target.type === 'already')) return refuse(F, 'an "already open" app is never an alternative', h.contract);
   return { ok: true, family: F, contract: h.contract };

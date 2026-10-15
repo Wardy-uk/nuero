@@ -233,7 +233,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.7",
+    "policyVersion": "2026-10-15.8",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -304,6 +304,7 @@
       }
     },
     "alternatives": [],
+    "routesHeld": [],
     "corrections": [
       {
         "ref": "commitment:task:375",
@@ -336,7 +337,7 @@
     "display": {
       "lead": {
         "title": "Customer Care training plan and refreshers",
-        "sentence": "This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.",
+        "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
         "when": "14:00–15:30"
       },
       "protected": {
@@ -345,7 +346,7 @@
       },
       "held": [
         {
-          "title": "Nick Ward to send breakdown of Parsons contacts",
+          "title": "Send breakdown of Parsons contacts",
           "why": "due today",
           "returns": "at 15:30"
         },
@@ -405,12 +406,13 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.4",
+    "resolverVersion": "2026-10-15.5",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "decidedFor": "block:130",
     "rule": "S5 protected block",
     "handoff": {
       "primary": {
+        "name": "Claude",
         "label": "Open Claude",
         "target": {
           "type": "desk",
@@ -420,6 +422,7 @@
       },
       "alternatives": [
         {
+          "name": "Music",
           "label": "Open Music",
           "target": {
             "type": "desk",
@@ -428,6 +431,7 @@
           }
         },
         {
+          "name": "Word",
           "label": "Open Word",
           "target": {
             "type": "desk",

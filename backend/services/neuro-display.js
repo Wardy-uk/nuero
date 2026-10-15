@@ -47,6 +47,14 @@ function dueText(due, daysLate, now) {
 }
 
 /**
+ * NEURO writes "Task block: <task>" as the calendar subject of its OWN task blocks
+ * (task-blocks.js). That prefix is NEURO's bookkeeping, not what the thing is called,
+ * so it never reaches a person. Only this exact prefix — Nick's own words are untouched.
+ */
+const OWN_SUBJECT_PREFIX = /^Task block:\s+/;
+const ownSubject = (s) => String(s || '').replace(OWN_SUBJECT_PREFIX, '');
+
+/**
  * @param {object} c       the candidate as composed
  * @param {object} extra   { subject } for approvals (the action's own subject), and `now`
  */
@@ -62,7 +70,7 @@ function displayFor(c, { subject = null, now = Date.now() } = {}) {
       break;
     }
     case 'meeting':
-      title = D.safe(c.title) || 'A meeting';
+      title = D.safe(ownSubject(c.title)) || 'A meeting';
       timing = span(t);
       explanation = f.othersAttending === true ? 'With other people' : null;
       break;
@@ -80,7 +88,7 @@ function displayFor(c, { subject = null, now = Date.now() } = {}) {
       break;
     }
     case 'attention-item':
-      title = D.safe(c.title);
+      title = D.safe(ownSubject(c.title));
       timing = t.start ? (Number.isFinite(t.minutesAway) ? (t.minutesAway <= 0 ? `now (${t.start})` : `in ${t.minutesAway} min (${t.start})`) : t.start) : null;
       explanation = D.safe(f.reason);
       break;

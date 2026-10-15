@@ -223,7 +223,7 @@ test('"Not sure": the hand-off is the task in NEURO, and SAiM doesn’t ask agai
   const block = x.cands.candidates.find((c) => c.id === 'block:130');
   assert.deepEqual(block.handoffIntent, { kind: 'work-step', activity: null, basis: 'stated', unsure: true });
   const out = resolve(x);
-  assert.deepEqual(out.handoff.primary, { label: 'Open the task in NEURO', target: { type: 'link', href: `neuro:?item=task%3A${T.other}`, role: 'canonical' } });
+  assert.deepEqual(out.handoff.primary, { name: 'The task in NEURO', label: 'Open the task in NEURO', target: { type: 'link', href: `neuro:?item=task%3A${T.other}`, role: 'canonical' } });
   assert.equal(out.ask, undefined);
 });
 

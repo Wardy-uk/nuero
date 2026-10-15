@@ -39,7 +39,7 @@ const LINKS = require('../../shared/neuro-links.cjs');
 const { SURFACES } = require('./attention-policy.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_HANDOFF;
-const RESOLVER_VERSION = '2026-10-15.4';
+const RESOLVER_VERSION = '2026-10-15.5';
 const MAX_ALTERNATIVES = 3;
 
 /**
@@ -120,12 +120,13 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
 
   /** A desk app as a destination: already in front, switch to it, or open it. */
   const deskDest = (app) => {
-    if (!deskLaunch) return { label: `${app.label}, on the desktop`, target: { type: 'elsewhere', where: 'the desktop', app: app.id } };
-    if (app.foreground === true) return { label: `Already open — carry on in ${app.label}`, target: { type: 'already', app: app.id } };
-    if (app.running === true) return { label: `Switch to ${app.label}`, target: { type: 'desk', app: app.id, mode: 'switch' } };
-    return { label: `Open ${app.label}`, target: { type: 'desk', app: app.id, mode: 'open' } };
+    if (!deskLaunch) return { name: app.label, label: `${app.label}, on the desktop`, target: { type: 'elsewhere', where: 'the desktop', app: app.id } };
+    if (app.foreground === true) return { name: app.label, label: `Already open — carry on in ${app.label}`, target: { type: 'already', app: app.id } };
+    if (app.running === true) return { name: app.label, label: `Switch to ${app.label}`, target: { type: 'desk', app: app.id, mode: 'switch' } };
+    return { name: app.label, label: `Open ${app.label}`, target: { type: 'desk', app: app.id, mode: 'open' } };
   };
-  const linkDest = (t, label) => ({ label, target: { type: 'link', href: t.href, role: t.role } });
+  // `name` is the destination (shown in the card); `label` is the verb on the button.
+  const linkDest = (t, label, name) => ({ name, label, target: { type: 'link', href: t.href, role: t.role } });
   const targetOf = (c, role) => (c && Array.isArray(c.targets) ? c.targets.find((t) => t.role === role) : null) || null;
 
   const done = (primary, alternatives, why, basis) => ({ ...out, handoff: { primary, alternatives: limitAlternatives(primary, alternatives), why }, reason: null, basis });
@@ -143,7 +144,7 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
     const kp = CONTRACTS.targetsProblem(candidates.constraints.targets, 'constraints.targets');
     if (kp) return none(out, 'NEURO’s link for where to look is malformed, so SAiM won’t use it.', [kp]);
     const t = (Array.isArray(candidates.constraints.targets) ? candidates.constraints.targets : []).find((x) => x.role === 'source');
-    return t ? done(linkDest(t, `Open ${t.label || 'Sources in NEURO'}`), [], 'Where NEURO shows which feed stopped. SAiM can’t tell which connection failed, so it won’t suggest an app.', ['constraints.targets.source'])
+    return t ? done(linkDest(t, `Open ${t.label || 'Sources in NEURO'}`, t.label || 'Sources in NEURO'), [], 'Where NEURO shows which feed stopped. SAiM can’t tell which connection failed, so it won’t suggest an app.', ['constraints.targets.source'])
       : none(out, 'NEURO gave no place to look, and SAiM won’t guess one.', ['constraints.targets: no source']);
   }
 
@@ -151,13 +152,13 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
   if (rule === 'S2 critical risk') {
     const t = targetOf(leadCand, 'control') || targetOf(leadCand, 'canonical');
     if (!t) return none(out, 'NEURO gave no link to act on this.', [`${lead.ref}.targets: no control or canonical`]);
-    return done(linkDest(t, t.role === 'control' ? `Open ${t.label || 'the control'}` : 'Open it in NEURO'), [], t.role === 'control' ? 'Where this can actually be dealt with.' : 'NEURO is the only place this can be acted on.', [`${lead.ref}.targets.${t.role}`]);
+    return done(linkDest(t, t.role === 'control' ? `Open ${t.label || 'the control'}` : 'Open it in NEURO', t.role === 'control' ? (t.label || 'The control') : 'This item in NEURO'), [], t.role === 'control' ? 'Where this can actually be dealt with.' : 'NEURO is the only place this can be acted on.', [`${lead.ref}.targets.${t.role}`]);
   }
 
   // S2u — possible risk: the item in NEURO only; SAiM doesn't know the fixer.
   if (rule === 'S2u unclassified potential risk') {
     const t = targetOf(leadCand, 'canonical');
-    return t ? done(linkDest(t, 'Open it in NEURO'), [], 'This kind of item isn’t classified, so SAiM doesn’t know which tool fixes it. NEURO holds the item.', [`${lead.ref}.targets.canonical`])
+    return t ? done(linkDest(t, 'Open it in NEURO', 'This item in NEURO'), [], 'This kind of item isn’t classified, so SAiM doesn’t know which tool fixes it. NEURO holds the item.', [`${lead.ref}.targets.canonical`])
       : none(out, 'NEURO gave no link to this item.', [`${lead.ref}.targets: no canonical`]);
   }
 
@@ -168,8 +169,8 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
     const provider = (join && join.provider) || (intent && intent.provider) || null;
     const app = provider ? withCap(`meeting:${provider}`) : null;
     const appDest = app ? deskDest(app) : null;
-    const joinDest = join ? linkDest(join, (app && app.label) || join.label ? `Join in ${(app && app.label) || join.label}` : 'Join the meeting') : null;
-    const prepDest = prep ? linkDest(prep, 'Open meeting prep') : null;
+    const joinDest = join ? linkDest(join, (app && app.label) || join.label ? `Join in ${(app && app.label) || join.label}` : 'Join the meeting', (app && app.label) || join.label || 'The meeting') : null;
+    const prepDest = prep ? linkDest(prep, 'Open meeting prep', 'Meeting prep') : null;
     const basis = [join && 'targets.join', prep && 'targets.prep', app && `device.${app.id}`].filter(Boolean);
     let order;
     if (rule === 'S3 meeting') {
@@ -190,19 +191,19 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
   // S4 / S6 — judgement: exactly that action in NEURO. Never an approve target.
   if (rule === 'S4 deadline inside the block' || rule === 'S6 judgement waiting') {
     const t = targetOf(leadCand, 'canonical');
-    return t ? done(linkDest(t, 'Open this in NEURO Actions'), [], 'SAiM doesn’t approve outbound actions — that happens in NEURO, with the approval code.', [`${lead.ref}.targets.canonical`])
+    return t ? done(linkDest(t, 'Open this in NEURO Actions', 'This action in NEURO Actions'), [], 'SAiM doesn’t approve outbound actions — that happens in NEURO, with the approval code.', [`${lead.ref}.targets.canonical`])
       : none(out, 'NEURO gave no link to this exact action.', [`${lead.ref}.targets: no canonical`]);
   }
 
   // S5 / S7 / S9 — a work step: SAiM's recommendation over declared, available apps.
   if (rule === 'S5 protected block' || rule === 'S7 top item' || rule === 'S9 block about to start') {
-    if (!intent || intent.kind !== 'work-step') return none(out, 'NEURO stated no next step to open anything for.', [`${lead.ref}.handoffIntent missing`]);
+    if (!intent || intent.kind !== 'work-step') return none(out, 'NEURO stated no next step to open anything for.', [intent ? `${lead.ref}.handoffIntent.kind = ${intent.kind}, not a work step` : `${lead.ref}.handoffIntent missing`]);
     const spec = intent.activity ? ACTIVITY[intent.activity] : null;
     if (!spec) {
       const taskLink = targetOf(leadCand, 'canonical');
       // "Not sure — open the task in NEURO": Nick's own answer, so it is a hand-off, not a gap.
       if (intent.unsure && taskLink) {
-        return done(linkDest(taskLink, 'Open the task in NEURO'), [], 'You said you’re not sure what this needs — the task is in NEURO.', [`${lead.ref}.handoffIntent.unsure`]);
+        return done(linkDest(taskLink, 'Open the task in NEURO', 'The task in NEURO'), [], 'You said you’re not sure what this needs — the task is in NEURO.', [`${lead.ref}.handoffIntent.unsure`]);
       }
       const r = none(out, intent.unsure ? 'You said you’re not sure what this needs, and NEURO gave no link to the task.' : 'NEURO doesn’t know what kind of work this is yet, so SAiM won’t guess an app.', [`${lead.ref}.handoffIntent.activity = null`]);
       const ask = intent.unsure ? null : askFor(leadCand, taskLink, deviceProblem ? null : apps);
@@ -273,6 +274,11 @@ function askFor(cand, taskLink, apps) {
       ...(suggested.has(activity) ? { suggested: true, basis: suggested.get(activity) } : {}),
     };
   });
+  // Two activities can land on one app (writing and reading are both Word). A repeated
+  // label is told apart by the kind of work, or Nick sees two identical buttons.
+  const counts = new Map();
+  for (const o of options) counts.set(o.label, (counts.get(o.label) || 0) + 1);
+  for (const o of options) if (o.app && counts.get(o.label) > 1) o.label = `${o.label} — ${ACTIVITY_WORD[o.choice][0].toLowerCase()}${ACTIVITY_WORD[o.choice].slice(1)}`;
   options.push({ choice: 'unsure', label: 'Not sure — open the task in NEURO' });
   return { question: 'What will you use?', taskId: Number(parsed.item.id), options, deviceSpecific: Boolean(apps) };
 }

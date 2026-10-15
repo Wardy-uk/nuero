@@ -52,7 +52,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.7",
+    "policyVersion": "2026-10-15.8",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -84,6 +84,7 @@
     "next": null,
     "recommended": null,
     "alternatives": [],
+    "routesHeld": [],
     "corrections": [],
     "review": {
       "unclassified": [],
@@ -129,12 +130,13 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.4",
+    "resolverVersion": "2026-10-15.5",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "decidedFor": null,
     "rule": "S1 blind",
     "handoff": {
       "primary": {
+        "name": "Sources in NEURO",
         "label": "Open Sources in NEURO",
         "target": {
           "type": "link",

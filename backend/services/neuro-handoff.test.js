@@ -140,7 +140,7 @@ test('one unseen escalation: S2 hands off to that ticket in Jira; without a Jira
   const card = { kind: 'item', type: 'escalation', urgency: 'critical', title: 'NT-14855 — Portal down', recordId: 'att_esc', reason: 'no reply', meta: { ticket_key: 'NT-14855', url: `${JIRA}/browse/NT-14855`, escalations: [{ key: 'NT-14855' }] } };
   const a = endToEnd(composeWith({ primary: card, jiraBase: JIRA }), NOW);
   assert.equal(a.decision.lead.rule, 'S2 critical risk');
-  assert.deepEqual(a.out.handoff.primary, { label: 'Open Jira', target: { type: 'link', href: `${JIRA}/browse/NT-14855`, role: 'control' } });
+  assert.deepEqual(a.out.handoff.primary, { name: 'Jira', label: 'Open Jira', target: { type: 'link', href: `${JIRA}/browse/NT-14855`, role: 'control' } });
   assert.deepEqual(a.out.handoff.alternatives, []);
   const b = endToEnd(composeWith({ primary: card, jiraBase: null }), NOW);
   assert.equal(b.out.handoff, null);
@@ -151,7 +151,7 @@ test('a late weekly risk report: S2 opens the Weekly risk page in NEURO', () => 
   const card = { kind: 'item', type: 'weekly_risk', urgency: 'critical', title: 'Weekly risk report is late', recordId: 'att_wr', meta: {} };
   const { decision, out } = endToEnd(composeWith({ primary: card }), NOW);
   assert.equal(decision.lead.rule, 'S2 critical risk');
-  assert.deepEqual(out.handoff.primary, { label: 'Open it in NEURO', target: { type: 'link', href: 'neuro:?view=weekly-risk', role: 'canonical' } });
+  assert.deepEqual(out.handoff.primary, { name: 'This item in NEURO', label: 'Open it in NEURO', target: { type: 'link', href: 'neuro:?view=weekly-risk', role: 'canonical' } });
 });
 
 test('a top email: S7 work step "email" → SAiM recommends the declared mail app', () => {
@@ -201,7 +201,7 @@ test('approval: the exact action link; a meeting with a real diary id: Open meet
   Object.assign(mc, NH.handoffFor({ ...mc, eventId: 'AAMkAGI2THVSAAA=' }));
   const now = Date.parse(mt.decision.decidedAt);
   const out = H.resolveHandoff({ decision: POL.decide(cands, { surface: 'work-desktop', now }), candidates: cands, device: device(now), now });
-  assert.deepEqual(out.handoff.primary, { label: 'Open meeting prep', target: { type: 'link', href: 'neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D', role: 'prep' } });
+  assert.deepEqual(out.handoff.primary, { name: 'Meeting prep', label: 'Open meeting prep', target: { type: 'link', href: 'neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D', role: 'prep' } });
   // Email items: the exact email link.
   const em = NH.handoffFor({ kind: 'attention-item', id: 'item:e', facts: { type: 'email' } }, { emailId: 'AAMkAGEmailId0000000001=' });
   assert.equal(em.targets[0].href, 'neuro:?item=email%3AAAMkAGEmailId0000000001%3D');

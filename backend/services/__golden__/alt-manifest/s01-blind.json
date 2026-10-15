@@ -18,6 +18,7 @@
     "kind": "connection",
     "heading": "Where to look",
     "primary": {
+      "name": "Sources in NEURO",
       "label": "Open Sources in NEURO",
       "type": "link",
       "href": "neuro:?view=sources",

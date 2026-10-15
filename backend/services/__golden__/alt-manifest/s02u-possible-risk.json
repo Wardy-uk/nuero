@@ -5,7 +5,7 @@
   "presence": "SAiM · desk active · possible risk",
   "state": "Possible risk · not yet classified",
   "title": "Payroll cut-off for overtime claims",
-  "sentence": "Payroll cut-off for overtime claims — NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
+  "sentence": "NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
   "when": null,
   "guard": {
     "what": "Customer Care training plan and refreshers",
@@ -25,7 +25,8 @@
     "held": {
       "count": 0,
       "returns": null,
-      "items": []
+      "items": [],
+      "more": []
     },
     "judgement": {
       "items": []

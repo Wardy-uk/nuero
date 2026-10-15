@@ -51,7 +51,7 @@ export default function ManifestView({ v }) {
               <p className="wk__label">{v.handoff.heading}</p>
               <div className="wk__placerow">
                 <div>
-                  <p className="wk__app">{v.handoff.primary.label}</p>
+                  <p className="wk__app">{v.handoff.primary.name}</p>
                   {v.handoff.why && <p className="wk__why">{v.handoff.why}</p>}
                 </div>
                 {v.handoff.primary.type === 'already'
@@ -64,7 +64,7 @@ export default function ManifestView({ v }) {
                   )}
               </div>
               {v.handoff.alternatives.length > 0 && (
-                <p className="wk__others"><span className="wk__k">Other ways in</span>{v.handoff.alternatives.map((o, i) => <span key={o.label}>{i > 0 && ' · '}<span className="mf__inert">{o.label}</span></span>)}</p>
+                <p className="wk__others"><span className="wk__k">Other ways in</span>{v.handoff.alternatives.map((o, i) => <span key={o.label}>{i > 0 && ' · '}<span className="mf__inert" title={o.label}>{o.name}</span></span>)}</p>
               )}
             </div>
           )}
@@ -104,7 +104,13 @@ export default function ManifestView({ v }) {
               <>
                 <p className="wk__railsub">{`${x.count} ${x.count === 1 ? 'item' : 'items'} held${x.returns ? ` — back ${x.returns}` : ''}.`}</p>
                 {x.items.length > 0 && (
-                  <ul className="wk__held">{x.items.map((h, i) => <li key={i} className={h.risky ? 'mf__heldrisk' : ''}><span>{h.title}</span>{h.why && <span className="wk__muted"> — {h.why}</span>}</li>)}</ul>
+                  <ul className="wk__held">{x.items.map((h, i) => <HeldRow key={i} h={h} />)}</ul>
+                )}
+                {x.more && x.more.length > 0 && (
+                  <details className="mf__more">
+                    <summary>{`Show ${x.more.length} more held`}</summary>
+                    <ul className="wk__held">{x.more.map((h, i) => <HeldRow key={i} h={h} />)}</ul>
+                  </details>
                 )}
               </>
             )}
@@ -121,6 +127,10 @@ export default function ManifestView({ v }) {
       </div>
     </div>
   );
+}
+
+function HeldRow({ h }) {
+  return <li className={h.risky ? 'mf__heldrisk' : ''}><span>{h.title}</span>{h.why && <span className="wk__muted"> — {h.why}</span>}</li>;
 }
 
 /** One rail box: not read (with the reason), empty, or its content. Never "nothing" for an unread section. */

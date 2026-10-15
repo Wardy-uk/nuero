@@ -282,7 +282,10 @@ test('live 15 Oct: the London Office Regroup is never S2 — S3a two minutes out
   assert.equal(d.lead.rule, 'S3a imminent meeting transition');
   assert.equal(d.lead.title, 'The London Office Regroup');
   assert.match(d.lead.why, /starts in 2 minutes; I’ll hold Draft the Q4 rota for after it/);
-  assert.equal(d.recommended.say, 'Join / prep now', 'NEURO’s meeting card supplies the action');
+  // NEURO's 'Join / prep now' is a ROUTE: it is held out of the action row (the hand-off owns routes) and named in the trace.
+  assert.ok(!d.recommended || d.recommended.say !== 'Join / prep now', 'a route is never an action');
+  assert.ok(![d.recommended, ...d.alternatives].filter(Boolean).some((a) => a.intent && a.intent.kind === 'navigate' && a.intent.recordId), 'no route in the action row');
+  assert.deepEqual(d.routesHeld, ['Join / prep now'], 'the held route is named on the decision');
   assert.equal(d.trace.find((t) => t.rule === 'S2 critical risk').applies, false);
   assert.ok(!d.held.some((h) => h.title === 'The London Office Regroup'), 'the card is not held as a second copy');
   assert.ok(d.held.some((h) => h.title === 'Do your standup'), 'the pre-11 standup is urgency, held — not risk');
@@ -318,4 +321,36 @@ test('diary unread: NEURO’s meeting card alone still triggers the transition',
 test('home scope: an imminent work meeting never leads at home', () => {
   const d = decide(morning({ minutesToMeeting: 2 }), 'home-pi');
   assert.notEqual(d.lead.rule, 'S3a imminent meeting transition');
+});
+
+// ── Live 15 Oct 14:36: NEURO's own task-block calendar entry ─────────────────
+// decision-engine raised the "Task block: …" diary entry as a meeting card; it led S7
+// with no work-step intent, and its task was ALSO held as a due commitment — the same
+// words twice on one screen. The block list already represents that event.
+test('live 15 Oct: NEURO’s own task-block entry is the block, and its task is not also held', () => {
+  const now = at(14, 36, 15);
+  const TEXT = 'Nick Ward to send breakdown of Parsons contacts: consent vs. non-consent';
+  const payload = {
+    poolAvailable: true,
+    context: { activity: 'steady' },
+    primary: { kind: 'item', type: 'meeting', urgency: 'high', title: `Task block: ${TEXT}`, recordId: 'att_tb', reason: 'In 9 min',
+      meta: { start: '2026-10-15T14:45:00.0000000', minutesAway: 9, withOthers: false } },
+    secondary: [],
+    dropped: [],
+    utterances: [],
+    approvals: { known: true, needsApproval: 0, needsReview: 0 },
+    situation: { sections: { commitments: [{ id: 'commitment:task:283', taskId: 'task:neuro:283', description: TEXT, state: 'open', direction: 'i-owe', due: { date: '2026-10-15', basis: 'set' } }] } },
+  };
+  const live = { rows: [{ blockId: 77, dateKey: '2026-10-15', startTime: '14:45', endTime: '15:45', status: 'scheduled', passed: false, tasks: [{ taskId: 283, text: TEXT }] }], session: null,
+    block: { blockId: 77, startTime: '14:45', endTime: '15:45', running: false, tasks: [{ taskId: 283, text: TEXT, running: false }], allTicked: false } };
+  const facts = { calendar: [], calendarKnown: true, approvals: [], taskDomains: new Map([[283, { domain: 'work', basis: 'default' }]]), workingWindow: { todayEnd: iso(18, 0, 15), nextStart: iso(8, 0, 16) } };
+  const c = NC.compose(payload, live, facts, { now });
+  assert.equal(c.candidates.some((x) => x.kind === 'attention-item' && /Task block/i.test(x.title)), false, 'the calendar card is folded into the block');
+  assert.ok(c.candidates.some((x) => x.id === 'block:77'), 'positive control: the block is there');
+  const d = decide({ candidates: c, now }, 'work-desktop');
+  assert.equal(d.lead.rule, 'S9 block about to start', 'the block leads, with its own work-step hand-off');
+  assert.equal(d.lead.ref, 'block:77');
+  assert.ok(!d.held.some((h) => h.ref === 'commitment:task:283'), 'the lead block’s own task is not held');
+  const shown = [d.display.lead.title, ...d.display.held.map((h) => h.title)].filter(Boolean);
+  assert.equal(shown.filter((t) => /Parsons/.test(t)).length, 1, 'the task wording appears once');
 });

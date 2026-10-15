@@ -16,7 +16,7 @@ for (const s of SCENARIOS) {
     assert.equal(d.lead.rule, e.rule, `rule — trace: ${r.trace}`);
     assert.equal(d.lead.ref, e.lead);
     assert.equal(d.protected ? d.protected.ref : null, e.protected);
-    if (e.recommended) assert.equal(d.recommended && d.recommended.say, e.recommended);
+    if ('recommended' in e) assert.equal(d.recommended ? d.recommended.say : null, e.recommended);
     if (e.judgementEffective) assert.equal(d.judgement[0].effectiveDeadline, e.judgementEffective);
     if (e.heldIncludes) assert.ok(d.held.some((h) => h.ref === e.heldIncludes), 'held');
     if (e.excludedWork) assert.ok(d.scope.excluded.work > 0, 'work counted, not shown');

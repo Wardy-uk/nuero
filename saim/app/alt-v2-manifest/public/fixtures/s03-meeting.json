@@ -134,7 +134,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.7",
+    "policyVersion": "2026-10-15.8",
     "decidedAt": "2026-10-15T13:40:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -181,6 +181,7 @@
     "next": null,
     "recommended": null,
     "alternatives": [],
+    "routesHeld": [],
     "corrections": [],
     "review": {
       "unclassified": [
@@ -219,7 +220,7 @@
     "display": {
       "lead": {
         "title": "Nick Catch Up",
-        "sentence": "You’re in Nick Catch Up until 15:00; I’m holding everything else.",
+        "sentence": "You’re in it until 15:00; I’m holding everything else.",
         "when": "14:30–15:00"
       },
       "protected": {
@@ -257,12 +258,13 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.4",
+    "resolverVersion": "2026-10-15.5",
     "decidedAt": "2026-10-15T13:40:00.000Z",
     "decidedFor": "meeting:14:30:Nick Catch Up",
     "rule": "S3 meeting",
     "handoff": {
       "primary": {
+        "name": "Meeting prep",
         "label": "Open meeting prep",
         "target": {
           "type": "link",

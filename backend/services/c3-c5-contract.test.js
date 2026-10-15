@@ -133,7 +133,8 @@ test('C5: the two policy-sentence leaks are gone from display — the S2u type i
   const s6 = SC.build({ now: at(11, 5).getTime(), surface: 'work-desktop', approvals: [{ id: 'pa_6', expiresAt: at(9, 0, 20).toISOString(), title: 'chase agenda: Quarterly review' }] }).decision;
   assert.equal(s6.lead.rule, 'S6 judgement waiting');
   assert.match(s6.lead.why, /Tue Oct 20 2026/, 'the old sentence (machine field) still carries the raw date');
-  assert.equal(s6.display.lead.sentence, 'Ask for an agenda is waiting for you in NEURO — before 09:00 Tue 20 Oct.');
+  assert.equal(s6.display.lead.sentence, 'It’s waiting for you in NEURO — before 09:00 Tue 20 Oct.');
+  assert.ok(!s6.display.lead.sentence.includes(s6.display.lead.title), 'the sentence never restates the headline');
   const s5 = SC.SCENARIOS.find((x) => x.id === '2a').build().decision;
   assert.deepEqual(s5.display.judgement, [{ what: 'Ask for an agenda', by: '18:00 today', basis: 'end of today’s working hours — it expires before you next start' }]);
 });
@@ -146,7 +147,7 @@ test('C5: an unsafe display field from NEURO is replaced, never shown; the decis
   const d = POL.decide(cands, { surface: 'work-desktop', now: Date.parse(s.decision.decidedAt) });
   for (const t of displayStrings(d)) assert.ok(D.isSafeDisplay(t), t);
   assert.equal(d.display.lead.title, null);
-  assert.match(d.display.lead.sentence, /This is the time you blocked for this work\./);
+  assert.match(d.display.lead.sentence, /This is your blocked time for it\./);
   assert.ok(d.display.held.some((h) => h.title === 'Held item'));
   assert.equal(C.checkAttention(d).ok, true);
   // And the contract refuses a decision whose display leaks.

@@ -30,7 +30,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-15.7';
+const POLICY_VERSION = '2026-10-15.8';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -92,6 +92,35 @@ function sayTitle(text) {
   t = t.replace(TRAILING_WHEN, '').trim().replace(/[\s,;:–—-]+$/, '').trim();
   return t.length >= 8 ? t : raw;
 }
+
+const HEADLINE_MAX = 72;
+/**
+ * A headline: the item as a short phrase, never the whole task wording (15 Oct 2026).
+ * NEURO's own extracted commitments read "Nick Ward to …" — said to Nick, that is
+ * the verb. Past the limit it ends at the first natural break (": ", " — ", " (",
+ * ", ") that leaves a phrase of at least 24 characters, else at a word with "…".
+ */
+function headline(text) {
+  let t = String(text || '').trim();
+  if (!t) return t;
+  const own = t.match(/^Nick(?:\s+Ward)?\s+(?:to|will)\s+(\S)([\s\S]*)$/);
+  if (own) t = own[1].toUpperCase() + own[2];
+  if (t.length <= HEADLINE_MAX) return t;
+  let cut = -1;
+  for (const sep of [': ', ' — ', ' – ', ' (', ', ']) {
+    let i = t.indexOf(sep);
+    while (i !== -1 && i < 24) i = t.indexOf(sep, i + 1);
+    if (i !== -1 && i <= HEADLINE_MAX && (cut === -1 || i < cut)) cut = i;
+  }
+  if (cut !== -1) return t.slice(0, cut).replace(/[\s,;:–—-]+$/, '').trim();
+  const words = t.slice(0, HEADLINE_MAX).replace(/\s+\S*$/, '').replace(/[\s,;:–—-]+$/, '').trim();
+  return `${words}…`;
+}
+
+/** Comparable form of display text — case, quotes and punctuation removed. */
+const comparable = (s) => String(s || '').toLowerCase().replace(/[“”"‘’'.,;:!?()…—–-]/g, ' ').replace(/\s+/g, ' ').trim();
+/** True when `a` already says `b` (so showing both repeats it). */
+const repeats = (a, b) => { const x = comparable(a); const y = comparable(b); return Boolean(x && y && (x.includes(y) || y.includes(x))); };
 
 // ── Deadlines ───────────────────────────────────────────────────────────────
 
@@ -247,7 +276,9 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
 
   // Held: everything displaced, returning when the guard ends.
   const returns = protectedCtx ? `at ${protectedCtx.until}` : 'after this';
-  const blockTaskIds = new Set(runningBlock ? runningBlock.facts.tasks.map((t) => Number(t.taskId)) : []);
+  // The tasks the screen is already ABOUT (the running block's, or the lead block's) are never also held.
+  const leadBlock = cands.find((c) => c.id === lead.ref && c.kind === 'block') || null;
+  const blockTaskIds = new Set([runningBlock, leadBlock].filter(Boolean).flatMap((b) => (b.facts.tasks || []).map((t) => Number(t.taskId))));
   const held = [];
   for (const c of cands) {
     if (c.id === lead.ref || (guard && c.id === guard.id)) continue;
@@ -273,6 +304,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // Recommended action, then alternatives — limited by the manifestation, never by changing the lead.
   const leadCand = cands.find((c) => c.id === lead.ref) || null;
   let options = actionsFor(leadCand);
+  const routeSources = [leadCand, lead.rule === 'S3a imminent meeting transition' && transition && transition.card !== leadCand ? transition.card : null].filter(Boolean);
+  const heldRoutes = routeSources.flatMap((c) => (c.actions || []).filter(isRoute));
   if (lead.rule === 'S3a imminent meeting transition' && transition && transition.card && transition.card !== leadCand) options = [...actionsFor(transition.card), ...options];
   const m = sf.manifestation;
   let recommended = options[0] || null;
@@ -319,6 +352,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     next,
     recommended,
     alternatives,
+    // NEURO 'open' actions kept out of the action row: routes belong to the hand-off (15 Oct 2026).
+    routesHeld: heldRoutes.map((a) => a.say),
     corrections,
     review,
     known: knownFor(k, sf.scope, blind),
@@ -398,41 +433,50 @@ function knownFor(k, scope, blind) {
 function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, now, countOnly }) {
   const byId = new Map(cands.map((c) => [c.id, c]));
   const ok = (s) => (typeof s === 'string' && s && D.isSafeDisplay(s) ? s : null);
-  const titleOf = (c) => (c && c.display ? ok(sayTitle(c.display.title)) : null);
+  // Every title on screen is a HEADLINE — the item as a short phrase, never the whole wording.
+  const titleOf = (c) => (c && c.display ? ok(headline(sayTitle(c.display.title))) : null);
   const expl = (c) => (c && c.display ? ok(c.display.explanation) : null);
   const strip = (s) => String(s).replace(/[.!?]+$/, '');
   const t = titleOf(leadCand);
+  const when = leadCand && leadCand.display ? ok(leadCand.display.timing) : null;
+  // An explanation adds something only if neither the headline nor the timing already says it.
+  const adds = (s) => (s && !repeats(t, s) && !repeats(when, s) ? s : null);
+  const ex = adds(expl(leadCand));
   const guardTitle = titleOf(guard);
   const effWhen = (a) => (a && a.eff ? D.whenText(a.eff.at, now) : null);
+  // The sentence SUPPORTS the headline: it never restates it (Nick, 15 Oct 2026 — "do not
+  // show the full task wording twice"). Each rule refers back to the headline as "this"/"it".
   let sentence;
   switch (lead.rule) {
     case 'S1 blind': case 'S10 ritual': case 'S11 nothing': case 'S8 protected diary time':
       sentence = lead.why; break;
     case 'S2 critical risk':
-      sentence = `${t ? strip(t) : 'This'} is critical${expl(leadCand) ? `: ${strip(expl(leadCand))}` : ''}.`; break;
+      sentence = `This is critical${ex ? `: ${strip(ex)}` : ''}.`; break;
     case 'S2u unclassified potential risk':
-      sentence = `${t ? `${strip(t)} — ` : ''}NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.`; break;
+      sentence = 'NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.'; break;
     case 'S3 meeting':
-      sentence = `You’re in ${t || 'a meeting'}${guard && guard.time ? ` until ${guard.time.end}` : ''}; I’m holding everything else.`; break;
+      sentence = `You’re in it${guard && guard.time ? ` until ${guard.time.end}` : ''}; I’m holding everything else.`; break;
     case 'S3a imminent meeting transition': {
       const min = lead.transition && lead.transition.startsInMinutes;
-      sentence = `${t || 'A meeting'} starts ${min ? `in ${min} minute${min === 1 ? '' : 's'}` : 'now'}${runningBlock && titleOf(runningBlock) ? `; I’ll hold ${titleOf(runningBlock)} for after it` : ''}.`;
+      sentence = `It starts ${min ? `in ${min} minute${min === 1 ? '' : 's'}` : 'now'}${runningBlock && titleOf(runningBlock) ? `; I’ll hold ${titleOf(runningBlock)} for after it` : ''}.`;
       break;
     }
     case 'S4 deadline inside the block':
-      sentence = `${t || 'This'} has to be dealt with before ${effWhen(interrupting) || 'the block ends'}${runningBlock ? `, and this block runs to ${runningBlock.time.end}` : ''}.`; break;
+      sentence = `This has to be dealt with before ${effWhen(interrupting) || 'the block ends'}${runningBlock ? `, and this block runs to ${runningBlock.time.end}` : ''}.`; break;
     case 'S5 protected block':
-      sentence = `This is the time you blocked for ${t || 'this work'}. I’m holding the rest until ${runningBlock.time.end}.`; break;
+      sentence = `This is your blocked time for it. I’m holding the rest until ${runningBlock.time.end}.`; break;
     case 'S6 judgement waiting':
-      sentence = `${t || 'An action'} is waiting for you in NEURO${effWhen(firstApproval) ? ` — before ${effWhen(firstApproval)}` : ''}.`; break;
+      sentence = `It’s waiting for you in NEURO${effWhen(firstApproval) ? ` — before ${effWhen(firstApproval)}` : ''}.`; break;
     case 'S7 top item':
-      sentence = `${t ? strip(t) : 'This'}${expl(leadCand) ? ` — ${strip(expl(leadCand))}` : ''}.`; break;
+      sentence = ex ? `${strip(ex)}.` : 'It’s top of your list right now.'; break;
     case 'S9 block about to start':
-      sentence = `${t || 'Your next block'} starts at ${leadCand && leadCand.time ? leadCand.time.start : 'soon'}.`; break;
+      sentence = `It starts at ${leadCand && leadCand.time ? leadCand.time.start : 'soon'}.`; break;
     default: sentence = null;
   }
+  // Backstop for the one sentence built from NEURO's words: if it still restates the headline, SAiM's own line replaces it.
+  if (lead.rule === 'S7 top item' && t && repeats(sentence, t)) sentence = 'It’s top of your list right now.';
   return {
-    lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when: leadCand && leadCand.display ? ok(leadCand.display.timing) : null },
+    lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when },
     protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until } : null,
     held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns })),
     judgement: judgement.map((j) => {
@@ -468,8 +512,18 @@ function actionsFor(c) {
     if (t.length === 1 && !sessionLive && c.blockId != null) out.push({ say: 'I’m on it', intent: { kind: 'start-block', taskId: t[0].taskId, text: t[0].text, blockId: c.blockId } });
   }
   if (c.kind === 'ritual') out.push({ say: c.facts.ritual === 'eod' ? 'Start the end-of-day wrap' : 'Start the standup', intent: { kind: 'navigate', tab: 'review' } });
-  for (const a of c.actions || []) out.push(a);
+  // NEURO's own "open it" actions are ROUTES, not responses (15 Oct 2026). A route belongs to the
+  // hand-off, which SAiM's resolver decides; offering one here as well gave the screen two answers
+  // to "where do I go" — "Open State of Play" beside "no next step to open". Held out, and named
+  // in the trace by the caller.
+  for (const a of c.actions || []) if (!isRoute(a)) out.push(a);
   return out;
+}
+
+/** An action that takes Nick somewhere rather than recording his state. */
+function isRoute(a) {
+  const i = a && a.intent;
+  return Boolean(i && i.kind === 'navigate' && (i.action === 'open' || i.recordId != null || i.view || i.href));
 }
 
 module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, MEETING_TRANSITION_MINUTES, decide, inScope, effectiveDeadline, sayTitle };

@@ -55,6 +55,9 @@ const DRIVE = Object.freeze({
 });
 
 const HEADING = Object.freeze({ work: 'Best next place', meeting: 'The meeting', judgement: 'Decided in NEURO', control: 'Where to act', connection: 'Where to look' });
+/** How many held items the rail shows before "Show N more held" (Nick, 15 Oct 2026: the rail is not a backlog). */
+export const HELD_VISIBLE = 2;
+
 const WHERE = Object.freeze({ desk: 'opens on the laptop', link: 'opens in a new tab', elsewhere: 'on the desktop', already: null });
 
 function refusal(why, problem) {
@@ -80,7 +83,8 @@ function kindOf(h, rule) {
 const dest = (d) => {
   const label = shown(d && d.label);
   if (!label || !d.target) return null;
-  return { label, type: d.target.type, href: d.target.type === 'link' ? d.target.href : null, app: d.target.app || null, where: WHERE[d.target.type] || null };
+  // The card names the DESTINATION; the button carries the VERB. A resolver without names falls back to the label.
+  return { name: shown(d.name) || label, label, type: d.target.type, href: d.target.type === 'link' ? d.target.href : null, app: d.target.app || null, where: WHERE[d.target.type] || null };
 };
 
 /**
@@ -105,9 +109,12 @@ export function manifest(payload) {
   const title = shown(disp.lead.title);
   const leadIsGuard = d.protected && d.protected.ref === d.lead.ref;
 
-  // The action row: SAiM's own recommended sentence + alternatives (read-only here). A hand-off is not an action.
+  // The action row: SAiM's own recommended sentence + alternatives (read-only here). A hand-off is not an action,
+  // and neither is a route: anything that would take Nick somewhere belongs to the hand-off box alone, so the
+  // screen never shows two answers to "where do I go" (the policy already holds them out; this is the guard).
+  const isRoute = (x) => Boolean(x && x.intent && x.intent.kind === 'navigate' && (x.intent.action === 'open' || x.intent.recordId != null || x.intent.view || x.intent.href));
   const acts = d.recommended && !d.recommended.handOff ? [d.recommended, ...(d.alternatives || [])] : [];
-  const actions = acts.map((x) => shown(x && x.say)).filter(Boolean).map((say) => ({ say }));
+  const actions = acts.filter((x) => !isRoute(x)).map((x) => shown(x && x.say)).filter(Boolean).map((say) => ({ say }));
 
   // Hand-off box (resolver labels only) — or its honest absence.
   let handoff = null; let ask = null; let handoffNote = null;
@@ -137,9 +144,11 @@ export function manifest(payload) {
   const sec = (name, fn) => (d.known[name].known ? fn() : { unread: true, why: d.known[name].why });
   const rail = {
     next: sec('next', () => (disp.next ? { title: shown(disp.next.title), when: shown(disp.next.when) } : { empty: true })),
-    held: sec('held', () => (Array.isArray(disp.held)
-      ? { count: disp.held.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: disp.held.map((x) => ({ title: shown(x.title) || 'Held item', why: shown(x.why), risky: x.why === 'possible risk — not yet classified' })) }
-      : { count: disp.held.count, returns: null, items: [] })),
+    held: sec('held', () => {
+      if (!Array.isArray(disp.held)) return { count: disp.held.count, returns: null, items: [], more: [] };
+      const all = disp.held.map((x) => ({ title: shown(x.title) || 'Held item', why: shown(x.why), risky: x.why === 'possible risk — not yet classified' }));
+      return { count: all.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: all.slice(0, HELD_VISIBLE), more: all.slice(HELD_VISIBLE) };
+    }),
     judgement: sec('judgement', () => ({ items: disp.judgement.map((j) => ({ what: shown(j.what) || 'An action waiting for your approval', by: shown(j.by), basis: shown(j.basis) })) })),
   };
 

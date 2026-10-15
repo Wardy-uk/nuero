@@ -138,7 +138,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.7",
+    "policyVersion": "2026-10-15.8",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -176,6 +176,7 @@
     "next": null,
     "recommended": null,
     "alternatives": [],
+    "routesHeld": [],
     "corrections": [],
     "review": {
       "unclassified": [
@@ -214,7 +215,7 @@
     "display": {
       "lead": {
         "title": "Payroll cut-off for overtime claims",
-        "sentence": "Payroll cut-off for overtime claims — NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
+        "sentence": "NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
         "when": null
       },
       "protected": {
@@ -251,7 +252,7 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.4",
+    "resolverVersion": "2026-10-15.5",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "decidedFor": "item:r-payroll_cutoff",
     "rule": "S2u unclassified potential risk",

@@ -100,7 +100,7 @@ const SCENARIOS = [
     id: '3', name: 'Meeting with others in under ten minutes, during an active block',
     build: () => build({ now: at(14, 22), surface: 'work-desktop', block: BLOCK, primary: CATCH_UP_CARD, utterances: [JOIN],
       calendar: [meetingEvent(14, 30, 15, 0, 'Nick Catch Up')] }),
-    expect: { rule: 'S3a imminent meeting transition', lead: 'meeting:14:30:Nick Catch Up', protected: 'block:130', recommended: 'Join / prep now' },
+    expect: { rule: 'S3a imminent meeting transition', lead: 'meeting:14:30:Nick Catch Up', protected: 'block:130', recommended: null },
   },
   {
     id: '4', name: 'Out-of-hours home evening',
@@ -138,7 +138,7 @@ const SCENARIOS = [
     build: () => build({ now: at(14, 22), surface: 'phone', block: BLOCK, primary: CATCH_UP_CARD, secondary: [card('nudge', 'medium', 'Log your water')],
       utterances: [JOIN, { say: 'Not now', intent: { kind: 'act', action: 'defer', recordId: 'att_catchup' } }, { say: 'Seen it', intent: { kind: 'act', action: 'acknowledge', recordId: 'att_catchup' } }],
       calendar: [meetingEvent(14, 30, 15, 0, 'Nick Catch Up')] }),
-    expect: { rule: 'S3a imminent meeting transition', lead: 'meeting:14:30:Nick Catch Up', protected: 'block:130', recommended: 'Join / prep now', maxActions: 2 },
+    expect: { rule: 'S3a imminent meeting transition', lead: 'meeting:14:30:Nick Catch Up', protected: 'block:130', recommended: 'Not now', maxActions: 2 },
   },
   {
     id: '8', name: 'Unclassified type rated critical, during an active block',

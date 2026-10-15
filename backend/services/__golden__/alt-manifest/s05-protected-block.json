@@ -5,7 +5,7 @@
   "presence": "SAiM · desk active · working",
   "state": "Active · until 15:30",
   "title": "Customer Care training plan and refreshers",
-  "sentence": "This is the time you blocked for Customer Care training plan and refreshers. I’m holding the rest until 15:30.",
+  "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
   "when": "14:00–15:30",
   "guard": null,
   "unreadLead": null,
@@ -18,6 +18,7 @@
     "kind": "work",
     "heading": "Best next place",
     "primary": {
+      "name": "Claude",
       "label": "Open Claude",
       "type": "desk",
       "href": null,
@@ -26,6 +27,7 @@
     },
     "alternatives": [
       {
+        "name": "Music",
         "label": "Open Music",
         "type": "desk",
         "href": null,
@@ -33,6 +35,7 @@
         "where": "opens on the laptop"
       },
       {
+        "name": "Word",
         "label": "Open Word",
         "type": "desk",
         "href": null,
@@ -54,7 +57,7 @@
       "returns": "at 15:30",
       "items": [
         {
-          "title": "Nick Ward to send breakdown of Parsons contacts",
+          "title": "Send breakdown of Parsons contacts",
           "why": "due today",
           "risky": false
         },
@@ -63,7 +66,8 @@
           "why": "due today",
           "risky": false
         }
-      ]
+      ],
+      "more": []
     },
     "judgement": {
       "items": [

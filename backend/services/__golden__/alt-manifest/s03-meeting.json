@@ -5,7 +5,7 @@
   "presence": "SAiM · desk active · in a meeting",
   "state": "In a meeting · until 15:00",
   "title": "Nick Catch Up",
-  "sentence": "You’re in Nick Catch Up until 15:00; I’m holding everything else.",
+  "sentence": "You’re in it until 15:00; I’m holding everything else.",
   "when": "14:30–15:00",
   "guard": null,
   "unreadLead": null,
@@ -14,6 +14,7 @@
     "kind": "meeting",
     "heading": "The meeting",
     "primary": {
+      "name": "Meeting prep",
       "label": "Open meeting prep",
       "type": "link",
       "href": "neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D",
@@ -39,7 +40,8 @@
           "why": "possible risk — not yet classified",
           "risky": true
         }
-      ]
+      ],
+      "more": []
     },
     "judgement": {
       "items": []

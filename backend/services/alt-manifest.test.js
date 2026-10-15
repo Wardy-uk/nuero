@@ -177,6 +177,91 @@ test('a resolver label or reason carrying a raw id is DROPPED, not shown (the ha
   assert.equal(M.manifest(q).handoffNote, null, 'unsafe reason dropped');
 });
 
+// ── Real-data mapping (15 Oct 2026): what the copied database showed, as fixtures ──
+// The live S7 lead was NEURO's own calendar entry for a task block: a long "Task block:"
+// subject, an explanation ("In 9 min") that only repeated the timing, and a NEURO "open"
+// action ("Starts soon") offered beside a hand-off that said there was no next step.
+const { payload: buildPayload } = require('./alt-manifest-fixtures');
+const LONG = 'Task block: Nick Ward to draft the hybrid working proposal: targets, incentives (office and home), and the review date with Stephen';
+function realS7() {
+  return buildPayload('4', {
+    mutate: (c) => {
+      c.candidates = c.candidates.filter((x) => x.kind !== 'approval'); // on the desktop an approval would lead S6
+      const lead = c.candidates.find((x) => x.id === 'home:home:bins');
+      lead.title = LONG;
+      lead.display = { title: LONG.replace(/^Task block:\s+/, ''), timing: 'in 9 min (14:45)', explanation: 'In 9 min' };
+      lead.actions = [
+        { say: 'Starts soon', intent: { kind: 'navigate', tab: 'prep', recordId: 'att_x', action: 'open' } },
+        { say: 'Seen it', intent: { kind: 'act', action: 'acknowledge', recordId: 'att_x' } },
+      ];
+    },
+  });
+}
+
+test('1 · the lead is a SHORT headline plus one sentence that does not repeat it', () => {
+  const p = realS7();
+  assert.equal(p.saim.lead.rule, 'S7 top item', 'positive control: the fixture leads S7');
+  const vm = M.manifest(p);
+  assert.equal(vm.title, 'Draft the hybrid working proposal', 'NEURO’s “Nick Ward to …” said as the verb, cut at the first natural break');
+  assert.ok(vm.title.length <= 73);
+  assert.ok(vm.sentence, 'a supporting sentence is shown');
+  assert.equal(/hybrid/i.test(vm.sentence), false, 'the sentence never restates the task wording');
+  assert.equal(/in 9 min/i.test(vm.sentence), false, 'an explanation that only repeats the timing is not the sentence');
+  const t = text(render(vm));
+  assert.equal(t.split('hybrid working').length - 1, 1, 'the task wording appears exactly once on screen');
+  // And every approved state: the sentence never contains its headline.
+  for (const [name, q] of Object.entries(payloads)) {
+    const v = M.manifest(q);
+    if (v.title && v.sentence) assert.equal(v.sentence.toLowerCase().includes(v.title.toLowerCase()), false, `${name}: sentence repeats the headline`);
+  }
+});
+
+test('2 · Holding the day shows two items; the rest only behind “Show N more held”', () => {
+  const p = clone(payloads['s05-protected-block']);
+  const extra = ['Book the MOT', 'Reply to Stephen', 'Define hybrid targets', 'Chase the Parsons data'];
+  p.saim.display.held = [...p.saim.display.held, ...extra.map((title) => ({ title, why: 'due today', returns: 'at 15:30' }))];
+  const total = p.saim.display.held.length;
+  const vm = M.manifest(p);
+  assert.equal(vm.rail.held.count, total, 'the count is the whole list');
+  assert.equal(vm.rail.held.items.length, M.HELD_VISIBLE, 'only two visible');
+  assert.equal(vm.rail.held.more.length, total - M.HELD_VISIBLE);
+  const html = render(vm);
+  assert.match(html, /<details[^>]*>\s*<summary>Show 4 more held<\/summary>/);
+  const visiblePart = html.split('<details')[0];
+  assert.equal(visiblePart.includes('Chase the Parsons data'), false, 'the remainder is not in the visible rail');
+});
+
+test('3 · one route forward: a NEURO “open” action never sits beside “no next step”', () => {
+  const p = realS7();
+  const d = p.saim;
+  assert.equal([d.recommended, ...d.alternatives].filter(Boolean).some((a) => a.say === 'Starts soon'), false, 'the policy holds the route out');
+  assert.deepEqual(d.routesHeld, ['Starts soon'], 'and names what it held');
+  const vm = M.manifest(p);
+  assert.equal(vm.actions.some((a) => a.say === 'Starts soon'), false);
+  assert.ok(vm.actions.some((a) => a.say === 'Seen it'), 'responses that record state stay');
+  assert.equal(vm.handoff, null);
+  assert.ok(vm.handoffNote, 'the absence of a route is said once, plainly');
+  // The adapter guard holds even if a route reached it.
+  const q = clone(payloads['s05-protected-block']);
+  q.saim.alternatives = [...q.saim.alternatives, { say: 'Open State of Play', intent: { kind: 'navigate', tab: 'surface', recordId: 'r1', action: 'open' } }];
+  assert.equal(M.manifest(q).actions.some((a) => a.say === 'Open State of Play'), false);
+});
+
+test('4 · the card names the destination; only the button carries the verb', () => {
+  const s5 = M.manifest(payloads['s05-protected-block']);
+  assert.equal(s5.handoff.primary.name, 'Claude');
+  assert.equal(s5.handoff.primary.label, 'Open Claude');
+  assert.deepEqual(s5.handoff.alternatives.map((a) => a.name), ['Music', 'Word']);
+  const html = render(s5);
+  assert.match(html, /<p class="wk__app">Claude<\/p>/);
+  assert.match(html, /<button[^>]*class="wk__open"[^>]*>Open Claude<\/button>/);
+  const s3 = M.manifest(payloads['s03-meeting']);
+  assert.equal(s3.handoff.primary.name, 'Meeting prep');
+  assert.equal(s3.handoff.primary.label, 'Open meeting prep');
+  const s1 = M.manifest(payloads['s01-blind']);
+  assert.equal(s1.handoff.primary.name, 'Sources in NEURO');
+});
+
 test('the rendered page carries no launch that works: every button is disabled in this read-only build', () => {
   for (const p of Object.values(payloads)) {
     const html = render(M.manifest(p));

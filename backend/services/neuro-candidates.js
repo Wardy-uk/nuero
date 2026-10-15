@@ -240,6 +240,11 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
   const items = [...(card && card.kind === 'item' ? [{ ...card, gatePosition: 'primary' }] : []),
     ...(p.secondary || []).filter((s) => s && s.kind === 'item').map((s) => ({ ...s, gatePosition: 'secondary' }))];
   for (const it of items) {
+    // NEURO's own task-block calendar entry is a BLOCK, not a meeting (15 Oct 2026). The diary path
+    // already says so (TASK_BLOCK_EVENT → "shown from the block list"); decision-engine's meeting card
+    // for the same event slipped past it, led as S7 with no work-step intent, and put its task on screen
+    // twice — once as the lead and once held. When the block list is known, the block represents it.
+    if (it.type === 'meeting' && rows && TASK_BLOCK_EVENT.test(String(it.title || ''))) continue;
     const raw = String(it.urgency || 'normal').toLowerCase();
     const notRisk = URGENCY_NOT_RISK[it.type] || null;
     const meta = it.meta || {};
