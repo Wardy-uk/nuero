@@ -643,6 +643,8 @@ function fromPersonalOps(rows) {
       case 'person-created': return entry({ ...base, category: 'configured', type: 'people.person', headline: `You added a People note for ${d.name}`,
         summary: d.rosterName && d.rosterName !== d.name ? `"${d.rosterName}" kept as an alias, so Home Assistant's name matches.` : null, status: 'set' });
       case 'person-merged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You merged ${d.merged} into ${d.kept}`, summary: 'No note was deleted; the merged one is marked merged-into.', status: 'linked' });
+      // 15 Oct 2026 — the address itself never reaches an entry (privacy rule).
+      case 'person-email-learned': return entry({ ...base, category: 'sensed', type: 'people.email', headline: `NEURO added an email address to ${d.name}'s People note`, summary: d.why ? `${d.why[0].toUpperCase()}${d.why.slice(1)}.` : null, status: 'set' });
       case 'person-unmerged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You separated ${d.restored} from ${d.kept} again`, status: 'unlinked' });
       case 'person-kept-separate': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You said ${d.a} and ${d.b} are different people`, status: 'set' });
       case 'person-link-rejected': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You said ${String(d.subject).startsWith('household:') ? 'the household roster name' : 'a date'} is not ${d.name}`, status: 'unlinked' });

@@ -775,6 +775,16 @@ function start() {
     } catch (e) {
       console.error('[Scheduler] 1-2-1 sync failed:', e.message);
     }
+    // Add the address NEURO has SEEN for anyone whose People note has none
+    // (15 Oct 2026). Fills empty `email:` only; shared/ambiguous addresses are reported, not written.
+    try {
+      const pe = require('./people-emails').run({ apply: true });
+      if (pe.ambiguous.length || pe.shared.length) {
+        console.log(`[Scheduler] People emails: ${pe.ambiguous.length} ambiguous, ${pe.shared.length} shared — not written`);
+      }
+    } catch (e) {
+      console.error('[Scheduler] People emails failed:', e.message);
+    }
     // Then pull the 1-2-1s NOVA has RUN back into the same cards — actions agreed in
     // the click-through, plus `last-1-2-1` from its `completed_at`.
     //

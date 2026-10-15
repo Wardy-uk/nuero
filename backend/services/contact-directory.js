@@ -253,7 +253,7 @@ async function resolveNames(names = []) {
  * Returns a reason rather than throwing: this runs AFTER the useful work, and a
  * bookkeeping failure must never fail the caller (#69's rule).
  */
-function learnEmail(personName, email) {
+function learnEmail(personName, email, { source = null } = {}) {
   const name = String(personName || '').trim();
   const addr = String(email || '').trim();
   if (!name || !addr.includes('@')) return { ok: false, reason: 'bad-input' };
@@ -289,6 +289,10 @@ function learnEmail(personName, email) {
 
   if (idx >= 0) lines[idx] = `email: ${addr}`;
   else lines.push(`email: ${addr}`);
+  // Where the address came from, when NEURO learned it rather than Nick typing it.
+  if (source && !lines.some((l) => /^email-source:/.test(l))) {
+    lines.push(`email-source: "${String(source).replace(/"/g, "'").slice(0, 200)}"`);
+  }
 
   const updated = text.replace(fm[0], `---\n${lines.join('\n')}\n---`);
   const out = crlf ? updated.replace(/\n/g, '\r\n') : updated;
@@ -313,4 +317,5 @@ module.exports = {
   localContacts,
   invalidate,
   learnEmail,
+  fromPeopleNotes,
 };
