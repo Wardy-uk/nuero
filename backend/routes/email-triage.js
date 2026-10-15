@@ -285,7 +285,10 @@ router.post('/triage/:emailId/summary', async (req, res) => {
     if (!loaded) return res.status(404).json({ ok: false, error: 'Email not found' });
     const { merged, triageItem } = loaded;
 
-    const prompt = `Summarise this email for a busy Head of Technical Support. Give 2-3 short bullet points: what it is about, what (if anything) is being asked of him, and any deadline. No preamble, no sign-off.
+    // The reader is NAMED, not just given a job title. Without it, an email
+    // saying "@Nick Ward can you help" came back as "Action needed: contact Nick
+    // Ward's team" — advice to Nick to go and find Nick (15 Oct 2026).
+    const prompt = `Summarise this email for Nick Ward, Head of Technical Support at Nurtur, who is the person reading this summary. Write to him as "you". Any mention of Nick Ward, Nick, or "Nick Ward's team" / Technical Support / the support team means him and his own team — never tell him to contact them; say what is being asked of HIM. Give 2-3 short bullet points: what it is about, what (if anything) is being asked of him, and any deadline. No preamble, no sign-off.
 
 From: ${merged.from || 'Unknown'}
 Subject: ${merged.subject || '(no subject)'}

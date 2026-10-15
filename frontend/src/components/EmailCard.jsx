@@ -296,6 +296,21 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
         <div className="inbox-detail">
           {loading && <div className="inbox-detail-loading">Loading recipients...</div>}
 
+          {/* Nick (15 Oct 2026): the email being answered, folded away by
+              default — open it to check what was actually asked. */}
+          {detail && (
+            <details className="inbox-reply-original" data-testid="inbox-reply-original">
+              <summary>Show the email you’re replying to</summary>
+              {(detail.to || []).length > 0 && (
+                <div className="inbox-detail-recips"><span className="inbox-detail-recips-k">To</span> {detail.to.join(', ')}</div>
+              )}
+              {(detail.cc || []).length > 0 && (
+                <div className="inbox-detail-recips"><span className="inbox-detail-recips-k">Cc</span> {detail.cc.join(', ')}</div>
+              )}
+              <div className="inbox-detail-body inbox-detail-full">{detail.body || detail.preview || '(no body)'}</div>
+            </details>
+          )}
+
           {/* Nick (12 Oct 2026): every email screen says which address it sends from — the server's answer. */}
           {detail?.sendsFrom && (
             <div className="inbox-recip-row" data-testid="inbox-sends-from">

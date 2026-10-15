@@ -397,6 +397,21 @@
   padding: 0 2px;
 }
 
+.inbox-reply-original {
+  margin-bottom: 10px;
+}
+
+.inbox-reply-original > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #9ca3af);
+  margin-bottom: 6px;
+}
+
+.inbox-reply-original > summary:hover {
+  color: #60a5fa;
+}
+
 .inbox-reply-modes {
   display: flex;
   flex-wrap: wrap;
