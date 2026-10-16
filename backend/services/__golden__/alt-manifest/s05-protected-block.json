@@ -69,12 +69,30 @@
         {
           "title": "Send breakdown of Parsons contacts",
           "why": "due today",
-          "risky": false
+          "risky": false,
+          "actions": [
+            {
+              "say": "Make next · after 15:30",
+              "intent": {
+                "kind": "block-next",
+                "taskId": 283
+              }
+            }
+          ]
         },
         {
           "title": "West Hants Tennis Club: resolve the outstanding ticket",
           "why": "due today",
-          "risky": false
+          "risky": false,
+          "actions": [
+            {
+              "say": "Make next · after 15:30",
+              "intent": {
+                "kind": "block-next",
+                "taskId": 375
+              }
+            }
+          ]
         }
       ],
       "more": [],

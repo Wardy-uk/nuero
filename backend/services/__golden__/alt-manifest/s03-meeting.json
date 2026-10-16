@@ -28,7 +28,7 @@
   },
   "ask": null,
   "handoffNote": null,
-  "joinGap": "No join link — NEURO’s diary doesn’t keep meeting join links yet, or which app hosts the meeting, so SAiM won’t guess one.",
+  "joinGap": "No join link — the calendar has no online-meeting link for this one, so SAiM won’t guess one.",
   "rail": {
     "next": {
       "empty": true
@@ -40,7 +40,8 @@
         {
           "title": "Payroll cut-off for overtime claims",
           "why": "possible risk — not yet classified",
-          "risky": true
+          "risky": true,
+          "actions": []
         }
       ],
       "more": [],

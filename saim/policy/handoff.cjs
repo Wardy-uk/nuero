@@ -177,7 +177,9 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
     if (rule === 'S3 meeting') {
       order = appDest && appDest.target.type === 'already' ? [appDest, joinDest, prepDest] : [joinDest || appDest, prepDest];
     } else {
-      order = [prepDest, appDest && appDest.target.type === 'already' ? null : (joinDest || appDest)];
+      // About to start (16 Oct 2026): the calendar's own join link is the way in when it has one;
+      // prep is the second route. Without a join link, prep leads as before (and the gap is said).
+      order = joinDest ? [joinDest, prepDest] : [prepDest, appDest && appDest.target.type === 'already' ? null : appDest];
     }
     order = order.filter(Boolean);
     if (!order.length) {
@@ -186,7 +188,8 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
           : 'Nothing declared on this device can open this meeting.';
       return none(out, why, basis);
     }
-    return done(order[0], order.slice(1), rule === 'S3 meeting' ? 'You’re in it — the meeting itself first, then the prep.' : 'Prep first; join when it starts.', basis);
+    return done(order[0], order.slice(1), rule === 'S3 meeting' ? 'You’re in it — the meeting itself first, then the prep.'
+      : joinDest ? 'Join from here when it starts; prep is the other way in.' : 'Prep first; join when it starts.', basis);
   }
 
   // S4 / S6 — judgement: exactly that action in NEURO. Never an approve target.
@@ -197,7 +200,7 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
   }
 
   // S5 / S7 / S9 — a work step: SAiM's recommendation over declared, available apps.
-  if (rule === 'S5 protected block' || rule === 'S7 top item' || rule === 'S9 block about to start') {
+  if (rule === 'S5 protected block' || rule === 'S5f chosen focus' || rule === 'S7 top item' || rule === 'S9 block about to start') {
     if (!intent || intent.kind !== 'work-step') return none(out, 'NEURO stated no next step to open anything for.', [intent ? `${lead.ref}.handoffIntent.kind = ${intent.kind}, not a work step` : `${lead.ref}.handoffIntent missing`]);
     const spec = intent.activity ? ACTIVITY[intent.activity] : null;
     // A task that IS a Jira ticket (16 Oct 2026): the ticket is worked in Jira, so its own

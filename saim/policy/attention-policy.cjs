@@ -30,7 +30,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-16.1';
+const POLICY_VERSION = '2026-10-16.2';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -48,6 +48,9 @@ const MEETING_TRANSITION_MINUTES = 10;
  * with no stated length, or a longer one, never interrupts a block.
  */
 const SHORT_RITUAL_MINUTES = 5;
+
+/** A focus session that is still Nick's (NEURO's statuses). */
+const LIVE = Object.freeze(['active', 'paused', 'interrupted', 'needs-smaller']);
 
 const SURFACES = Object.freeze({
   'work-desktop': { scope: 'work', manifestation: { held: 'list', actions: 'all', deskLaunch: true, speech: false } },
@@ -181,6 +184,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const upcomingBlock = of('block').find((c) => c.facts.state === 'upcoming') || null;
   const runningMeeting = of('meeting').find((c) => c.facts.running) || null;
   const protectedTime = runningBlock ? null : of('protected-time').find((c) => c.facts.running) || null;
+  // S5f: what Nick chose to do now ("Do now" → a NEURO focus session). NEURO marks it.
+  const focusCand = runningBlock ? null : cands.find((c) => c.facts && c.facts.inFocus && LIVE.includes(c.facts.inFocus.status)) || null;
   // S2 is GENUINE RISK only. An item NEURO rated critical for its clock (an
   // imminent meeting, the pre-11 standup) carries `risk: 'none'` and an
   // `urgency` instead, and never reaches S2.
@@ -266,6 +271,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
       [`${shortRitual.id}.urgency = ritual-due`, `${shortRitual.id}.doFirst`, `${shortRitual.id}.estimateMinutes = ${n}`]);
   } else if (rule('S5 protected block', runningBlock, runningBlock ? `${runningBlock.id} ${runningBlock.time.start}–${runningBlock.time.end} is ${runningBlock.facts.state}` : 'no task block running in scope')) {
     lead = leadOf(runningBlock, 'S5 protected block', `This is the time you blocked for ${leadTitle(runningBlock)}. I’m holding the rest until ${runningBlock.time.end}.`, [`${runningBlock.id}.state = ${runningBlock.facts.state}`]);
+  } else if (rule('S5f chosen focus', focusCand, focusCand ? `Nick is in a focus session on ${focusCand.id} (${focusCand.facts.inFocus.status})` : 'no focus session on an item outside a block')) {
+    lead = leadOf(focusCand, 'S5f chosen focus', `You chose ${String(leadTitle(focusCand)).replace(/[.!?]+$/, '')}; I’m holding the rest while you’re on it.`, [`${focusCand.id}.inFocus = ${focusCand.facts.inFocus.status}`]);
   } else if (rule('S6 judgement waiting', firstApproval, firstApproval ? `${approvals.length} approval(s) waiting and no block protecting the time` : 'no approval waiting in scope')) {
     const by = firstApproval.eff ? ` before ${hhmmOf(firstApproval.eff.at)} ${dayWord(firstApproval.eff.at, now)}` : '';
     lead = leadOf(firstApproval.c, 'S6 judgement waiting', `${firstApproval.c.title} is waiting for you in NEURO${by}.`, [`${firstApproval.c.id}.status = prepared`]);
@@ -285,8 +292,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   }
 
   // Protected context: what SAiM is guarding, kept even when it did not lead.
-  const guard = runningMeeting || runningBlock || protectedTime;
-  const protectedCtx = guard ? { ref: guard.id, kind: guard.kind, what: leadTitle(guard), until: guard.time.end } : null;
+  const guard = runningMeeting || runningBlock || protectedTime || focusCand;
+  const protectedCtx = guard ? { ref: guard.id, kind: guard.kind, what: leadTitle(guard), until: (guard.time && guard.time.end) || null } : null;
 
   // Judgement: waiting approvals that are not the lead.
   const judgement = approvals.filter((a) => a.c.id !== lead.ref).map((a) => ({
@@ -295,7 +302,7 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   }));
 
   // Held: everything displaced, returning when the guard ends.
-  const returns = protectedCtx ? `at ${protectedCtx.until}` : 'after this';
+  const returns = protectedCtx ? (protectedCtx.until ? `at ${protectedCtx.until}` : 'when you finish this') : 'after this';
   // The tasks the screen is already ABOUT (the running block's, or the lead block's) are never also held.
   const leadBlock = cands.find((c) => c.id === lead.ref && c.kind === 'block') || null;
   const blockTaskIds = new Set([runningBlock, leadBlock].filter(Boolean).flatMap((b) => (b.facts.tasks || []).map((t) => Number(t.taskId))));
@@ -315,6 +322,19 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     if (!why) continue;
     held.push({ ref: c.id, kind: c.kind, title: leadTitle(c), why, returns, wordingConflict: c.facts.wordingConflict || null });
   }
+
+  // What Nick can do with each waiting item (16 Oct 2026). Nothing protected or imminent:
+  // "Do now" — NEURO's own focus-session start for that exact item. Protected or imminent
+  // (a meeting, a block, timed diary time, his chosen focus, risk, a deadline, a ritual
+  // due now, a block about to start): never "Do now" — "Make next" books its own window
+  // after this (NEURO's task-block route) or "After HH:MM" defers the card until then.
+  const busyRules = ['S2 critical risk', 'S2u unclassified potential risk', 'S3 meeting', 'S3a imminent meeting transition', 'S4 deadline inside the block', 'S4r short ritual due now', 'S9 block about to start'];
+  const busy = Boolean(guard) || busyRules.includes(lead.rule);
+  const leadC = cands.find((c) => c.id === lead.ref) || null;
+  const busyUntil = protectedCtx && protectedCtx.until ? protectedCtx.until
+    : lead.rule === 'S3a imminent meeting transition' && transition && transition.c.time && transition.c.time.end ? transition.c.time.end
+      : lead.rule === 'S9 block about to start' && leadC && leadC.time ? leadC.time.end : null;
+  for (const h of held) h.actions = heldActions(cands.find((c) => c.id === h.ref), { busy, until: busyUntil, now });
 
   // Next: the first thing in scope that starts later today.
   const later = cands.filter((c) => (c.kind === 'block' || c.kind === 'meeting' || c.kind === 'protected-time') && !isRunning(c) && c.id !== lead.ref && ms(c.time && c.time.startAt) > now)
@@ -495,6 +515,8 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
     }
     case 'S5 protected block':
       sentence = `This is your blocked time for it. I’m holding the rest until ${runningBlock.time.end}.`; break;
+    case 'S5f chosen focus':
+      sentence = 'You chose this. I’m holding the rest while you’re on it.'; break;
     case 'S6 judgement waiting':
       sentence = `It’s waiting for you in NEURO${effWhen(firstApproval) ? ` — before ${effWhen(firstApproval)}` : ''}.`; break;
     case 'S7 top item':
@@ -508,8 +530,8 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
   return {
     lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when,
       // A block's focus clock, from NEURO's session — never a timer of SAiM's own.
-      clock: leadCand && leadCand.kind === 'block' ? blockClock(leadCand, now) : null },
-    protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until } : null,
+      clock: leadCand && leadCand.kind === 'block' ? blockClock(leadCand, now) : leadCand && leadCand.facts && leadCand.facts.inFocus ? focusClock(leadCand.facts.inFocus) : null },
+    protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until || null } : null,
     held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns })),
     judgement: judgement.map((j) => {
       const c = byId.get(j.ref);
@@ -518,6 +540,52 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
     }),
     next: next ? { title: titleOf(byId.get(next.ref)) || 'Next in the diary', when: `at ${next.start}` } : null,
   };
+}
+
+/** The clock for an item Nick chose to focus on: the session's own elapsed and planned minutes. */
+function focusClock(s) {
+  if (!s || !LIVE.includes(s.status)) return null;
+  const paused = s.status !== 'active';
+  const e = Number.isFinite(s.elapsedMinutes) ? s.elapsedMinutes : null;
+  const p = Number.isFinite(s.plannedMinutes) ? s.plannedMinutes : null;
+  const left = e != null && p != null ? p - e : null;
+  return {
+    state: paused ? 'paused' : 'running',
+    elapsed: e != null ? `${e} min in${paused ? ' — paused' : ''}` : (paused ? 'Paused' : 'Started'),
+    remaining: left == null ? null : left >= 0 ? `${left} min left of ${p}${s.plannedAssumed ? ' (assumed)' : ''}` : `${-left} min over ${p}${s.plannedAssumed ? ' (assumed)' : ''}`,
+    started: s.startedTime ? `started ${s.startedTime}` : null,
+  };
+}
+
+/**
+ * What a waiting item offers (16 Oct 2026). Each comes from a NEURO route that exists:
+ *   Do now     — POST /api/session/start for the task (or the card's own "I'm on it" start);
+ *   Make next  — POST /api/task-blocks for the task: NEURO books its next free window;
+ *   After HH:MM — the card's own defer, until then (only when NEURO offers a defer on it).
+ * An item with no task and no card start gets nothing — never an invented action.
+ */
+function heldActions(c, { busy, until, now }) {
+  if (!c) return [];
+  const taskId = (c.kind === 'commitment' || c.kind === 'home') && c.taskId != null ? Number(c.taskId) : null;
+  const cardStart = (c.actions || []).find((a) => a.intent && a.intent.kind === 'session' && a.intent.action === 'start');
+  const cardDefer = (c.actions || []).find((a) => a.intent && a.intent.kind === 'act' && a.intent.action === 'defer' && a.intent.recordId);
+  if (!busy) {
+    if (taskId != null) return [{ say: 'Do now', intent: { kind: 'session', action: 'start', taskId, text: c.title } }];
+    if (cardStart) return [{ say: 'Do now', intent: { ...cardStart.intent } }];
+    return [];
+  }
+  if (taskId != null) return [{ say: until ? `Make next · after ${until}` : 'Make next', intent: { kind: 'block-next', taskId } }];
+  const mins = untilMinutes(until, now);
+  if (cardDefer && mins != null && mins > 0) return [{ say: `After ${until}`, intent: { kind: 'act', action: 'defer', recordId: cardDefer.intent.recordId, minutes: mins, reason: 'not-now' } }];
+  return [];
+}
+
+/** Minutes from now until today's HH:MM, or null. */
+function untilMinutes(hhmm, now) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
+  if (!m) return null;
+  const d = new Date(now); d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return Math.ceil((d.getTime() - now) / 60000);
 }
 
 /**
@@ -557,6 +625,18 @@ function leadTitle(c) {
 function actionsFor(c, now = Date.now()) {
   if (!c) return [];
   const out = [];
+  // An item Nick is focused on: the session's own verbs (as for a block).
+  if (c.kind !== 'block' && c.facts && c.facts.inFocus && LIVE.includes(c.facts.inFocus.status)) {
+    if (c.facts.inFocus.status === 'active') {
+      out.push({ say: 'Pause', intent: { kind: 'session', action: 'pause' } });
+      out.push({ say: 'That’s done', intent: { kind: 'session', action: 'finish', ...(c.recordId ? { recordId: c.recordId } : {}) } });
+      out.push({ say: 'Something came up', intent: { kind: 'session', action: 'step-away' } });
+    } else {
+      out.push({ say: 'Resume', intent: { kind: 'session', action: 'resume' } });
+      out.push({ say: 'That’s done', intent: { kind: 'session', action: 'finish', ...(c.recordId ? { recordId: c.recordId } : {}) } });
+    }
+    return out;
+  }
   if (c.kind === 'block') {
     // NEURO's own block actions (16 Oct 2026): "Start focus" starts a focus session on the
     // block's task through POST /api/session/start — the route NEURO's task list uses — for

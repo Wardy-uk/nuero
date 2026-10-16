@@ -216,17 +216,17 @@ test('1 · the lead is a SHORT headline plus one sentence that does not repeat i
   }
 });
 
-test('2 · Holding the day shows two items; the rest only behind “Show N more held”', () => {
+test('2 · Holding the day shows a few items (HELD_VISIBLE); the rest only behind “Show N more held”', () => {
   const p = clone(payloads['s05-protected-block']);
   const extra = ['Book the MOT', 'Reply to Stephen', 'Define hybrid targets', 'Chase the Parsons data'];
   p.saim.display.held = [...p.saim.display.held, ...extra.map((title) => ({ title, why: 'due today', returns: 'at 15:30' }))];
   const total = p.saim.display.held.length;
   const vm = M.manifest(p);
   assert.equal(vm.rail.held.count, total, 'the count is the whole list');
-  assert.equal(vm.rail.held.items.length, M.HELD_VISIBLE, 'only two visible');
+  assert.equal(vm.rail.held.items.length, M.HELD_VISIBLE, 'only HELD_VISIBLE visible');
   assert.equal(vm.rail.held.more.length, total - M.HELD_VISIBLE);
   const html = render(vm);
-  assert.match(html, /<details[^>]*>\s*<summary>Show 4 more held<\/summary>/);
+  assert.match(html, new RegExp(`<details[^>]*>\\s*<summary>Show ${total - M.HELD_VISIBLE} more held</summary>`));
   const visiblePart = html.split('<details')[0];
   assert.equal(visiblePart.includes('Chase the Parsons data'), false, 'the remainder is not in the visible rail');
 });

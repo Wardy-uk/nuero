@@ -87,7 +87,7 @@ test('linkHref: neuro: links open in NEURO’s web app; https as given; anything
 });
 
 test('actable: only the intent kinds the shell carries out', () => {
-  assert.deepEqual([...M.ACTABLE].sort(), ['act', 'meeting', 'navigate', 'session', 'start-block']);
+  assert.deepEqual([...M.ACTABLE].sort(), ['act', 'block-next', 'meeting', 'navigate', 'session', 'start-block']);
   assert.equal(M.actable({ say: 'x', intent: { kind: 'start-block' } }), true);
   assert.equal(M.actable({ say: 'x', intent: { kind: 'approve' } }), false);
   assert.equal(M.actable({ say: 'x', intent: null }), false);

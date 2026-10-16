@@ -219,11 +219,14 @@ test('S3 running meeting: join link + prep; already in Teams leads when Teams is
   assert.match(run(setup('9a', { ref, intent: { kind: 'meeting' }, targets: [] })).reason, /no join link, prep or meeting app/);
 });
 
-test('S3a transition: prep first, join second', () => {
+test('S3a transition: the calendar’s join link first, prep second (Nick, 16 Oct 2026)', () => {
   const ref = 'meeting:14:30:Nick Catch Up';
   const o = run(setup('3', { ref, intent: { kind: 'meeting' }, targets: [{ role: 'join', href: 'https://teams.microsoft.com/l/meetup-join/y', provider: 'teams' }, { role: 'prep', href: 'saim:prep?meeting=catchup' }] }));
   assert.equal(o.rule, 'S3a imminent meeting transition');
-  assert.deepEqual(labels(o), ['Open meeting prep', 'Join in Teams']);
+  assert.deepEqual(labels(o), ['Join in Teams', 'Open meeting prep']);
+  // Without a join link, prep leads as before.
+  const p = run(setup('3', { ref, intent: { kind: 'meeting' }, targets: [{ role: 'prep', href: 'saim:prep?meeting=catchup' }] }));
+  assert.deepEqual(labels(p), ['Open meeting prep']);
 });
 
 test('S8 / S10 / S11: no launcher, with the reason — even when an intent is present', () => {

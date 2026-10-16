@@ -57,3 +57,11 @@ a.wk__open { text-decoration: none; display: inline-block; }
 /* The Next meeting's own attendance action. */
 .mf__nextacts { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
 .mf__nextbtn { font-size: 13px; padding: 4px 10px; }
+
+/* "Also waiting" / "Holding the day" as compact candidates (16 Oct 2026). */
+.mf__cands { list-style: none; padding-left: 0; }
+.mf__cand { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.mf__cand:first-child { border-top: 0; }
+.mf__candtitle { line-height: 1.3; }
+.mf__candwhy { font-size: 13px; }
+.mf__candacts { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }

@@ -97,6 +97,7 @@ export const STATE = Object.freeze({
   'S4 deadline inside the block': { tone: 'deadline', word: 'deadline inside this block', label: () => 'Due before this block ends' },
   'S4r short ritual due now': { tone: 'ritual', word: 'standup first', label: () => 'Due now · before anything else' },
   'S5 protected block': { tone: 'block', word: 'working', label: (d) => `Active${d.protected ? ` · until ${d.protected.until}` : ''}` },
+  'S5f chosen focus': { tone: 'block', word: 'in focus', label: () => 'In focus · your choice' },
   'S6 judgement waiting': { tone: 'judge', word: 'waiting on you', label: () => 'Waiting for your decision' },
   'S7 top item': { tone: 'item', word: 'working', label: () => 'Top of the list' },
   'S8 protected diary time': { tone: 'guard', word: 'protected time', label: (d) => `Protected time${d.protected ? ` · until ${d.protected.until}` : ''}` },
@@ -122,6 +123,7 @@ const DRIVE = Object.freeze({
   'S3 meeting': { activity: 'in-meeting', confidenceLevel: 'high', quiet: true },
   'S3a imminent meeting transition': { activity: 'pre-meeting', confidenceLevel: 'high' },
   'S5 protected block': { activity: 'in-focus-session', confidenceLevel: 'high' },
+  'S5f chosen focus': { activity: 'in-focus-session', confidenceLevel: 'high' },
   'S8 protected diary time': { activity: 'working', confidenceLevel: 'moderate' },
   'S10 ritual': { activity: 'ritual', confidenceLevel: 'high' },
   'S4r short ritual due now': { activity: 'ritual', confidenceLevel: 'high' },
@@ -130,7 +132,7 @@ const DRIVE = Object.freeze({
 
 const HEADING = Object.freeze({ work: 'Best next place', meeting: 'The meeting', judgement: 'Decided in NEURO', control: 'Where to act', connection: 'Where to look' });
 /** How many held items the rail shows before "Show N more held" (Nick, 15 Oct 2026: the rail is not a backlog). */
-export const HELD_VISIBLE = 2;
+export const HELD_VISIBLE = 3;
 
 const WHERE = Object.freeze({ desk: 'opens on the laptop', link: 'opens in a new tab', elsewhere: 'on the desktop', already: null });
 
@@ -220,7 +222,7 @@ export function manifest(payload) {
     ...(leadCand && Array.isArray(leadCand.handoffGaps) ? leadCand.handoffGaps.map((g) => g && g.field).filter(Boolean) : [])])];
   const meetingLead = d.lead.rule === 'S3 meeting' || d.lead.rule === 'S3a imminent meeting transition';
   const joinGap = meetingLead && gaps.includes('join')
-    ? `No join link — NEURO’s diary doesn’t keep meeting join links yet${gaps.includes('provider') ? ', or which app hosts the meeting' : ''}, so SAiM won’t guess one.`
+    ? 'No join link — the calendar has no online-meeting link for this one, so SAiM won’t guess one.'
     : null;
 
   const sec = (name, fn) => (d.known[name].known ? fn() : { unread: true, why: d.known[name].why });
@@ -234,12 +236,19 @@ export function manifest(payload) {
       if (!Array.isArray(disp.held)) return { count: disp.held.count, returns: null, items: [], more: [] };
       // Only items with a real label are listed; the rest are counted, never shown by their type word.
       // A possible risk is never collapsed away: without a label it is still listed, under this file's own words.
-      const all = disp.held.map((x) => {
+      // Each item carries SAiM's own actions for it (Do now / Make next / After HH:MM), by position —
+      // display.held is built from decision.held in the same order.
+      const machine = Array.isArray(d.held) ? d.held : [];
+      const all = disp.held.map((x, i) => {
         const risky = x.why === 'possible risk — not yet classified';
-        return { title: heldLabel(x.title) || (risky ? 'An item without a name' : null), why: heldWhy(x.why), risky };
+        const acts = (machine[i] && Array.isArray(machine[i].actions) ? machine[i].actions : [])
+          .map((a) => ({ say: shown(a && a.say), intent: (a && a.intent) || null })).filter((a) => a.say && a.intent);
+        return { title: heldLabel(x.title) || (risky ? 'An item without a name' : null), why: heldWhy(x.why), risky, actions: acts };
       });
       const named = all.filter((x) => x.title);
-      return { count: all.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: named.slice(0, HELD_VISIBLE), more: named.slice(HELD_VISIBLE), unnamed: all.length - named.length };
+      // Actionable first: the rail is where Nick chooses, so what he can act on leads; the rest sit behind "Show more".
+      const ordered = [...named.filter((x) => x.actions.length), ...named.filter((x) => !x.actions.length)];
+      return { count: all.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: ordered.slice(0, HELD_VISIBLE), more: ordered.slice(HELD_VISIBLE), unnamed: all.length - named.length };
     }),
     judgement: sec('judgement', () => ({ items: disp.judgement.map((j) => ({ what: shown(j.what) || 'An action waiting for your approval', by: shown(j.by), basis: shown(j.basis) })) })),
   };
@@ -268,7 +277,7 @@ export function manifest(payload) {
 }
 
 /** The intent kinds the Alt shell can carry out (App.onAct). Anything else is shown but never pressable. */
-export const ACTABLE = Object.freeze(['start-block', 'act', 'session', 'meeting', 'navigate']);
+export const ACTABLE = Object.freeze(['start-block', 'block-next', 'act', 'session', 'meeting', 'navigate']);
 export const actable = (a) => Boolean(a && a.intent && ACTABLE.includes(a.intent.kind));
 
 /**

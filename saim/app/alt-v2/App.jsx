@@ -59,6 +59,7 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
   const [controls, setControls] = useState({ resp: null, error: null, busy: false });
   const [busy, setBusy] = useState(false);
   const [actNote, setActNote] = useState(null);
+  const [actOk, setActOk] = useState(null); // what NEURO did, when it did something worth saying
   const [heldOpen, setHeldOpen] = useState(false);
   const [deskStates, setDeskStates] = useState({});
   const [deskReachable, setDeskReachable] = useState(true);
@@ -142,6 +143,7 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
   async function run(fn) {
     setBusy(true);
     setActNote(null);
+    setActOk(null);
     try { await fn(); await load(); } catch (e) { setActNote(e.message || 'That didn’t go through.'); } finally { setBusy(false); }
   }
 
@@ -167,7 +169,9 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
       else if (intent.action === 'complete' && res && res.taskCompleted === false && res.taskWhy) setActNote(res.taskWhy);
     } else if (intent.kind === 'session') {
       if (intent.action === 'start') {
-        await apiFetch('/api/session/start', { method: 'POST', body: JSON.stringify({ text: intent.text, source: 'attention' }) });
+        // NEURO's session start; a task id when SAiM has the exact task (the rail's "Do now").
+        await apiFetch('/api/session/start', { method: 'POST', body: JSON.stringify({ text: intent.text, source: 'attention', ...(Number.isInteger(intent.taskId) ? { taskId: intent.taskId } : {}) }) })
+          .catch((e) => refused(e, (m) => (/session-active/.test(m) ? 'Something else is already running — finish or pause it first. Nothing was started.' : `Not started — ${m}`)));
         if (intent.recordId) await apiFetch(`/api/attention/records/${encodeURIComponent(intent.recordId)}/act`, { method: 'POST', body: JSON.stringify({ action: 'start' }) }).catch(() => {});
       } else {
         await apiFetch(`/api/session/${intent.action}`, { method: 'POST', body: JSON.stringify({}) });
@@ -175,6 +179,13 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
           await apiFetch(`/api/attention/records/${encodeURIComponent(intent.recordId)}/act`, { method: 'POST', body: JSON.stringify({ action: 'complete' }) });
         }
       }
+    } else if (intent.kind === 'block-next') {
+      // "Make next": NEURO books this task's own window in the next free slot (POST /api/task-blocks,
+      // the route NEURO's task list uses). Said as NEURO answered — the slot it chose, or why not.
+      const res = await apiFetch('/api/task-blocks', { method: 'POST', body: JSON.stringify({ taskId: intent.taskId }) })
+        .catch((e) => refused(e, (m) => `Not booked — ${m}`));
+      if (res && res.ok && res.slot) setActOk(`Booked next: ${res.slot.startTime}–${res.slot.endTime}${res.slot.date && res.slot.date !== new Date().toLocaleDateString('en-CA') ? ` on ${res.slot.date}` : ''}.`);
+      else if (res && res.ok === false) setActNote(`Not booked — ${res.error || 'NEURO refused it'}.`);
     } else if (intent.kind === 'meeting') {
       const path = ({ finished: 'finished', 'not-attending': 'not-attending' })[intent.action] || 'resume';
       const res = await apiFetch(`/api/attention/meeting/${path}`, { method: 'POST', body: JSON.stringify({ key: intent.key }) });
@@ -275,6 +286,7 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
         </p>
       )}
       {actNote && <p className="v2-note v2-note--bad" role="status">{actNote}</p>}
+      {actOk && !actNote && <p className="v2-note" role="status">{actOk}</p>}
       {page}
     </Shell>
   );

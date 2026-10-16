@@ -162,23 +162,13 @@ export default function ManifestView({ v, live = null }) {
             {(x) => (v.protecting ? (
               <>
                 <p className="wk__railsub">{`${x.count} ${x.count === 1 ? 'item' : 'items'} held${x.returns ? ` — back ${x.returns}` : ''}.`}</p>
-                {x.items.length > 0 && (
-                  <ul className="wk__held">{x.items.map((h, i) => <HeldRow key={i} h={h} />)}</ul>
-                )}
-                {x.more && x.more.length > 0 && (
-                  <details className="mf__more">
-                    <summary>{`Show ${x.more.length} more held`}</summary>
-                    <ul className="wk__held">{x.more.map((h, i) => <HeldRow key={i} h={h} />)}</ul>
-                  </details>
-                )}
+                <RailItems x={x} live={live} busy={busy} more="held" />
                 {x.unnamed > 0 && <p className="wk__railmeta mf__unnamed">{unnamedLine(x.unnamed)}</p>}
               </>
             ) : (
               <>
                 <p className="wk__railsub">{waitingLine(x.count)}</p>
-                {x.items.length > 0 && (
-                  <ul className="wk__held">{[...x.items, ...(x.more || [])].map((h, i) => <li key={i} className={h.risky ? 'mf__heldrisk' : ''}><span>{h.title}</span>{h.risky && <span className="wk__muted"> — possible risk, not yet classified</span>}</li>)}</ul>
-                )}
+                <RailItems x={x} live={live} busy={busy} more="waiting" />
               </>
             ))}
           </RailBox>
@@ -246,8 +236,45 @@ function AskWayIn({ v, live, busy }) {
   );
 }
 
-function HeldRow({ h }) {
-  return <li className={h.risky ? 'mf__heldrisk' : ''}><span>{h.title}</span>{h.why && <span className="wk__muted"> — {h.why}</span>}</li>;
+/**
+ * The rail's waiting items as compact candidates (16 Oct 2026): a few, actionable first,
+ * the rest behind "Show N more". Each button is SAiM's own action for that item — Do now
+ * when nothing is protected, Make next / After HH:MM when something is.
+ */
+function RailItems({ x, live, busy, more }) {
+  return (
+    <>
+      {x.items.length > 0 && <ul className="wk__held mf__cands">{x.items.map((h, i) => <HeldRow key={i} h={h} live={live} busy={busy} />)}</ul>}
+      {x.more && x.more.length > 0 && (
+        <details className="mf__more">
+          <summary>{`Show ${x.more.length} more${more === 'held' ? ' held' : ''}`}</summary>
+          <ul className="wk__held mf__cands">{x.more.map((h, i) => <HeldRow key={i} h={h} live={live} busy={busy} />)}</ul>
+        </details>
+      )}
+    </>
+  );
+}
+
+function HeldRow({ h, live, busy }) {
+  const acts = h.actions || [];
+  return (
+    <li className={`mf__cand${h.risky ? ' mf__heldrisk' : ''}`}>
+      <span className="mf__candtitle">{h.title}</span>
+      {(h.why || h.risky) && <span className="wk__muted mf__candwhy">{h.why || 'possible risk, not yet classified'}</span>}
+      {acts.length > 0 && (
+        <span className="mf__candacts">
+          {acts.map((a) => {
+            const on = Boolean(live && live.onAct && actable(a));
+            return (
+              <button key={a.say} type="button" className="wk__act mf__nextbtn" disabled={!on || busy}
+                title={on ? undefined : (live ? 'This screen can’t do that' : INERT)}
+                onClick={on ? () => live.onAct(a) : undefined}>{a.say}</button>
+            );
+          })}
+        </span>
+      )}
+    </li>
+  );
 }
 
 /** One rail box: not read (with the reason), empty, or its content. Never "nothing" for an unread section. */

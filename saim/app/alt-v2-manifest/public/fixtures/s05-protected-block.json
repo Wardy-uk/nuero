@@ -22,7 +22,8 @@
               "taskId": 600,
               "text": "Customer Care training plan and refreshers",
               "running": false,
-              "wordingConflict": null
+              "wordingConflict": null,
+              "jira": null
             }
           ],
           "session": null,
@@ -112,7 +113,8 @@
         "facts": {
           "daysLate": 0,
           "counterpart": null,
-          "wordingConflict": null
+          "wordingConflict": null,
+          "jira": null
         },
         "sphere": {
           "value": "work",
@@ -161,7 +163,8 @@
         "facts": {
           "daysLate": 0,
           "counterpart": null,
-          "wordingConflict": "says “tomorrow” but it’s planned for today"
+          "wordingConflict": "says “tomorrow” but it’s planned for today",
+          "jira": null
         },
         "sphere": {
           "value": "work",
@@ -234,7 +237,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-16.1",
+    "policyVersion": "2026-10-16.2",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -273,7 +276,16 @@
         "title": "Nick Ward to send breakdown of Parsons contacts",
         "why": "due today",
         "returns": "at 15:30",
-        "wordingConflict": null
+        "wordingConflict": null,
+        "actions": [
+          {
+            "say": "Make next · after 15:30",
+            "intent": {
+              "kind": "block-next",
+              "taskId": 283
+            }
+          }
+        ]
       },
       {
         "ref": "commitment:task:375",
@@ -281,7 +293,16 @@
         "title": "West Hants Tennis Club: resolve the outstanding ticket",
         "why": "due today",
         "returns": "at 15:30",
-        "wordingConflict": "says “tomorrow” but it’s planned for today"
+        "wordingConflict": "says “tomorrow” but it’s planned for today",
+        "actions": [
+          {
+            "say": "Make next · after 15:30",
+            "intent": {
+              "kind": "block-next",
+              "taskId": 375
+            }
+          }
+        ]
       }
     ],
     "judgement": [
