@@ -317,7 +317,11 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     else if (c.kind === 'ritual') why = c.facts.reason || 'outstanding';
     else if (c.kind === 'attention-item') why = c.facts.reason || `${c.facts.type || 'item'} from NEURO`;
     else if (c.kind === 'held') why = c.facts.why || 'held back by NEURO';
-    else if (c.kind === 'commitment' && c.facts.daysLate >= 0 && !blockTaskIds.has(Number(c.taskId))) why = c.facts.daysLate === 0 ? 'due today' : `${c.facts.daysLate} day${c.facts.daysLate === 1 ? '' : 's'} overdue`;
+    else if (c.kind === 'commitment' && c.facts.daysLate >= 0 && !blockTaskIds.has(Number(c.taskId))) {
+      why = c.facts.daysLate === 0 ? 'due today' : `${c.facts.daysLate} day${c.facts.daysLate === 1 ? '' : 's'} overdue`;
+      const b = c.facts.inBlock;
+      if (b && b.start) why += b.date === new Date(now).toLocaleDateString('en-CA') ? ` · blocked at ${b.start}` : ' · already has a block';
+    }
     else if ((c.kind === 'home' || c.kind === 'personal-date') && c.facts.needsNow) why = c.facts.why || 'needs you';
     if (!why) continue;
     held.push({ ref: c.id, kind: c.kind, title: leadTitle(c), why, returns, wordingConflict: c.facts.wordingConflict || null });
@@ -574,7 +578,9 @@ function heldActions(c, { busy, until, now }) {
     if (cardStart) return [{ say: 'Do now', intent: { ...cardStart.intent } }];
     return [];
   }
-  if (taskId != null) return [{ say: until ? `Make next · after ${until}` : 'Make next', intent: { kind: 'block-next', taskId } }];
+  // NEURO books one window per task: a task an open block already holds (or one NEURO could not
+  // check — inBlock null) gets no "Make next"; the booking it has is said instead (heldWhy).
+  if (taskId != null && c.facts.inBlock === false) return [{ say: until ? `Make next · after ${until}` : 'Make next', intent: { kind: 'block-next', taskId } }];
   const mins = untilMinutes(until, now);
   if (cardDefer && mins != null && mins > 0) return [{ say: `After ${until}`, intent: { kind: 'act', action: 'defer', recordId: cardDefer.intent.recordId, minutes: mins, reason: 'not-now' } }];
   return [];

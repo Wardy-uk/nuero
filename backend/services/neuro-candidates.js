@@ -369,6 +369,15 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     if (hit) hit.facts.inFocus = sessionFacts(session);
   }
 
+  // Which open task block already holds a task (16 Oct 2026) — NEURO refuses a second
+  // window for it ("one task, one window"). `null` map = could not read: then nobody may
+  // claim a task is free to book.
+  const heldBy = facts.taskBlocks === undefined ? new Map() : facts.taskBlocks;
+  for (const c of candidates) {
+    if ((c.kind !== 'commitment' && c.kind !== 'home') || c.taskId == null) continue;
+    c.facts.inBlock = heldBy === null ? null : (heldBy.get(Number(c.taskId)) || false);
+  }
+
   // Hand-off fields (structured intent + exact links + explicit gaps) — additive
   // v2 data, NEURO facts only. SAiM's resolver recommends; NEURO never does.
   // Display fields (C5): what a screen may show — safe words, never ids, ISO times or internal types.
@@ -464,6 +473,15 @@ function gather({ now = Date.now() } = {}) {
     out.facts.jiraProjects = [...projects];
   } catch (e) { gaps.push({ input: 'jira-links', why: e.message }); }
   try { out.facts.taskActivity = require('./task-activity').forOpenTasks(); } catch (e) { out.facts.taskActivity = null; gaps.push({ input: 'task-activity', why: e.message }); }
+  // Open task blocks per task: one window per task is NEURO's rule (task-blocks.plan).
+  try {
+    out.facts.taskBlocks = new Map();
+    for (const b of db.listTaskBlockRows({ openOnly: true })) {
+      for (const it of db.listTaskBlockItems(b.id)) {
+        if (!out.facts.taskBlocks.has(Number(it.task_id))) out.facts.taskBlocks.set(Number(it.task_id), { date: b.date_key, start: b.start_time });
+      }
+    }
+  } catch (e) { out.facts.taskBlocks = null; gaps.push({ input: 'task-blocks-by-task', why: e.message }); }
   out.facts.taskDue = new Map();
   try {
     const home = require('./home').readCached({ now });

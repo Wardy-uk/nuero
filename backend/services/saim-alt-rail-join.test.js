@@ -49,7 +49,7 @@ const UTTER = [
   { say: 'Not now — an hour', intent: { kind: 'act', action: 'defer', recordId: 'att_cc', minutes: 60, reason: 'not-now' } },
 ];
 
-function build({ now = at(9, 40), block = true, session = null, calendar = [meeting(null)], primary = null, secondary = [CARD, CAPACITY], commitments = COMMITS } = {}) {
+function build({ now = at(9, 40), block = true, session = null, calendar = [meeting(null)], primary = null, secondary = [CARD, CAPACITY], commitments = COMMITS, taskBlocks = new Map() } = {}) {
   const text = 'NT-24162: Survey West Hants Responses';
   const rows = block ? [{ blockId: 123, dateKey: '2026-10-16', startTime: '09:25', endTime: '09:55', status: 'scheduled', passed: false, tasks: [{ taskId: 345, text }] }] : [];
   const live = { rows, session, block: block ? { blockId: 123, startTime: '09:25', endTime: '09:55', running: true, tasks: [{ taskId: 345, text, running: false }], allTicked: false } : null };
@@ -59,7 +59,7 @@ function build({ now = at(9, 40), block = true, session = null, calendar = [meet
     approvals: { known: true, needsApproval: 0, where: 'Actions, in NEURO on the desktop' },
     situation: { sections: { commitments } }, home: { needsYou: [], exceptions: [] },
   };
-  const facts = { calendar, calendarKnown: true, approvals: [], taskDomains: new Map(), gaps: [],
+  const facts = { calendar, calendarKnown: true, approvals: [], taskDomains: new Map(), gaps: [], taskBlocks,
     workingWindow: { hours: '08:00-18:00', todayIsWorking: true, todayStart: iso(8, 0), todayEnd: iso(18, 0), nextStart: iso(8, 0) } };
   const candidates = NC.compose(payload, live, facts, { now });
   const decision = POL.decide(candidates, { surface: 'work-desktop', now });
@@ -200,4 +200,14 @@ test('shell: "Make next" posts to NEURO’s task-block route; "Do now" passes th
   assert.match(app, /intent\.kind === 'block-next'[\s\S]{0,400}apiFetch\('\/api\/task-blocks', \{ method: 'POST', body: JSON\.stringify\(\{ taskId: intent\.taskId \}\) \}\)/);
   assert.match(app, /'\/api\/session\/start', \{ method: 'POST', body: JSON\.stringify\(\{ text: intent\.text, source: 'attention', \.\.\.\(Number\.isInteger\(intent\.taskId\) \? \{ taskId: intent\.taskId \} : \{\}\) \}\) \}\)/);
   assert.ok(M.ACTABLE.includes('block-next'));
+});
+
+test('rail: a task an open block already holds is never offered "Make next" (NEURO refuses a second window) — its booking is said; unreadable → no offer', () => {
+  const held = build({ now: at(9, 40), taskBlocks: new Map([[350, { date: '2026-10-16', start: '10:30' }]]) });
+  const h = held.decision.held.find((x) => x.ref === 'commitment:task:350');
+  assert.deepEqual(h.actions, []);
+  assert.equal(h.why, 'due today · blocked at 10:30');
+  assert.deepEqual(heldBy(held.decision)['commitment:task:412'][0].intent, { kind: 'block-next', taskId: 412 }, 'positive control: an unblocked task still offers it');
+  const blind = build({ now: at(9, 40), taskBlocks: null });
+  assert.deepEqual(heldBy(blind.decision)['commitment:task:412'], [], 'could not check → no claim it can be booked');
 });
