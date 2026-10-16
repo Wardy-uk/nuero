@@ -52,7 +52,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-16.2",
+    "policyVersion": "2026-10-16.3",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -113,6 +113,7 @@
         "title": null,
         "sentence": "I can’t see your work right now — this isn’t an all-clear.",
         "when": null,
+        "choice": null,
         "clock": null
       },
       "protected": null,

@@ -104,6 +104,7 @@ export const STATE = Object.freeze({
   'S9 block about to start': { tone: 'soon', word: 'block next', label: () => 'Starting soon' },
   'S10 ritual': { tone: 'ritual', word: 'ritual due', label: () => 'Ritual due' },
   'S11 nothing': { tone: 'calm', word: 'clear', label: () => 'Nothing needs you' },
+  'S11c choose': { tone: 'calm', word: 'nothing urgent', label: () => 'Nothing urgent' },
 });
 
 /** What the protected item is doing while something else leads — by the rule that displaced it. */
@@ -128,6 +129,7 @@ const DRIVE = Object.freeze({
   'S10 ritual': { activity: 'ritual', confidenceLevel: 'high' },
   'S4r short ritual due now': { activity: 'ritual', confidenceLevel: 'high' },
   'S11 nothing': { activity: 'steady', confidenceLevel: 'high' },
+  'S11c choose': { activity: 'steady', confidenceLevel: 'high' },
 });
 
 const HEADING = Object.freeze({ work: 'Best next place', meeting: 'The meeting', judgement: 'Decided in NEURO', control: 'Where to act', connection: 'Where to look' });
@@ -193,7 +195,11 @@ export function manifest(payload) {
   const handedOff = Boolean(d.recommended && d.recommended.handOff);
   const acts = handedOff ? [] : [...(d.recommended ? [d.recommended] : []), ...(d.alternatives || [])];
   // Each action keeps SAiM's own intent: the shell carries out only the kinds it knows (ACTABLE); any other stays inert.
-  const actions = acts.filter((x) => !isRoute(x)).map((x) => ({ say: shown(x && x.say), intent: (x && x.intent) || null, lead: x === d.recommended })).filter((x) => x.say);
+  const actions0 = acts.filter((x) => !isRoute(x)).map((x) => ({ say: shown(x && x.say), intent: (x && x.intent) || null, lead: x === d.recommended })).filter((x) => x.say);
+  // S11c: the suggested choice carries SAiM's one action (the rail item's own "Do now"); it is not repeated in the action row.
+  const choiceTitle = d.lead.rule === 'S11c choose' && disp.lead.choice ? shown(disp.lead.choice.title) : null;
+  const choice = choiceTitle && actions0[0] ? { title: choiceTitle, why: heldWhy(disp.lead.choice.why), action: actions0[0] } : null;
+  const actions = choice ? [] : actions0;
 
   // Hand-off box (resolver labels only) — or its honest absence.
   let handoff = null; let ask = null; let handoffNote = null;
@@ -269,8 +275,8 @@ export function manifest(payload) {
     unreadLead: blind ? ['your tasks and blocks', 'the diary', 'approvals waiting'] : null,
     // Holding/back-at language needs a boundary SAiM has set: a protected meeting, block or timed diary time.
     protecting: Boolean(d.protected),
-    actions,
-    handoff, ask, handoffNote, joinGap,
+    actions, choice,
+    handoff, ask, handoffNote: choice ? null : handoffNote, joinGap,
     rail,
     drive: { activity: 'working', confidenceLevel: 'high', quiet: false, degraded: false, pressing: false, ...(DRIVE[d.lead.rule] || {}) },
   };

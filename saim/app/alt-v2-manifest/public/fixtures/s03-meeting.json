@@ -136,7 +136,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-16.2",
+    "policyVersion": "2026-10-16.3",
     "decidedAt": "2026-10-15T13:40:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -225,6 +225,7 @@
         "title": "Nick Catch Up",
         "sentence": "You’re in it until 15:00; I’m holding everything else.",
         "when": "14:30–15:00",
+        "choice": null,
         "clock": null
       },
       "protected": {

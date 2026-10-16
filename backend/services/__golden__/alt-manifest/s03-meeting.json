@@ -12,6 +12,7 @@
   "unreadLead": null,
   "protecting": true,
   "actions": [],
+  "choice": null,
   "handoff": {
     "kind": "meeting",
     "heading": "The meeting",

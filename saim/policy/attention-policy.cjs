@@ -30,7 +30,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-16.2';
+const POLICY_VERSION = '2026-10-16.3';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -344,6 +344,26 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
       : lead.rule === 'S9 block about to start' && leadC && leadC.time ? leadC.time.end : null;
   for (const h of held) h.actions = heldActions(cands.find((c) => c.id === h.ref), { busy, until: busyUntil, now });
 
+  // S11c (16 Oct 2026): "Nothing needs you" is only true when nothing is waiting that Nick
+  // could start. With nothing urgent but at least one waiting item carrying a real "Do now"
+  // (NEURO's own session start for that exact item), the lead is a CHOICE, not an all-clear:
+  // the first such rail item is promoted — the same item and the same action object, taken
+  // out of the rail — and the rest stay waiting. No such item → the genuine all-clear stands.
+  if (lead.rule === 'S11 nothing') {
+    const i = held.findIndex((h) => {
+      const a = h.actions && h.actions[0];
+      const c = cands.find((x) => x.id === h.ref);
+      const title = c && c.display ? headline(sayTitle(c.display.title)) : null;
+      return a && a.say === 'Do now' && a.intent && a.intent.kind === 'session' && a.intent.action === 'start'
+        && title && D.isSafeDisplay(title) && !/^[a-z0-9_-]+$/.test(title);
+    });
+    if (rule('S11c choose', i !== -1, i !== -1 ? `nothing urgent; ${held[i].ref} is the first waiting item NEURO can start` : 'nothing waiting that NEURO can start — a genuine all-clear')) {
+      const pick = held.splice(i, 1)[0];
+      lead = leadOf(cands.find((x) => x.id === pick.ref), 'S11c choose', 'Nothing needs you immediately. Pick one thing to focus on.', [`${pick.ref}: first waiting item with a start`]);
+      lead.choice = { ref: pick.ref, why: pick.why, action: pick.actions[0] };
+    }
+  }
+
   // Next: the first thing in scope that starts later today.
   const later = cands.filter((c) => (c.kind === 'block' || c.kind === 'meeting' || c.kind === 'protected-time') && !isRunning(c) && c.id !== lead.ref && ms(c.time && c.time.startAt) > now)
     .sort((a, b) => ms(a.time.startAt) - ms(b.time.startAt));
@@ -353,7 +373,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
 
   // Recommended action, then alternatives — limited by the manifestation, never by changing the lead.
   const leadCand = cands.find((c) => c.id === lead.ref) || null;
-  let options = actionsFor(leadCand, now);
+  // S11c: the one action is the promoted item's own "Do now" — never a second route for it.
+  let options = lead.rule === 'S11c choose' ? [lead.choice.action] : actionsFor(leadCand, now);
   const routeSources = [leadCand, lead.rule === 'S3a imminent meeting transition' && transition && transition.card !== leadCand ? transition.card : null].filter(Boolean);
   const heldRoutes = routeSources.flatMap((c) => (c.actions || []).filter(isRoute));
   if (lead.rule === 'S3a imminent meeting transition' && transition && transition.card && transition.card !== leadCand) options = [...actionsFor(transition.card, now), ...options];
@@ -525,6 +546,8 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
       sentence = `This is your blocked time for it. I’m holding the rest until ${runningBlock.time.end}.`; break;
     case 'S5f chosen focus':
       sentence = 'You chose this. I’m holding the rest while you’re on it.'; break;
+    case 'S11c choose':
+      sentence = 'Nothing needs you immediately. Pick one thing to focus on.'; break;
     case 'S6 judgement waiting':
       sentence = `It’s waiting for you in NEURO${effWhen(firstApproval) ? ` — before ${effWhen(firstApproval)}` : ''}.`; break;
     case 'S7 top item':
@@ -536,7 +559,9 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
   // Backstop for the one sentence built from NEURO's words: if it still restates the headline, SAiM's own line replaces it.
   if (lead.rule === 'S7 top item' && t && repeats(sentence, t)) sentence = 'It’s top of your list right now.';
   return {
-    lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when,
+    lead: { title: lead.rule === 'S11c choose' ? 'Choose what to take on' : t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when: lead.rule === 'S11c choose' ? null : when,
+      // S11c: the suggested choice — the promoted rail item, its own words.
+      choice: lead.rule === 'S11c choose' ? { title: t, why: ok(lead.choice.why) } : null,
       // A block's focus clock, from NEURO's session — never a timer of SAiM's own.
       clock: leadCand && leadCand.kind === 'block' ? blockClock(leadCand, now) : leadCand && leadCand.facts && leadCand.facts.inFocus ? focusClock(leadCand.facts.inFocus) : null },
     protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until || null } : null,

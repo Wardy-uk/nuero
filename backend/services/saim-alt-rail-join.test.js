@@ -136,8 +136,8 @@ test('rail, nothing protected: a task commitment and a startable card offer "Do 
   assert.equal(decision.protected, null);
   const a = heldBy(decision);
   assert.deepEqual(a['commitment:task:350'], [{ say: 'Do now', intent: { kind: 'session', action: 'start', taskId: 350, text: 'Build call/productivity metrics in Nova' } }]);
-  assert.equal(decision.lead.rule, 'S11 nothing');
-  assert.deepEqual(a['item:att_cc'], [{ say: 'Do now', intent: UTTER[0].intent }]);
+  assert.equal(decision.lead.rule, 'S11c choose', 'startable work waiting is never an all-clear');
+  assert.deepEqual(decision.lead.choice.action, { say: 'Do now', intent: UTTER[0].intent }, 'the card’s own start, promoted');
   assert.deepEqual(a['item:att_cap'], [], 'no task, no card start → no invented action');
 });
 
@@ -212,4 +212,59 @@ test('rail: a task an open block already holds is never offered "Make next" (NEU
   assert.deepEqual(heldBy(held.decision)['commitment:task:412'][0].intent, { kind: 'block-next', taskId: 412 }, 'positive control: an unblocked task still offers it');
   const blind = build({ now: at(9, 40), taskBlocks: null });
   assert.deepEqual(heldBy(blind.decision)['commitment:task:412'], [], 'could not check → no claim it can be booked');
+});
+
+// ── S11c: never an all-clear over startable work (16 Oct 2026) ─────────────
+
+test('choice 1: nothing urgent + a startable waiting item → "Choose what to take on", never the all-clear; the promoted item and action ARE the rail’s first', () => {
+  const plain = build({ now: at(11, 0), block: false, calendar: [], taskBlocks: new Map() });
+  // What the rail would have offered first, before the promotion.
+  const { decision, handoff, payload } = plain;
+  assert.equal(decision.lead.rule, 'S11c choose');
+  assert.ok(!/Nothing needs you right now/.test(JSON.stringify(decision.display)));
+  assert.equal(decision.display.lead.title, 'Choose what to take on');
+  assert.equal(decision.display.lead.sentence, 'Nothing needs you immediately. Pick one thing to focus on.');
+  assert.equal(decision.lead.choice.ref, 'item:att_cc', 'the first Do-now item in rail order');
+  assert.equal(decision.recommended, decision.lead.choice.action, 'the SAME action object, not a copy or a new route');
+  assert.deepEqual(decision.recommended, { say: 'Do now', intent: UTTER[0].intent });
+  assert.ok(!decision.held.some((h) => h.ref === 'item:att_cc'), 'promoted out of the rail, not duplicated');
+  assert.ok(decision.held.filter((h) => h.actions[0] && h.actions[0].say === 'Do now').length >= 2, 'the others stay waiting with their Do now');
+  assert.equal(handoff.handoff, null);
+  assert.ok(C.checkAttention(decision).ok);
+  const vm = M.manifest(payload);
+  assert.equal(vm.state, 'Nothing urgent');
+  assert.equal(vm.title, 'Choose what to take on');
+  assert.equal(vm.choice.title, 'Customer Care training plan and refreshers');
+  assert.deepEqual(vm.actions, [], 'the action lives on the suggestion only');
+  const html = renderToString(React.createElement(View, { v: vm, live: LIVE() }));
+  assert.match(html, /NOTHING URGENT/);
+  assert.match(html, /Suggested/);
+});
+
+test('choice 2: nothing actionable waiting → the genuine all-clear stays', () => {
+  const { decision } = build({ now: at(11, 0), block: false, calendar: [], secondary: [CAPACITY], commitments: [] });
+  assert.equal(decision.lead.rule, 'S11 nothing');
+  assert.equal(decision.display.lead.sentence, 'Nothing needs you right now.');
+  assert.equal(M.manifest(build({ now: at(11, 0), block: false, calendar: [], secondary: [CAPACITY], commitments: [] }).payload).choice, null);
+});
+
+test('choice 2b: a task an open block holds still has a real Do now (NEURO’s session start) — but a waiting item with no start never makes a choice', () => {
+  const onlyHeld = build({ now: at(11, 0), block: false, calendar: [], secondary: [], commitments: [] });
+  assert.equal(onlyHeld.decision.lead.rule, 'S11 nothing');
+});
+
+test('choice 3: protected or imminent context → no choice state and no Do now anywhere', () => {
+  for (const b of [build({ now: at(9, 40) }), build({ now: at(9, 52), block: false })]) {
+    assert.notEqual(b.decision.lead.rule, 'S11c choose');
+    assert.ok(!JSON.stringify(b.decision.held).includes('Do now'));
+    assert.ok(!(b.decision.recommended && b.decision.recommended.say === 'Do now'));
+  }
+});
+
+test('choice 4: pressing the suggestion sends the item’s own session start (the shell posts it to /api/session/start)', () => {
+  const vm = M.manifest(build({ now: at(11, 0), block: false, calendar: [] }).payload);
+  const calls = [];
+  const els = clickables(View({ v: vm, live: LIVE({ onAct: (x) => calls.push(x) }) }));
+  els.find((e) => label(e) === 'Do now' && e.props.className === 'wk__open').props.onClick();
+  assert.deepEqual(calls[0].intent, UTTER[0].intent);
 });

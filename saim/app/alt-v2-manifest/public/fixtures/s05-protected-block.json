@@ -114,7 +114,8 @@
           "daysLate": 0,
           "counterpart": null,
           "wordingConflict": null,
-          "jira": null
+          "jira": null,
+          "inBlock": false
         },
         "sphere": {
           "value": "work",
@@ -164,7 +165,8 @@
           "daysLate": 0,
           "counterpart": null,
           "wordingConflict": "says “tomorrow” but it’s planned for today",
-          "jira": null
+          "jira": null,
+          "inBlock": false
         },
         "sphere": {
           "value": "work",
@@ -237,7 +239,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-16.2",
+    "policyVersion": "2026-10-16.3",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -362,6 +364,7 @@
         "title": "Customer Care training plan and refreshers",
         "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
         "when": "14:00–15:30",
+        "choice": null,
         "clock": null
       },
       "protected": {

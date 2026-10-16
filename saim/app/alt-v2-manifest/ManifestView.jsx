@@ -87,6 +87,26 @@ export default function ManifestView({ v, live = null }) {
             </div>
           )}
 
+          {v.choice && (
+            <div className="wk__place mf__dest mf__choice">
+              <p className="wk__label">Suggested</p>
+              <div className="wk__placerow">
+                <div>
+                  <p className="wk__app">{v.choice.title}</p>
+                  {v.choice.why && <p className="wk__why">{v.choice.why}</p>}
+                </div>
+                {(() => {
+                  const on = Boolean(live && live.onAct && actable(v.choice.action));
+                  return (
+                    <button type="button" className="wk__open" disabled={!on || busy}
+                      title={on ? undefined : (live ? 'This screen can’t do that' : INERT)}
+                      onClick={on ? () => live.onAct(v.choice.action) : undefined}>{v.choice.action.say}</button>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
           {v.actions.length > 0 && (
             <div className="wk__next">
               <div className="wk__acts" aria-label="Tell SAiM where you are">

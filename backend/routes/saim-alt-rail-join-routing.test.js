@@ -78,12 +78,16 @@ test('gather → the meeting candidate carries the join target; imminent, SAiM o
   assert.equal(handoff.handoff.primary.target.href, TEAMS);
 });
 
-test('"Do now" through NEURO’s session route makes that exact item SAiM’s lead (S5f)', async () => {
+test('the suggested "Do now" (S11c) through NEURO’s session route refreshes SAiM into In focus · your choice (S5f)', async () => {
   db.clearCalendarCache('graph'); // nothing protected or imminent
   const taskId = require('../services/task-store').createTask({ text: 'Build call/productivity metrics in Nova', source: 'test' }).id;
   const commitments = [{ id: `commitment:task:${taskId}`, direction: 'i-owe', state: 'open', description: 'Build call/productivity metrics in Nova', taskId: `task:neuro:${taskId}`, due: { date: new Date().toLocaleDateString('en-CA'), kind: 'set' }, domains: { known: true, domains: [{ domain: 'work', basis: 'set' }], sphere: 'work', basis: 'set' } }];
   const before = read(commitments);
-  const doNow = before.decision.held.find((h) => h.ref === `commitment:task:${taskId}`).actions[0];
+  // Nothing urgent and one startable item: SAiM offers it as the choice (S11c), never "Nothing needs you".
+  assert.equal(before.decision.lead.rule, 'S11c choose');
+  assert.equal(before.decision.lead.choice.ref, `commitment:task:${taskId}`);
+  const doNow = before.decision.recommended;
+  assert.equal(doNow, before.decision.lead.choice.action);
   assert.equal(doNow.say, 'Do now');
   // Exactly the body App.jsx sends for a session start.
   const res = await fetch(`${base}/api/session/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: doNow.intent.text, source: 'attention', taskId: doNow.intent.taskId }) });

@@ -68,6 +68,7 @@ const NO_LAUNCH = Object.freeze({
   'S10 ritual': 'The ritual happens in SAiM itself.',
   'S4r short ritual due now': 'The standup happens in SAiM itself; your block picks up straight after.',
   'S11 nothing': 'Nothing needs you, so there’s nowhere to go.',
+  'S11c choose': 'Pick one first — SAiM shows where to work once you’re on it.',
 });
 
 const ms = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? t : null; };
