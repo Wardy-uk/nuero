@@ -1,0 +1,63 @@
+/* SAiM Alt — the control's Now view in Alt's dress (16 Oct 2026).
+ *
+ * Everything is scoped to `.v2-now`, which only the Alt shell renders, so the
+ * control app's Now (phone, legacy desktop) is untouched. Content, order and
+ * behaviour are the control's; only the look is Alt's: translucent cards over
+ * her field, serif lead lines, small-caps section labels, pill buttons. */
+
+.v2-now { max-width: 860px; }
+
+.v2-now .now .view__title {
+  font-family: 'Newsreader', Georgia, serif; font-weight: 400;
+  font-size: 2rem; line-height: 1.15; margin: 0.4rem 0 0.15rem;
+}
+.v2-now .now .view__lede { font-size: 0.8rem; margin-bottom: 1.1rem; }
+
+/* Section labels → Alt's eyebrow. */
+.v2-now .now__sech, .v2-now .lit-label {
+  font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); font-weight: 500; margin: 0 0 0.55rem;
+}
+.v2-now .now__sec { margin-bottom: 1.4rem; }
+
+/* Cards → Alt's card: dark glass, soft edge, no red haze. */
+.v2-now .lit {
+  background: var(--v2-card); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 14px;
+  box-shadow: none; padding: 1.05rem 1.3rem; margin-bottom: 0.6rem;
+}
+.v2-now .lit--lead { border-color: var(--v2-edge); box-shadow: 0 0 0 1px var(--v2-edge); }
+.v2-now .lit--row { padding: 0.8rem 1.2rem; }
+.v2-now .lit--quiet { background: rgba(13, 18, 25, 0.62); }
+.v2-now .lit--off { background: rgba(13, 18, 25, 0.5); }
+
+/* The one thing she is asking about reads as a lead line, as on Alt's SAiM page. */
+.v2-now .now__focus-text {
+  font-family: 'Newsreader', Georgia, serif; font-weight: 400;
+  font-size: 1.45rem; line-height: 1.25;
+}
+.v2-now .now__item-title, .v2-now .now__event-title, .v2-now .now__task-text { font-size: 1rem; }
+.v2-now .now__focus-label { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-accent); }
+.v2-now .now__when--live { color: var(--v2-accent); }
+
+/* Buttons → Alt's pills. */
+.v2-now .now__go, .v2-now .now__sess-btn, .v2-now .now__outbox-btn {
+  font: inherit; font-size: 0.84rem; cursor: pointer;
+  padding: 0.38rem 0.95rem; border-radius: 999px;
+  color: var(--text); background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.v2-now .now__go:hover:not(:disabled), .v2-now .now__sess-btn:hover:not(:disabled) {
+  border-color: var(--v2-edge); background: rgba(var(--saim-rgb, 114, 150, 211), 0.12);
+}
+.v2-now .now__sess-btn--go {
+  border-color: var(--v2-edge); background: rgba(var(--saim-rgb, 114, 150, 211), 0.18);
+}
+.v2-now .now__sess-input {
+  background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+}
+.v2-now .now__tick { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.16); }
+
+/* "Start one thing": its task choices stay full-width rows, in Alt's glass. */
+.v2-now .now__start-opt { background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 10px; }
+.v2-now .now__start-opt[aria-pressed="true"] { border-color: var(--v2-edge); background: rgba(var(--saim-rgb, 114, 150, 211), 0.14); }

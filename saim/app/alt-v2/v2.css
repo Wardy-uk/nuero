@@ -23,6 +23,7 @@
 .v2__ctl:hover { color: var(--text); text-decoration: underline; }
 .v2__lock { background: none; border: none; cursor: pointer; font-size: 0.85rem; opacity: 0.55; }
 .v2__lock:hover { opacity: 1; }
+.v2__refresh { color: var(--text); font-size: 1rem; opacity: 0.7; }
 
 .v2__view {
   position: relative; z-index: 1;

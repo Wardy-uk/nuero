@@ -413,3 +413,15 @@ test('a protected block or meeting keeps “Holding the day” and its back-at t
   assert.equal(GOLDEN('s03-meeting').protecting, true);
   assert.match(meeting, /Holding the day/);
 });
+
+test('Now is the control’s own Now view, styled only through selectors scoped to .v2-now', () => {
+  const app = fs.readFileSync(path.join(APP, 'alt-v2', 'App.jsx'), 'utf8');
+  assert.match(app, /import Now from '\.\.\/src\/views\/Now';/);
+  assert.match(app, /route\.tab === 'now'\) \{[\s\S]*?<div className="v2-control v2-now"><Now onNavigate=\{go\} \/><\/div>/);
+  const css = fs.readFileSync(path.join(APP, 'alt-v2', 'now-alt.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const selectors = css.split('}').map((r) => r.split('{')[0]).flatMap((s) => s.split(',')).map((s) => s.trim()).filter(Boolean);
+  assert.ok(selectors.length > 10, 'positive control');
+  for (const s of selectors) assert.ok(s.startsWith('.v2-now'), `unscoped selector would restyle the control: ${s}`);
+  const control = fs.readFileSync(path.join(APP, 'src', 'main.jsx'), 'utf8') + fs.readFileSync(path.join(APP, 'src', 'App.jsx'), 'utf8');
+  assert.ok(!control.includes('now-alt.css'), 'the control never loads it');
+});

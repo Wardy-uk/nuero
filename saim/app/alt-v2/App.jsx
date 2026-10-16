@@ -6,6 +6,8 @@ import { readRuntime } from '../src/runtime';
 import { startAutoFlush } from '../src/mobile/outbox';
 import Review from '../src/views/Review';
 import Capture from '../src/views/Capture';
+import Now from '../src/views/Now';
+import './now-alt.css';
 import { isPressing } from '../../shared-ui/useFieldDrive';
 import '../../shared-ui/Lit.css';
 import Shell from './Shell';
@@ -259,7 +261,11 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
       />
     );
   } else if (route.tab === 'now') {
-    page = <NowPageView {...day} heldOpen={heldOpen} onToggleHeld={() => setHeldOpen((o) => !o)} />;
+    // 16 Oct 2026 (Nick): Now is the control's own Now view — same data, same
+    // controls — dressed in Alt's look by `now-alt.css` (scoped to .v2-now, so the
+    // control app is untouched). NowPageView (the block timeline) stays in the
+    // tree for its tests but is no longer routed.
+    page = <div className="v2-control v2-now"><Now onNavigate={go} /></div>;
   } else if (route.tab === 'controls') {
     page = <ControlsPageView resp={controls.resp} error={controls.error} busy={controls.busy} onPatch={patchControls} notificationsHref={CONTROL_URL ? `${CONTROL_URL.replace(/\/+$/, '')}/?tab=controls` : null} />;
   } else if (route.tab === 'briefing') {

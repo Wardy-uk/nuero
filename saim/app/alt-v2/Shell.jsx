@@ -12,7 +12,7 @@ export default function Shell({ active, onGo, drive, updated = null, footer = nu
       <div className="v2__corner">
         <span className="v2__marker" title="Experimental treatment — not the everyday SAiM">SAiM Alt</span>
         {marker}
-        {onRefresh && <button type="button" className="v2__lock" onClick={onRefresh} aria-label="Refresh SAiM" title="Refresh SAiM">↻</button>}
+        {onRefresh && <button type="button" className="v2__lock v2__refresh" onClick={onRefresh} aria-label="Refresh SAiM" title="Refresh SAiM">↻</button>}
         {onLock && <button type="button" className="v2__lock" onClick={onLock} aria-label="Lock / change PIN" title="Lock / change PIN">🔒</button>}
       </div>
       <main className="v2__view">{children}</main>
