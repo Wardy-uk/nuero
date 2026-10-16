@@ -1183,7 +1183,73 @@ function rowKey(todo) {
  * it, so this panel, the phone and the Actions queue cannot name one task's
  * origin three different ways.
  */
-function TaskProvenance({ todo, expanded }) {
+/**
+ * "Check Jira now" on a Jira-linked task.
+ *
+ * Only Jira closes a Jira-linked task, and the sync that notices a resolved
+ * ticket runs hourly at :30 in working hours — so a ticket resolved at :31 sat
+ * on the list for an hour with a tick that does nothing. This runs the same
+ * sync on demand (POST /api/jira/assigned/sync — the whole pass, not just this
+ * ticket, because there is one rule for closing and one place that applies it).
+ *
+ * The answer is about THIS ticket, read from the sync's own result: closed,
+ * still open, or could not be read (a gap naming it). "Nothing happened" is
+ * never shown as success.
+ */
+function JiraRefresh({ todo, onRefresh }) {
+  const [state, setState] = useState(null); // null | 'busy' | { tone, text }
+  if (!todo.jiraKey) return null;
+  const key = todo.jiraKey;
+
+  const run = async (e) => {
+    e.stopPropagation();
+    setState('busy');
+    try {
+      const res = await fetch(apiUrl('/api/jira/assigned/sync'), { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.ok === false) {
+        setState({ tone: 'bad', text: `Could not ask Jira: ${body.error || res.status}` });
+        return;
+      }
+      const closed = (body.closed || []).find(c => c.key === key);
+      const unlinked = (body.unlinked || []).find(u => (u.key || u) === key);
+      const gap = (body.gaps || []).find(g => String(g).startsWith(key + ':'));
+      if (closed) {
+        setState({ tone: 'ok', text: `${key} is ${String(closed.status || 'resolved').toLowerCase()} — task closed` });
+        if (onRefresh) onRefresh();
+      } else if (unlinked) {
+        setState({ tone: 'ok', text: `${key} is no longer assigned to you — the tick is yours again` });
+        if (onRefresh) onRefresh();
+      } else if (gap) {
+        setState({ tone: 'bad', text: String(gap) });
+      } else {
+        setState({ tone: 'neutral', text: `${key} is still open in Jira` });
+      }
+    } catch (err) {
+      setState({ tone: 'bad', text: `Could not ask Jira: ${err.message}` });
+    }
+  };
+
+  return (
+    <>
+      <span className="todo-provenance-sep">&#183;</span>
+      <button
+        type="button"
+        className="todo-jira-refresh"
+        onClick={run}
+        disabled={state === 'busy'}
+        title={`Ask Jira now whether ${key} is resolved, instead of waiting for the hourly sync`}
+      >
+        {state === 'busy' ? 'Checking Jira…' : '↻ Check Jira'}
+      </button>
+      {state && state !== 'busy' && (
+        <span className={`todo-jira-refresh-result ${state.tone}`}>{state.text}</span>
+      )}
+    </>
+  );
+}
+
+function TaskProvenance({ todo, expanded, onRefresh }) {
   if (!todo || !todo.task_id) return null;
   const p = describeTaskProvenance(todo, { now: new Date() });
 
@@ -1209,6 +1275,7 @@ function TaskProvenance({ todo, expanded }) {
           )}
         </>
       )}
+      <JiraRefresh todo={todo} onRefresh={onRefresh} />
     </div>
   );
 }
@@ -1406,7 +1473,7 @@ function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch, onRef
         </div>
         {/* When it arrived and how - the two things a card must be able to
             answer about itself. NEURO-owned rows only; see TaskProvenance. */}
-        <TaskProvenance todo={todo} expanded={isExpanded} />
+        <TaskProvenance todo={todo} expanded={isExpanded} onRefresh={onRefresh} />
         {/* The Microsoft half this row now stands for.
 
             A merged pair shows ONCE, which is the point — but it also means
@@ -1829,7 +1896,7 @@ function MustMoveLane({ items, held, gaps, toggling, onToggle, onSetWip, onDefer
                   list below means scrolling down and finding the same task
                   again, which is the friction TaskEditPanel was hoisted to
                   remove. */}
-              <TaskProvenance todo={item} expanded={isExpanded} />
+              <TaskProvenance todo={item} expanded={isExpanded} onRefresh={onRefresh} />
               {/* ⚠ Inside `main`, and its clicks stopped there. `main` is what
                   toggles the card open, so a click on any control inside it
                   would close the card underneath the button being pressed —

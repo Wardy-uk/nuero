@@ -1409,6 +1409,23 @@
   word-break: break-word;
 }
 
+/* "Check Jira" on a Jira-linked task: asks the sync now rather than at :30. */
+.todo-jira-refresh {
+  background: none;
+  border: 1px solid var(--border, rgba(255,255,255,0.15));
+  border-radius: 4px;
+  color: var(--accent, var(--text-secondary));
+  font: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.todo-jira-refresh:hover:not(:disabled) { border-color: var(--accent, currentColor); }
+.todo-jira-refresh:disabled { opacity: 0.6; cursor: default; }
+.todo-jira-refresh-result.ok { color: var(--success, #4caf50); }
+.todo-jira-refresh-result.bad { color: var(--warning, #e0a030); }
+.todo-jira-refresh-result.neutral { color: var(--text-muted); }
+
 /* The Microsoft half a merged row stands for.
    
    Quiet and indented under the meta line: it is provenance, not a second task,
