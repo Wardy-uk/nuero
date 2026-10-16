@@ -7,18 +7,21 @@
   "title": "Customer Care training plan and refreshers",
   "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
   "when": "14:00–15:30",
+  "clock": null,
   "guard": null,
   "unreadLead": null,
   "protecting": true,
   "actions": [
     {
-      "say": "I’m on it",
+      "say": "Start focus",
       "intent": {
         "kind": "start-block",
         "taskId": 600,
         "text": "Customer Care training plan and refreshers",
-        "blockId": 130
-      }
+        "blockId": 130,
+        "minutes": 70
+      },
+      "lead": true
     }
   ],
   "handoff": {

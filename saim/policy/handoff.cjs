@@ -39,7 +39,7 @@ const LINKS = require('../../shared/neuro-links.cjs');
 const { SURFACES } = require('./attention-policy.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_HANDOFF;
-const RESOLVER_VERSION = '2026-10-15.5';
+const RESOLVER_VERSION = '2026-10-16.1';
 const MAX_ALTERNATIVES = 3;
 
 /**
@@ -66,6 +66,7 @@ const ACTIVITY = Object.freeze({
 const NO_LAUNCH = Object.freeze({
   'S8 protected diary time': 'No task says what this time is for, so there’s no app to send you to.',
   'S10 ritual': 'The ritual happens in SAiM itself.',
+  'S4r short ritual due now': 'The standup happens in SAiM itself; your block picks up straight after.',
   'S11 nothing': 'Nothing needs you, so there’s nowhere to go.',
 });
 
@@ -199,6 +200,21 @@ function resolve({ decision, candidates, device, now = Date.now() } = {}) {
   if (rule === 'S5 protected block' || rule === 'S7 top item' || rule === 'S9 block about to start') {
     if (!intent || intent.kind !== 'work-step') return none(out, 'NEURO stated no next step to open anything for.', [intent ? `${lead.ref}.handoffIntent.kind = ${intent.kind}, not a work step` : `${lead.ref}.handoffIntent missing`]);
     const spec = intent.activity ? ACTIVITY[intent.activity] : null;
+    // A task that IS a Jira ticket (16 Oct 2026): the ticket is worked in Jira, so its own
+    // page is the primary browser hand-off — from NEURO's structured control target (the
+    // jira-tasks ledger / the ticket's own URL, or a strictly recognised key). The key on
+    // the button comes from that target's `key` field, never from the task's wording.
+    const jira = (Array.isArray(leadCand.targets) ? leadCand.targets : []).find((t) => t.role === 'control' && t.provider === 'jira') || null;
+    if (jira) {
+      // `key` is checked as a ticket key by the contract (shared/attention-contracts targetProblem).
+      const key = typeof jira.key === 'string' && jira.key ? jira.key : null;
+      const primary = linkDest(jira, key ? `Open ${key} in Jira` : 'Open the ticket in Jira', key ? `${key} in Jira` : (jira.label || 'The ticket in Jira'));
+      const taskLink = targetOf(leadCand, 'canonical');
+      const apps = spec && !deviceProblem ? [spec.needs.map(withCap).find(Boolean)].filter(Boolean).map(deskDest) : [];
+      return done(primary, [...apps, taskLink ? linkDest(taskLink, 'Open the task in NEURO', 'The task in NEURO') : null],
+        'The ticket is worked in Jira; the task stays in NEURO.',
+        [`${lead.ref}.targets.control (jira${jira.basis ? `, ${jira.basis}` : ''})`, ...(taskLink ? [`${lead.ref}.targets.canonical`] : [])]);
+    }
     if (!spec) {
       const taskLink = targetOf(leadCand, 'canonical');
       // "Not sure — open the task in NEURO": Nick's own answer, so it is a hand-off, not a gap.

@@ -25,7 +25,8 @@
               "wordingConflict": null
             }
           ],
-          "session": null
+          "session": null,
+          "otherSessionRunning": false
         },
         "sphere": {
           "value": "work",
@@ -233,7 +234,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.8",
+    "policyVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -295,12 +296,13 @@
     ],
     "next": null,
     "recommended": {
-      "say": "I’m on it",
+      "say": "Start focus",
       "intent": {
         "kind": "start-block",
         "taskId": 600,
         "text": "Customer Care training plan and refreshers",
-        "blockId": 130
+        "blockId": 130,
+        "minutes": 70
       }
     },
     "alternatives": [],
@@ -338,7 +340,8 @@
       "lead": {
         "title": "Customer Care training plan and refreshers",
         "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
-        "when": "14:00–15:30"
+        "when": "14:00–15:30",
+        "clock": null
       },
       "protected": {
         "what": "Customer Care training plan and refreshers",
@@ -397,6 +400,11 @@
         "why": "effective deadline 18:00 today (end of today’s working hours — it expires before you next start); block ends 15:30 + 15 min"
       },
       {
+        "rule": "S4r short ritual due now",
+        "applies": false,
+        "why": "no short ritual due now (due-now, do-first and ≤ 5 min, from NEURO)"
+      },
+      {
         "rule": "S5 protected block",
         "applies": true,
         "why": "block:130 14:00–15:30 is running"
@@ -406,7 +414,7 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.5",
+    "resolverVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "decidedFor": "block:130",
     "rule": "S5 protected block",

@@ -25,7 +25,8 @@
               "wordingConflict": null
             }
           ],
-          "session": null
+          "session": null,
+          "otherSessionRunning": false
         },
         "sphere": {
           "value": "work",
@@ -138,7 +139,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.8",
+    "policyVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -216,7 +217,8 @@
       "lead": {
         "title": "Payroll cut-off for overtime claims",
         "sentence": "NEURO rated this critical, but this kind of item hasn’t been classified yet, so I’m treating it as possible risk.",
-        "when": null
+        "when": null,
+        "clock": null
       },
       "protected": {
         "what": "Customer Care training plan and refreshers",
@@ -252,7 +254,7 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.5",
+    "resolverVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "decidedFor": "item:r-payroll_cutoff",
     "rule": "S2u unclassified potential risk",

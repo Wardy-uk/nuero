@@ -82,7 +82,7 @@ const SCENARIOS = [
     id: '1', name: 'Active work block, non-urgent approval',
     build: () => build({ now: at(14, 20), surface: 'work-desktop', block: BLOCK, commitments: DUE_TODAY,
       approvals: [{ id: 'pa_1', expiresAt: iso(9, 0, 20), title: 'chase agenda: Quarterly review' }] }),
-    expect: { rule: 'S5 protected block', lead: 'block:130', protected: 'block:130', recommended: 'I’m on it' },
+    expect: { rule: 'S5 protected block', lead: 'block:130', protected: 'block:130', recommended: 'Start focus' },
   },
   {
     id: '2a', name: 'Active block, approval whose effective deadline is today (after the block)',

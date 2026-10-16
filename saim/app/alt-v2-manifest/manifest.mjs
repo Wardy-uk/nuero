@@ -95,6 +95,7 @@ export const STATE = Object.freeze({
   'S2u unclassified potential risk': { tone: 'possible', word: 'possible risk', label: () => 'Possible risk · not yet classified' },
   'S3a imminent meeting transition': { tone: 'soon', word: 'meeting next', label: () => 'Meeting about to start' },
   'S4 deadline inside the block': { tone: 'deadline', word: 'deadline inside this block', label: () => 'Due before this block ends' },
+  'S4r short ritual due now': { tone: 'ritual', word: 'standup first', label: () => 'Due now · before anything else' },
   'S5 protected block': { tone: 'block', word: 'working', label: (d) => `Active${d.protected ? ` · until ${d.protected.until}` : ''}` },
   'S6 judgement waiting': { tone: 'judge', word: 'waiting on you', label: () => 'Waiting for your decision' },
   'S7 top item': { tone: 'item', word: 'working', label: () => 'Top of the list' },
@@ -110,6 +111,7 @@ const GUARD_VERB = Object.freeze({
   'S2u unclassified potential risk': 'paused while you check this — not lost',
   'S3a imminent meeting transition': 'held for after the meeting',
   'S4 deadline inside the block': 'resumes once this is dealt with',
+  'S4r short ritual due now': 'protected — resumes right after the standup',
 });
 
 /** The field drive per rule (approved): colour carries the state, never visibility. */
@@ -122,6 +124,7 @@ const DRIVE = Object.freeze({
   'S5 protected block': { activity: 'in-focus-session', confidenceLevel: 'high' },
   'S8 protected diary time': { activity: 'working', confidenceLevel: 'moderate' },
   'S10 ritual': { activity: 'ritual', confidenceLevel: 'high' },
+  'S4r short ritual due now': { activity: 'ritual', confidenceLevel: 'high' },
   'S11 nothing': { activity: 'steady', confidenceLevel: 'high' },
 });
 
@@ -184,9 +187,11 @@ export function manifest(payload) {
   // and neither is a route: anything that would take Nick somewhere belongs to the hand-off box alone, so the
   // screen never shows two answers to "where do I go" (the policy already holds them out; this is the guard).
   const isRoute = (x) => Boolean(x && x.intent && x.intent.kind === 'navigate' && (x.intent.action === 'open' || x.intent.recordId != null || x.intent.view || x.intent.href));
-  const acts = d.recommended && !d.recommended.handOff ? [d.recommended, ...(d.alternatives || [])] : [];
+  // SAiM's recommendation leads; an offered-only action (e.g. "I'm not going") comes with no recommendation.
+  const handedOff = Boolean(d.recommended && d.recommended.handOff);
+  const acts = handedOff ? [] : [...(d.recommended ? [d.recommended] : []), ...(d.alternatives || [])];
   // Each action keeps SAiM's own intent: the shell carries out only the kinds it knows (ACTABLE); any other stays inert.
-  const actions = acts.filter((x) => !isRoute(x)).map((x) => ({ say: shown(x && x.say), intent: (x && x.intent) || null })).filter((x) => x.say);
+  const actions = acts.filter((x) => !isRoute(x)).map((x) => ({ say: shown(x && x.say), intent: (x && x.intent) || null, lead: x === d.recommended })).filter((x) => x.say);
 
   // Hand-off box (resolver labels only) — or its honest absence.
   let handoff = null; let ask = null; let handoffNote = null;
@@ -220,7 +225,11 @@ export function manifest(payload) {
 
   const sec = (name, fn) => (d.known[name].known ? fn() : { unread: true, why: d.known[name].why });
   const rail = {
-    next: sec('next', () => (disp.next ? { title: shown(disp.next.title), when: shown(disp.next.when) } : { empty: true })),
+    next: sec('next', () => (disp.next ? {
+      title: shown(disp.next.title), when: shown(disp.next.when),
+      // NEURO's attendance action on the next meeting, as SAiM passed it on — nothing invented.
+      actions: ((d.next && Array.isArray(d.next.actions)) ? d.next.actions : []).map((x) => ({ say: shown(x && x.say), intent: (x && x.intent) || null })).filter((x) => x.say && x.intent),
+    } : { empty: true })),
     held: sec('held', () => {
       if (!Array.isArray(disp.held)) return { count: disp.held.count, returns: null, items: [], more: [] };
       // Only items with a real label are listed; the rest are counted, never shown by their type word.
@@ -244,6 +253,9 @@ export function manifest(payload) {
     title: title || shown(disp.lead.sentence),
     sentence: title ? leadSentence(shown(disp.lead.sentence)) : null,
     when: shown(disp.lead.when),
+    // A started block's focus clock, as SAiM said it from NEURO's session (never a timer here).
+    clock: disp.lead.clock && (disp.lead.clock.state === 'running' || disp.lead.clock.state === 'paused')
+      ? { state: disp.lead.clock.state, elapsed: shown(disp.lead.clock.elapsed), remaining: shown(disp.lead.clock.remaining), started: shown(disp.lead.clock.started) } : null,
     guard: disp.protected && !leadIsGuard ? { what: shown(disp.protected.what) || 'Protected time', until: shown(disp.protected.until), verb: GUARD_VERB[d.lead.rule] || 'still protected' } : null,
     unreadLead: blind ? ['your tasks and blocks', 'the diary', 'approvals waiting'] : null,
     // Holding/back-at language needs a boundary SAiM has set: a protected meeting, block or timed diary time.

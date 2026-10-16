@@ -7,6 +7,7 @@
   "title": "Nick Catch Up",
   "sentence": "You’re in it until 15:00; I’m holding everything else.",
   "when": "14:30–15:00",
+  "clock": null,
   "guard": null,
   "unreadLead": null,
   "protecting": true,

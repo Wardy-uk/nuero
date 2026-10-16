@@ -150,7 +150,8 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
     if (!intent) return;
     if (intent.kind === 'start-block') {
       await apiFetch('/api/session/start', {
-        method: 'POST', body: JSON.stringify({ taskId: intent.taskId, text: intent.text, source: 'task-block' }),
+        // Same route NEURO's task list uses; `minutes` = what is left of the block, when SAiM said so.
+        method: 'POST', body: JSON.stringify({ taskId: intent.taskId, text: intent.text, source: 'task-block', ...(Number.isFinite(intent.minutes) ? { minutes: intent.minutes } : {}) }),
       }).catch((e) => refused(e, (m) => (/session-active/.test(m)
         ? 'Something else is already running — finish or pause it first. Nothing was started.'
         : `Not started — ${m}`)));

@@ -8,6 +8,7 @@
         "kind": "meeting",
         "id": "meeting:14:30:Nick Catch Up",
         "eventId": "AAMkAGI2THVSAAA=",
+        "meetingKey": "id:Nick Catch Up::2026-10-15T14:30:00.0000000",
         "title": "Nick Catch Up",
         "time": {
           "start": "14:30",
@@ -134,7 +135,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.8",
+    "policyVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:40:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -221,7 +222,8 @@
       "lead": {
         "title": "Nick Catch Up",
         "sentence": "You’re in it until 15:00; I’m holding everything else.",
-        "when": "14:30–15:00"
+        "when": "14:30–15:00",
+        "clock": null
       },
       "protected": {
         "what": "Nick Catch Up",
@@ -258,7 +260,7 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.5",
+    "resolverVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:40:00.000Z",
     "decidedFor": "meeting:14:30:Nick Catch Up",
     "rule": "S3 meeting",

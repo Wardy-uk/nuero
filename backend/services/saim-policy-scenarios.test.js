@@ -90,7 +90,7 @@ test('scenario 9: in a running meeting an S2u item stays visible as possible ris
   assert.equal(s2.protected.kind, 'meeting', 'the meeting stays the protected context');
 });
 
-test('rule order: S1 → S2 → S3 → S2u → S3a → S4 → S5', () => {
+test('rule order: S1 → S2 → S3 → S2u → S3a → S4 → S4r → S5', () => {
   const d = row(SCENARIOS.find((x) => x.id === '1')).decision;
-  assert.deepEqual(d.trace.map((t) => t.rule.split(' ')[0]).slice(0, 7), ['S1', 'S2', 'S3', 'S2u', 'S3a', 'S4', 'S5']);
+  assert.deepEqual(d.trace.map((t) => t.rule.split(' ')[0]).slice(0, 8), ['S1', 'S2', 'S3', 'S2u', 'S3a', 'S4', 'S4r', 'S5']);
 });

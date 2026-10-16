@@ -106,7 +106,7 @@ test('17:11, work desktop: the running block leads (S5); the agenda request is j
   assert.equal(d.judgement.length, 1);
   assert.equal(d.judgement[0].effectiveDeadline, iso(18, 0));
   assert.match(d.judgement[0].effectiveBasis, /expires before you next start/);
-  assert.equal(d.recommended.say, 'I’m on it');
+  assert.equal(d.recommended.say, 'Start focus');
   assert.equal(d.recommended.intent.kind, 'start-block');
   const s4 = d.trace.find((t) => t.rule === 'S4 deadline inside the block');
   assert.equal(s4.applies, false);

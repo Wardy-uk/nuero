@@ -30,7 +30,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-15.8';
+const POLICY_VERSION = '2026-10-16.1';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -41,6 +41,13 @@ const BLOCK_END_MARGIN_MINUTES = 15;
  * NEURO itself calls a meeting imminent (decision-engine, ≤ 10 min).
  */
 const MEETING_TRANSITION_MINUTES = 10;
+
+/**
+ * S4r (16 Oct 2026): how short a ritual NEURO says is due NOW and comes first must be
+ * for it to lead over a running task block. The pre-11 standup is two minutes; a ritual
+ * with no stated length, or a longer one, never interrupts a block.
+ */
+const SHORT_RITUAL_MINUTES = 5;
 
 const SURFACES = Object.freeze({
   'work-desktop': { scope: 'work', manifestation: { held: 'list', actions: 'all', deskLaunch: true, speech: false } },
@@ -200,6 +207,12 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const topItem = of('attention-item').find((c) => c.facts.gatePosition === 'primary') || null;
   const needsNow = [...of('home'), ...of('personal-date')].find((c) => c.facts.needsNow) || null;
   const ritual = of('ritual')[0] || null;
+  // S4r: a ritual NEURO says is due now, comes before anything else, and takes a few
+  // minutes (decision-engine's structured meta — never the reason line). A ritual that is
+  // merely later carries none of these and never leads here.
+  const shortRitual = of('attention-item').find((c) => c.facts.type === 'nudge' && c.facts.urgency === 'ritual-due'
+    && c.facts.doFirst === true && Number.isFinite(c.facts.estimateMinutes) && c.facts.estimateMinutes > 0
+    && c.facts.estimateMinutes <= SHORT_RITUAL_MINUTES) || null;
   // Blind is judged on what THIS scope depends on: work on NEURO's attention
   // pool, home on the household model. "I couldn't look" is never "nothing".
   const blindWork = k.poolReadable === false;
@@ -244,6 +257,13 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     runningBlock ? (firstApproval ? (firstApproval.eff ? `effective deadline ${hhmmOf(firstApproval.eff.at)} ${dayWord(firstApproval.eff.at, now)} (${firstApproval.eff.basis}); block ends ${runningBlock.time.end} + ${BLOCK_END_MARGIN_MINUTES} min` : 'approval has no deadline') : 'no approval waiting in scope') : 'no block running')) {
     lead = leadOf(interrupting.c, 'S4 deadline inside the block', `${interrupting.c.title} has to be dealt with before ${hhmmOf(interrupting.eff.at)}, and this block runs to ${runningBlock.time.end}.`,
       [`${interrupting.c.id}.deadlineAt = ${interrupting.c.time.deadlineAt}`, `effective ${interrupting.eff.at}`, `${runningBlock.id}.end = ${runningBlock.time.end}`]);
+  } else if (rule('S4r short ritual due now', shortRitual, shortRitual
+    ? `“${shortRitual.title}” is due now, comes first and takes ${shortRitual.facts.estimateMinutes} min (≤ ${SHORT_RITUAL_MINUTES})${runningBlock ? ` — ${runningBlock.id} stays protected and resumes after` : ''}`
+    : `no short ritual due now (due-now, do-first and ≤ ${SHORT_RITUAL_MINUTES} min, from NEURO)`)) {
+    const n = shortRitual.facts.estimateMinutes;
+    lead = leadOf(shortRitual, 'S4r short ritual due now',
+      `${String(shortRitual.title).replace(/[.!?]+$/, '')} — about ${n} minute${n === 1 ? '' : 's'}, before anything else${runningBlock ? `; ${leadTitle(runningBlock)} resumes right after it` : ''}.`,
+      [`${shortRitual.id}.urgency = ritual-due`, `${shortRitual.id}.doFirst`, `${shortRitual.id}.estimateMinutes = ${n}`]);
   } else if (rule('S5 protected block', runningBlock, runningBlock ? `${runningBlock.id} ${runningBlock.time.start}–${runningBlock.time.end} is ${runningBlock.facts.state}` : 'no task block running in scope')) {
     lead = leadOf(runningBlock, 'S5 protected block', `This is the time you blocked for ${leadTitle(runningBlock)}. I’m holding the rest until ${runningBlock.time.end}.`, [`${runningBlock.id}.state = ${runningBlock.facts.state}`]);
   } else if (rule('S6 judgement waiting', firstApproval, firstApproval ? `${approvals.length} approval(s) waiting and no block protecting the time` : 'no approval waiting in scope')) {
@@ -299,19 +319,24 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // Next: the first thing in scope that starts later today.
   const later = cands.filter((c) => (c.kind === 'block' || c.kind === 'meeting' || c.kind === 'protected-time') && !isRunning(c) && c.id !== lead.ref && ms(c.time && c.time.startAt) > now)
     .sort((a, b) => ms(a.time.startAt) - ms(b.time.startAt));
-  const next = later[0] ? { ref: later[0].id, kind: later[0].kind, title: leadTitle(later[0]), start: later[0].time.start, inMinutes: Math.round((ms(later[0].time.startAt) - now) / 60000) } : null;
+  const next = later[0] ? { ref: later[0].id, kind: later[0].kind, title: leadTitle(later[0]), start: later[0].time.start, inMinutes: Math.round((ms(later[0].time.startAt) - now) / 60000),
+    // "I'm not going" — only when NEURO put that action on the meeting (a real meeting still to start).
+    actions: later[0].kind === 'meeting' ? (later[0].actions || []).filter(isAttendance) : [] } : null;
 
   // Recommended action, then alternatives — limited by the manifestation, never by changing the lead.
   const leadCand = cands.find((c) => c.id === lead.ref) || null;
-  let options = actionsFor(leadCand);
+  let options = actionsFor(leadCand, now);
   const routeSources = [leadCand, lead.rule === 'S3a imminent meeting transition' && transition && transition.card !== leadCand ? transition.card : null].filter(Boolean);
   const heldRoutes = routeSources.flatMap((c) => (c.actions || []).filter(isRoute));
-  if (lead.rule === 'S3a imminent meeting transition' && transition && transition.card && transition.card !== leadCand) options = [...actionsFor(transition.card), ...options];
+  if (lead.rule === 'S3a imminent meeting transition' && transition && transition.card && transition.card !== leadCand) options = [...actionsFor(transition.card, now), ...options];
+  options = options.filter((o, i) => options.findIndex((x) => x.say === o.say) === i);
+  // "I'm not going" is offered, never recommended: it goes last and never takes the lead button.
+  options = [...options.filter((o) => !isAttendance(o)), ...options.filter(isAttendance)];
   const m = sf.manifestation;
-  let recommended = options[0] || null;
-  let alternatives = options.slice(1);
+  let recommended = options[0] && !isAttendance(options[0]) ? options[0] : null;
+  let alternatives = recommended ? options.slice(1) : options;
   if (m.actions === 'none') {
-    recommended = leadCand && options.length ? { handOff: 'the desktop', say: options[0].say } : null;
+    recommended = leadCand && recommended ? { handOff: 'the desktop', say: recommended.say } : null;
     alternatives = [];
   } else if (m.actions === 'limited') alternatives = alternatives.slice(0, Math.max(0, (m.maxActions || 2) - 1));
   if (leadCand && leadCand.kind === 'approval') recommended = { handOff: leadCand.facts.where, say: 'Review it in NEURO' };
@@ -357,7 +382,7 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     corrections,
     review,
     known: knownFor(k, sf.scope, blind),
-    display: displayFor({ lead, leadCand: cands.find((c) => c.id === lead.ref) || null, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, now, countOnly: m.held === 'count' }),
+    display: displayFor({ lead, leadCand: cands.find((c) => c.id === lead.ref) || null, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, shortRitual, now, countOnly: m.held === 'count' }),
     trace,
   };
 }
@@ -430,7 +455,7 @@ function knownFor(k, scope, blind) {
  * a plain fallback, never shown. The machine fields (`lead.why`, `trace`)
  * are unchanged.
  */
-function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, now, countOnly }) {
+function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, approvals, next, cands, transition, runningBlock, interrupting, firstApproval, shortRitual, now, countOnly }) {
   const byId = new Map(cands.map((c) => [c.id, c]));
   const ok = (s) => (typeof s === 'string' && s && D.isSafeDisplay(s) ? s : null);
   // Every title on screen is a HEADLINE — the item as a short phrase, never the whole wording.
@@ -463,6 +488,11 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
     }
     case 'S4 deadline inside the block':
       sentence = `This has to be dealt with before ${effWhen(interrupting) || 'the block ends'}${runningBlock ? `, and this block runs to ${runningBlock.time.end}` : ''}.`; break;
+    case 'S4r short ritual due now': {
+      const n = shortRitual && shortRitual.facts.estimateMinutes;
+      sentence = `About ${n} minute${n === 1 ? '' : 's'}, and it comes before anything else${runningBlock && titleOf(runningBlock) ? `. ${titleOf(runningBlock)} picks up right after` : ''}.`;
+      break;
+    }
     case 'S5 protected block':
       sentence = `This is your blocked time for it. I’m holding the rest until ${runningBlock.time.end}.`; break;
     case 'S6 judgement waiting':
@@ -476,7 +506,9 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
   // Backstop for the one sentence built from NEURO's words: if it still restates the headline, SAiM's own line replaces it.
   if (lead.rule === 'S7 top item' && t && repeats(sentence, t)) sentence = 'It’s top of your list right now.';
   return {
-    lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when },
+    lead: { title: t, sentence: ok(sentence) || 'SAiM has something for you, but couldn’t word it safely — open NEURO to see it.', when,
+      // A block's focus clock, from NEURO's session — never a timer of SAiM's own.
+      clock: leadCand && leadCand.kind === 'block' ? blockClock(leadCand, now) : null },
     protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until } : null,
     held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns })),
     judgement: judgement.map((j) => {
@@ -485,6 +517,25 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
       return { what: titleOf(c) || 'An action waiting for your approval', by: effWhen(a), basis: a && a.eff && a.eff.basis !== 'its own expiry' ? a.eff.basis : null };
     }),
     next: next ? { title: titleOf(byId.get(next.ref)) || 'Next in the diary', when: `at ${next.start}` } : null,
+  };
+}
+
+/**
+ * The focus clock for a block, said from NEURO's facts (16 Oct 2026). Not started → null
+ * (the action row offers "Start focus"). Started → the session's own elapsed minutes and
+ * the minutes left in the block's window. SAiM keeps no clock of its own.
+ */
+function blockClock(c, now) {
+  const s = c.facts && c.facts.session;
+  if (!s || !s.status || !['active', 'paused', 'interrupted', 'needs-smaller'].includes(s.status)) return null;
+  const end = ms(c.time && c.time.endAt);
+  const left = end == null ? null : Math.max(0, Math.round((end - now) / 60000));
+  const paused = s.status !== 'active';
+  return {
+    state: paused ? 'paused' : 'running',
+    elapsed: Number.isFinite(s.elapsedMinutes) ? `${s.elapsedMinutes} min in${paused ? ' — paused' : ''}` : (paused ? 'Paused' : 'Started'),
+    remaining: left == null ? null : left === 0 ? 'the block’s time is up' : `${left} min left in this block`,
+    started: s.startedTime ? `started ${s.startedTime}` : null,
   };
 }
 
@@ -503,13 +554,36 @@ function leadTitle(c) {
   return c.title;
 }
 
-function actionsFor(c) {
+function actionsFor(c, now = Date.now()) {
   if (!c) return [];
   const out = [];
   if (c.kind === 'block') {
+    // NEURO's own block actions (16 Oct 2026): "Start focus" starts a focus session on the
+    // block's task through POST /api/session/start — the route NEURO's task list uses — for
+    // the minutes left in the block. Once started, the session's own verbs. Never a timer here.
     const t = c.facts.tasks || [];
-    const sessionLive = c.facts.session && c.facts.session.status && !['done', 'abandoned'].includes(c.facts.session.status);
-    if (t.length === 1 && !sessionLive && c.blockId != null) out.push({ say: 'I’m on it', intent: { kind: 'start-block', taskId: t[0].taskId, text: t[0].text, blockId: c.blockId } });
+    const st = c.facts.session && c.facts.session.status;
+    const live = ['active', 'paused', 'interrupted', 'needs-smaller'].includes(st);
+    if (!live && t.length === 1 && c.blockId != null) {
+      const end = ms(c.time && c.time.endAt);
+      const left = end == null ? null : Math.round((end - now) / 60000);
+      out.push({ say: 'Start focus', intent: { kind: 'start-block', taskId: t[0].taskId, text: t[0].text, blockId: c.blockId, ...(left > 0 ? { minutes: left } : {}) } });
+    }
+    if (st === 'active') {
+      out.push({ say: 'Pause', intent: { kind: 'session', action: 'pause' } });
+      out.push({ say: 'That’s done', intent: { kind: 'session', action: 'finish' } });
+      out.push({ say: 'Something came up', intent: { kind: 'session', action: 'step-away' } });
+    } else if (live) {
+      out.push({ say: 'Resume', intent: { kind: 'session', action: 'resume' } });
+      out.push({ say: 'That’s done', intent: { kind: 'session', action: 'finish' } });
+    }
+    // The surface's own session sentences say the same things — never twice.
+    for (const a of c.actions || []) if (!isRoute(a) && !(a.intent && a.intent.kind === 'session') && !out.some((o) => o.say === a.say)) out.push(a);
+    return out;
+  }
+  // The short ritual's own start: the standup happens in SAiM's Review.
+  if (c.kind === 'attention-item' && c.facts.urgency === 'ritual-due' && c.facts.nudgeType === 'standup') {
+    out.push({ say: 'Start the standup', intent: { kind: 'navigate', tab: 'review' } });
   }
   if (c.kind === 'ritual') out.push({ say: c.facts.ritual === 'eod' ? 'Start the end-of-day wrap' : 'Start the standup', intent: { kind: 'navigate', tab: 'review' } });
   // NEURO's own "open it" actions are ROUTES, not responses (15 Oct 2026). A route belongs to the
@@ -520,10 +594,16 @@ function actionsFor(c) {
   return out;
 }
 
+/** NEURO's attendance action on a meeting — "I'm not going" / "I'm not in it". */
+function isAttendance(a) {
+  const i = a && a.intent;
+  return Boolean(i && i.kind === 'meeting' && i.action === 'not-attending' && typeof i.key === 'string' && i.key);
+}
+
 /** An action that takes Nick somewhere rather than recording his state. */
 function isRoute(a) {
   const i = a && a.intent;
   return Boolean(i && i.kind === 'navigate' && (i.action === 'open' || i.recordId != null || i.view || i.href));
 }
 
-module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, MEETING_TRANSITION_MINUTES, decide, inScope, effectiveDeadline, sayTitle };
+module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, MEETING_TRANSITION_MINUTES, SHORT_RITUAL_MINUTES, decide, inScope, effectiveDeadline, sayTitle };

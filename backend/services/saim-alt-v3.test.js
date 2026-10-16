@@ -95,10 +95,10 @@ test('actable: only the intent kinds the shell carries out', () => {
 
 // ── Live render: enabled exactly where the payload offers ───────────────────
 
-test('active block (s05): “I’m on it”, the desk app and its alternatives are live; nothing is disabled that SAiM offered', () => {
+test('active block (s05): “Start focus”, the desk app and its alternatives are live; nothing is disabled that SAiM offered', () => {
   const vm = GOLDEN('s05-protected-block');
   const h = html(vm, LIVE());
-  assert.ok(enabled(buttonsNamed(h, 'I’m on it')[0]), 'SAiM’s action is pressable');
+  assert.ok(enabled(buttonsNamed(h, 'Start focus')[0]), 'SAiM’s action is pressable');
   assert.ok(enabled(buttonsNamed(h, 'Open Claude')[0]), 'the declared desk app opens');
   for (const alt of ['Music', 'Word']) assert.ok(enabled(buttonsNamed(h, alt)[0]), `${alt} alternative opens`);
   assert.equal(/read-only preview/i.test(h), false, 'no preview wording in the live build');
@@ -109,11 +109,11 @@ test('a press calls the shell with SAiM’s own intent and app id — nothing re
   const vm = GOLDEN('s05-protected-block');
   const tree = View({ v: vm, live: LIVE({ onAct: (a) => calls.push(['act', a]), onDeskOpen: (app) => calls.push(['desk', app]) }) });
   const els = clickables(tree);
-  els.find((e) => label(e) === 'I’m on it').props.onClick();
+  els.find((e) => label(e) === 'Start focus').props.onClick();
   els.find((e) => label(e) === 'Open Claude').props.onClick();
   els.find((e) => label(e).startsWith('Word')).props.onClick();
   assert.deepEqual(calls, [
-    ['act', { say: 'I’m on it', intent: { kind: 'start-block', taskId: 600, text: 'Customer Care training plan and refreshers', blockId: 130 } }],
+    ['act', { say: 'Start focus', lead: true, intent: { kind: 'start-block', taskId: 600, text: 'Customer Care training plan and refreshers', blockId: 130, minutes: 70 } }],
     ['desk', 'claude'], ['desk', 'word'],
   ]);
 });

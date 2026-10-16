@@ -52,7 +52,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-15.8",
+    "policyVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -112,7 +112,8 @@
       "lead": {
         "title": null,
         "sentence": "I can’t see your work right now — this isn’t an all-clear.",
-        "when": null
+        "when": null,
+        "clock": null
       },
       "protected": null,
       "held": [],
@@ -130,7 +131,7 @@
   "handoff": {
     "contract": "saim-handoff-v1",
     "owner": "saim",
-    "resolverVersion": "2026-10-15.5",
+    "resolverVersion": "2026-10-16.1",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "decidedFor": null,
     "rule": "S1 blind",

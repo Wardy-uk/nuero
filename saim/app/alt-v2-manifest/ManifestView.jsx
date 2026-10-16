@@ -55,6 +55,13 @@ export default function ManifestView({ v, live = null }) {
             <p className="wk__state mf__state"><span className="wk__dot mf__dot" aria-hidden="true" />{v.state.toUpperCase()}</p>
             <h1 className={`wk__title${v.sentence ? '' : ' mf__title--sentence'}`}>{v.title}</h1>
             {v.sentence && <p className="mf__why">{v.sentence}</p>}
+            {v.clock && (
+              <p className={`mf__clock mf__clock--${v.clock.state}`} role="status">
+                <span className="mf__clocknow">{v.clock.elapsed}</span>
+                {v.clock.remaining && <span className="mf__clockleft"> · {v.clock.remaining}</span>}
+                {v.clock.started && <span className="wk__muted"> · {v.clock.started}</span>}
+              </p>
+            )}
           </div>
 
           {v.refused && (
@@ -83,10 +90,10 @@ export default function ManifestView({ v, live = null }) {
           {v.actions.length > 0 && (
             <div className="wk__next">
               <div className="wk__acts" aria-label="Tell SAiM where you are">
-                {v.actions.map((a, i) => {
+                {v.actions.map((a) => {
                   const on = Boolean(live && live.onAct && actable(a));
                   return (
-                    <button key={a.say} type="button" disabled={!on || busy} className={`wk__act${i === 0 ? ' wk__act--lead' : ''}`}
+                    <button key={a.say} type="button" disabled={!on || busy} className={`wk__act${a.lead ? ' wk__act--lead' : ''}`}
                       title={on ? undefined : (live ? 'This screen can’t do that' : INERT)}
                       onClick={on ? () => live.onAct(a) : undefined}>{a.say}</button>
                   );
@@ -130,7 +137,24 @@ export default function ManifestView({ v, live = null }) {
 
         <aside className="wk__rail" aria-label="Around this">
           <RailBox label="Next" section={r.next} empty="Nothing else in the diary today.">
-            {(x) => <><p className="wk__railtitle">{x.title}</p>{x.when && <p className="wk__railmeta">{x.when}</p>}</>}
+            {(x) => (
+              <>
+                <p className="wk__railtitle">{x.title}</p>
+                {x.when && <p className="wk__railmeta">{x.when}</p>}
+                {x.actions && x.actions.length > 0 && (
+                  <div className="mf__nextacts">
+                    {x.actions.map((a) => {
+                      const on = Boolean(live && live.onAct && actable(a));
+                      return (
+                        <button key={a.say} type="button" className="wk__act mf__nextbtn" disabled={!on || busy}
+                          title={on ? undefined : (live ? 'This screen can’t do that' : INERT)}
+                          onClick={on ? () => live.onAct(a) : undefined}>{a.say}</button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </RailBox>
           {/* "Holding the day" / "held — back …" only while SAiM protects a meeting, a block or timed
               diary time (v.protecting). Without one, nothing is being held: the rest is simply waiting. */}
