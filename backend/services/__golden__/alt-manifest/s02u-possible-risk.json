@@ -17,6 +17,7 @@
   "protecting": true,
   "actions": [],
   "choice": null,
+  "basis": null,
   "handoff": null,
   "ask": null,
   "handoffNote": "NEURO gave no link to this item.",

@@ -239,7 +239,7 @@
   "saim": {
     "contract": "saim-attention-v2",
     "owner": "saim",
-    "policyVersion": "2026-10-16.4",
+    "policyVersion": "2026-10-16.5",
     "decidedAt": "2026-10-15T13:20:00.000Z",
     "surface": {
       "id": "work-desktop",
@@ -365,7 +365,8 @@
         "sentence": "This is your blocked time for it. I’m holding the rest until 15:30.",
         "when": "14:00–15:30",
         "choice": null,
-        "clock": null
+        "clock": null,
+        "basis": null
       },
       "protected": {
         "what": "Customer Care training plan and refreshers",

@@ -282,6 +282,13 @@ export function manifest(payload) {
     // Holding/back-at language needs a boundary SAiM has set: a protected meeting, block or timed diary time.
     protecting: Boolean(d.protected),
     actions, choice,
+    // The task a capacity warning is about: shown once, as the warning's basis, with its own moves.
+    basis: disp.lead.basis && shown(disp.lead.basis.title) ? {
+      title: heldLabel(disp.lead.basis.title) || shown(disp.lead.basis.title),
+      why: heldWhy(disp.lead.basis.why),
+      actions: (Array.isArray(d.lead.basis && d.lead.basis.actions) ? d.lead.basis.actions : [])
+        .map((a) => ({ say: shown(a && a.say), intent: (a && a.intent) || null })).filter((a) => a.say && a.intent),
+    } : null,
     handoff, ask, handoffNote: choice ? null : handoffNote, joinGap,
     rail,
     drive: { activity: 'working', confidenceLevel: 'high', quiet: false, degraded: false, pressing: false, ...(DRIVE[d.lead.rule] || {}) },

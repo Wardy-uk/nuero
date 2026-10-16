@@ -30,7 +30,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-16.4';
+const POLICY_VERSION = '2026-10-16.5';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -318,9 +318,18 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   // The tasks the screen is already ABOUT (the running block's, or the lead block's) are never also held.
   const leadBlock = cands.find((c) => c.id === lead.ref && c.kind === 'block') || null;
   const blockTaskIds = new Set([runningBlock, leadBlock].filter(Boolean).flatMap((b) => (b.facts.tasks || []).map((t) => Number(t.taskId))));
+  // A capacity warning ABOUT a task and the task itself are one thing (Nick, 16 Oct 2026): the
+  // warning keeps its slot and the task rides on it as its BASIS — never a second "Also waiting" row.
+  const aboutOf = (c) => (c && c.kind === 'attention-item' && Number.isInteger(c.facts.aboutTaskId) ? c.facts.aboutTaskId : null);
+  const basisFor = (c) => {
+    const id = aboutOf(c);
+    return id == null ? null : cands.find((x) => x.kind === 'commitment' && Number(x.taskId) === id) || null;
+  };
+  const foldedIds = new Set(cands.map(basisFor).filter(Boolean).map((x) => x.id));
   const held = [];
   for (const c of cands) {
     if (c.id === lead.ref || (guard && c.id === guard.id)) continue;
+    if (foldedIds.has(c.id)) continue;
     // NEURO's meeting card is the same meeting as the diary entry — never held twice.
     if (c.kind === 'attention-item' && c.facts.type === 'meeting' && (c.title === lead.title || of('meeting').some((m) => m.title === c.title))) continue;
     let why = null;
@@ -329,18 +338,11 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     else if (c.kind === 'ritual') why = c.facts.reason || 'outstanding';
     else if (c.kind === 'attention-item') why = c.facts.reason || `${c.facts.type || 'item'} from NEURO`;
     else if (c.kind === 'held') why = c.facts.why || 'held back by NEURO';
-    else if (c.kind === 'commitment' && c.facts.daysLate >= 0 && !blockTaskIds.has(Number(c.taskId))) {
-      why = c.facts.daysLate === 0 ? 'due today' : `${c.facts.daysLate} day${c.facts.daysLate === 1 ? '' : 's'} overdue`;
-      const b = c.facts.inBlock;
-      if (b && b.start) {
-        const today = b.date === new Date(now).toLocaleDateString('en-CA');
-        const mins = today ? untilMinutes(b.start, now) : null;
-        why += !today ? ' · already has a block' : mins > 0 ? ` · blocked at ${b.start}` : ` · its ${b.start} block has passed`;
-      }
-    }
+    else if (c.kind === 'commitment' && c.facts.daysLate >= 0 && !blockTaskIds.has(Number(c.taskId))) why = commitmentWhy(c, now);
     else if ((c.kind === 'home' || c.kind === 'personal-date') && c.facts.needsNow) why = c.facts.why || 'needs you';
     if (!why) continue;
-    held.push({ ref: c.id, kind: c.kind, title: leadTitle(c), why, returns, wordingConflict: c.facts.wordingConflict || null });
+    const basis = basisFor(c);
+    held.push({ ref: c.id, kind: c.kind, title: leadTitle(c), why, returns, wordingConflict: c.facts.wordingConflict || null, ...(basis ? { basis: basis.id } : {}) });
   }
 
   // What Nick can do with each waiting item (16 Oct 2026). Nothing protected or imminent:
@@ -354,7 +356,13 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const busyUntil = protectedCtx && protectedCtx.until ? protectedCtx.until
     : lead.rule === 'S3a imminent meeting transition' && transition && transition.c.time && transition.c.time.end ? transition.c.time.end
       : lead.rule === 'S9 block about to start' && leadC && leadC.time ? leadC.time.end : null;
-  for (const h of held) h.actions = heldActions(cands.find((c) => c.id === h.ref), { busy, until: busyUntil, now });
+  // A folded warning offers its task's own moves (the warning itself has none to start).
+  for (const h of held) {
+    const own = heldActions(cands.find((c) => c.id === h.ref), { busy, until: busyUntil, now });
+    h.actions = own.length || !h.basis ? own : heldActions(cands.find((c) => c.id === h.basis), { busy, until: busyUntil, now });
+  }
+  const leadBasisCand = basisFor(leadC);
+  if (leadBasisCand) lead.basis = { ref: leadBasisCand.id, actions: heldActions(leadBasisCand, { busy, until: busyUntil, now }) };
 
   // S11c (16 Oct 2026): "Nothing needs you" is only true when nothing is waiting that Nick
   // could start. With nothing urgent but at least one waiting item carrying a real "Do now"
@@ -575,7 +583,9 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
       // S11c: the suggested choice — the promoted rail item, its own words.
       choice: lead.rule === 'S11c choose' ? { title: t, why: ok(lead.choice.why) } : null,
       // A block's focus clock, from NEURO's session — never a timer of SAiM's own.
-      clock: leadCand && leadCand.kind === 'block' ? blockClock(leadCand, now) : leadCand && leadCand.facts && leadCand.facts.inFocus ? focusClock(leadCand.facts.inFocus) : null },
+      clock: leadCand && leadCand.kind === 'block' ? blockClock(leadCand, now) : leadCand && leadCand.facts && leadCand.facts.inFocus ? focusClock(leadCand.facts.inFocus) : null,
+      // The task a capacity warning is about, shown as its basis rather than a second waiting row.
+      basis: lead.basis && byId.get(lead.basis.ref) ? { title: titleOf(byId.get(lead.basis.ref)) || 'The task', why: ok(commitmentWhy(byId.get(lead.basis.ref), now)), actions: lead.basis.actions || [] } : null },
     protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until || null } : null,
     held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns })),
     judgement: judgement.map((j) => {
@@ -625,6 +635,19 @@ function heldActions(c, { busy, until, now }) {
   const mins = untilMinutes(until, now);
   if (cardDefer && mins != null && mins > 0) return [{ say: `After ${until}`, intent: { kind: 'act', action: 'defer', recordId: cardDefer.intent.recordId, minutes: mins, reason: 'not-now' } }];
   return [];
+}
+
+/** Why a commitment is waiting, in its own facts: how late, and the block it already has. */
+function commitmentWhy(c, now) {
+  if (!c || !c.facts || !(c.facts.daysLate >= 0)) return null;
+  let why = c.facts.daysLate === 0 ? 'due today' : `${c.facts.daysLate} day${c.facts.daysLate === 1 ? '' : 's'} overdue`;
+  const b = c.facts.inBlock;
+  if (b && b.start) {
+    const today = b.date === new Date(now).toLocaleDateString('en-CA');
+    const mins = today ? untilMinutes(b.start, now) : null;
+    why += !today ? ' · already has a block' : mins > 0 ? ` · blocked at ${b.start}` : ` · its ${b.start} block has passed`;
+  }
+  return why;
 }
 
 /** Minutes from now until today's HH:MM, or null. */

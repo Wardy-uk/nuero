@@ -25,6 +25,7 @@
     }
   ],
   "choice": null,
+  "basis": null,
   "handoff": {
     "kind": "work",
     "heading": "Best next place",

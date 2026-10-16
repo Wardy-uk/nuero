@@ -13,6 +13,7 @@
   "protecting": true,
   "actions": [],
   "choice": null,
+  "basis": null,
   "handoff": {
     "kind": "meeting",
     "heading": "The meeting",

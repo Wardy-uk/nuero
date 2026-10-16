@@ -140,3 +140,55 @@ test('the Alt desktop rail shows the waiting approval with its exact NEURO Actio
   assert.equal(items[0].neuroHref, 'neuro:?item=action%3Apa_0123456789abcdef');
   assert.ok(!JSON.stringify(vm).includes('"Approve'), 'nothing offers to approve');
 });
+
+// ── A capacity warning about a task and the task itself are ONE thing (Nick, 16 Oct 2026) ──
+const INCENTIVE = commit(360, 'Define achievable targets for hybrid/WFH incentive; agree plan', '2026-10-16');
+const capAbout = (taskId, extra = {}) => card('capacity', 'high', '"Define achievable targets for hybrid/WFH incentive" can\'t be finished by the end of today on free time',
+  { recordId: 'att_cap_task', reason: '7.6h short even starting now — re-date it, shrink it or hand some of it on.', meta: { taskId, status: 'cannot-finish', due: '2026-10-16' }, ...extra });
+const heldRefs = (d) => d.held.map((h) => h.ref);
+
+test('fold: a capacity warning leading names its task as the basis, and the task is not also held', () => {
+  const { decision: d, candidates } = build({ now: at(15, 26), primary: capAbout(360), commitments: [INCENTIVE, commit(412, 'Look at QA checklists', '2026-10-16')] });
+  assert.equal(candidates.candidates.find((c) => c.id === 'item:att_cap_task').facts.aboutTaskId, 360);
+  assert.equal(d.lead.ref, 'item:att_cap_task');
+  assert.equal(d.lead.basis.ref, 'commitment:task:360');
+  assert.ok(!heldRefs(d).includes('commitment:task:360'), 'the task is not a second "Also waiting" row');
+  assert.ok(heldRefs(d).includes('commitment:task:412'), 'other tasks still wait');
+  assert.equal(d.display.lead.basis.why, 'due today');
+  assert.deepEqual(d.lead.basis.actions.map((a) => a.intent.taskId), [360], 'the task’s own move rides on the warning');
+  assert.equal(C.checkAttention(d).ok, true);
+});
+
+test('fold: a held capacity warning carries its task too — one row, with the task’s moves', () => {
+  const { decision: d } = build({ now: at(11, 0), primary: card('todo', 'high', '3 overdue tasks', { recordId: 'att_overdue' }), secondary: [capAbout(360)], commitments: [INCENTIVE] });
+  assert.equal(d.lead.ref, 'item:att_overdue');
+  assert.ok(!heldRefs(d).includes('commitment:task:360'));
+  const row = d.held.find((h) => h.ref === 'item:att_cap_task');
+  assert.equal(row.basis, 'commitment:task:360');
+  assert.ok(row.actions.some((a) => a.intent.taskId === 360));
+});
+
+test('fold: only a warning ABOUT a task folds — the overload card (no task) and other tasks are untouched', () => {
+  const { decision: d, candidates } = build({ now: at(15, 26), primary: CAPACITY, commitments: [INCENTIVE] });
+  assert.equal(candidates.candidates.find((c) => c.id === 'item:att_capacity').facts.aboutTaskId, undefined);
+  assert.equal(d.lead.basis, undefined);
+  assert.ok(heldRefs(d).includes('commitment:task:360'));
+  // A warning about a task NEURO holds no commitment for has nothing to fold.
+  const lone = build({ now: at(15, 26), primary: capAbout(999), commitments: [INCENTIVE] }).decision;
+  assert.equal(lone.lead.basis, undefined);
+  assert.ok(heldRefs(lone).includes('commitment:task:360'));
+});
+
+test('fold: the Alt desktop shows the task once, under the warning, with its own Do now', async () => {
+  const path = require('path');
+  const { pathToFileURL } = require('url');
+  const { manifest } = await import(pathToFileURL(path.resolve(__dirname, '..', '..', 'saim', 'app', 'alt-v2-manifest', 'manifest.mjs')).href);
+  const { candidates, decision, handoff } = build({ now: at(15, 26), primary: capAbout(360), commitments: [INCENTIVE] });
+  const vm = manifest({ candidates, saim: decision, handoff });
+  assert.ok(!vm.refused, JSON.stringify(vm.refused));
+  assert.match(vm.basis.title, /incentive/i);
+  assert.equal(vm.basis.why, 'due today');
+  assert.deepEqual(vm.basis.actions.map((a) => a.say), ['Do now']);
+  const rail = JSON.stringify(vm.rail.held);
+  assert.ok(!/incentive/i.test(rail), 'not repeated under Also waiting');
+});

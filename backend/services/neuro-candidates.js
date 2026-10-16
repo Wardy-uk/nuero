@@ -287,6 +287,9 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
         neuroUrgency: raw,
         othersAttending: it.type === 'meeting' ? (meta.withOthers === true ? true : meta.withOthers === false ? false : null) : undefined,
         reason: it.reason || it.say || null, gatePosition: it.gatePosition, lifecycle: it.lifecycle || null,
+        // A capacity warning ABOUT one task names it by id (decision-engine meta.taskId), so the
+        // policy can show the task as the warning's basis instead of a second waiting row.
+        ...(it.type === 'capacity' && meta.taskId != null && Number.isInteger(Number(meta.taskId)) ? { aboutTaskId: Number(meta.taskId) } : {}),
         // A ritual nudge's own structured facts (decision-engine meta): which ritual, how long
         // it takes and whether it comes first. Absent = not stated, never assumed.
         ...(it.type === 'nudge' ? {

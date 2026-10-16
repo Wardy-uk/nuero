@@ -17,6 +17,7 @@
   "protecting": false,
   "actions": [],
   "choice": null,
+  "basis": null,
   "handoff": {
     "kind": "connection",
     "heading": "Where to look",
