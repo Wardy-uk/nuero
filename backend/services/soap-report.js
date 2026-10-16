@@ -655,7 +655,7 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
     : null;
   const findingsOpen = Array.isArray(findingsRaw) ? findingsRaw.filter((f) => f.status !== 'resolved').length : null;
 
-  const leadRaw = await pull('leading', 'leading', 'leading indicators from VANTAGE', () => vantage.get('/api/leading', { timeoutMs: 60000 }));
+  const leadRaw = await pull('leading', 'leading', 'leading indicators from VANTAGE', () => vantage.get('/api/leading', { timeoutMs: 150000 }));
   const leading = leadRaw ? {
     available: leadRaw.available !== false, asOf: leadRaw.asOf || null,
     fired: (leadRaw.indicators || []).filter((i) => i.shadow !== true).map((i) => ({

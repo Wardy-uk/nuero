@@ -207,10 +207,65 @@ function findSlmNote(vaultRoot, week) {
       hits.push({ date: m[1], name, file: path.join(dir, name), twin: / \d+\.md$/.test(name) });
     }
   }
-  if (!hits.length) return { found: false, why: `no Support Leadership Meeting note dated ${week.from} – ${week.to}` };
+  if (!hits.length) {
+    // No literal title (Nick, 16 Oct 2026): the meeting is the Friday-afternoon
+    // one with him, Stephen Mitchell and Nathan Rutland — two of the three
+    // named is enough, because PLAUD titles it from what was discussed.
+    const alt = _slmByAttendees(vaultRoot, week, months);
+    if (alt) return alt;
+    return { found: false, why: `no Support Leadership Meeting note dated ${week.from} – ${week.to}, and no Friday-afternoon meeting naming two of ${SLM_ATTENDEES.join(', ')}` };
+  }
   hits.sort((a, b) => (a.twin - b.twin) || b.date.localeCompare(a.date));
   const pick = hits[0];
-  return { found: true, date: pick.date, name: pick.name.replace(/\.md$/, ''), file: pick.file, relPath: path.relative(vaultRoot, pick.file).split(path.sep).join('/') };
+  return { found: true, matchedBy: 'title', date: pick.date, name: pick.name.replace(/\.md$/, ''), file: pick.file, relPath: path.relative(vaultRoot, pick.file).split(path.sep).join('/') };
+}
+
+/** The three people at the SLM. FULL names only: "Nathan" alone is two people. */
+const SLM_ATTENDEES = ['Nick Ward', 'Stephen Mitchell', 'Nathan Rutland'];
+const SLM_MIN_ATTENDEES = 2;
+
+/** Hour (0-23) in Europe/London of a PLAUD start_at, which is UTC with no zone marker. PURE. */
+function _londonHour(startAt) {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(String(startAt || '').replace(/^"|"$/g, ''));
+  if (!m) return null;
+  const d = new Date(`${m[1]}T${m[2]}:${m[3]}:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(d));
+}
+
+/** Which of the SLM attendees a note names, by whole full name. PURE. */
+function slmAttendeesIn(text) {
+  const t = String(text || '').toLowerCase();
+  return SLM_ATTENDEES.filter((n) => new RegExp(`(^|[^a-z])${n.toLowerCase()}([^a-z]|$)`).test(t));
+}
+
+function _slmByAttendees(vaultRoot, week, months) {
+  const hits = [];
+  for (const ym of months) {
+    const dir = path.join(vaultRoot, 'Meetings', ym.slice(0, 4), ym.slice(5, 7));
+    let names;
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      if (!name.endsWith('.md')) continue;
+      const m = /^(\d{4}-\d{2}-\d{2})/.exec(name);
+      if (!m || !_inWeek(m[1], week)) continue;
+      if (new Date(`${m[1]}T12:00:00Z`).getUTCDay() !== 5) continue;   // Friday
+      const file = path.join(dir, name);
+      let text;
+      try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+      const fm = (/^---[\s\S]*?\n---/.exec(text) || [''])[0];
+      if (/^type:\s*["']?meeting-prep/m.test(fm)) continue;            // prep is not the meeting
+      const hour = _londonHour((/^start_at:\s*(.+)$/m.exec(fm) || [])[1]);
+      if (hour === null || hour < 12) continue;                        // afternoon, and provably so
+      const who = slmAttendeesIn(text);
+      if (who.length < SLM_MIN_ATTENDEES) continue;
+      hits.push({ date: m[1], name, file, who, twin: / \d+\.md$/.test(name) });
+    }
+  }
+  if (!hits.length) return null;
+  hits.sort((a, b) => (b.who.length - a.who.length) || (a.twin - b.twin) || b.date.localeCompare(a.date));
+  const pick = hits[0];
+  return { found: true, matchedBy: 'attendees', attendees: pick.who, date: pick.date, name: pick.name.replace(/\.md$/, ''), file: pick.file, relPath: path.relative(vaultRoot, pick.file).split(path.sep).join('/') };
 }
 
 function _stripFrontmatter(text) {
@@ -425,6 +480,6 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
 }
 
 module.exports = {
-  gatherWeekly, reportWeeks, volumesFor, supportCompliance, healthWeek, weekAheadFrom, goalsWeek, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
+  gatherWeekly, reportWeeks, volumesFor, supportCompliance, healthWeek, weekAheadFrom, goalsWeek, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, slmAttendeesIn, parseSlmPoints, slmPoints, bpWeek,
   VOLUME_KEYS, SLM_PROMPT,
 };
