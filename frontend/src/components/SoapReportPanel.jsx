@@ -76,6 +76,12 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       </div>
 
       <section className="soap-section">
+        <h3>Intro</h3>
+        <p className="soap-meta">Opens the email, above everything else — e.g. “As I’m on annual leave today, please see below the Service Desk SOAP.” Leave blank for none.</p>
+        <textarea rows={2} disabled={locked} value={draft.intro || ''} onChange={(e) => setDraft((d) => ({ ...d, intro: e.target.value }))} />
+      </section>
+
+      <section className="soap-section">
         <h3>✅ Success</h3>
         {vd.success.length ? <ul>{vd.success.map((s) => <li key={s.key}>{s.text}</li>)}</ul> : <p className="soap-meta">Nothing met its mark this week.</p>}
       </section>
@@ -370,7 +376,7 @@ function Distribution({ onChanged }) {
   );
 }
 
-const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '' });
+const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '', intro: m?.intro || '' });
 
 export default function SoapReportPanel() {
   const [data, setData] = useState(null);

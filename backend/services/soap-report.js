@@ -335,7 +335,7 @@ function carriedForward(previousReds, reds) {
 
 // ── Manual (Nick's words) ────────────────────────────────────────────────────
 
-function emptyManual() { return { reds: {}, carried: {}, weakest: '', notes: '' }; }
+function emptyManual() { return { intro: '', reds: {}, carried: {}, weakest: '', notes: '' }; }
 
 function getManual(weekFrom) {
   try { return { ...emptyManual(), ...JSON.parse(db.getState(`${MANUAL_PREFIX}${weekFrom}`) || '{}') }; } catch { return emptyManual(); }
@@ -355,6 +355,7 @@ function setManual(weekFrom, patch = {}) {
   }
   if (patch.weakest !== undefined) cur.weakest = clean(patch.weakest);
   if (patch.notes !== undefined) cur.notes = clean(patch.notes);
+  if (patch.intro !== undefined) cur.intro = clean(patch.intro);
   db.setState(`${MANUAL_PREFIX}${weekFrom}`, JSON.stringify(cur));
   return cur;
 }
@@ -389,6 +390,8 @@ function render(report, manual, { forEmail = false } = {}) {
   if (report.kind === 'provisional' && forEmail) {
     L.push('> Built on the Friday from Monday to Friday 17:00; the weekend is not in these figures. Sent on Monday only because the verdicts below were unchanged by the full week.', '');
   }
+  // Nick's own opening line ("As I'm on annual leave today…") — his words, first.
+  if (m.intro) L.push(m.intro, '');
 
   L.push('## ✅ Success', '');
   if (v.success.length) for (const s of v.success) L.push(`- ${s.text}`);
@@ -568,7 +571,13 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
   const gapsBySection = {};
   const use = (name, fn) => (typeof overrides[name] === 'function' ? overrides[name] : fn);
   const pull = async (name, section, label, fn, { verdict = false } = {}) => {
-    try { return await use(name, fn)(); } catch (e) {
+    try { return await use(name, fn)(); } catch (e0) {
+      // One retry on a timeout: under load a call that answers in milliseconds
+      // on its own timed out mid-build (VANTAGE /api/leading, 16 Oct 2026).
+      let e = e0;
+      if (/timed? ?out|timeout|abort/i.test(String(e0 && e0.message))) {
+        try { return await use(name, fn)(); } catch (e1) { e = e1; }
+      }
       const why = e && e.message ? e.message : String(e);
       gaps.push({ source: label, why, verdict });
       gapsBySection[section] = why;

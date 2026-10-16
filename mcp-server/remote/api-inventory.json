@@ -12604,13 +12604,14 @@
     "domain": "soap",
     "source": "routes/soap.js",
     "line": 77,
-    "description": "POST /api/soap/:weekFrom/manual. save Nick's words on a SOAP report: what he will do about each red, why a carried red is still red and its consequences, commentary on the weakest agent, notes. Omitted fields are left alone.",
+    "description": "POST /api/soap/:weekFrom/manual. save Nick's words on a SOAP report: what he will do about each red, why a carried red is still red and its consequences, commentary on the weakest agent, notes, and an intro line that opens the email. Omitted fields are left alone.",
     "params": [
       "weekFrom"
     ],
     "query": [],
     "body": [
       "carried",
+      "intro",
       "notes",
       "reds",
       "weakest"

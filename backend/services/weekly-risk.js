@@ -491,12 +491,26 @@ function taskCounts(week = weekCommencing()) {
 
 // ── Snapshot ─────────────────────────────────────────────────────────────────
 
-async function pull(name, fn) {
+/** A timeout under load is transient; anything else (a 4xx, a refusal) is not. */
+const isTimeout = msg => /timed? ?out|timeout|abort/i.test(String(msg || ''));
+
+async function pull(name, fn, { retry = false } = {}) {
   try {
     return { name, ok: true, data: await fn() };
   } catch (err) {
-    return { name, ok: false, error: err?.message || String(err), data: null };
+    const error = err?.message || String(err);
+    // One retry on a timeout only. The build used to fire every NOVA query at
+    // once against a DTU-limited database, and a call that answers in 0.7s on
+    // its own timed out mid-build (16 Oct 2026) — which held the Monday send.
+    if (retry && isTimeout(error)) return pull(name, fn);
+    return { name, ok: false, error, data: null };
   }
+}
+
+/** Flow signals whose sub-queries timed out server-side are worth one more go. */
+function flowTimedOut(res) {
+  const u = res?.ok ? (res.data?.data || res.data)?.unavailable : null;
+  return Array.isArray(u) && u.length > 0 && u.every(x => isTimeout(x?.error));
 }
 
 /**
@@ -512,7 +526,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
   // compliance rows are anchored to.
   const reportWeek = previousWeek(week);
 
-  const [kpi, trend, orgTrend, escalationStats, flow, csatNow, csatPrior] = novaReady
+  const [kpi, trend, orgTrend, escalationStats, csatNow, csatPrior] = novaReady
     ? await Promise.all([
       pull('kpi-snapshot', () => nova.call(`/api/neuro-bridge/kpi-snapshot${date ? `?date=${date}` : ''}`)),
       // Long timeout: at the 15s default a busy NOVA dropped this, and the
@@ -529,16 +543,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       // `kpi-org/backfill.ts` says of the legacy values "those were inflated
       // 2-3x".
       pull('kpi-org-trend', () => nova.call('/api/neuro-bridge/kpi-org-trend?weeks=6', { timeoutMs: FLOW_TIMEOUT_MS })),
-      pull('escalation-stats', () => nova.call('/api/neuro-bridge/escalation-stats?days=30')),
-      // How tickets MOVE. The Support Review was written from these five facts
-      // and every one was computable from NOVA on the day it was written — so
-      // they cross every week now, whether or not anyone thinks to ask.
-      // 90s, not the 15s interactive default. The endpoint runs its queries
-      // sequentially against a DTU-limited instance on purpose — concurrent was
-      // what made them time out server-side — so it is slower than any
-      // conversational call, and the first deploy of this had the whole
-      // ticket-flow section render as absent because of it.
-      pull('flow-signals', () => nova.call(`/api/neuro-bridge/flow-signals?days=${FLOW_WINDOW_DAYS}`, { timeoutMs: FLOW_TIMEOUT_MS })),
+      pull('escalation-stats', () => nova.call('/api/neuro-bridge/escalation-stats?days=30', { timeoutMs: FLOW_TIMEOUT_MS }), { retry: true }),
       // CSAT is read from the RATINGS, never from `jira_kpi_daily."CSAT %"`.
       // That column stores 0 on a day nobody rated anything (kpi-pipeline.ts:
       // `csatCount > 0 ? avg*20 : 0`), and a rating is 1-5, so a genuine 0 is
@@ -562,10 +567,23 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       { name: 'kpi-trend', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'kpi-org-trend', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'escalation-stats', ok: false, error: 'NOVA bridge not configured', data: null },
-      { name: 'flow-signals', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'csat-reported', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'csat-compare', ok: false, error: 'NOVA bridge not configured', data: null },
     ];
+
+  // How tickets MOVE. The Support Review was written from these five facts
+  // and every one was computable from NOVA on the day it was written — so they
+  // cross every week now, whether or not anyone thinks to ask.
+  // ⚠ Run ALONE, after the batch above. The endpoint runs its sub-queries
+  // sequentially against a DTU-limited instance on purpose, and NOVA gives each
+  // 30s; started alongside six other queries, `unowned` and `stalled` timed out
+  // server-side while the same call answers in ~19s on its own (16 Oct 2026).
+  // A sub-signal that timed out gets one more go.
+  const flowCall = () => nova.call(`/api/neuro-bridge/flow-signals?days=${FLOW_WINDOW_DAYS}`, { timeoutMs: FLOW_TIMEOUT_MS });
+  let flow = novaReady
+    ? await pull('flow-signals', flowCall, { retry: true })
+    : { name: 'flow-signals', ok: false, error: 'NOVA bridge not configured', data: null };
+  if (novaReady && flowTimedOut(flow)) flow = await pull('flow-signals', flowCall, { retry: true });
 
   // The Daily KPI Tracker for the week this report covers: NOVA's row
   // definition, then each row's stored daily values for that week.
