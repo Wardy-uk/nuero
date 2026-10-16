@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch, chatStream } from '../src/api';
 import { enqueue, flush, outcomeFor } from '../src/mobile/outbox';
 import { matchSaid } from '../../../shared/heard.cjs';
@@ -40,6 +40,40 @@ export async function runCapture(content, io) {
   }
 }
 
+// Log done (16 Oct 2026): ad-hoc work asked for and finished on the spot. ONE
+// completed NEURO task (source saim-quick-log) — never open, due, blocked or
+// focused. Said as NEURO answered; the box is cleared only on NEURO's ok.
+export const UNDO_MS = 30 * 1000;
+
+function neuroMessage(err) {
+  const m = String((err && err.message) || '');
+  const i = m.indexOf('{');
+  if (i !== -1) { try { const j = JSON.parse(m.slice(i)); if (j && j.message) return j.message; } catch { /* below */ } }
+  return null;
+}
+
+export async function runLogDone(content, io, now = Date.now()) {
+  const words = String(content || '').trim();
+  if (!words) return { clear: false, entry: null, note: { ok: false, msg: 'Type what you did first, then Log done.' } };
+  try {
+    const r = await io.apiFetch('/api/tasks/quick-log', { method: 'POST', body: JSON.stringify({ text: words }) });
+    if (!r || !r.ok || !Number.isInteger(r.taskId)) return { clear: false, entry: null, note: { ok: false, msg: 'NEURO didn’t confirm it — nothing logged. Your words are still here.' } };
+    return { clear: true, entry: { taskId: r.taskId, text: words, until: now + UNDO_MS }, note: { ok: true, msg: 'Logged as done.' } };
+  } catch (e) {
+    return { clear: false, entry: null, note: { ok: false, msg: `${neuroMessage(e) || 'Not logged — NEURO couldn’t be reached.'} Your words are still here.` } };
+  }
+}
+
+export async function runUndo(entry, io, now = Date.now()) {
+  if (!entry || now > entry.until) return { ok: false, msg: 'Too late to undo — it stays logged.' };
+  try {
+    const r = await io.apiFetch(`/api/tasks/quick-log/${encodeURIComponent(entry.taskId)}/undo`, { method: 'POST', body: '{}' });
+    return r && r.ok ? { ok: true, msg: 'Undone — that entry was removed.' } : { ok: false, msg: 'NEURO didn’t confirm the undo.' };
+  } catch (e) {
+    return { ok: false, msg: neuroMessage(e) || 'Couldn’t undo — NEURO couldn’t be reached.' };
+  }
+}
+
 export default function Dock({ utterances, onSay, deps = null, variant = null }) {
   const wk = variant === 'wk';
   const io = deps || { enqueue, flush, outcomeFor, chatStream, apiFetch };
@@ -47,6 +81,36 @@ export default function Dock({ utterances, onSay, deps = null, variant = null })
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
   const [answer, setAnswer] = useState(null);
+  const [undoable, setUndoable] = useState(null);
+
+  // The Undo control lives exactly as long as NEURO will honour it.
+  useEffect(() => {
+    if (!undoable) return undefined;
+    const t = setTimeout(() => setUndoable(null), Math.max(0, undoable.until - Date.now()));
+    return () => clearTimeout(t);
+  }, [undoable]);
+
+  async function logDone() {
+    const content = text.trim();
+    if (busy) return;
+    if (!content) { setNote({ ok: false, msg: 'Type what you did first, then Log done.' }); return; }
+    setBusy(true);
+    setNote(null);
+    const r = await runLogDone(content, io);
+    if (r.clear) setText((t) => (t.trim() === content ? '' : t));
+    setUndoable(r.entry);
+    setNote(r.note);
+    setBusy(false);
+  }
+
+  async function undo() {
+    if (!undoable || busy) return;
+    setBusy(true);
+    const r = await runUndo(undoable, io);
+    setUndoable(null);
+    setNote(r);
+    setBusy(false);
+  }
 
   async function capture() {
     const content = text.trim();
@@ -113,8 +177,15 @@ export default function Dock({ utterances, onSay, deps = null, variant = null })
         />
         <button type="button" className={wk ? 'wk__dockbtn wk__dockbtn--ask' : 'v2-pill v2-pill--strong'} disabled={busy || !text.trim()} onClick={ask}>Ask</button>
         <button type="button" className={wk ? 'wk__dockbtn' : 'v2-pill'} disabled={busy || !text.trim()} onClick={capture}>Capture</button>
+        <button type="button" className={wk ? 'wk__dockbtn wk__dockbtn--done' : 'v2-pill'} disabled={busy} onClick={logDone}
+          title="Record something you’ve already done — it isn’t added as a task to do">Log done</button>
       </div>
-      {note && <p className={`${wk ? 'wk__docknote' : 'v2-docknote'}${note.ok ? '' : ' is-bad'}`} role="status">{note.msg}</p>}
+      {note && (
+        <p className={`${wk ? 'wk__docknote' : 'v2-docknote'}${note.ok ? '' : ' is-bad'}`} role="status">
+          {note.msg}
+          {undoable && note.ok && <> <button type="button" className="v2-link wk__undo" disabled={busy} onClick={undo}>Undo</button></>}
+        </p>
+      )}
     </div>
   );
 }

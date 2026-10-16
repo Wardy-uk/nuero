@@ -101,6 +101,31 @@ router.post('/', (req, res) => {
   }
 });
 
+// POST /api/tasks/quick-log — log done: record ad-hoc work already finished as ONE completed task (source saim-quick-log), never open, due, blocked or focused. Blank text writes nothing. Keywords: log done, quick log, completed.
+router.post('/quick-log', (req, res) => {
+  try {
+    const { text } = req.body || {};
+    const r = require('../services/quick-log').log(text, { by: req.apiClient ? `machine:${req.apiClient}` : 'nick' });
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) {
+    console.error('[Tasks] Quick-log error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/tasks/quick-log/:id/undo — undo log done: reverses ONLY the most recent quick-log entry, within 30 seconds; expired or repeated undo is refused (409) and changes nothing.
+router.post('/quick-log/:id/undo', (req, res) => {
+  try {
+    const r = require('../services/quick-log').undo(req.params.id);
+    if (!r.ok) return res.status(409).json(r);
+    res.json(r);
+  } catch (e) {
+    console.error('[Tasks] Quick-log undo error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // PATCH /api/tasks/:id — edit text / moscow / priority / due / status / notes.
 // This is the thing that had nowhere to live before the migration: with the DB
 // owning the data it is a plain write, and the export handles the file.

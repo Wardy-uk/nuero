@@ -366,7 +366,16 @@ function createTask(input = {}) {
   // collision leaves every one of those lookups finding exactly what it found
   // before, and costs nothing on the ~100% of creates that do not clash.
   let key = baseKey;
+  // `distinct` (quick-log, 16 Oct 2026): a record of work ALREADY DONE must never
+  // fold into a task with the same words — folding "Sent the figures to Sarah"
+  // into an open task of that wording would close a different task. It gets a
+  // key of its own, so it is always a new row and never matches a later sighting.
+  if (input.distinct === true) {
+    const suffix = ` #ql-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    key = `${baseKey.slice(0, KEY_COLUMN_MAX - suffix.length)}${suffix}`;
+  }
   let existing = db.getTaskByDedupeKey(key);
+  if (existing && input.distinct === true) throw new Error('quick-log key collided — not written');
   if (existing && existing.domain && existing.domain !== domain) {
     key = `${baseKey} #${domain}`.slice(0, KEY_COLUMN_MAX);
     existing = db.getTaskByDedupeKey(key);
@@ -790,6 +799,9 @@ function rekeyAll() {
       checked += 1;
       let next = dedupeKey(row.text);
       if (!next || next === row.dedupe_key) continue;
+      // A quick log keeps its own key for ever: re-keyed to the bare words it
+      // would swallow the next real task with the same wording into a done row.
+      if (/ #ql-[a-z0-9]+$/.test(row.dedupe_key || '')) continue;
       // Preserve the cross-domain suffix if this row carries one.
       if (/ #(work|personal)$/.test(row.dedupe_key || '')) {
         next = `${next} #${row.domain || 'work'}`.slice(0, KEY_COLUMN_MAX);

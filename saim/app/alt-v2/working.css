@@ -57,6 +57,8 @@
   color: var(--text); background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.12);
 }
 .wk__dockbtn--ask { border-color: var(--v2-edge); }
+.wk__dockbtn--done { color: var(--muted); }
+.wk__undo { margin-left: 0.4em; font-size: 1em; }
 
 .wk__rail { display: flex; flex-direction: column; gap: 0.8em; }
 .wk__railitem {
