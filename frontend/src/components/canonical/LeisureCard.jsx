@@ -73,7 +73,7 @@ const RATINGS = [
 const RATING_CHIP = { love: '♥ love', like: 'you like this', background: 'background', 'not-for-me': 'not for you' };
 
 function Listening({ rows, act, busy }) {
-  if (!rows.length) return <div className="cn-group-why">Nothing heard on the phone's Music app since counting began.</div>;
+  if (!rows.length) return <div className="cn-group-why">Nothing heard on the iPhone or the laptop since counting began.</div>;
   return (
     <ul className="cn-list">
       {rows.map((o) => {
@@ -99,6 +99,55 @@ function Listening({ rows, act, busy }) {
         );
       })}
     </ul>
+  );
+}
+
+// The play log (16 Oct 2026): every song for 24 hours, then only what Nick
+// rated (song, album or artist). Times are instants, so local getters are right.
+const DEVICE = { 'desktop-music': 'Laptop', 'phone-music': 'iPhone' };
+const KEPT_BY = { track: 'you rated the song', album: 'you rated the album', artist: 'you rated the artist', said: 'you said something about it' };
+function playTime(iso, withDay) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return withDay ? `${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} ${hm}` : hm;
+}
+function PlayRows({ rows, act, busy, withDay }) {
+  return (
+    <ul className="cn-list">
+      {rows.map((p) => (
+        <li key={p.id} data-testid="leisure-play">
+          <span className="cn-muted cn-small">{playTime(p.playedAt, withDay)}</span>{' '}
+          <strong>{p.title}</strong><span className="cn-muted"> — {p.artist}</span>
+          <span className="cn-chip">{DEVICE[p.source] || p.source}</span>
+          {p.rating && <span className={`cn-chip${p.rating === 'love' ? ' cn-chip--love' : ''}`}>{RATING_CHIP[p.rating]}</span>}
+          {withDay && p.keptBecause && p.keptBecause.length > 0 && <span className="cn-muted cn-small"> · kept because {p.keptBecause.map((k) => KEPT_BY[k] || k).join(', ')}</span>}
+          {act && (
+            <div className="cn-row-actions cn-rate" role="group" aria-label={`Rate ${p.title}`}>
+              {RATINGS.map((r) => (
+                <button key={r.id} type="button" disabled={busy} title={r.title} aria-pressed={p.rating === r.id}
+                  className={`cn-btn cn-btn--tiny cn-rate-btn${p.rating === r.id ? ' cn-rate-btn--on' : ''}${r.id === 'love' ? ' cn-rate-btn--love' : ''}`}
+                  onClick={() => act('/api/leisure/correct', { ref: p.ref, action: p.rating === r.id ? 'clear-preference' : r.action })}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+function Plays({ plays, act, busy }) {
+  if (!plays) return null;
+  const last = plays.last24h || [];
+  const kept = plays.kept || [];
+  return (
+    <Fold title="Played in the last 24 hours" meta={`${last.length}${kept.length ? ` · ${kept.length} kept` : ''}`}>
+      <div className="cn-group-why">{plays.rule} Rate something here to keep it.</div>
+      {last.length ? <PlayRows rows={last} act={act} busy={busy} /> : <div className="cn-group-why">Nothing played on the iPhone or the laptop in the last 24 hours.</div>}
+      {kept.length > 0 && <><h5>Kept because you rated them</h5><PlayRows rows={kept} act={act} busy={busy} withDay /></>}
+    </Fold>
   );
 }
 
@@ -249,7 +298,7 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
   const [adding, setAdding] = useState(false);
   if (!data) return null;
   const { now, comingUp = [], continue: cont = [], recentlyEnjoyed = [], hobbies = [], saved = [], quiet = [], listening = { artists: [], albums: [], tracks: [] },
-    household = [], preferences = { liked: [], disliked: [] }, profile = { interests: [] }, suggestions = [], discovery = null, sources = [] } = data;
+    household = [], preferences = { liked: [], disliked: [] }, profile = { interests: [] }, suggestions = [], discovery = null, sources = [], plays = null } = data;
   const h = leisureHeadline({ now, comingUp, cont });
   const tv = now && (now.tv || []).length > 0
     ? <>{now.tv.map((t) => `${t.name} is ${t.state}${t.title ? ` (${t.title})` : ''}`).join(' · ')} — household, not counted as yours.</>
@@ -311,8 +360,10 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
         </Fold>
       )}
 
-      <Fold title="What the phone has heard" meta={listening.since ? `since ${listening.since}` : 'nothing yet'}>
-        <div className="cn-group-why">Days each song, artist or album was playing on the iPhone Music app. What you <strong>love</strong> counts most when NEURO looks for new music; “just background” never counts. Hover a row for what was heard.</div>
+      <Plays plays={plays} act={act} busy={busy} />
+
+      <Fold title="What you've heard (iPhone and laptop)" meta={listening.since ? `since ${listening.since}` : 'nothing yet'}>
+        <div className="cn-group-why">Days each song, artist or album was playing on the iPhone Music app or the laptop. What you <strong>love</strong> counts most when NEURO looks for new music; “just background” never counts. Hover a row for what was heard.</div>
         <h5>Songs{listening.tracksSince && <span className="cn-muted cn-small"> · kept since {listening.tracksSince}</span>}</h5>
         <Listening rows={listening.tracks || []} act={act} busy={busy} />
         <h5>Artists</h5>

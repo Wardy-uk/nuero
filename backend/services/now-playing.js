@@ -43,6 +43,8 @@ function record(body = {}, { now = Date.now() } = {}) {
     at: new Date(at).toISOString(),
   };
   _recordForClient(item);
+  // The 24-hour play log (music-plays.js). Never allowed to fail the report.
+  try { const mp = require('./music-plays'); mp.record(item, sourceOf(item)); mp.prune({ now }); } catch (e) { console.warn('[MusicPlays] not logged:', e.message); }
   let held = null;
   try { held = JSON.parse(db.getState(KEY) || 'null'); } catch { held = null; }
   if (held && Date.parse(held.at) > at) return { ok: true, stored: false, reason: 'an equal or newer report is already held' };

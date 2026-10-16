@@ -592,6 +592,9 @@ test('Life → Leisure renders the live shape: playing, continue, listening as e
   assert.match(html, /heard on 2 days — not yet repeated over time/, 'a refused inference is shown with its reason');
   assert.match(html, /not enough to say/);
   assert.match(html, /Marillion/);
+  // 16 Oct 2026: the 24-hour play log renders, with the device and the rating buttons on each play.
+  assert.match(html, /Played in the last 24 hours/);
+  assert.match(html, /data-testid="leisure-play"[^]*?The Eyes Of Truth[^]*?iPhone[^]*?Just background<\/button>/);
   assert.match(html, /Podcasts &amp; audiobooks<\/strong>: (<!-- -->)?no source/);
   assert.ok(!/<svg|<canvas|<img|\bscore\s*[:=]?\s*\d|\d+\s*-?day streak|recommended for you/i.test(html), 'no art wall, charts, scores, streaks or feed');
 });

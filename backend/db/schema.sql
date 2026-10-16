@@ -3286,6 +3286,28 @@ CREATE TABLE IF NOT EXISTS leisure_observations (
   progress_json TEXT
 );
 
+-- A PLAY LOG, bounded by what Nick has said about it (16 Oct 2026). One row
+-- per track START (a re-report of the same track extends the row). Kept for
+-- 24 hours; after that a row survives only while its song, album or artist
+-- carries something Nick said (a rating, "more like this", "not mine").
+-- services/music-plays.js is the only writer.
+CREATE TABLE IF NOT EXISTS music_plays (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  source           TEXT NOT NULL,
+  app              TEXT,
+  title            TEXT NOT NULL,
+  artist           TEXT NOT NULL,
+  album            TEXT,
+  track_key        TEXT NOT NULL,
+  album_key        TEXT,
+  artist_key       TEXT NOT NULL,
+  played_at        TEXT NOT NULL,
+  last_reported_at TEXT NOT NULL,
+  UNIQUE (source, played_at, track_key)
+);
+CREATE INDEX IF NOT EXISTS idx_music_plays_played ON music_plays(played_at);
+CREATE INDEX IF NOT EXISTS idx_music_plays_source ON music_plays(source, played_at);
+
 -- ── Build 31: personal relationships & people context ─────────────────────
 -- Nick's decisions about IDENTITY that have nowhere to live in a People note:
 --   keep-separate    two notes a duplicate check flagged are two people

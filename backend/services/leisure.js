@@ -361,6 +361,8 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
       tracksSince: tracks.length ? tracks.reduce((m, o) => (o.firstSeen < m ? o.firstSeen : m), tracks[0].firstSeen) : null,
       since: observations.length ? observations.reduce((m, o) => (o.firstSeen < m ? o.firstSeen : m), observations[0].firstSeen) : null,
     },
+    // The 24-hour play log + plays kept because he rated them (music-plays.js).
+    plays: (() => { try { return require('./music-plays').list({ now: nowMs }); } catch (e) { gaps.push({ input: 'plays', why: e.message }); return null; } })(),
     household,
     preferences,
     profile: { known: !!profile.ok, interests: profile.ok ? M.profileInterests(profile.profile) : [], why: profile.ok ? null : profile.why },
@@ -463,6 +465,7 @@ async function refresh({ now = Date.now(), haStates } = {}) {
   const tv = states ? observeMediaPlayers(states, { now: nowMs }) : { seen: [], folded: 0 };
   const cutoff = M.addDays(localDay(nowMs), -PRUNE_AFTER_DAYS);
   const pruned = db.run('DELETE FROM leisure_observations WHERE last_seen < ?', [cutoff]);
+  try { require('./music-plays').prune({ now: nowMs }); } catch (e) { console.warn('[MusicPlays] prune failed:', e.message); }
 
   // Source transitions → Activity, on change only. The first run is a baseline.
   const v = read({ now: nowMs, haStates: states });
