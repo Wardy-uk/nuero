@@ -24,12 +24,12 @@ const router = express.Router();
 const deviceStatus = require('../services/device-status');
 const nativeEvents = require('../services/native-events');
 
-// POST /api/device/now-playing — what the iPhone's Music app is playing (Apple Music / library only; other apps are invisible to iOS apps). Keywords: now playing, music, track. Body: { state (playing|paused|stopped), title, artist, album, at, client }
+// POST /api/device/now-playing — what is playing: the iPhone's Music app (client omitted or the app name) or the laptop's Apple Music/Spotify via the desktop agent (client 'desktop'). Keywords: now playing, music, track. Body: { state (playing|paused|stopped), title, artist, album, app, at, client }
 router.post('/now-playing', (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { state, title, artist, album, at, client } = req.body;
-    const r = require('../services/now-playing').record({ state, title, artist, album, at, client });
+    const { state, title, artist, album, app, at, client } = req.body;
+    const r = require('../services/now-playing').record({ state, title, artist, album, app, at, client });
     if (!r.ok) return res.status(400).json(r);
     res.json(r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

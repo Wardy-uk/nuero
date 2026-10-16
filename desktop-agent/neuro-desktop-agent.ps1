@@ -230,6 +230,108 @@ function Invoke-DeskIntents($response) {
     if ($i -and $i.id -and $i.app) { Invoke-DeskIntent $i }
   }
 }
+# -- What is playing (16 Oct 2026) ---------------------------------------------
+#
+# Read from Windows' media controls (the API behind the volume flyout), which
+# a music app reports to on its own. Sent to NEURO's now-playing route - the
+# same one the iPhone uses - tagged client 'desktop'. Nick's call: the track is
+# his own data; the window-title rule above is about OTHER people's data, which
+# a song title does not carry.
+#
+# WARNING  ONLY THE MUSIC APPS BELOW. Chrome and Edge report to the same API,
+#   so reading every session would put YouTube videos and Teams calls into the
+#   leisure ledger as songs. An app not listed here is never reported.
+#
+# WARNING  Needs Windows PowerShell 5.1 (the scheduled task's powershell.exe).
+#   PowerShell 7 cannot load these Windows APIs, so there it reports nothing
+#   rather than failing the agent.
+$MusicApps = [ordered]@{
+  'AppleInc.AppleMusicWin' = 'Apple Music'
+  'SpotifyAB.SpotifyMusic' = 'Spotify'
+  'Spotify.exe'            = 'Spotify'
+}
+$MediaSeconds = 15
+# A playing track is re-reported this often even when nothing changed, because
+# NEURO treats a "playing" report older than 15 minutes as no longer current.
+$MediaHeartbeatSeconds = 600
+
+$script:MediaReady = $false
+$script:MediaAsTask = $null
+try {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  [void][Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+  $script:MediaAsTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+      $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    })[0]
+  $script:MediaReady = [bool]$script:MediaAsTask
+} catch {
+  Write-Warning "media controls unavailable ($($_.Exception.Message)) - music will not be reported"
+}
+
+function Wait-WinRt($op, [Type]$type) {
+  $task = $script:MediaAsTask.MakeGenericMethod($type).Invoke($null, @($op))
+  if (-not $task.Wait(5000)) { throw 'timed out' }
+  return $task.Result
+}
+
+function Get-NowPlaying {
+  # Returns the best music session as { state, title, artist, album, app }, or
+  # $null when no listed music app has a session. A PLAYING session beats a
+  # paused one, so a paused Spotify cannot hide a playing Apple Music.
+  if (-not $script:MediaReady) { return $null }
+  $mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]
+  $mgr = Wait-WinRt ($mgrType::RequestAsync()) $mgrType
+  $best = $null
+  foreach ($s in $mgr.GetSessions()) {
+    $aumid = [string]$s.SourceAppUserModelId
+    $name = $null
+    foreach ($k in $MusicApps.Keys) { if ($aumid.StartsWith($k, [StringComparison]::OrdinalIgnoreCase)) { $name = $MusicApps[$k]; break } }
+    if (-not $name) { continue }
+    $status = [string]$s.GetPlaybackInfo().PlaybackStatus
+    $state = switch ($status) { 'Playing' { 'playing' } 'Paused' { 'paused' } default { 'stopped' } }
+    $p = Wait-WinRt ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+    # Some players put "Artist — Album" in the artist field and leave the album
+    # empty; split it so the artist key NEURO folds on stays the artist.
+    $artist = [string]$p.Artist; $album = [string]$p.AlbumTitle
+    if (-not $album -and $artist -match '^(.+?) — (.+)$') { $artist = $Matches[1]; $album = $Matches[2] }
+    $item = [pscustomobject]@{ state = $state; title = [string]$p.Title; artist = $artist; album = $album; app = $name }
+    if (-not $best -or ($state -eq 'playing' -and $best.state -ne 'playing')) { $best = $item }
+  }
+  return $best
+}
+
+$script:LastMedia = $null       # the last report SENT, as a comparable string
+$script:LastMediaState = $null
+$script:LastMediaApp = $null
+$script:LastMediaAt = [datetime]::MinValue
+
+function Send-NowPlaying {
+  $np = $null
+  try { $np = Get-NowPlaying } catch { return }  # unreadable is not "stopped"
+  if (-not $np) {
+    # The app closed. Say "stopped" ONCE, and only if we last said it was
+    # playing - otherwise there is nothing on NEURO to correct.
+    if ($script:LastMediaState -ne 'playing') { return }
+    $np = [pscustomobject]@{ state = 'stopped'; title = $null; artist = $null; album = $null; app = $script:LastMediaApp }
+  }
+  $sig = "$($np.state)|$($np.title)|$($np.artist)|$($np.album)|$($np.app)"
+  $due = $np.state -eq 'playing' -and ((Get-Date) - $script:LastMediaAt).TotalSeconds -ge $MediaHeartbeatSeconds
+  if ($sig -eq $script:LastMedia -and -not $due) { return }
+  $body = @{
+    state = $np.state; title = $np.title; artist = $np.artist; album = $np.album; app = $np.app
+    client = 'desktop'; at = (Get-Date).ToUniversalTime().ToString('o')
+  } | ConvertTo-Json -Compress
+  try {
+    Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/device/now-playing" `
+      -Headers @{ 'X-NEURO-API-TOKEN' = $Token } `
+      -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
+    $script:LastMedia = $sig; $script:LastMediaState = $np.state; $script:LastMediaApp = $np.app; $script:LastMediaAt = Get-Date
+  } catch {
+    # Not remembered as sent, so the next pass tries again.
+    Write-Warning "now-playing post failed: $($_.Exception.Message)"
+  }
+}
+
 function Get-Sample {
   $locked = Test-SessionLocked
   [pscustomobject]@{
@@ -269,12 +371,22 @@ if ($Once) {
   # WARNING  -Once runs intents too. A check mode that skips the interesting
   #   half is a check that proves the boring half.
   Invoke-DeskIntents $result
+  $np = $null; try { $np = Get-NowPlaying } catch { }
+  Write-Host "Now playing: $(if ($np) { $np | ConvertTo-Json -Compress } else { 'no music app session' })"
+  Send-NowPlaying
   return
 }
 
 Write-Host "NEURO desktop agent -> $BaseUrl. Sampling every ${IntervalSeconds}s, checking for launches every ${ClaimSeconds}s. Ctrl+C to stop."
 $nextSample = [datetime]::MinValue
+$nextMedia = [datetime]::MinValue
 while ($true) {
+  # What is PLAYING, on a third clock. Never allowed to stop the loop.
+  if ((Get-Date) -ge $nextMedia) {
+    Send-NowPlaying
+    $nextMedia = (Get-Date).AddSeconds($MediaSeconds)
+  }
+
   # The SAMPLE, on its own slow clock.
   if ((Get-Date) -ge $nextSample) {
     try {

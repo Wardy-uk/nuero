@@ -6,6 +6,13 @@
  * podcasts and anything else are invisible to it, so "nothing playing" from
  * the phone means "nothing the Music app is playing", never "silence".
  *
+ * Since 16 Oct 2026 the LAPTOP reports too: the desktop agent reads Windows'
+ * media controls for Apple Music (and Spotify) and posts here with
+ * `client: 'desktop'`. One record still: the newest report wins, whichever
+ * device sent it. The latest report PER CLIENT is kept beside it so each
+ * source's health is judged on its own reports — laptop plays must not make
+ * the iPhone look alive.
+ *
  * One record, the newest, in agent_state: this is a right-now fact, not a
  * history. It is shown only while it is current — `playing`, and reported in
  * the last FRESH_MS — because the app reports when it wakes, not continuously,
@@ -15,6 +22,7 @@
 const db = require('../db/database');
 
 const KEY = 'now_playing';
+const BY_CLIENT_KEY = 'now_playing_by_client';
 const FRESH_MS = 15 * 60 * 1000;
 const STATES = Object.freeze(['playing', 'paused', 'stopped']);
 const clip = (v, n) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null);
@@ -34,6 +42,7 @@ function record(body = {}, { now = Date.now() } = {}) {
     client: clip(body.client, 20),
     at: new Date(at).toISOString(),
   };
+  _recordForClient(item);
   let held = null;
   try { held = JSON.parse(db.getState(KEY) || 'null'); } catch { held = null; }
   if (held && Date.parse(held.at) > at) return { ok: true, stored: false, reason: 'an equal or newer report is already held' };
@@ -54,8 +63,33 @@ function current({ now = Date.now() } = {}) {
   return { ...held, ageMinutes: Math.round(age / 60000) };
 }
 
+/** 'desktop' for the laptop agent; everything else is the phone (older iOS builds send no client). */
+function isDesktop(item) { return !!item && item.client === 'desktop'; }
+function sourceOf(item) { return isDesktop(item) ? 'desktop-music' : 'phone-music'; }
+
+function _byClient() {
+  try { const m = JSON.parse(db.getState(BY_CLIENT_KEY) || 'null'); return m && typeof m === 'object' ? m : {}; } catch { return null; }
+}
+function _recordForClient(item) {
+  const map = _byClient();
+  if (!map) return; // unreadable: never overwrite it with a one-entry map
+  const k = sourceOf(item);
+  const held = map[k];
+  if (held && Date.parse(held.at) > Date.parse(item.at)) return;
+  map[k] = item;
+  db.setState(BY_CLIENT_KEY, JSON.stringify(map));
+}
+
+/** The newest report from one source ('phone-music' | 'desktop-music'). Falls back to the shared record for reports stored before 16 Oct 2026. */
+function latestFrom(source) {
+  const map = _byClient() || {};
+  if (map[source]) return map[source];
+  const l = latest();
+  return l && sourceOf(l) === source ? l : null;
+}
+
 function latest() {
   try { return JSON.parse(db.getState(KEY) || 'null'); } catch { return null; }
 }
 
-module.exports = { KEY, FRESH_MS, STATES, record, current, latest };
+module.exports = { KEY, FRESH_MS, STATES, record, current, latest, latestFrom, sourceOf };

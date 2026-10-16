@@ -75,7 +75,7 @@ function observeNowPlaying(report, { now = Date.now() } = {}) {
     const held = db.get('SELECT * FROM leisure_observations WHERE obs_key = ?', [k.key]);
     if (!held) {
       db.run(`INSERT INTO leisure_observations (obs_key, source, kind, title, creator, ownership, days_json, first_seen, last_seen)
-              VALUES (?, 'phone-music', ?, ?, ?, 'nick-device', ?, ?, ?)`, [k.key, k.kind, k.title, k.creator, JSON.stringify([day]), day, day]);
+              VALUES (?, ?, ?, ?, ?, 'nick-device', ?, ?, ?)`, [k.key, require('./now-playing').sourceOf(report), k.kind, k.title, k.creator, JSON.stringify([day]), day, day]);
       folded += 1; continue;
     }
     const days = _json(held.days_json, []);
@@ -243,14 +243,20 @@ function _calendar(today, last) {
 }
 
 function _sources({ nowMs, np, haStates, projects, profile, cal }) {
-  const latest = np.latest;
+  const latest = np.phone;
   const ageH = latest && Number.isFinite(Date.parse(latest.at)) ? (nowMs - Date.parse(latest.at)) / 3600000 : null;
+  const dl = np.desktop;
+  const dAgeH = dl && Number.isFinite(Date.parse(dl.at)) ? (nowMs - Date.parse(dl.at)) / 3600000 : null;
+  const ago = (h) => (h < 1 ? `${Math.max(0, Math.round(h * 60))} min` : `${Math.round(h)}h`);
   const mp = (haStates || []).filter((e) => String(e.entity_id).startsWith('media_player.'));
   const withIdentity = mp.filter((e) => (M.tvObservation(e) || {}).identity);
   return [
     { id: 'phone-music', label: 'iPhone Music app', state: !latest ? 'never' : ageH <= PHONE_SEEING_HOURS ? 'seeing' : 'quiet',
       detail: !latest ? 'No now-playing report has ever arrived.'
         : `Last report ${ageH < 1 ? `${Math.max(0, Math.round(ageH * 60))} min` : `${Math.round(ageH)}h`} ago (${latest.state}). It reports only when the Music app plays, so quiet is normal — it cannot see Spotify, Podcasts or video.` },
+    { id: 'desktop-music', label: 'Laptop music (Apple Music / Spotify)', state: !dl ? 'never' : dAgeH <= PHONE_SEEING_HOURS ? 'seeing' : 'quiet',
+      detail: !dl ? 'The desktop agent has never reported a track.'
+        : `Last report ${ago(dAgeH)} ago (${dl.state}${dl.app ? `, ${dl.app}` : ''}). The desktop agent reads Windows' media controls while the laptop is on; browser audio is deliberately ignored.` },
     { id: 'tv-media', label: 'TV & speakers (Home Assistant)', state: haStates == null ? 'unreadable' : !mp.length ? 'none' : withIdentity.length ? 'identity' : 'context-only',
       detail: haStates == null ? 'Home Assistant states not read yet.'
         : `${mp.length} media player${mp.length === 1 ? '' : 's'}; ${withIdentity.length ? `${withIdentity.length} state episode identity` : 'none reports a title, series or episode'}. Shared screens are household context, never your taste.` },
@@ -272,8 +278,8 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
   let items = []; let observations = [];
   try { items = listItems(); } catch (e) { gaps.push({ input: 'items', why: e.message }); }
   try { observations = listObservations(); } catch (e) { gaps.push({ input: 'listening', why: e.message }); }
-  const np = { current: null, latest: null };
-  try { const n = require('./now-playing'); np.current = n.current({ now: nowMs }); np.latest = n.latest(); } catch (e) { gaps.push({ input: 'now-playing', why: e.message }); }
+  const np = { current: null, latest: null, phone: null, desktop: null };
+  try { const n = require('./now-playing'); np.current = n.current({ now: nowMs }); np.latest = n.latest(); np.phone = n.latestFrom('phone-music'); np.desktop = n.latestFrom('desktop-music'); } catch (e) { gaps.push({ input: 'now-playing', why: e.message }); }
   let states = haStates;
   if (states === undefined) { try { states = require('./ha').cachedStates(); } catch { states = null; } }
   const projects = _projects(items, nowMs);
@@ -337,8 +343,8 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
     ok: true, contract: CONTRACT, asOf: _iso(nowMs), today,
     now: {
       // A phone clock a little ahead makes the age negative; it is "just now", never "-1 min".
-      playing: np.current ? { title: np.current.title, artist: np.current.artist, album: np.current.album, app: np.current.app, source: 'phone-music', ageMinutes: Math.max(0, np.current.ageMinutes), ownership: 'nick-device' } : null,
-      lastReport: np.latest ? { state: np.latest.state, at: np.latest.at, source: 'phone-music' } : null,
+      playing: np.current ? { title: np.current.title, artist: np.current.artist, album: np.current.album, app: np.current.app, source: require('./now-playing').sourceOf(np.current), ageMinutes: Math.max(0, np.current.ageMinutes), ownership: 'nick-device' } : null,
+      lastReport: np.latest ? { state: np.latest.state, at: np.latest.at, source: require('./now-playing').sourceOf(np.latest) } : null,
       tv,
     },
     comingUp,
@@ -410,7 +416,7 @@ function nowBlock({ now = Date.now() } = {}) {
   const today = localDay(nowMs);
   const tomorrow = M.addDays(today, 1);
   let playing = null;
-  try { const c = require('./now-playing').current({ now: nowMs }); if (c) playing = { title: c.title, artist: c.artist, source: 'phone-music' }; } catch { playing = null; }
+  try { const c = require('./now-playing').current({ now: nowMs }); if (c) playing = { title: c.title, artist: c.artist, source: require('./now-playing').sourceOf(c) }; } catch { playing = null; }
   const soon = [];
   try {
     for (const e of require('./future-radar').calendarEvents(today, tomorrow)) {

@@ -473,7 +473,7 @@ test('profile interests are the profile\'s own lines, verbatim — never turned 
 test('sources stay separate, and the unavailable ones say why', () => {
   const r = leisure.read({ now: NOW, haStates: [SKY, LIVING, BEDROOM] });
   const by = Object.fromEntries(r.sources.map((s) => [s.id, s]));
-  assert.deepEqual(Object.keys(by).sort(), ['apple-music-library', 'calendar', 'games', 'hobby-projects', 'phone-music', 'podcasts-audiobooks', 'profile', 'tv-media']);
+  assert.deepEqual(Object.keys(by).sort(), ['apple-music-library', 'calendar', 'desktop-music', 'games', 'hobby-projects', 'phone-music', 'podcasts-audiobooks', 'profile', 'tv-media']);
   assert.equal(by['tv-media'].state, 'context-only');
   assert.match(by['tv-media'].detail, /none reports a title, series or episode/);
   assert.equal(by.games.state, 'unavailable');
