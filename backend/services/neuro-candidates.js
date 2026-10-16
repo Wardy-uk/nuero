@@ -236,7 +236,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     const notGoing = isMeeting && !running && meetingKey
       ? [{ say: 'I’m not going', intent: { kind: 'meeting', action: 'not-attending', key: meetingKey } }] : [];
     candidates.push({
-      kind: isMeeting ? 'meeting' : 'protected-time', id: `${isMeeting ? 'meeting' : 'protected'}:${start}:${subject}`, eventId: e.eventId || null, meetingKey, title: subject || (isMeeting ? 'Meeting' : 'Protected time'),
+      kind: isMeeting ? 'meeting' : 'protected-time', id: `${isMeeting ? 'meeting' : 'protected'}:${start}:${subject}`, eventId: e.eventId || null, meetingKey, join: isMeeting && e.join ? e.join : null, title: subject || (isMeeting ? 'Meeting' : 'Protected time'),
       time: { start, end, startAt: e.startAt || null, endAt: e.endAt || null },
       facts: { running, othersAttending: e.attendeesOther === true ? true : e.attendeesOther === false ? false : null, showAs: e.showAs || null },
       sphere: e.sphere || sphere(null),
@@ -358,6 +358,17 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
       sphere: sphere('family', 'personal-date', 'a personal date Nick declared'), actions: [], provenance: { source: 'personal-dates', readAt }, known: true });
   }
 
+  // In focus (16 Oct 2026): the item Nick started a focus session on from outside a block
+  // ("Do now"). A FACT — NEURO's live session — matched by the session's task id, or for
+  // an attention card by the exact title the session was started with. A session on a
+  // block's task is the block's (above), never this.
+  const blockOwnsSession = candidates.some((c) => c.kind === 'block' && c.facts.session);
+  if (session && LIVE_SESSION.has(session.status) && !blockOwnsSession) {
+    const hit = candidates.find((c) => (c.kind === 'commitment' || c.kind === 'home') && session.taskId != null && Number(c.taskId) === Number(session.taskId))
+      || candidates.find((c) => c.kind === 'attention-item' && typeof session.text === 'string' && c.title === session.text);
+    if (hit) hit.facts.inFocus = sessionFacts(session);
+  }
+
   // Hand-off fields (structured intent + exact links + explicit gaps) — additive
   // v2 data, NEURO facts only. SAiM's resolver recommends; NEURO never does.
   // Display fields (C5): what a screen may show — safe words, never ids, ISO times or internal types.
@@ -466,7 +477,7 @@ function gather({ now = Date.now() } = {}) {
     const sc = require('./source-classification');
     const byKey = sc.classificationMap('calendar');
     const key = dayKey(now);
-    const rows = db.all(`SELECT event_id, source, subject, start_time, end_time, is_all_day, show_as, attendees_other
+    const rows = db.all(`SELECT event_id, source, subject, start_time, end_time, is_all_day, show_as, attendees_other, join_url, join_provider
       FROM calendar_cache WHERE substr(start_time,1,10) = ? ORDER BY start_time`, [key]);
     const seen = new Set();
     out.facts.calendar = [];
@@ -498,7 +509,9 @@ function gather({ now = Date.now() } = {}) {
       const startAt = new Date(String(r.start_time).slice(0, 19)).toISOString();
       const endAt = new Date(String(r.end_time).slice(0, 19)).toISOString();
       out.facts.calendar.push({ eventId: r.event_id, source: r.source, subject: r.subject, start: r.start_time, end: r.end_time, startAt, endAt,
-        allDay: r.is_all_day === 1, showAs: r.show_as || null, attendeesOther: r.attendees_other === 1 ? true : r.attendees_other === 0 ? false : null, sphere: sp });
+        allDay: r.is_all_day === 1, showAs: r.show_as || null, attendeesOther: r.attendees_other === 1 ? true : r.attendees_other === 0 ? false : null, sphere: sp,
+        // The calendar's own join link (Graph's structured onlineMeeting fields), re-checked here.
+        join: require('../../shared/meeting-join.cjs').joinFrom({ joinUrl: r.join_url, onlineMeetingProvider: null }) ? { url: r.join_url, provider: r.join_provider || null } : null });
     }
     out.facts.calendarKnown = true;
   } catch (e) { gaps.push({ input: 'calendar', why: e.message }); }

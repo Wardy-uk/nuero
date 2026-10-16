@@ -28,6 +28,7 @@
  */
 
 const LINKS = require('../../shared/neuro-links.cjs');
+const JOIN = require('../../shared/meeting-join.cjs');
 
 const neuro = (view) => `neuro:?view=${view}`;
 /** An exact-item link target, or null when the id is not a valid one for the kind. */
@@ -43,9 +44,9 @@ const NO_TASK_ACTIVITY = 'NEURO holds no structured activity for a task (no fiel
 const NO_TASK_LINK = 'the card carries no NEURO task id to link to';
 const NO_BLOCK_TASK = 'a block of several tasks (or none) has no single task record to link to';
 const NO_ACTION_LINK = 'the approval carries no valid action id';
-const NO_JOIN = 'the diary cache keeps no meeting join link';
+const NO_JOIN = 'the calendar gives no online-meeting join link for this one';
 const NO_PREP = 'the meeting carries no diary event id to open its prep at';
-const NO_PROVIDER = 'the diary cache doesn’t record which meeting app hosts it';
+const NO_PROVIDER = 'the calendar doesn’t say which meeting app hosts it';
 
 /** Jira's own page for a ticket, from the configured base and a STRUCTURED key — never a parsed title. */
 function jiraBrowse(jiraBase, key, given) {
@@ -86,9 +87,17 @@ const taskStep = (taskId, noLinkWhy, act = null, jira = null) => {
   };
 };
 /** A meeting: prep at the exact diary event when NEURO holds its id. */
-const meetingStep = (eventId) => {
+const meetingStep = (eventId, join = null) => {
   const prep = exact('prep', 'meeting-prep', eventId, 'Meeting prep');
-  return { handoffIntent: { kind: 'meeting', provider: null }, targets: prep ? [prep] : [], handoffGaps: [gap('join', NO_JOIN), ...(prep ? [] : [gap('prep', NO_PREP)]), gap('provider', NO_PROVIDER)] };
+  // The join link the calendar sync kept (Graph's onlineMeeting, shared/meeting-join) — structured, never from wording.
+  const j = join && typeof join.url === 'string' && /^https:\/\//.test(join.url) ? join : null;
+  const provider = j && j.provider ? j.provider : null;
+  const joinT = j ? { role: 'join', href: j.url, ...(provider && JOIN.PROVIDER_LABEL[provider] ? { label: JOIN.PROVIDER_LABEL[provider], provider } : {}) } : null;
+  return {
+    handoffIntent: { kind: 'meeting', provider },
+    targets: [joinT, prep].filter(Boolean),
+    handoffGaps: [...(joinT ? [] : [gap('join', NO_JOIN)]), ...(prep ? [] : [gap('prep', NO_PREP)]), ...(provider ? [] : [gap('provider', NO_PROVIDER)])],
+  };
 };
 
 /**
@@ -110,7 +119,7 @@ function handoffFor(c, meta = null, { jiraBase = null, taskActivity = null } = {
     case 'commitment':
       return taskStep(c.taskId, NO_TASK_LINK, actFor(c.taskId), jiraTarget(c.facts && c.facts.jira, jiraBase));
     case 'meeting':
-      return meetingStep(c.eventId);
+      return meetingStep(c.eventId, c.join || null);
     case 'protected-time':
       return { handoffIntent: null, targets: [], handoffGaps: [gap('intent', 'a solo diary entry states no purpose — no task block says what it’s for')] };
     case 'approval': {

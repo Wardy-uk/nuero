@@ -407,6 +407,17 @@ async function init() {
       db.exec('ALTER TABLE calendar_cache ADD COLUMN is_organizer INTEGER');
       console.log('[DB] calendar_cache.is_organizer added');
     }
+    // Migration (16 Oct 2026): an online meeting's join link + provider, from Graph's
+    // structured fields (shared/meeting-join). NULL = not an online meeting, or not known.
+    // Filled by the next sync (replace-by-window).
+    if (calColumns.length && !calColumns.includes('join_url')) {
+      db.exec('ALTER TABLE calendar_cache ADD COLUMN join_url TEXT');
+      console.log('[DB] calendar_cache.join_url added');
+    }
+    if (calColumns.length && !calColumns.includes('join_provider')) {
+      db.exec('ALTER TABLE calendar_cache ADD COLUMN join_provider TEXT');
+      console.log('[DB] calendar_cache.join_provider added');
+    }
     // ⚠ OUTSIDE the guard above, and NOT in schema.sql. Two reasons, and both
     // have teeth:
     //
@@ -1006,8 +1017,8 @@ function upsertCalendarEvent(event) {
     : null;
   run(`
     INSERT OR REPLACE INTO calendar_cache
-      (event_id, subject, start_time, end_time, is_all_day, location, organizer, show_as, attendees_other, source, is_organizer, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (event_id, subject, start_time, end_time, is_all_day, location, organizer, show_as, attendees_other, source, is_organizer, join_url, join_provider, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `, [
     event.id, event.subject, event.start, event.end,
     event.isAllDay ? 1 : 0, event.location, event.organizer, event.showAs,
@@ -1017,6 +1028,9 @@ function upsertCalendarEvent(event) {
     event.source || 'graph',
     // Build 16I: Graph's isOrganizer, three-valued — see heldDespiteFree.
     typeof event.isOrganizer === 'boolean' ? (event.isOrganizer ? 1 : 0) : null,
+    // Only an https join URL is stored; anything else is not a link (shared/meeting-join).
+    typeof event.joinUrl === 'string' && /^https:\/\//.test(event.joinUrl) ? event.joinUrl : null,
+    typeof event.joinProvider === 'string' && event.joinProvider ? event.joinProvider : null,
   ]);
 }
 

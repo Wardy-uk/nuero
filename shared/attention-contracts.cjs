@@ -119,7 +119,7 @@ function suggestionsProblem(list, at) {
 /** Every lead rule saim-attention-v2 may name. */
 const ATTENTION_RULES = Object.freeze([
   'S1 blind', 'S2 critical risk', 'S3 meeting', 'S2u unclassified potential risk', 'S3a imminent meeting transition',
-  'S4 deadline inside the block', 'S4r short ritual due now', 'S5 protected block', 'S6 judgement waiting', 'S7 top item', 'S8 protected diary time',
+  'S4 deadline inside the block', 'S4r short ritual due now', 'S5 protected block', 'S5f chosen focus', 'S6 judgement waiting', 'S7 top item', 'S8 protected diary time',
   'S9 block about to start', 'S10 ritual', 'S11 nothing',
 ]);
 

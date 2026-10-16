@@ -91,6 +91,10 @@ CREATE TABLE IF NOT EXISTS calendar_cache (
   -- context-state.heldDespiteFree — a `free` entry Nick organises with other
   -- people in it is still a meeting.
   is_organizer INTEGER,
+  -- An online meeting's join link and provider, from Graph's structured fields
+  -- (shared/meeting-join). NULL = not an online meeting, or not known.
+  join_url TEXT,
+  join_provider TEXT,
   -- Which calendar this row came from: 'graph' (work, via MSAL or the NOVA
   -- bridge), 'apple' (pushed from the phone by Scriptable), 'ics'.
   --

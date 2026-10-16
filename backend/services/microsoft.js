@@ -456,7 +456,7 @@ async function fetchCalendarEvents(startDate, endDate) {
       // local, which is what "events on the 14th" is supposed to mean.
       // Paged — see graphFetchAll. $top is the PAGE size now, not the answer.
       const data = await graphFetchAll(
-        `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=100&$orderby=start/dateTime&$select=id,subject,start,end,location,isAllDay,showAs,isCancelled,attendees,organizer,isOrganizer,responseStatus,type,seriesMasterId`,
+        `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=100&$orderby=start/dateTime&$select=id,subject,start,end,location,isAllDay,showAs,isCancelled,attendees,organizer,isOrganizer,responseStatus,type,seriesMasterId,isOnlineMeeting,onlineMeetingProvider,onlineMeeting`,
         token,
         { Prefer: `outlook.timezone="${EVENT_TIMEZONE}"` }
       );
@@ -501,6 +501,12 @@ async function fetchCalendarEvents(startDate, endDate) {
             // 'singleInstance' | 'occurrence' | 'exception' | 'seriesMaster'
             type: event.type || null,
             seriesMasterId: event.seriesMasterId || null,
+            // The online meeting's own join link and provider (16 Oct 2026), from Graph's
+            // structured fields only — shared/meeting-join. Null when it isn't one.
+            ...(() => {
+              const j = require('../../shared/meeting-join.cjs').joinFrom({ isOnlineMeeting: event.isOnlineMeeting, joinUrl: event.onlineMeeting?.joinUrl, onlineMeetingProvider: event.onlineMeetingProvider });
+              return { joinUrl: j ? j.url : null, joinProvider: j ? j.provider : null };
+            })(),
           };
         });
         if (data.truncated) mapped.truncated = true;
