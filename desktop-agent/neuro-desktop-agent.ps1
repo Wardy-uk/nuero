@@ -290,10 +290,13 @@ function Get-NowPlaying {
     $status = [string]$s.GetPlaybackInfo().PlaybackStatus
     $state = switch ($status) { 'Playing' { 'playing' } 'Paused' { 'paused' } default { 'stopped' } }
     $p = Wait-WinRt ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
-    # Some players put "Artist — Album" in the artist field and leave the album
-    # empty; split it so the artist key NEURO folds on stays the artist.
+    # Apple Music puts "Artist — Album" in the artist field and leaves the
+    # album empty; split it so the artist key NEURO folds on stays the artist.
     $artist = [string]$p.Artist; $album = [string]$p.AlbumTitle
-    if (-not $album -and $artist -match '^(.+?) — (.+)$') { $artist = $Matches[1]; $album = $Matches[2] }
+    # WARNING  [char]0x2014, NOT '—' in the pattern - verified on this machine
+    #   that Windows PowerShell's -match does not match the escape. Apple Music
+    #   for Windows sends exactly this shape ("AaRON — Blouson Noir ... - Single").
+    if (-not $album -and $artist -match ('^(.+?) ' + [char]0x2014 + ' (.+)$')) { $artist = $Matches[1]; $album = $Matches[2] }
     $item = [pscustomobject]@{ state = $state; title = [string]$p.Title; artist = $artist; album = $album; app = $name }
     if (-not $best -or ($state -eq 'playing' -and $best.state -ne 'playing')) { $best = $item }
   }
