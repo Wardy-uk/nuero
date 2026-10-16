@@ -314,6 +314,12 @@ function Send-NowPlaying {
     if ($script:LastMediaState -ne 'playing') { return }
     $np = [pscustomobject]@{ state = 'stopped'; title = $null; artist = $null; album = $null; app = $script:LastMediaApp }
   }
+  # WARNING  A PAUSED OR IDLE LAPTOP SAYS NOTHING unless it is correcting its
+  #   own "playing". NEURO keeps ONE now-playing record and the newest report
+  #   wins, so an idle Apple Music window posting "stopped" every time the
+  #   agent starts would hide a track the PHONE is playing. Found live on the
+  #   first run, 16 Oct 2026.
+  if ($np.state -ne 'playing' -and $script:LastMediaState -ne 'playing') { return }
   $sig = "$($np.state)|$($np.title)|$($np.artist)|$($np.album)|$($np.app)"
   $due = $np.state -eq 'playing' -and ((Get-Date) - $script:LastMediaAt).TotalSeconds -ge $MediaHeartbeatSeconds
   if ($sig -eq $script:LastMedia -and -not $due) { return }
