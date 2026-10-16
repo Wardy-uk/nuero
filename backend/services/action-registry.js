@@ -123,7 +123,8 @@ const ACTION_TYPES = Object.freeze({
     maxRecipients: 25,
     targetIsRecipient: false,
     cc: true,
-    attachments: false,
+    // 16 Oct 2026: Nick's own files (mail-attachments.js); payloadHash binds them.
+    attachments: true,
     sendMode: 'reply',
     bodyFormat: 'text',
     // 12 Oct 2026: a reply goes from the mailbox the email arrived in. Gmail is
@@ -156,7 +157,7 @@ const ACTION_TYPES = Object.freeze({
     maxRecipients: 25,
     targetIsRecipient: false,
     cc: true,
-    attachments: false,
+    attachments: true,
     sendMode: 'new-message',
     bodyFormat: 'text',
     personalMailboxes: Object.freeze(['nick', 'contact', 'gmail']),
@@ -487,6 +488,11 @@ function payloadHash({ actionType, version, commitmentId, target, draft }) {
     cc: ((draft && draft.cc) || []).map((r) => String((r && r.email) || '').toLowerCase()),
     subject: (draft && draft.subject) || '',
     body: (draft && draft.body) || '',
+    // 16 Oct 2026: the exact files, by content hash. Omitted when there are
+    // none, so every payload without attachments hashes exactly as before.
+    attachments: draft && Array.isArray(draft.attachments) && draft.attachments.length
+      ? draft.attachments.map((f) => ({ sha256: f.sha256, name: f.name, contentType: f.contentType, size: f.size }))
+      : undefined,
     // Omitted entirely when null, so a chase_commitment hashes exactly as it
     // did in Builds 6–7 (canonical() drops undefined keys).
     bind: bind || undefined,

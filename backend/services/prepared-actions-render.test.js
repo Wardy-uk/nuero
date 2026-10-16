@@ -145,3 +145,17 @@ test('Build 7: the People board shows the SAME queue filtered to chases — no s
   assert.doesNotMatch(wo, /\/api\/actions|\/chase\/\$\{[^}]+\}\/(recipient|channel)|QueuedChase/);
   assert.match(wo, /\/api\/waiting-on\/\$\{encodeURIComponent\(item\.key\)\}\/\$\{path\}/, 'positive control: the Chase button still posts to the waiting-on route');
 });
+
+test('16 Oct 2026: an email with attachments lists every file by name and size on the card Nick approves', () => {
+  const html = render({ actionType: 'compose_email', target: { kind: 'compose', mailbox: 'work' },
+    draft: { ...BASE.draft, attachments: [
+      { sha256: 'a'.repeat(64), name: 'Quote Q-1042.pdf', contentType: 'application/pdf', size: 245760 },
+      { sha256: 'b'.repeat(64), name: 'site-photo.jpg', contentType: 'image/jpeg', size: 3355443 },
+    ] } });
+  assert.match(html, /data-testid="attachment-list"/);
+  assert.match(html, /Quote Q-1042\.pdf/);
+  assert.match(html, /240 KB/);
+  assert.match(html, /site-photo\.jpg/);
+  assert.match(html, /3\.2 MB/);
+  assert.doesNotMatch(render(), /attachment-list/, 'no list when nothing is attached');
+});

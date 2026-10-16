@@ -1,0 +1,19 @@
+.att-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.att-add {
+  background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 5px 10px; font-size: 13px; cursor: pointer;
+}
+.att-add:hover:not(:disabled) { border-color: var(--accent-dim); }
+.att-add:disabled { opacity: 0.5; cursor: default; }
+.att-total { color: var(--text-muted); font-size: 12px; }
+.att-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 4px; }
+.att-item {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 8px; font-size: 13px;
+}
+.att-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.att-size { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
+.att-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 2px; }
+.att-remove:hover { color: var(--danger); }
+.att-error { width: 100%; color: var(--warning); font-size: 12px; }
+.att-list-readonly { margin: 6px 0; }

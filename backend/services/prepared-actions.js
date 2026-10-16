@@ -844,6 +844,20 @@ const REPLY_DEPS = {
   }),
 };
 
+// 16 Oct 2026: Nick's attached files. Checked before anything is prepared and
+// stored only once the rest of the draft has passed, so a refusal leaves
+// nothing behind. The draft carries references; the bytes stay in
+// mail-attachments (content-addressed), and payloadHash binds the references.
+function _checkAttachments(actionType, uploads) {
+  const v = require('./mail-attachments').validate(uploads);
+  if (!v.ok) return { ok: false, code: 400, error: v.error };
+  if (v.files.length && !registry.policyFor(actionType).attachments) return { ok: false, code: 400, error: 'this kind of email cannot carry attachments' };
+  return v;
+}
+function _storeAttachments(checked, nowMs) {
+  return checked.files.length ? require('./mail-attachments').store(checked.files, { now: nowMs }) : [];
+}
+
 /**
  * 8C — prepare a reply, in the original thread, with EXACT recipients.
  *
@@ -860,7 +874,7 @@ const REPLY_DEPS = {
  * approval REPLACES it (a new version); one already approved or sending is
  * refused — a second reply is worse than none.
  */
-async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = null, origin = 'composer', now = Date.now(), deps = {} } = {}) {
+async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = null, attachments = null, origin = 'composer', now = Date.now(), deps = {} } = {}) {
   const d = { ...REPLY_DEPS, ...deps };
   // Which mailbox the email arrived in decides where it is read AND (via
   // target.mailbox, bound into the approval) which mailbox the reply goes from.
@@ -875,6 +889,8 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
   if (!text) return { ok: false, code: 400, error: 'the reply is empty' };
   if (text.length > MAX_BODY) return { ok: false, code: 400, error: `the reply must be at most ${MAX_BODY} characters` };
   if (!['reply', 'replyAll'].includes(mode)) return { ok: false, code: 400, error: 'mode must be reply or replyAll' };
+  const files = _checkAttachments('reply_email', attachments);
+  if (!files.ok) return files;
 
   const orig = await mail.readMessage(emailId);
   if (!orig || !orig.ok) return { ok: false, code: 503, error: 'could not read the email being replied to — nothing was prepared (try again)' };
@@ -907,6 +923,7 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
     supersede = { ...live, note: 'replaced by a newer reply to the same email' };
   }
   const subject = /^\s*re\s*:/i.test(orig.subject || '') ? orig.subject : `RE: ${orig.subject || ''}`.trim();
+  const refs = _storeAttachments(files, nowMs);
   const target = {
     kind: 'email-thread', emailId, conversationId: orig.conversationId, internetMessageId: orig.internetMessageId,
     from: lcs(orig.from), fromName: orig.fromName || null, originalSubject: orig.subject || '', receivedAt: orig.receivedAt || null,
@@ -918,6 +935,7 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
     channel: 'email', voice: 'nick', mode,
     generatedBy: origin === 'composer' ? 'typed by Nick in the Inbox composer' : 'model draft (draft_reply), shown before approval',
     to: toList, cc: ccList, subject, body: text, placeholders: _placeholders(text),
+    ...(refs.length ? { attachments: refs } : {}),
   };
   const evidence = {
     origin,
@@ -946,7 +964,7 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
  * never sent here; it goes on his click (origin 'composer') through the same
  * executor, ledger and Sent verification as everything else.
  */
-function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = '', origin = 'composer', now = Date.now() } = {}) {
+function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = '', attachments = null, origin = 'composer', now = Date.now() } = {}) {
   const nowMs = msOf(now);
   const policy = registry.policyFor('compose_email');
   const mailbox = String(from || 'work');
@@ -962,10 +980,13 @@ function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = 
   if (!subj) return { ok: false, code: 400, error: 'add a subject' };
   if (!text) return { ok: false, code: 400, error: 'the email is empty' };
   if (text.length > MAX_BODY) return { ok: false, code: 400, error: `the email must be at most ${MAX_BODY} characters` };
+  const files = _checkAttachments('compose_email', attachments);
+  if (!files.ok) return files;
+  const refs = _storeAttachments(files, nowMs);
   const id = crypto.randomBytes(8).toString('hex');
   const subjectKey = `compose:${id}`;
   const target = { kind: 'compose', mailbox };
-  const draft = { channel: 'email', voice: 'nick', generatedBy: 'typed by Nick in Personal inbox → Compose', to: toList, cc: ccList, subject: subj, body: text, placeholders: _placeholders(text) };
+  const draft = { channel: 'email', voice: 'nick', generatedBy: 'typed by Nick in Personal inbox → Compose', to: toList, cc: ccList, subject: subj, body: text, placeholders: _placeholders(text), ...(refs.length ? { attachments: refs } : {}) };
   const evidence = { origin, from: mailbox };
   const action = _insertPrepared({
     actionType: 'compose_email', subjectKey, findingId: subjectKey, subjectRef: subjectKey, target, draft, evidence, origin,

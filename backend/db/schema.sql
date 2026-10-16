@@ -3535,3 +3535,13 @@ CREATE TABLE IF NOT EXISTS task_activity_observations (
 );
 CREATE INDEX IF NOT EXISTS idx_task_activity_obs_task ON task_activity_observations(task_id, status);
 
+
+-- 16 Oct 2026: files attached to an email NEURO sends (mail-attachments.js).
+-- Content-addressed; the prepared action's draft holds only the hash, name,
+-- type and size, and payloadHash binds that list.
+CREATE TABLE IF NOT EXISTS mail_attachments (
+  sha256      TEXT PRIMARY KEY,
+  size        INTEGER NOT NULL,
+  content     BLOB NOT NULL,
+  created_at  TEXT NOT NULL
+);

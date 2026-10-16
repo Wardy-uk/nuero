@@ -246,7 +246,69 @@ async function signedInAddress() {
   try { return await require('./microsoft').getSignedInAddress(); } catch { return null; }
 }
 
+// ── attachments (16 Oct 2026) ───────────────────────────────────────────────
+//
+// Added to an EXISTING draft, one file at a time, so new messages and replies
+// take the same path. Graph takes a file inline up to ~3 MB; anything larger
+// goes through an upload session (PUT in chunks to a pre-authorised URL, which
+// must NOT carry the bearer token). Nothing is sent by any of this.
+
+const INLINE_MAX = 3 * 1024 * 1024;
+const CHUNK = 10 * 320 * 1024; // Graph wants multiples of 320 KiB, under 4 MB
+
+async function _uploadLarge(draftId, f) {
+  const s = await _req('POST', `/me/messages/${encodeURIComponent(draftId)}/attachments/createUploadSession`, {
+    AttachmentItem: { attachmentType: 'file', name: f.name, size: f.content.length, contentType: f.contentType || 'application/octet-stream' },
+  });
+  if (!(s.status >= 200 && s.status < 300) || !s.data || !s.data.uploadUrl) return { ok: false, status: s.status, category: s.category || 'unknown' };
+  for (let start = 0; start < f.content.length; start += CHUNK) {
+    const end = Math.min(start + CHUNK, f.content.length);
+    let res;
+    try {
+      res = await fetch(s.data.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream', 'Content-Range': `bytes ${start}-${end - 1}/${f.content.length}` },
+        body: f.content.subarray(start, end),
+        signal: AbortSignal.timeout(60000),
+      });
+    } catch (e) {
+      return { ok: false, status: null, category: e && e.name === 'TimeoutError' ? 'timeout' : 'network' };
+    }
+    if (!(res.status >= 200 && res.status < 300)) return { ok: false, status: res.status, category: _category(res.status) || 'unknown' };
+  }
+  return { ok: true };
+}
+
+/** files: [{ name, contentType, content: Buffer }]. Returns { ok } or { ok:false, category, status }. */
+async function addAttachments(draftId, files) {
+  for (const f of files || []) {
+    if (f.content.length > INLINE_MAX) {
+      const r = await _uploadLarge(draftId, f);
+      if (!r.ok) return r;
+      continue;
+    }
+    const r = await _req('POST', `/me/messages/${encodeURIComponent(draftId)}/attachments`, {
+      '@odata.type': '#microsoft.graph.fileAttachment', name: f.name, contentType: f.contentType || 'application/octet-stream',
+      contentBytes: f.content.toString('base64'),
+    });
+    if (!(r.status >= 200 && r.status < 300)) return { ok: false, status: r.status, category: r.category || 'unknown' };
+  }
+  return { ok: true };
+}
+
+/**
+ * What the draft now carries, read back. Inline parts (a signature image, a
+ * picture quoted from the original) are not Nick's attachments and are left
+ * out. Returns { ok, names:[...] } or { ok:false }.
+ */
+async function listAttachments(draftId) {
+  const r = await _req('GET', `/me/messages/${encodeURIComponent(draftId)}/attachments?$select=name,isInline`);
+  if (!(r.status >= 200 && r.status < 300) || !r.data) return { ok: false, status: r.status, category: r.category || 'unknown' };
+  return { ok: true, names: (r.data.value || []).filter((a) => !a.isInline).map((a) => a.name || '') };
+}
+
 module.exports = {
+  addAttachments, listAttachments,
   createDraft, createReplyDraft, patchDraft, sendDraft, findSent, draftState, deleteDraft,
   readMessage, readEvent, sentToSince, sentInConversationSince, signedInAddress, DEFINITIVE_SEND_REFUSALS,
 };

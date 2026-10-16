@@ -202,6 +202,7 @@ function commonChecks({ action, policy, nowMs }) {
   if (cc.length && !policy.cc) return stop('cc-not-allowed', `nobody may be copied on ${action.actionType}`);
   if (cc.some((r) => !EMAIL_RE.test(lc(r && r.email)))) return stop('recipient-mismatch', 'a copied address is not valid');
   if (Array.isArray(draft.bcc) && draft.bcc.length) return stop('bcc-not-allowed', 'nothing NEURO sends has a blind copy');
+  if (Array.isArray(draft.attachments) && draft.attachments.length && !policy.attachments) return stop('attachments-not-allowed', `${action.actionType} may not carry attachments`);
   if (registry.hasUnfilledPlaceholder(draft.body) || registry.hasUnfilledPlaceholder(draft.subject)) return stop('placeholder', 'the draft still carries a [placeholder]');
   if (policy.bodyFormat === 'html' && !String(draft.html || '').trim()) return stop('no-body', 'there is no frozen HTML to send');
   return { ok: true };
@@ -582,6 +583,15 @@ async function _mailExecutor(action, claim, d, clock) {
   const draft = action.draft || {};
   const wantTo = (draft.to || []).map((r) => lc(r.email)).sort();
   const wantCc = (draft.cc || []).map((r) => lc(r.email)).sort();
+  // 16 Oct 2026: Nick's files, loaded and RE-HASHED before any draft exists —
+  // the approval bound these hashes, so a missing or altered file stops here.
+  const wantFiles = Array.isArray(draft.attachments) ? draft.attachments : [];
+  const files = [];
+  for (const ref of wantFiles) {
+    const content = require('./mail-attachments').load(ref);
+    if (!content) return failBeforeSend('attachment-missing', `the attached file "${ref.name}" is no longer held, or no longer matches what was approved`);
+    files.push({ name: ref.name, contentType: ref.contentType, sha256: ref.sha256, content });
+  }
   let dr;
   if (policy.sendMode === 'reply') {
     // Threaded under the source message; Graph's choice of addressees is then
@@ -615,6 +625,19 @@ async function _mailExecutor(action, claim, d, clock) {
     if (dr.id) _attemptSet(claim.attemptId, { draft_id: dr.id });
     try { if (dr.id) await mail.deleteDraft(dr.id); } catch { /* best effort */ }
     return failBeforeSend('no-handle', `${_via(mail)} returned no message id to verify against`);
+  }
+  // Attach, then READ BACK: the draft must hold exactly the approved files
+  // before it is sent, as with its recipients.
+  if (files.length) {
+    _attemptSet(claim.attemptId, { draft_id: dr.id });
+    const add = typeof mail.addAttachments === 'function' ? await mail.addAttachments(dr.id, files) : { ok: false, category: 'unsupported' };
+    const held = add.ok ? await mail.listAttachments(dr.id) : null;
+    const want = files.map((f) => f.name).sort().join('\u0000');
+    if (!add.ok || !held || !held.ok || (held.names || []).slice().sort().join('\u0000') !== want) {
+      try { await mail.deleteDraft(dr.id); } catch { /* best effort */ }
+      return failBeforeSend(add.ok ? 'attachment-mismatch' : (add.category || 'unknown'),
+        add.ok ? 'the draft did not hold exactly the approved attachments' : `${_via(mail)} would not take the attachments`, add.status || null);
+    }
   }
   // ⚠ The handle reaches the ledger BEFORE the send is requested. This is what
   // makes every later outcome verifiable, including this process dying mid-send.

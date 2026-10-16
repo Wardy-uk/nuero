@@ -73,6 +73,8 @@ function forMailbox(key, deps = {}) {
     },
     patchDraft: (id, fields) => adapter.patchDraft(id, fields),
     createDraft: (m) => adapter.createDraft(m),
+    addAttachments: (id, files) => adapter.addAttachments(id, files),
+    listAttachments: (id) => adapter.listAttachments(id),
     sendDraft: (id) => adapter.sendDraft(id),
     draftState: (id) => adapter.draftState(id),
     deleteDraft: (id) => adapter.deleteDraft(id),

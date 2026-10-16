@@ -145,26 +145,26 @@ router.get('/compose/options', (req, res) => {
   res.json({ ok: true, options, suggestion: suggestion ? { mailbox: suggestion.mailbox || null, ask: !!suggestion.ask, why: suggestion.why, recipients: (suggestion.recipients || []).map((r) => ({ address: r.address, sphere: r.sphere, why: r.why })) } : null });
 });
 
-// POST /api/personal-inbox/compose — prepare a NEW email from the chosen address (governed compose_email; nothing is sent here — it goes on Nick's click). Body: { from, to, cc, subject, body }
+// POST /api/personal-inbox/compose — prepare a NEW email from the chosen address (governed compose_email; nothing is sent here — it goes on Nick's click). Body: { from, to, cc, subject, body, attachments: [{ name, contentType, dataBase64 }] }
 router.post('/compose', (req, res) => {
   try {
     const b = req.body && typeof req.body === 'object' ? req.body : {};
-    const { from, to, cc, subject, body } = b;
-    const r = require('../services/prepared-actions').prepareCompose({ from, to, cc, subject, body, origin: 'composer' });
+    const { from, to, cc, subject, body, attachments } = b;
+    const r = require('../services/prepared-actions').prepareCompose({ from, to, cc, subject, body, attachments, origin: 'composer' });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
     res.json({ ok: true, prepared: true, action: r.action });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// POST /api/personal-inbox/message/:id/reply — prepare a reply from the SAME mailbox (governed reply_email; nothing is sent here). Body: { body, replyAll }
+// POST /api/personal-inbox/message/:id/reply — prepare a reply from the SAME mailbox (governed reply_email; nothing is sent here). Body: { body, replyAll, attachments }
 router.post('/message/:id/reply', async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const { replyAll } = body;
+    const { replyAll, attachments } = body;
     const text = String(body.body || '').trim();
     if (!text) return res.status(400).json({ ok: false, error: 'the reply is empty' });
     const r = await require('../services/prepared-actions').prepareReply({
-      emailId: req.params.id, body: text, mode: replyAll ? 'replyAll' : 'reply', origin: 'composer',
+      emailId: req.params.id, body: text, mode: replyAll ? 'replyAll' : 'reply', attachments, origin: 'composer',
     });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, action: r.action || null });
     res.json({ ok: true, prepared: true, action: r.action });
@@ -335,18 +335,18 @@ ${trimText(merged.body, 4000)}`;
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// POST /api/personal-inbox/triage/:id/reply — prepare a reply from the SAME personal mailbox with the recipients chosen on the card (governed reply_email; nothing is sent here — it goes on Nick's click). Nick only. Body: { body, to, cc }
+// POST /api/personal-inbox/triage/:id/reply — prepare a reply from the SAME personal mailbox with the recipients chosen on the card (governed reply_email; nothing is sent here — it goes on Nick's click). Nick only. Body: { body, to, cc, attachments }
 router.post('/triage/:id/reply', async (req, res) => {
   try {
     const id = req.params.id;
     if (!inTriage(id)) return res.status(400).json({ ok: false, error: 'replies from here go only from nick@, contact@ or Gmail' });
     const b = req.body && typeof req.body === 'object' ? req.body : {};
-    const { to, cc } = b;
+    const { to, cc, attachments } = b;
     const text = String(b.body || '').trim();
     if (!text) return res.status(400).json({ ok: false, error: 'the reply is empty' });
     if (Array.isArray(to) && to.length === 0) return res.status(400).json({ ok: false, error: 'add at least one recipient' });
     const r = await require('../services/prepared-actions').prepareReply({
-      emailId: id, body: text, mode: 'reply', to: Array.isArray(to) ? to : null, cc: Array.isArray(cc) ? cc : null, origin: 'composer',
+      emailId: id, body: text, mode: 'reply', to: Array.isArray(to) ? to : null, cc: Array.isArray(cc) ? cc : null, attachments, origin: 'composer',
     });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, action: r.action || null });
     res.json({ ok: true, prepared: true, action: r.action });

@@ -3,6 +3,7 @@ import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
 import GmailCleanup from './GmailCleanup';
 import EmailCard, { timeAgo } from './EmailCard';
+import AttachmentPicker from './AttachmentPicker';
 import './PersonalInboxPanel.css';
 
 /**
@@ -80,6 +81,7 @@ export function ComposeForm({ options, suggestion, onRecipients, onSend, onCance
   const [cc, setCc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState([]);
   const [touchedFrom, setTouchedFrom] = useState(false);
   useEffect(() => {
     if (!touchedFrom && suggestion && suggestion.mailbox && ready.some((o) => o.key === suggestion.mailbox)) setFrom(suggestion.mailbox);
@@ -101,10 +103,14 @@ export function ComposeForm({ options, suggestion, onRecipients, onSend, onCance
       <div className="pi-compose-row"><label htmlFor="pi-cc">Cc</label><input id="pi-cc" value={cc} onChange={(e) => setCc(e.target.value)} onBlur={() => onRecipients(splitAddrs(`${to},${cc}`))} placeholder="optional" /></div>
       <div className="pi-compose-row"><label htmlFor="pi-subject">Subject</label><input id="pi-subject" value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
       <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="Your email…" />
+      <AttachmentPicker files={attachments} onChange={setAttachments} disabled={busy} />
       <div className="pi-from-line" data-testid="pi-compose-from">Sends from <strong>{chosen ? chosen.address : from}</strong>{chosen ? ` (${chosen.via})` : ''}</div>
       <div className="pi-actions">
         <button type="button" className="pi-btn pi-btn-primary" disabled={busy || !splitAddrs(to).length || !subject.trim() || !body.trim()}
-          onClick={async () => { if (await onSend({ from, to: splitAddrs(to), cc: splitAddrs(cc), subject, body })) { setTo(''); setCc(''); setSubject(''); setBody(''); } }}>{busy ? 'Sending…' : 'Send'}</button>
+          onClick={async () => {
+            const files = attachments.map(({ name, contentType, dataBase64 }) => ({ name, contentType, dataBase64 }));
+            if (await onSend({ from, to: splitAddrs(to), cc: splitAddrs(cc), subject, body, attachments: files })) { setTo(''); setCc(''); setSubject(''); setBody(''); setAttachments([]); }
+          }}>{busy ? 'Sending…' : 'Send'}</button>
         <button type="button" className="pi-btn" disabled={busy} onClick={onCancel}>Close</button>
       </div>
       {outcome && <div className={`pi-outcome pi-outcome-${outcome.tone}`}>{outcome.text}</div>}

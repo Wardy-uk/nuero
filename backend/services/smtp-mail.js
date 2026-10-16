@@ -60,6 +60,21 @@ function forMailbox(key, deps = {}) {
     _db().run("UPDATE smtp_outbox SET state = 'sending', updated_at = ? WHERE id = ?", [_now(), id]);
     const message = { ...JSON.parse(row.message_json), messageId: row.message_id };
     if (message.date) message.date = new Date(message.date);
+    // Nick's files are held by reference (mail-attachments) and resolved only
+    // now. A missing or altered file is a refusal — proven unsent.
+    if (Array.isArray(message.attachments) && message.attachments.some((a) => a && a.neuroSha256)) {
+      const resolved = [];
+      for (const a of message.attachments) {
+        if (!a || !a.neuroSha256) { resolved.push(a); continue; }
+        const buf = require('./mail-attachments').load({ sha256: a.neuroSha256 });
+        if (!buf) {
+          _db().run("UPDATE smtp_outbox SET state = 'refused', server_response = ?, updated_at = ? WHERE id = ?", ['attachment missing', _now(), id]);
+          return { outcome: 'rejected', status: null, category: 'attachment-missing' };
+        }
+        resolved.push({ filename: a.filename, contentType: a.contentType, content: buf });
+      }
+      message.attachments = resolved;
+    }
     let r;
     try { r = await _transport(deps).smtpSend(key, message, deps.transportDeps); } catch (e) { r = { outcome: 'uncertain', category: 'unknown', response: String(e && e.message || '').slice(0, 160) }; }
     if (r.outcome === 'accepted') {
@@ -110,13 +125,31 @@ function forMailbox(key, deps = {}) {
     };
   }
 
+  /** Add Nick's files to an unsent draft, by reference. files: [{ name, contentType, sha256 }]. */
+  async function addAttachments(id, files) {
+    const row = _db().get('SELECT * FROM smtp_outbox WHERE id = ? AND mailbox = ?', [id, key]);
+    if (!row) return { ok: false, status: 404, category: 'http_4xx' };
+    if (row.state !== 'draft' && row.state !== 'refused') return { ok: false, status: 409, category: 'http_4xx' };
+    const message = JSON.parse(row.message_json);
+    message.attachments = [...(message.attachments || []),
+      ...(files || []).map((f) => ({ filename: f.name, contentType: f.contentType || 'application/octet-stream', neuroSha256: f.sha256 }))];
+    _db().run('UPDATE smtp_outbox SET message_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(message), _now(), id]);
+    return { ok: true };
+  }
+
+  async function listAttachments(id) {
+    const row = _db().get('SELECT message_json FROM smtp_outbox WHERE id = ? AND mailbox = ?', [id, key]);
+    if (!row) return { ok: false, status: 404, category: 'http_4xx' };
+    return { ok: true, names: (JSON.parse(row.message_json).attachments || []).map((a) => a.filename || '') };
+  }
+
   async function deleteDraft(id) {
     if ((await draftState(id)) !== 'draft') return false;
     _db().run("UPDATE smtp_outbox SET state = 'deleted', updated_at = ? WHERE id = ?", [_now(), id]);
     return true;
   }
 
-  return { mailbox: key, createDraft, patchDraft, sendDraft, findSent, draftState, deleteDraft };
+  return { mailbox: key, createDraft, patchDraft, addAttachments, listAttachments, sendDraft, findSent, draftState, deleteDraft };
 }
 
 module.exports = { forMailbox };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
+import AttachmentPicker from './AttachmentPicker';
 import './InboxPanel.css';
 
 /**
@@ -71,6 +72,7 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [replyText, setReplyText] = useState('');
+  const [attachments, setAttachments] = useState([]);
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
   const [to, setTo] = useState([]);
@@ -201,7 +203,7 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
     fetch(apiUrl(`${base}/reply`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: replyText, to, cc }),
+      body: JSON.stringify({ body: replyText, to, cc, attachments: attachments.map(({ name, contentType, dataBase64 }) => ({ name, contentType, dataBase64 })) }),
     })
       .then(r => r.json())
       .then(d => {
@@ -407,6 +409,8 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
             // Locked once prepared: the grant binds THESE words. Discard to edit.
             disabled={!!prepared && prepared.status === 'prepared'}
           />
+          {/* Locked with the words: the approval binds these exact files. */}
+          <AttachmentPicker files={attachments} onChange={setAttachments} disabled={sending || acting || !!prepared} />
           {!prepared && (
             <div className="inbox-item-actions">
               <button

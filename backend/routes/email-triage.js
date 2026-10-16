@@ -356,7 +356,7 @@ ${trimText(merged.body || merged.preview || '', 4000)}`;
 // sent-reply record (#69) and the triage dismissal ('replied', #70) moved to
 // the executor, so they describe a send that happened, not one requested.
 //
-// POST /api/email/triage/:emailId/reply — PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll? }
+// POST /api/email/triage/:emailId/reply — PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll?, attachments? }
 router.post('/triage/:emailId/reply', async (req, res) => {
   try {
     const emailId = decodeURIComponent(req.params.emailId);
@@ -374,6 +374,7 @@ router.post('/triage/:emailId/reply', async (req, res) => {
       mode: req.body?.replyAll ? 'replyAll' : 'reply',
       to,
       cc: Array.isArray(req.body?.cc) ? req.body.cc : null,
+      attachments: req.body?.attachments,
       origin: 'composer',
     });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, sent: false, error: r.error, action: r.action || null });

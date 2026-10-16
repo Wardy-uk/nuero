@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
+import { AttachmentList } from './AttachmentPicker';
 import './ActionsPanel.css'; // .ap-btn lives there; without it this card is unstyled anywhere but Actions
 import './PreparedActions.css';
 
@@ -252,6 +253,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
         <>
           <div className="ap-body-label">Subject: <strong>{action.draft?.subject}</strong></div>
           <pre className="ap-body">{action.draft?.body}</pre>
+          <AttachmentList attachments={action.draft?.attachments} />
         </>
       )}
       {!editing && calendar && d.body && (
