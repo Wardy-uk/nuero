@@ -277,6 +277,8 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
       updated={updated}
       footer={footer}
       onLock={() => { clearPin(); setAuthed(false); }}
+      // The control's ↻: a full reload, so a new deploy is picked up as well as fresh data.
+      onRefresh={() => window.location.reload()}
       marker={<a className="v2__ctl" href={CONTROL_URL}>Control ↗</a>}
     >
       {handoff && (
