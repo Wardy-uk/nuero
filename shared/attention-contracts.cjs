@@ -228,6 +228,10 @@ function checkHandoff(h) {
   if (!isObj(h)) return refuse(F, 'not an object', h === null ? null : typeof h);
   if (!SUPPORTED[F].includes(h.contract)) return refuse(F, 'unsupported contract', h.contract == null ? null : String(h.contract));
   if (h.owner !== 'saim' || !isStr(h.resolverVersion)) return refuse(F, 'owner/resolverVersion missing', h.contract);
+  if (h.judgementLinks !== undefined && (!Array.isArray(h.judgementLinks)
+    || h.judgementLinks.some((l) => !isObj(l) || !isStr(l.ref) || !isStr(l.href) || !l.href.startsWith('neuro:') || !isStr(l.label)))) {
+    return refuse(F, 'judgement link malformed (each is an exact neuro: link)', h.contract);
+  }
   if (h.handoff === null) {
     if (!isStr(h.reason)) return refuse(F, 'no hand-off without a reason', h.contract);
     if (h.ask != null) {

@@ -130,10 +130,11 @@ test('C5: the two policy-sentence leaks are gone from display — the S2u type i
   assert.ok(!/payroll_cutoff/.test(s2u.display.lead.sentence));
   assert.match(s2u.display.lead.sentence, /this kind of item hasn’t been classified yet/);
   const at = (h, m, d = 15) => new Date(2026, 9, d, h, m);
-  const s6 = SC.build({ now: at(11, 5).getTime(), surface: 'work-desktop', approvals: [{ id: 'pa_6', expiresAt: at(9, 0, 20).toISOString(), title: 'chase agenda: Quarterly review' }] }).decision;
+  // 16 Oct 2026: only an approval due TODAY may lead (S6), so the display check uses one due at 16:00.
+  const s6 = SC.build({ now: at(11, 5).getTime(), surface: 'work-desktop', approvals: [{ id: 'pa_6', expiresAt: at(16, 0).toISOString(), title: 'chase agenda: Quarterly review' }] }).decision;
   assert.equal(s6.lead.rule, 'S6 judgement waiting');
-  assert.match(s6.lead.why, /Tue Oct 20 2026/, 'the old sentence (machine field) still carries the raw date');
-  assert.equal(s6.display.lead.sentence, 'It’s waiting for you in NEURO — before 09:00 Tue 20 Oct.');
+  assert.match(s6.lead.why, /before 16:00 today/, 'the machine field carries the deadline');
+  assert.equal(s6.display.lead.sentence, 'It’s waiting for you in NEURO — before 16:00 today.');
   assert.ok(!s6.display.lead.sentence.includes(s6.display.lead.title), 'the sentence never restates the headline');
   const s5 = SC.SCENARIOS.find((x) => x.id === '2a').build().decision;
   assert.deepEqual(s5.display.judgement, [{ what: 'Ask for an agenda', by: '18:00 today', basis: 'end of today’s working hours — it expires before you next start' }]);

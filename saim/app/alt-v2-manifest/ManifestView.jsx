@@ -197,6 +197,10 @@ export default function ManifestView({ v, live = null }) {
               <div key={i} className="mf__judge">
                 <p className="wk__railtitle">{j.what}</p>
                 {(j.by || j.basis) && <p className="wk__railmeta">{j.by ? `before ${j.by}` : ''}{j.basis ? ` — ${j.basis}` : ''}</p>}
+                {(() => {
+                  const href = live && j.neuroHref ? live.linkFor(j.neuroHref) : null;
+                  return href ? <a className="wk__act mf__nextbtn" href={href} target="_blank" rel="noreferrer">Open in NEURO Actions</a> : null;
+                })()}
               </div>
             ))}
           </RailBox>

@@ -87,7 +87,23 @@ const withGaps = (r, c) => (r.handoff === null && !r.refused && c && Array.isArr
 function resolveHandoff(input = {}) {
   const r = resolve(input);
   const c = r.decidedFor && input.candidates && Array.isArray(input.candidates.candidates) ? input.candidates.candidates.find((x) => x.id === r.decidedFor) : null;
-  return withGaps(r, c);
+  return withJudgementLinks(withGaps(r, c), input);
+}
+
+/**
+ * The exact NEURO Actions link for each approval in Needs your judgement (16 Oct 2026). An approval that
+ * does not lead keeps the route it would have had as the lead: that action in NEURO, never an approve
+ * control. From the approval's own canonical target (NEURO's fact); none when NEURO gave none.
+ */
+function withJudgementLinks(r, { decision, candidates } = {}) {
+  if (r.refused || !decision || !Array.isArray(decision.judgement) || !candidates || !Array.isArray(candidates.candidates)) return r;
+  const byId = new Map(candidates.candidates.map((c) => [c.id, c]));
+  const judgementLinks = decision.judgement.map((j) => {
+    const c = byId.get(j.ref);
+    const t = c && Array.isArray(c.targets) ? c.targets.find((x) => x && x.role === 'canonical' && typeof x.href === 'string' && x.href.startsWith('neuro:')) : null;
+    return t ? { ref: j.ref, href: t.href, label: 'Open in NEURO Actions' } : null;
+  }).filter(Boolean);
+  return judgementLinks.length ? { ...r, judgementLinks } : r;
 }
 
 function resolve({ decision, candidates, device, now = Date.now() } = {}) {

@@ -256,7 +256,13 @@ export function manifest(payload) {
       const ordered = [...named.filter((x) => x.actions.length), ...named.filter((x) => !x.actions.length)];
       return { count: all.length, returns: disp.held[0] ? shown(disp.held[0].returns) : null, items: ordered.slice(0, HELD_VISIBLE), more: ordered.slice(HELD_VISIBLE), unnamed: all.length - named.length };
     }),
-    judgement: sec('judgement', () => ({ items: disp.judgement.map((j) => ({ what: shown(j.what) || 'An action waiting for your approval', by: shown(j.by), basis: shown(j.basis) })) })),
+    // Each item keeps its exact NEURO Actions link — the resolver's, by the decision's own ref — never
+    // an approve control (16 Oct 2026).
+    judgement: sec('judgement', () => ({ items: disp.judgement.map((j, i) => {
+      const ref = d.judgement && d.judgement[i] ? d.judgement[i].ref : null;
+      const l = ref && Array.isArray(ho.judgementLinks) ? ho.judgementLinks.find((x) => x.ref === ref) : null;
+      return { what: shown(j.what) || 'An action waiting for your approval', by: shown(j.by), basis: shown(j.basis), neuroHref: l ? l.href : null };
+    }) })),
   };
 
   return {

@@ -30,7 +30,7 @@ const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-16.3';
+const POLICY_VERSION = '2026-10-16.4';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -229,7 +229,15 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
 
   const blockEnd = runningBlock ? ms(runningBlock.time.endAt) : null;
   const interrupting = runningBlock && approvals.find((a) => a.eff && ms(a.eff.at) != null && ms(a.eff.at) < blockEnd + BLOCK_END_MARGIN_MINUTES * 60000) || null;
-  const firstApproval = approvals[0] || null;
+  // An approval is a STATUS ("waiting for your decision"), not a priority class (Nick, 16 Oct 2026).
+  // It may lead on its own only when its EFFECTIVE deadline is genuinely current: already due, or due
+  // today (which, through effectiveDeadline, includes one that expires before he next starts work). A
+  // future-dated approval stays in Needs your judgement with its deadline and never displaces a capacity
+  // breach, a risk or due-today work. Inside a running block, S4 still applies to any approval whose
+  // deadline falls before the block ends. Nothing here reads wording — ranking is the deadline alone.
+  const currentNow = (a) => { const t = a && a.eff ? ms(a.eff.at) : null; return t != null && (t <= now || new Date(t).toDateString() === new Date(now).toDateString()); };
+  const firstApproval = approvals.find(currentNow) || null;
+  const laterApproval = firstApproval ? null : approvals[0] || null;
 
   let lead = null;
   const leadOf = (c, ruleId, why, deciding) => ({ ref: c ? c.id : null, kind: c ? c.kind : 'none', title: c ? leadTitle(c) : null, rule: ruleId, why, deciding });
@@ -259,7 +267,7 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
       [`${transition.c.id}.startAt = ${transition.c.time && transition.c.time.startAt}`, `${transition.c.id}.othersAttending`]);
     lead.transition = { kind: 'meeting', startsInMinutes: transition.min };
   } else if (rule('S4 deadline inside the block', interrupting,
-    runningBlock ? (firstApproval ? (firstApproval.eff ? `effective deadline ${hhmmOf(firstApproval.eff.at)} ${dayWord(firstApproval.eff.at, now)} (${firstApproval.eff.basis}); block ends ${runningBlock.time.end} + ${BLOCK_END_MARGIN_MINUTES} min` : 'approval has no deadline') : 'no approval waiting in scope') : 'no block running')) {
+    runningBlock ? ((approvals[0] || null) ? ((approvals[0] || null).eff ? `effective deadline ${hhmmOf((approvals[0] || null).eff.at)} ${dayWord((approvals[0] || null).eff.at, now)} (${(approvals[0] || null).eff.basis}); block ends ${runningBlock.time.end} + ${BLOCK_END_MARGIN_MINUTES} min` : 'approval has no deadline') : 'no approval waiting in scope') : 'no block running')) {
     lead = leadOf(interrupting.c, 'S4 deadline inside the block', `${interrupting.c.title} has to be dealt with before ${hhmmOf(interrupting.eff.at)}, and this block runs to ${runningBlock.time.end}.`,
       [`${interrupting.c.id}.deadlineAt = ${interrupting.c.time.deadlineAt}`, `effective ${interrupting.eff.at}`, `${runningBlock.id}.end = ${runningBlock.time.end}`]);
   } else if (rule('S4r short ritual due now', shortRitual, shortRitual
@@ -273,7 +281,11 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     lead = leadOf(runningBlock, 'S5 protected block', `This is the time you blocked for ${leadTitle(runningBlock)}. I’m holding the rest until ${runningBlock.time.end}.`, [`${runningBlock.id}.state = ${runningBlock.facts.state}`]);
   } else if (rule('S5f chosen focus', focusCand, focusCand ? `Nick is in a focus session on ${focusCand.id} (${focusCand.facts.inFocus.status})` : 'no focus session on an item outside a block')) {
     lead = leadOf(focusCand, 'S5f chosen focus', `You chose ${String(leadTitle(focusCand)).replace(/[.!?]+$/, '')}; I’m holding the rest while you’re on it.`, [`${focusCand.id}.inFocus = ${focusCand.facts.inFocus.status}`]);
-  } else if (rule('S6 judgement waiting', firstApproval, firstApproval ? `${approvals.length} approval(s) waiting and no block protecting the time` : 'no approval waiting in scope')) {
+  } else if (rule('S6 judgement waiting', firstApproval, firstApproval
+    ? `${firstApproval.c.id} is due ${hhmmOf(firstApproval.eff.at)} ${dayWord(firstApproval.eff.at, now)} (${firstApproval.eff.basis}) and no block protects the time`
+    : laterApproval
+      ? `${approvals.length} approval(s) waiting, none due today (first: ${laterApproval.eff ? `${hhmmOf(laterApproval.eff.at)} ${dayWord(laterApproval.eff.at, now)}` : 'no deadline'}) — kept in Needs your judgement`
+      : 'no approval waiting in scope')) {
     const by = firstApproval.eff ? ` before ${hhmmOf(firstApproval.eff.at)} ${dayWord(firstApproval.eff.at, now)}` : '';
     lead = leadOf(firstApproval.c, 'S6 judgement waiting', `${firstApproval.c.title} is waiting for you in NEURO${by}.`, [`${firstApproval.c.id}.status = prepared`]);
   } else if (rule('S7 top item', topItem || needsNow, topItem ? `the gate’s top item: “${topItem.title}”` : needsNow ? `“${needsNow.title}” needs you` : 'no top item in scope')) {
