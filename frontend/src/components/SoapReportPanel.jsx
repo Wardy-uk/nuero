@@ -58,7 +58,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
     <div className="soap-body">
 
       <div className="soap-head">
-        <h2>Week of {r.from} — {r.kind === 'provisional' ? `provisional, data to ${r.upTo}` : 'final'}</h2>
+        <h2>Week {r.from} to {r.to} — {r.kind === 'provisional' ? `provisional, data to ${r.upTo}` : 'final (the full week)'}</h2>
         <span className="soap-meta">Built {when(r.generatedAt)}</span>
       </div>
       {locked && (
@@ -267,7 +267,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       </section>
 
       <section className="soap-section">
-        <h3>Friday Support Leadership Meeting</h3>
+        <h3>Friday Support Leadership Meeting{r.slm && (r.slm.date || (/^\d{4}-\d{2}-\d{2}/.exec(r.slm.note || '') || [])[0]) ? ` — ${r.slm.date || r.slm.note.slice(0, 10)}` : ''}</h3>
         {r.slm ? [['Highlights', r.slm.highlights], ['Lowlights', r.slm.lowlights], ['Blockers', r.slm.blockers]].map(([h, list]) => (
           <div key={h}><p><strong>{h}</strong></p>{list && list.length ? <ul>{list.map((x, k) => <li key={k}>{x}</li>)}</ul> : <p className="soap-meta">None.</p>}</div>
         )) : <Gap text={g.slm || 'no meeting note found'} />}

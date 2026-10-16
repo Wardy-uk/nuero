@@ -103,6 +103,14 @@ const shortDate = (day) => `${Number(day.slice(8, 10))} ${MONTHS[Number(day.slic
  * progress, up to today. `fileWeek` is the Monday weekly-risk files that week
  * under (its snapshot reports the week BEFORE the one it is given).
  */
+/** The SLM note's date — stored, else read off the note name (rows built before it was stored). PURE. */
+function slmDate(sl) {
+  if (!sl) return null;
+  if (sl.date) return sl.date;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(sl.note || '');
+  return m ? m[1] : null;
+}
+
 function weekFor(kind, now = new Date()) {
   const today = ymd(now);
   const thisMonday = mondayOf(today);
@@ -531,8 +539,8 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(na('leading', 'VANTAGE did not answer'));
   L.push('');
 
-  L.push('## Friday Support Leadership Meeting', '');
   const sl = report.slm;
+  L.push(`## Friday Support Leadership Meeting${slmDate(sl) ? ` (${slmDate(sl)})` : ''}`, '');
   if (sl) {
     for (const [h, list] of [['Highlights', sl.highlights], ['Lowlights', sl.lowlights], ['Blockers', sl.blockers]]) {
       L.push(`**${h}**`);
@@ -660,7 +668,7 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
     perQueue, ageing: assessment ? assessment.ageing || [] : null, volumes,
     csat: assessment ? assessment.csatRows || [] : null, sentiment, winning,
     findings, findingsOpen, leading,
-    slm: slm && slm.known ? { highlights: slm.highlights, lowlights: slm.lowlights, blockers: slm.blockers, note: slm.note && slm.note.name || null } : null,
+    slm: slm && slm.known ? { highlights: slm.highlights, lowlights: slm.lowlights, blockers: slm.blockers, note: slm.note && slm.note.name || null, date: slm.note && slm.note.date || null } : null,
   };
 }
 
