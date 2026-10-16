@@ -4,7 +4,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { buildVersionPlugin, resolveBuildLabel } from '../../shared/build-version.mjs';
 
-// SAiM Alt v3 — the policy-driven desktop A/B build (saim-alt.nickward.co.uk; v1 is kept at saim-alt-v1).
+// SAiM Alt v3 — the policy-driven desktop, PROMOTED to saim.nickward.co.uk on 16 Oct 2026
+// (Netlify site saim-alt-nickward). The legacy control desktop moved to saim-alt; v1 is kept at saim-alt-v1.
 //
 //   npm run build:alt3  →   dist-alt3/  (deployed MANUALLY to its own Netlify
 //                                        site; never the control's autodeploy)
@@ -18,11 +19,31 @@ const BUILD_LABEL = `alt3-${resolveBuildLabel()}`;
 
 // SPA fallback for Netlify, emitted into the build so a manual deploy of the
 // folder is complete on its own.
+//
+// ⚠ `sw.js` is a KILL-SWITCH, not a worker for this app. Until 16 Oct 2026
+// saim.nickward.co.uk served the control, whose service worker answers a slow
+// navigation (3 s) from its cached shell. A browser that kept it would show the
+// OLD app at saim. on a bad connection. The browser re-fetches /sw.js on every
+// navigation; this one clears the old caches, unregisters itself and reloads the
+// tab onto the live page. Without a real /sw.js the SPA fallback answers it with
+// HTML, the update fails silently, and the old worker stays for ever.
+const KILL_SWITCH_SW = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    await self.registration.unregister();
+    const clients = await self.clients.matchAll({ type: 'window' });
+    for (const c of clients) c.navigate(c.url);
+  })());
+});
+`;
 function netlifyFiles() {
   return {
     name: 'saim-alt-netlify-files',
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: '_redirects', source: '/*  /index.html  200\n' });
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: KILL_SWITCH_SW });
       this.emitFile({
         type: 'asset',
         fileName: '_headers',
@@ -33,6 +54,8 @@ function netlifyFiles() {
           '/index.html',
           '  Cache-Control: no-cache',
           '/version.json',
+          '  Cache-Control: no-cache',
+          '/sw.js',
           '  Cache-Control: no-cache',
           '',
         ].join('\n'),

@@ -279,13 +279,37 @@ test('v3 cannot push: no service worker, no subscription, no screen tracking, no
   assert.doesNotMatch(fs.readFileSync(path.join(APP, 'vite.config.alt3.js'), 'utf8'), /VitePWA|vite-plugin-pwa/);
 });
 
-test('the v3 env carries no secret and only the treatment’s hosts', () => {
+test('the v3 env carries no secret and only its own hosts — saim. since the 16 Oct 2026 swap', () => {
   const lines = fs.readFileSync(path.join(APP, '.env.alt3'), 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l));
   assert.ok(lines.length >= 4, 'positive control');
   assert.ok(!lines.some((l) => /VAULT|TOKEN|SECRET|PIN|KEY/.test(l.split('=')[0])));
-  const hosts = lines.find((l) => l.startsWith('VITE_ALLOWED_HOSTS=')).split('=')[1].split(',');
-  assert.ok(hosts.includes('saim-alt.nickward.co.uk'));
-  assert.ok(!hosts.some((x) => /^(saim|sara|saim-alt-v1)\.nickward\.co\.uk$|^saim-nickward\.netlify\.app$/.test(x)), 'never the control’s or v1’s hosts');
+  const val = (k) => lines.find((l) => l.startsWith(`${k}=`)).split('=')[1];
+  const hosts = val('VITE_ALLOWED_HOSTS').split(',');
+  assert.ok(hosts.includes('saim.nickward.co.uk'));
+  assert.ok(!hosts.some((x) => /^(sara|saim-alt|saim-alt-v1)\.nickward\.co\.uk$|^saim-nickward\.netlify\.app$/.test(x)), 'never the phone’s, the legacy’s or v1’s hosts');
+  assert.equal(val('VITE_CANONICAL_URL'), 'https://saim.nickward.co.uk');
+  assert.equal(val('VITE_CONTROL_URL'), 'https://saim-alt.nickward.co.uk', 'the comparison link goes to the legacy desktop');
+});
+
+test('the legacy desktop env runs only at saim-alt, and the phone build keeps its own hosts', () => {
+  const env = (f) => Object.fromEntries(fs.readFileSync(path.join(APP, f), 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.split('=')[0], l.slice(l.indexOf('=') + 1)]));
+  const legacy = env('.env.legacy');
+  assert.deepEqual(legacy.VITE_ALLOWED_HOSTS.split(','), ['saim-alt.nickward.co.uk', 'saim-legacy-nickward.netlify.app']);
+  assert.equal(legacy.VITE_CANONICAL_URL, 'https://saim-alt.nickward.co.uk');
+  assert.equal(legacy.VITE_API_URL, 'https://pi5.tailecb90f.ts.net');
+  const prod = env('.env.production');
+  assert.ok(prod.VITE_ALLOWED_HOSTS.split(',').includes('sara.nickward.co.uk'), 'the phone build is untouched');
+  assert.equal(prod.VITE_CANONICAL_URL, 'https://sara.nickward.co.uk');
+});
+
+test('the v3 build ships a kill-switch sw.js (retires the control’s worker at saim.), never a real worker', () => {
+  const cfg = fs.readFileSync(path.join(APP, 'vite.config.alt3.js'), 'utf8');
+  assert.match(cfg, /fileName: 'sw\.js', source: KILL_SWITCH_SW/);
+  const sw = cfg.slice(cfg.indexOf('const KILL_SWITCH_SW'), cfg.indexOf('`;', cfg.indexOf('const KILL_SWITCH_SW')));
+  assert.match(sw, /registration\.unregister\(\)/);
+  assert.match(sw, /caches\.delete/);
+  assert.ok(!/addEventListener\('(fetch|push)'/.test(sw), 'it answers no requests and takes no pushes');
+  assert.ok(!/VitePWA|vite-plugin-pwa/.test(cfg), 'no PWA plugin');
 });
 
 test('v2 is unchanged when no page is supplied: its entry passes no override', () => {
