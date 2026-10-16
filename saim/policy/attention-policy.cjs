@@ -320,7 +320,11 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     else if (c.kind === 'commitment' && c.facts.daysLate >= 0 && !blockTaskIds.has(Number(c.taskId))) {
       why = c.facts.daysLate === 0 ? 'due today' : `${c.facts.daysLate} day${c.facts.daysLate === 1 ? '' : 's'} overdue`;
       const b = c.facts.inBlock;
-      if (b && b.start) why += b.date === new Date(now).toLocaleDateString('en-CA') ? ` · blocked at ${b.start}` : ' · already has a block';
+      if (b && b.start) {
+        const today = b.date === new Date(now).toLocaleDateString('en-CA');
+        const mins = today ? untilMinutes(b.start, now) : null;
+        why += !today ? ' · already has a block' : mins > 0 ? ` · blocked at ${b.start}` : ` · its ${b.start} block has passed`;
+      }
     }
     else if ((c.kind === 'home' || c.kind === 'personal-date') && c.facts.needsNow) why = c.facts.why || 'needs you';
     if (!why) continue;

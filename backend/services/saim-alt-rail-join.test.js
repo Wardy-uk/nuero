@@ -207,6 +207,8 @@ test('rail: a task an open block already holds is never offered "Make next" (NEU
   const h = held.decision.held.find((x) => x.ref === 'commitment:task:350');
   assert.deepEqual(h.actions, []);
   assert.equal(h.why, 'due today · blocked at 10:30');
+  const passed = build({ now: at(11, 0), block: false, calendar: [], taskBlocks: new Map([[350, { date: '2026-10-16', start: '10:30' }]]) });
+  assert.equal(passed.decision.held.find((x) => x.ref === 'commitment:task:350').why, 'due today · its 10:30 block has passed');
   assert.deepEqual(heldBy(held.decision)['commitment:task:412'][0].intent, { kind: 'block-next', taskId: 412 }, 'positive control: an unblocked task still offers it');
   const blind = build({ now: at(9, 40), taskBlocks: null });
   assert.deepEqual(heldBy(blind.decision)['commitment:task:412'], [], 'could not check → no claim it can be booked');
