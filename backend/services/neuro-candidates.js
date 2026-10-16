@@ -29,7 +29,10 @@
  */
 
 const CONTRACT = require('../../shared/attention-contracts.cjs').NEURO_CANDIDATES;
+/** The occurrence key NEURO's meeting routes use — meeting-finish.keyFor is pure (its store is separate). */
+const MF_KEY = (ev) => require('./meeting-finish').keyFor(ev);
 const NH = require('./neuro-handoff');
+const JK = require('../../shared/jira-key.cjs');
 const ND = require('./neuro-display');
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -111,6 +114,16 @@ function wordingConflict(text, dueDate, now) {
 // ── Compose (PURE) ───────────────────────────────────────────────────────────
 
 const TASK_BLOCK_EVENT = /^task block:\s*/i;
+const LIVE_SESSION = new Set(['active', 'paused', 'interrupted', 'needs-smaller']);
+const ownSession = (session, tasks) => session.taskId != null && (tasks || []).some((t) => Number(t.taskId) === Number(session.taskId));
+/** A focus session as NEURO reports it: its status and its own clock. Nothing derived. */
+const sessionFacts = (s) => ({
+  status: s.status || null, taskId: s.taskId ?? null,
+  startedAt: s.startedAt || null, startedTime: s.startedTime || null,
+  elapsedMinutes: Number.isFinite(s.elapsedMinutes) ? s.elapsedMinutes : null,
+  plannedMinutes: Number.isFinite(s.plannedMinutes) ? s.plannedMinutes : null,
+  plannedAssumed: Boolean(s.plannedAssumed),
+});
 const RITUAL = (title) => (/\beod\b|end.of.day/i.test(title || '') ? 'eod' : /stand-?up/i.test(title || '') ? 'standup' : null);
 /**
  * decision-engine types whose `critical` means "the clock forces it now", never
@@ -162,6 +175,8 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     return s;
   };
   const utter = ((p.utterances) || []).filter((u) => u && u.say && u.intent);
+  // The Jira ticket a task stands for: NEURO's ledger link, else a strictly recognised key (shared/jira-key).
+  const ticketOf = (taskId, text) => JK.ticketFor(taskId, text, { links: facts.taskJira || null, projects: facts.jiraProjects || null });
   const candidates = [];
 
   // Task blocks — the running one and the rest of today's open ones.
@@ -184,8 +199,11 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
       facts: {
         state,
         tasks: tasks.map((t) => ({ taskId: t.taskId, text: t.text, running: Boolean(t.running),
-          wordingConflict: null })),
-        session: isLive && session ? { status: session.status || null, taskId: session.taskId ?? null } : null,
+          wordingConflict: null, jira: ticketOf(t.taskId, t.text) })),
+        // The focus session ON THIS BLOCK's task (16 Oct 2026) — never one for another task,
+        // which read as "started" over a block nobody had started. Its clock is the session's own.
+        session: isLive && session && ownSession(session, tasks) ? sessionFacts(session) : null,
+        otherSessionRunning: Boolean(isLive && session && !ownSession(session, tasks) && LIVE_SESSION.has(session.status)),
       },
       sphere: taskSphere(tasks.map((t) => t.taskId)),
       actions: isLive ? utter.filter((u) => u.intent.kind === 'session').map((u) => ({ say: u.say, intent: u.intent })) : [],
@@ -212,12 +230,17 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     }
     if (blockStarts.has(start)) continue;
     const isMeeting = e.attendeesOther === true;
+    // The occurrence's key — the one NEURO's attendance routes take (meeting-finish.keyFor).
+    // A real meeting still to start can be skipped: POST /api/attention/meeting/not-attending.
+    const meetingKey = isMeeting ? MF_KEY({ id: e.eventId || null, start: e.start, subject: e.subject }) : null;
+    const notGoing = isMeeting && !running && meetingKey
+      ? [{ say: 'I’m not going', intent: { kind: 'meeting', action: 'not-attending', key: meetingKey } }] : [];
     candidates.push({
-      kind: isMeeting ? 'meeting' : 'protected-time', id: `${isMeeting ? 'meeting' : 'protected'}:${start}:${subject}`, eventId: e.eventId || null, title: subject || (isMeeting ? 'Meeting' : 'Protected time'),
+      kind: isMeeting ? 'meeting' : 'protected-time', id: `${isMeeting ? 'meeting' : 'protected'}:${start}:${subject}`, eventId: e.eventId || null, meetingKey, title: subject || (isMeeting ? 'Meeting' : 'Protected time'),
       time: { start, end, startAt: e.startAt || null, endAt: e.endAt || null },
       facts: { running, othersAttending: e.attendeesOther === true ? true : e.attendeesOther === false ? false : null, showAs: e.showAs || null },
       sphere: e.sphere || sphere(null),
-      actions: isMeeting && running ? utter.filter((u) => u.intent.kind === 'meeting').map((u) => ({ say: u.say, intent: u.intent })) : [],
+      actions: isMeeting && running ? utter.filter((u) => u.intent.kind === 'meeting').map((u) => ({ say: u.say, intent: u.intent })) : notGoing,
       provenance: { source: `calendar:${e.source}`, readAt }, known: true,
     });
   }
@@ -264,6 +287,13 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
         neuroUrgency: raw,
         othersAttending: it.type === 'meeting' ? (meta.withOthers === true ? true : meta.withOthers === false ? false : null) : undefined,
         reason: it.reason || it.say || null, gatePosition: it.gatePosition, lifecycle: it.lifecycle || null,
+        // A ritual nudge's own structured facts (decision-engine meta): which ritual, how long
+        // it takes and whether it comes first. Absent = not stated, never assumed.
+        ...(it.type === 'nudge' ? {
+          nudgeType: meta.type || null,
+          estimateMinutes: Number.isFinite(meta.estimateMinutes) ? meta.estimateMinutes : null,
+          doFirst: meta.doFirst === true,
+        } : {}),
       },
       sphere: it.domain ? sphere(sphereOfDomain(it.domain), 'stated', 'the item states its domain')
         : WORK_TYPES.has(it.type) ? sphere('work', 'item-type', `a ${it.type} item is work by source`) : sphere(null),
@@ -287,7 +317,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     candidates.push({
       kind: 'commitment', id: c.id, taskId, title: c.description,
       time: { due: c.due.date, dueBasis: c.due.kind || null },
-      facts: { daysLate: keyDays(today) - keyDays(c.due.date), counterpart: c.counterpart && c.counterpart.name || null, wordingConflict: wordingConflict(c.description, c.due.date, now) },
+      facts: { daysLate: keyDays(today) - keyDays(c.due.date), counterpart: c.counterpart && c.counterpart.name || null, wordingConflict: wordingConflict(c.description, c.due.date, now), jira: ticketOf(taskId, c.description) },
       sphere: commitmentSphere(c.domains),
       actions: [], provenance: { source: 'world-model', readAt }, known: true,
     });
@@ -404,6 +434,24 @@ function gather({ now = Date.now() } = {}) {
   // Planned dates of household obligations that are tasks — so their wording can be checked against them.
   // Task activity (15 Oct 2026): Nick's stated choice per open task, and the
   // suggestions beside it (source, observed). Precedence: shared/task-activity.cjs.
+  // Jira tickets behind tasks (16 Oct 2026): the jira-tasks ledger (key -> task) is the
+  // structured link; a task row's origin_path is the ticket's own browse URL when Jira
+  // created it. The projects the ledger holds (plus JIRA_PROJECT_KEY) are the RECOGNISED
+  // key prefixes for the strict text fallback in neuro-handoff.
+  out.facts.taskJira = new Map();
+  out.facts.jiraProjects = null;
+  try {
+    const links = require('./jira-tasks').readLinks();
+    const projects = new Set([process.env.JIRA_PROJECT_KEY || 'NT']);
+    for (const [key, id] of Object.entries(links || {})) {
+      const row = db.getTaskRow(Number(id));
+      const url = row && typeof row.origin_path === 'string' && /^https:\/\//.test(row.origin_path) ? row.origin_path : null;
+      out.facts.taskJira.set(Number(id), { key, url });
+      const pm = /^([A-Z][A-Z0-9]+)-\d+$/.exec(key);
+      if (pm) projects.add(pm[1]);
+    }
+    out.facts.jiraProjects = [...projects];
+  } catch (e) { gaps.push({ input: 'jira-links', why: e.message }); }
   try { out.facts.taskActivity = require('./task-activity').forOpenTasks(); } catch (e) { out.facts.taskActivity = null; gaps.push({ input: 'task-activity', why: e.message }); }
   out.facts.taskDue = new Map();
   try {
@@ -422,7 +470,19 @@ function gather({ now = Date.now() } = {}) {
       FROM calendar_cache WHERE substr(start_time,1,10) = ? ORDER BY start_time`, [key]);
     const seen = new Set();
     out.facts.calendar = [];
+    // Nick's word on an occurrence (16 Oct 2026): "I'm not going" removes it from his day and
+    // "it's over" ends it early — the same overrides attention applies to its own calendar read.
+    const mf = require('./meeting-finish');
+    let overrides = {};
+    try { overrides = mf.list(new Date(now)) || {}; } catch (e) { gaps.push({ input: 'meeting-overrides', why: e.message }); }
     for (const r of rows.sort((a, b) => (a.source === 'graph' ? -1 : 1) - (b.source === 'graph' ? -1 : 1))) {
+      const ov = overrides[mf.keyFor({ id: r.event_id || null, start: r.start_time, subject: r.subject })];
+      if (ov && ov.notAttending === true) continue;
+      if (ov && ov.at && Date.parse(ov.at) < Date.parse(String(r.end_time).slice(0, 19))) {
+        const at = new Date(Math.max(Date.parse(String(r.start_time).slice(0, 19)), Date.parse(ov.at)));
+        const p2 = (n) => String(n).padStart(2, '0');
+        r.end_time = `${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}T${p2(at.getHours())}:${p2(at.getMinutes())}:00`;
+      }
       const dedupe = `${String(r.start_time).slice(0, 16)}|${String(r.subject || '').trim().toLowerCase()}`;
       if (seen.has(dedupe)) continue; // a phone copy of an Outlook event is one event
       seen.add(dedupe);

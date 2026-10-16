@@ -84,6 +84,8 @@ function targetProblem(t, at) {
   }
   if (t.label != null && !isStr(t.label)) return `${at}.label is not text`;
   if (t.provider != null && !isStr(t.provider)) return `${at}.provider is not text`;
+  // A ticket key carried on a target (16 Oct 2026: Jira hand-off) must be one — it is shown on a button.
+  if (t.key != null && !(typeof t.key === 'string' && /^[A-Z][A-Z0-9]+-\d+$/.test(t.key))) return `${at}.key is not a ticket key`;
   return null;
 }
 function targetsProblem(list, at) {
@@ -117,7 +119,7 @@ function suggestionsProblem(list, at) {
 /** Every lead rule saim-attention-v2 may name. */
 const ATTENTION_RULES = Object.freeze([
   'S1 blind', 'S2 critical risk', 'S3 meeting', 'S2u unclassified potential risk', 'S3a imminent meeting transition',
-  'S4 deadline inside the block', 'S5 protected block', 'S6 judgement waiting', 'S7 top item', 'S8 protected diary time',
+  'S4 deadline inside the block', 'S4r short ritual due now', 'S5 protected block', 'S6 judgement waiting', 'S7 top item', 'S8 protected diary time',
   'S9 block about to start', 'S10 ritual', 'S11 nothing',
 ]);
 

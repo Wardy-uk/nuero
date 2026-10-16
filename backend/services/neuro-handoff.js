@@ -55,13 +55,24 @@ function jiraBrowse(jiraBase, key, given) {
   return key && TICKET_KEY.test(String(key)) ? `${base}/browse/${key}` : null;
 }
 
+/**
+ * The ticket's own page, as a CONTROL target (16 Oct 2026) — Jira is where a ticket is
+ * worked. From the STRUCTURED `jira` fact the composer set (shared/jira-key.cjs): the
+ * ledger link, or a strictly recognised key. Never from wording here.
+ */
+function jiraTarget(j, jiraBase) {
+  if (!j || !TICKET_KEY.test(String(j.key || ''))) return null;
+  const href = jiraBrowse(jiraBase, j.key, j.url || null);
+  return href ? { role: 'control', href, label: `${j.key} in Jira`, provider: 'jira', key: j.key, basis: j.basis || null } : null;
+}
+
 const workStep = (activity, basis, gaps, targets = []) => ({ handoffIntent: { kind: 'work-step', activity, ...(basis ? { basis } : {}) }, targets: targets.filter(Boolean), handoffGaps: gaps });
 /**
  * A task work step. The activity is NICK'S CHOICE or nothing (shared/task-activity.cjs):
  * `act` is resolveActivity()'s answer for this task. Suggestions (source, observed)
  * never fill `activity` — they travel as `activitySuggestions`.
  */
-const taskStep = (taskId, noLinkWhy, act = null) => {
+const taskStep = (taskId, noLinkWhy, act = null, jira = null) => {
   const t = exact('canonical', 'task', taskId, 'This task in NEURO');
   const a = act || null;
   const activity = a && a.activity ? a.activity : null;
@@ -69,7 +80,7 @@ const taskStep = (taskId, noLinkWhy, act = null) => {
   const gaps = activity ? [] : [gap('activity', a && a.unsure ? 'Nick said he isn’t sure what this needs' : NO_TASK_ACTIVITY)];
   return {
     handoffIntent: intent,
-    targets: t ? [t] : [],
+    targets: [...(jira ? [jira] : []), ...(t ? [t] : [])],
     handoffGaps: t ? gaps : [...gaps, gap('canonical', noLinkWhy)],
     activitySuggestions: a && !activity ? a.suggestions.map((s) => ({ ...s })) : [],
   };
@@ -94,10 +105,10 @@ function handoffFor(c, meta = null, { jiraBase = null, taskActivity = null } = {
     case 'block': {
       const tasks = (c.facts && Array.isArray(c.facts.tasks)) ? c.facts.tasks : [];
       const one = tasks.length === 1 ? tasks[0].taskId : null;
-      return taskStep(one, NO_BLOCK_TASK, actFor(one));
+      return taskStep(one, NO_BLOCK_TASK, actFor(one), one != null ? jiraTarget(tasks[0].jira, jiraBase) : null);
     }
     case 'commitment':
-      return taskStep(c.taskId, NO_TASK_LINK, actFor(c.taskId));
+      return taskStep(c.taskId, NO_TASK_LINK, actFor(c.taskId), jiraTarget(c.facts && c.facts.jira, jiraBase));
     case 'meeting':
       return meetingStep(c.eventId);
     case 'protected-time':
@@ -170,4 +181,4 @@ function itemHandoff(type, m, jiraBase, actFor = () => null) {
   }
 }
 
-module.exports = { handoffFor, constraintTargets, jiraBrowse, SOURCES };
+module.exports = { handoffFor, constraintTargets, jiraBrowse, jiraTarget, SOURCES };

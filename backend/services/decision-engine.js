@@ -578,7 +578,12 @@ function collectNudges(ctx) {
       urgency: standupCritical ? 'critical' : (nagCount >= 4 ? 'high' : nagCount >= 2 ? 'medium' : 'low'),
       source: 'neuro',
       actionHint: NUDGE_LABELS[nudge.type]?.hint || 'Open NEURO',
-      meta: { nagCount, type: nudge.type },
+      // The pre-11 standup's own facts, STRUCTURED (16 Oct 2026): it takes about
+      // two minutes and comes before anything else. The reason line says the same
+      // in words; SAiM's policy reads these fields and never parses that line.
+      meta: standupCritical
+        ? { nagCount, type: nudge.type, estimateMinutes: 2, doFirst: true }
+        : { nagCount, type: nudge.type },
       _unsuppressable: standupCritical,
     });
   }
