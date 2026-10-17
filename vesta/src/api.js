@@ -77,6 +77,22 @@ export const home = (token) => call('/home', { token });
 /** The family wall: week, top tasks, who's in, station. Polled every minute. */
 export const wall = (token) => call('/wall', { token });
 
+/**
+ * A household member's photo as an object URL. An <img> cannot send the
+ * Bearer token, so the picture is fetched and handed over as a blob. Returns
+ * null when there is no photo or it could not be read — the card then shows
+ * the initial instead.
+ */
+export async function photoUrl(token, id, version) {
+  try {
+    const res = await fetch(`${API_BASE}/api/v/photo/${encodeURIComponent(id)}?v=${encodeURIComponent(version || '')}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch { return null; }
+}
+
 // The wall is a choice made ON THIS DEVICE — the kitchen iPad, not her phone.
 const WALL_KEY = 'vesta_wall';
 export function getWallMode() {

@@ -67,7 +67,7 @@ test('3. redactWeek: work collapses to ONE at-work span per day — no events, n
   assert.deepEqual(mon.events.map((e) => e.title), ['Half term', 'Isaac swimming'], 'family only in events');
   assert.deepEqual(mon.work, { allDay: false, start: '2026-10-19T09:15:00', end: '2026-10-19T16:30:00' }, 'first in, last out');
   assert.equal(week[1].work, null, 'a day with only a free-marked hold is not a work day');
-  assert.deepEqual(week[2].work, { allDay: true, start: null, end: null });
+  assert.equal(week[2].work, null, 'an all-day Outlook entry alone does not make him at work (17 Oct 2026)');
   const json = JSON.stringify(week);
   assert.ok(!/Chancellors|Coalville|Standup|Late call|Offsite|Busy/.test(json), 'no work subject, location or event row anywhere');
   assert.ok(/Isaac swimming/.test(json) && /Leisure centre/.test(json), 'positive control: personal detail does arrive');
@@ -107,7 +107,9 @@ test('5. whoIsIn: names and a state only; visitors only while home; an untracked
   assert.equal(w.known, true);
   assert.deepEqual(w.people.map((p) => `${p.name}:${p.state}`), ['Nick:out', 'Helen:home', 'Isaac:unknown', 'Daniel:home', 'Ember:home']);
   assert.equal(w.homeCount, 2, 'people only — a dog at home is not someone home');
-  assert.ok(!/At work|Garden|photo/.test(JSON.stringify(w)), 'no detail or photo reaches the wall');
+  assert.ok(!/At work|Garden/.test(JSON.stringify(w)), 'no detail reaches the wall');
+  assert.equal(w.people.find((p) => p.name === 'Nick').photo, 1, 'a photo is a VERSION number, never the picture');
+  assert.equal(w.people.find((p) => p.name === 'Helen').photo, null);
   assert.equal(vesta.whoIsIn(null).known, false);
 });
 
@@ -129,7 +131,8 @@ test('7. /api/v/wall over HTTP: scoped blocks absent without the scope; the week
   const today = keyOffset(0);
   const tomorrow = keyOffset(1);
   const yesterday = keyOffset(-1);
-  db.upsertCalendarEvent({ id: 'g1', subject: 'Chancellors renewal', location: 'Coalville', start: `${today}T10:00:00`, end: `${today}T11:00:00`, showAs: 'busy', source: 'graph' });
+  // With other people in it, so it counts as being at work on ANY day (the test runs at weekends too).
+  db.upsertCalendarEvent({ id: 'g1', subject: 'Chancellors renewal', location: 'Coalville', start: `${today}T10:00:00`, end: `${today}T11:00:00`, showAs: 'busy', source: 'graph', attendeesOther: true });
   db.upsertCalendarEvent({ id: 'a1', subject: 'Isaac swimming', start: `${tomorrow}T17:00:00`, end: `${tomorrow}T18:00:00`, showAs: 'busy', source: 'apple' });
   db.upsertCalendarEvent({ id: 'a2', subject: 'Grandma visiting', start: `${yesterday}T00:00:00`, end: `${keyOffset(2)}T00:00:00`, isAllDay: true, source: 'apple' });
 
@@ -226,4 +229,61 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.equal(isNight(new Date(2026, 9, 19, 23, 0)), true);
   assert.equal(isNight(new Date(2026, 9, 19, 6, 29)), true);
   assert.equal(isNight(new Date(2026, 9, 19, 6, 30)), false);
+});
+
+// ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──
+
+test('9. at work: weekend solo holds do not count, a weekend meeting with people does, People HR off wins, an all-day entry alone never counts', () => {
+  const rows = [
+    // Sat 17 / Sun 18: the 12:00 lunch hold that runs every day.
+    { event_id: 'lunch-sat', subject: 'Lunch', start_time: '2026-10-17T12:00:00', end_time: '2026-10-17T13:00:00', source: 'graph', attendees_other: 0 },
+    { event_id: 'meet-sun', subject: 'Release', start_time: '2026-10-18T10:00:00', end_time: '2026-10-18T11:00:00', source: 'graph', attendees_other: 1 },
+    // Mon 19: booked off in People HR, with an all-day Outlook marker and meetings.
+    { event_id: 'leave-mon', subject: 'Annual leave', start_time: '2026-10-19T00:00:00', end_time: '2026-10-20T00:00:00', is_all_day: 1, source: 'graph' },
+    { event_id: 'meet-mon', subject: 'Standup', start_time: '2026-10-19T10:00:00', end_time: '2026-10-19T11:00:00', source: 'graph', attendees_other: 1 },
+    // Tue 20: only an all-day Outlook entry.
+    { event_id: 'wfh-tue', subject: 'WFH', start_time: '2026-10-20T00:00:00', end_time: '2026-10-21T00:00:00', is_all_day: 1, source: 'graph' },
+    // Wed 21: an ordinary working day.
+    { event_id: 'meet-wed', subject: 'Review', start_time: '2026-10-21T09:00:00', end_time: '2026-10-21T16:00:00', source: 'graph' },
+    // The phone held the anniversary at 13:00.
+    { event_id: 'anniv', subject: 'Wedding anniversary', start_time: '2026-10-19T13:00:00', end_time: '2026-10-19T14:00:00', source: 'apple' },
+  ];
+  const weekend = new Set(['2026-10-17', '2026-10-18']);
+  const week = vesta.redactWeek(rows, '2026-10-17', 7, {
+    isWorkingDay: (d) => !weekend.has(d),
+    offOn: (d) => (d === '2026-10-19' ? { off: true, known: true } : { off: false, known: true }),
+  });
+  const by = Object.fromEntries(week.map((d) => [d.date, d]));
+  assert.equal(by['2026-10-17'].work, null, 'a solo Saturday hold is not being at work');
+  assert.deepEqual(by['2026-10-18'].work, { allDay: false, start: '2026-10-18T10:00:00', end: '2026-10-18T11:00:00' }, 'a Sunday meeting with people is');
+  assert.equal(by['2026-10-19'].work, null, 'booked off beats every diary entry');
+  assert.equal(by['2026-10-19'].off, true);
+  assert.equal(by['2026-10-20'].work, null, 'an all-day Outlook entry alone is not at work');
+  assert.equal(by['2026-10-20'].off, false, 'not off either — nobody said so');
+  assert.deepEqual(by['2026-10-21'].work, { allDay: false, start: '2026-10-21T09:00:00', end: '2026-10-21T16:00:00' }, 'positive control: a working day still shows');
+  const anniv = by['2026-10-19'].events.find((e) => e.title === 'Wedding anniversary');
+  assert.equal(anniv.allDay, true, 'an anniversary is a date, not a 1pm appointment');
+  assert.equal(by['2026-10-20'].events.some((e) => e.title === 'Wedding anniversary'), false, 'on its own day only');
+  // "Could not ask People HR" is not a day off.
+  const unknown = vesta.redactWeek(rows, '2026-10-19', 1, { isWorkingDay: () => true, offOn: () => ({ off: false, known: false }) });
+  assert.equal(unknown[0].off, false);
+  assert.ok(unknown[0].work, 'unknown leave falls back to the diary');
+});
+
+test('10. /api/v/photo: behind the house scope, and only for someone the wall shows', async () => {
+  capture.create({ label: 'Photo No', username: 'ph-no', pin: '371593', scopes: ['tasks', 'calendar'] });
+  capture.create({ label: 'Photo Yes', username: 'ph-yes', pin: '371593', scopes: ['tasks', 'house'] });
+  const express = require('express');
+  const app = express(); app.use(express.json()); app.use('/api/v', require('../routes/vesta'));
+  const server = app.listen(0); const port = server.address().port;
+  const login = async (u) => (await (await fetch(`http://127.0.0.1:${port}/api/v/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, pin: '371593' }) })).json()).token;
+  try {
+    const no = await login('ph-no'); const yes = await login('ph-yes');
+    assert.ok(no && yes, 'positive control: signed in');
+    const get = (t, id) => fetch(`http://127.0.0.1:${port}/api/v/photo/${id}`, { headers: { Authorization: `Bearer ${t}` } });
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/v/photo/nick`)).status, 401);
+    assert.equal((await get(no, 'nick')).status, 403, 'no house scope, no photo');
+    assert.equal((await get(yes, 'nobody')).status, 404, 'someone not on the wall');
+    assert.equal((await get(yes, '..%2F..%2Fetc')).status, 404, 'a path is not an id');
+  } finally { server.closeAllConnections(); server.close(); }
 });

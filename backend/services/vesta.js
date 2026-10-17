@@ -157,25 +157,46 @@ function daysOf(e, keys) {
  * rule as today's list, so a work subject cannot reach the wall by a second
  * door. PURE.
  */
-function redactWeek(rows = [], startKey, n = 7) {
+// A phone entry whose title SAYS it is a birthday or anniversary is a DATE,
+// not an appointment — the phone held "Wedding anniversary" at 13:00–14:00
+// (17 Oct 2026). Same title rule `personal-dates` uses.
+const DATE_TITLE = /\b(birthday|anniversary)\b/i;
+
+/**
+ * A week of the diary, one entry per day, REDACTED by `redactDay` — the same
+ * rule as today's list, so a work subject cannot reach the wall by a second
+ * door. PURE: `isWorkingDay(date)` and `offOn(date)` are passed in.
+ *
+ * Nick, 17 Oct 2026: "just show that I'm AT work — not what I'm doing". A
+ * day's work events become ONE span (no events, no count, no titles), and
+ * only on evidence he is actually at work:
+ *   • booked off (People HR via NOVA) → `off: true`, never at work;
+ *   • a weekend / bank holiday → only a timed work event WITH OTHER PEOPLE
+ *     counts (his 12:00 lunch hold runs every day, Saturdays included);
+ *   • an all-day Outlook entry never makes him "at work" on its own — those
+ *     are leave and location markers far more often than work.
+ */
+function redactWeek(rows = [], startKey, n = 7, { isWorkingDay = null, offOn = null } = {}) {
   const keys = dayKeys(startKey, n);
+  const withOthers = new Set((rows || []).filter((r) => r && Number(r.attendees_other) === 1).map((r) => r.event_id || r.id));
   const byDay = Object.fromEntries(keys.map((k) => [k, []]));
-  for (const e of redactDay(rows)) {
+  for (const raw of redactDay(rows)) {
+    const e = raw.personal && !raw.allDay && DATE_TITLE.test(String(raw.title || ''))
+      ? { ...raw, allDay: true, start: `${String(raw.start || '').slice(0, 10)}T00:00:00`, end: null }
+      : raw;
     for (const k of daysOf(e, keys)) byDay[k].push(e);
   }
-  // Nick, 17 Oct 2026: "just show that I'm AT work — not what I'm doing".
-  // A day's work events become ONE span: no events, no count, no titles —
-  // only when he is first and last at work (all day if any work event is).
-  // Everything left is family. All-day first, then by start time.
   return keys.map((date) => {
-    const work = byDay[date].filter((e) => !e.personal);
     const family = byDay[date].filter((e) => e.personal);
+    const off = typeof offOn === 'function' ? offOn(date) : null;
+    const working = typeof isWorkingDay === 'function' ? isWorkingDay(date) : true;
     let atWork = null;
-    if (work.length) {
-      if (work.some((e) => e.allDay)) {
-        atWork = { allDay: true, start: null, end: null };
-      } else {
-        // Clipped to this day: a span that runs past midnight ends at 24:00.
+    if (!(off && off.off)) {
+      const work = byDay[date]
+        .filter((e) => !e.personal && !e.allDay)
+        .filter((e) => working || withOthers.has(e.id));
+      if (work.length) {
+        // Clipped to this day: a span that runs past midnight ends at 23:59.
         const starts = work.map((e) => (String(e.start || '').slice(0, 10) < date ? `${date}T00:00:00` : String(e.start || '')));
         const ends = work.map((e) => (String(e.end || '').slice(0, 10) > date ? `${date}T23:59:00` : String(e.end || '')));
         atWork = { allDay: false, start: starts.sort()[0], end: ends.sort().slice(-1)[0] };
@@ -184,6 +205,8 @@ function redactWeek(rows = [], startKey, n = 7) {
     return {
       date,
       work: atWork,
+      // Off is said only when People HR KNOWS he is off; "could not ask" is not a day off.
+      off: !!(off && off.off),
       events: family.sort((a, b) => (Number(b.allDay) - Number(a.allDay)) || String(a.start || '').localeCompare(String(b.start || ''))),
     };
   });
@@ -229,9 +252,13 @@ function whoIsIn(hh) {
     .filter((m) => m && m.name && (m.role !== 'visitor' || m.state === 'home'))
     .filter((m) => m.role !== 'companion' || m.state !== 'untracked')
     .map((m) => ({
+      id: m.id,
       name: m.name,
       role: m.role === 'companion' ? 'companion' : 'person',
       state: m.state === 'home' ? 'home' : m.state === 'away' ? 'out' : 'unknown',
+      // Only WHETHER a photo exists (a cache-busting version). The picture is
+      // fetched through /api/v/photo/:id, which serves only people on this list.
+      photo: m.photo && m.photo.version ? m.photo.version : null,
     }));
   return {
     known: !!hh.known,

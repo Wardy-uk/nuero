@@ -276,7 +276,8 @@ router.get('/wall', requireAccount, (req, res) => {
   const out = { ok: true, label: req.account.label, scopes: capture.scopesOf(req.account), today, gaps: [], at: new Date().toISOString() };
 
   try {
-    out.tasks = vesta.topTasks(capture.submissions(req.account), today);
+    // The jobs card scrolls (Nick, 17 Oct 2026), so it carries the whole open list up to 50.
+    out.tasks = vesta.topTasks(capture.submissions(req.account), today, 50);
   } catch (e) {
     out.tasks = null;
     out.gaps.push({ block: 'tasks', why: 'could not read the tasks' });
@@ -292,7 +293,16 @@ router.get('/wall', requireAccount, (req, res) => {
       const back = new Date(y, m - 1, d - 7);
       const lookback = `${back.getFullYear()}-${_pad(back.getMonth() + 1)}-${_pad(back.getDate())}`;
       const rows = db.getCalendarEvents(`${lookback}T00:00:00`, `${keys[6]}T23:59:59`) || [];
-      out.week = vesta.redactWeek(rows, from, 7);
+      // Whether he is at work comes from the WORKING-DAY rule and People HR
+      // (via NOVA) — never from the diary alone (17 Oct 2026).
+      const workingDays = require('../services/working-days');
+      const availability = require('../services/team-availability');
+      let snap = null;
+      try { snap = availability.snapshot(); } catch { snap = null; }
+      out.week = vesta.redactWeek(rows, from, 7, {
+        isWorkingDay: (d) => { try { return workingDays.isWorkingDay(d); } catch { return true; } },
+        offOn: (d) => { try { return availability.selfAbsenceOn(d, snap); } catch { return null; } },
+      });
     } catch (e) {
       // ⚠ `null` with a reason — an unreadable diary is not an empty week.
       out.week = null;
@@ -328,6 +338,31 @@ router.get('/wall', requireAccount, (req, res) => {
   }
 
   res.json(out);
+});
+
+/**
+ * A household member's photo for the wall's "Who's in" card. Behind the
+ * `house` scope, and ONLY for someone the wall is showing right now — a
+ * visitor who is out is not on the wall, so neither is their photo.
+ */
+router.get('/photo/:id', requireAccount, (req, res) => {
+  if (!capture.hasScope(req.account, 'house')) {
+    return res.status(403).json({ ok: false, error: 'Not enabled for this account.' });
+  }
+  try {
+    const household = require('../services/household');
+    const shown = vesta.whoIsIn(household.read()).people || [];
+    const id = String(req.params.id || '');
+    if (!shown.some((p) => p.id === id && p.photo)) return res.status(404).json({ ok: false, error: 'no photo' });
+    const f = household.photoFile(id);
+    if (!f) return res.status(404).json({ ok: false, error: 'no photo' });
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.type(f.ext === 'jpg' ? 'jpeg' : f.ext);
+    res.sendFile(f.path);
+  } catch (e) {
+    console.error('[Vesta] Photo failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong.' });
+  }
 });
 
 // GET /api/v/hike — Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.

@@ -152,3 +152,21 @@
   z-index: 5; appearance: none; border: 0; border-radius: 999px; padding: 12px 22px;
   background: var(--ember); color: #1a1208; font-size: 17px; font-weight: 600; cursor: pointer;
 }
+
+/* Who's in: the household photos the Pi holds (17 Oct 2026). */
+.wall__person { align-items: center; padding: 4px 12px 4px 4px; }
+.wall__face { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; background: var(--panel-2); }
+.wall__face--initial { display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--ink-dim); }
+.wall__person--out .wall__face { filter: grayscale(1); }
+
+/* Jobs scroll inside their card (Nick, 17 Oct 2026). */
+.wall__card:last-child .wall__tasks {
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  -webkit-mask-image: none; mask-image: none; padding-right: 4px;
+}
+
+.wall__atwork--off { border-style: solid; border-color: var(--good); }
+.wall__atwork--off .wall__atwork-label { color: var(--good); }
+
+/* What is holding the screen on — small, so it can be read when it matters. */
+.wall__awakeinfo { position: fixed; right: 12px; bottom: 6px; font-size: 11px; color: var(--ink-faint); z-index: 4; pointer-events: none; }

@@ -110,6 +110,7 @@ function Week({ week, today, gap }) {
         const coveredBySpan = spans.some((s) => s.from <= col && s.to >= col);
         return (
           <div key={`b-${d.date}`} className="wall__daybody" style={{ gridColumn: col + 1, gridRow: bodyRow }}>
+            {d.off && <p className="wall__atwork wall__atwork--off"><span className="wall__atwork-label">Nick off</span></p>}
             {d.work && (
               <p className="wall__atwork">
                 <span className="wall__atwork-label">Nick at work</span>
@@ -125,7 +126,7 @@ function Week({ week, today, gap }) {
                   </li>
                 ))}
               </ul>
-            ) : (!d.work && !coveredBySpan && <p className="wall__nothing">Nothing in</p>)}
+            ) : (!d.work && !d.off && !coveredBySpan && <p className="wall__nothing">Nothing in</p>)}
           </div>
         );
       })}
@@ -175,6 +176,25 @@ const STATE_WORD = { home: 'In', out: 'Out', unknown: '?' };
 // Who's in and the outside reading live in the TOP BAR, which is otherwise
 // just a clock: the jobs list gets the whole side column instead of being
 // squeezed under two cards (Nick, 15 Oct 2026: use the width).
+/** The household photo the Pi holds, or the person's initial while it loads / if none. */
+function Face({ person }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    let url = null;
+    let dead = false;
+    if (person.id && person.photo && typeof window !== 'undefined') {
+      api.photoUrl(api.getToken(), person.id, person.photo).then((u) => {
+        if (dead) { if (u) URL.revokeObjectURL(u); return; }
+        url = u; setSrc(u);
+      });
+    }
+    return () => { dead = true; if (url) URL.revokeObjectURL(url); };
+  }, [person.id, person.photo]);
+  return src
+    ? <img className="wall__face" src={src} alt="" />
+    : <span className="wall__face wall__face--initial" aria-hidden="true">{String(person.name || '?').slice(0, 1)}</span>;
+}
+
 function Who({ who }) {
   if (!who) return null;
   return (
@@ -184,7 +204,8 @@ function Who({ who }) {
       {Array.isArray(who.people) && who.people.length > 0 && (
         <ul className="wall__who">
           {who.people.map((p) => (
-            <li key={p.name} className={`wall__person wall__person--${who.known ? p.state : 'unknown'}`}>
+            <li key={p.id || p.name} className={`wall__person wall__person--${who.known ? p.state : 'unknown'}`}>
+              <Face person={p} />
               <span className="wall__pname">{p.name}</span>
               <span className="wall__pstate">{who.known ? STATE_WORD[p.state] : '?'}</span>
             </li>
@@ -320,6 +341,7 @@ export function WallView({ data, now, error = null, onExit = null }) {
  */
 function useKeepAwake() {
   const [awake, setAwake] = useState(false);
+  const [locked, setLocked] = useState(false);
   const lock = useRef(null);
   const video = useRef(null);
 
@@ -327,7 +349,8 @@ function useKeepAwake() {
     try {
       if (navigator.wakeLock && document.visibilityState === 'visible' && !lock.current) {
         lock.current = await navigator.wakeLock.request('screen');
-        lock.current.addEventListener('release', () => { lock.current = null; });
+        setLocked(true);
+        lock.current.addEventListener('release', () => { lock.current = null; setLocked(false); });
       }
     } catch { /* refused — the video still covers it */ }
   }, []);
@@ -375,7 +398,8 @@ function useKeepAwake() {
     };
   }, [requestLock]);
 
-  return { awake, arm };
+  // `how` is shown on the wall, so what the iPad actually allows is visible.
+  return { awake, arm, how: awake && locked ? 'video + wake lock' : awake ? 'video' : locked ? 'wake lock' : null };
 }
 
 export default function Wall({ onExit, onSignedOut }) {
@@ -384,7 +408,7 @@ export default function Wall({ onExit, onSignedOut }) {
   const [now, setNow] = useState(() => new Date());
   const [wakeUntil, setWakeUntil] = useState(0);
   const bootDay = useRef(new Date().getDate());
-  const { awake, arm } = useKeepAwake();
+  const { awake, arm, how } = useKeepAwake();
 
   const refresh = useCallback(async () => {
     try {
@@ -421,6 +445,7 @@ export default function Wall({ onExit, onSignedOut }) {
            if (!awake) arm();
          }}>
       <WallView data={data} now={now} error={error} onExit={onExit} />
+      <span className="wall__awakeinfo">{how ? `Screen kept on: ${how}` : 'Screen not held on'}</span>
       {!awake && (
         <button className="wall__awake" onClick={arm}>
           Tap once to keep this screen on

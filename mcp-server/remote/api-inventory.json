@@ -5974,7 +5974,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 334,
+    "line": 369,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -5993,6 +5993,24 @@
     "line": 86,
     "description": "GET /api/v/home.",
     "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_v_photo_by_id",
+    "method": "GET",
+    "route": "/api/v/photo/:id",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 348,
+    "description": "GET /api/v/photo/:id.",
+    "params": [
+      "id"
+    ],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -6925,7 +6943,7 @@
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 373,
+    "line": 408,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -14038,7 +14056,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 412,
+    "line": 447,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -14059,7 +14077,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 446,
+    "line": 481,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -14080,7 +14098,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 422,
+    "line": 457,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -14120,7 +14138,7 @@
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 348,
+    "line": 383,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],
