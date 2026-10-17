@@ -59,7 +59,7 @@
 /* ── The side column ──────────────────────────────────────────────────────── */
 .wall__side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
 .wall__card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
-.wall__card:last-child { flex: 1; min-height: 0; overflow: hidden; }
+.wall__card--jobs { flex: 1; min-height: 0; overflow: hidden; }
 .wall__h { margin: 0 0 8px; font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
 .wall__gap { margin: 0; color: var(--warn); font-size: 15px; }
 .wall__note { margin: 6px 0 0; font-size: 13px; color: var(--ink-faint); }
@@ -94,8 +94,8 @@
 /* The jobs card fills what is left: the list fades rather than cutting a line
    in half, and "+N more" stays visible at the bottom — a hidden count is a
    list that looks shorter than it is. */
-.wall__card:last-child { display: flex; flex-direction: column; }
-.wall__card:last-child .wall__tasks {
+.wall__card--jobs { display: flex; flex-direction: column; }
+.wall__card--jobs .wall__tasks {
   flex: 1; min-height: 0; overflow: hidden;
   -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent);
   mask-image: linear-gradient(to bottom, #000 82%, transparent);
@@ -160,7 +160,7 @@
 .wall__person--out .wall__face { filter: grayscale(1); }
 
 /* Jobs scroll inside their card (Nick, 17 Oct 2026). */
-.wall__card:last-child .wall__tasks {
+.wall__card--jobs .wall__tasks {
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   -webkit-mask-image: none; mask-image: none; padding-right: 4px;
 }
@@ -216,3 +216,36 @@
 .wall__efuels .wall__ebars { height: 18px; margin: 3px 0 2px; gap: 2px; }
 .wall__efuels .wall__emonth { font-size: 12px; color: var(--ink-faint); }
 .wall__card--energy .wall__etotal { margin-top: 4px; font-size: 13px; }
+
+/* ── Today-first (17 Oct 2026) ─────────────────────────────────────────────── */
+.wall__cal > .wall__todayview { flex: 1; min-height: 0; }
+.wall__todayview { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.wall__hero { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+.wall__dpanel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 20px; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.wall__dphead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.wall__dptitle { font-size: 15px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.wall__dpanel--big .wall__dptitle { color: var(--ember); }
+.wall__dpdate { font-size: 16px; color: var(--ink-faint); }
+.wall__dpallday { align-self: flex-start; background: var(--ember-soft); border-radius: 6px; padding: 4px 10px; font-size: 18px; font-weight: 600; }
+.wall__dpwork { margin: 0; font-size: 17px; color: var(--ink-faint); }
+.wall__dpwork--off { color: var(--ember); font-weight: 600; }
+.wall__dplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+.wall__dpitem { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; align-items: baseline; gap: 12px; padding: 8px 10px; border-radius: 8px; }
+.wall__dptime { font-variant-numeric: tabular-nums; font-size: 20px; color: var(--ink-faint); }
+.wall__dpwhat { font-size: 22px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; }
+.wall__dpanel--big .wall__dptime { font-size: 26px; }
+.wall__dpanel--big .wall__dpwhat { font-size: 30px; }
+.wall__dpitem--past { opacity: .4; }
+.wall__dpitem--next, .wall__dpitem--now { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--ember); }
+.wall__dpitem--next .wall__dptime, .wall__dpitem--now .wall__dptime { color: var(--ember); }
+.wall__dpbadge { font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ember); }
+
+.wall__strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.wall__sday { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wall__sday--today { border-color: var(--ember); }
+.wall__sdow { font-size: 14px; color: var(--ink-faint); }
+.wall__sdow b { color: var(--ink); font-size: 16px; }
+.wall__sday--today .wall__sdow { color: var(--ember); }
+.wall__smark { font-size: 12px; color: var(--ink-faint); }
+.wall__smark--off { color: var(--ember); font-weight: 600; }
+.wall__stitles { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

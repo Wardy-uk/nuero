@@ -147,6 +147,9 @@ export function addDays(key, n) { const d = dateOf(key); d.setDate(d.getDate() +
  * fits the same grid. Returns {from, days, month, year, label}.
  */
 export function calRange(view, offset, todayKey) {
+  if (view === 'today') {
+    return { from: todayKey, days: 7, month: null, year: null, label: 'Today' };
+  }
   if (view === 'month') {
     const t = dateOf(todayKey);
     const first = new Date(t.getFullYear(), t.getMonth() + offset, 1);
@@ -198,14 +201,102 @@ function Month({ days, today, month, gap }) {
   );
 }
 
+/* ── Today-first (17 Oct 2026, Nick picked it) ─────────────────────────────── */
+
+/** HH:MM now, for comparing against sliced event times on TODAY only. */
+const hhmm = (now) => `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+
+/**
+ * Today's items split for display. PURE. Past = ended before now; the first
+ * not-yet-ended timed event is `next`. Exported for tests.
+ */
+export function splitDay(day, nowHHMM) {
+  const allDay = (day.events || []).filter((e) => e.allDay);
+  const timed = (day.events || []).filter((e) => !e.allDay);
+  let nextId = null;
+  const rows = timed.map((e) => {
+    const end = time(e.end) || time(e.start);
+    const past = nowHHMM != null && end && end <= nowHHMM;
+    const now = nowHHMM != null && !past && time(e.start) <= nowHHMM;
+    return { e, past, now };
+  });
+  const first = rows.find((x) => !x.past);
+  if (first && nowHHMM != null) nextId = first.e.id || first.e.start;
+  return { allDay, rows, nextId };
+}
+
+function DayPanel({ day, title, now, big }) {
+  if (!day) return null;
+  const { allDay, rows, nextId } = splitDay(day, now ? hhmm(now) : null);
+  const { dow, day: n, month } = dayOfKey(day.date);
+  const empty = !allDay.length && !rows.length && !day.work && !day.off;
+  return (
+    <section className={`wall__dpanel${big ? ' wall__dpanel--big' : ''}`} aria-label={title}>
+      <header className="wall__dphead">
+        <span className="wall__dptitle">{title}</span>
+        <span className="wall__dpdate">{`${DAYS_LONG[dow]} ${n} ${MONTHS_LONG[month]}`}</span>
+      </header>
+      {allDay.map((e, i) => <div key={`${e.id || i}-ad`} className="wall__dpallday">{e.title}</div>)}
+      {day.off && <p className="wall__dpwork wall__dpwork--off">Nick off</p>}
+      {day.work && <p className="wall__dpwork">{day.work.allDay ? 'Nick at work' : `Nick at work · ${time(day.work.start)}–${time(day.work.end)}`}</p>}
+      {rows.length > 0 && (
+        <ul className="wall__dplist">
+          {rows.map(({ e, past, now: on }, i) => (
+            <li key={`${e.id || i}-t`} className={`wall__dpitem${past ? ' wall__dpitem--past' : ''}${on ? ' wall__dpitem--now' : (e.id || e.start) === nextId ? ' wall__dpitem--next' : ''}`}>
+              <span className="wall__dptime">{time(e.start)}</span>
+              <span className="wall__dpwhat">{e.title}</span>
+              {on ? <span className="wall__dpbadge">Now</span> : (e.id || e.start) === nextId && now ? <span className="wall__dpbadge">Next</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {empty && <p className="wall__nothing">Nothing in</p>}
+    </section>
+  );
+}
+
+/** The rest of the week as a thin strip; a tap opens the full week. */
+function WeekStrip({ week, today, onOpen }) {
+  return (
+    <button className="wall__strip" onClick={onOpen} aria-label="Open the week">
+      {week.map((d) => {
+        const { dow, day } = dayOfKey(d.date);
+        const titles = (d.events || []).map((e) => e.title);
+        return (
+          <span key={d.date} className={`wall__sday${d.date === today ? ' wall__sday--today' : ''}`}>
+            <span className="wall__sdow">{d.date === today ? 'Today' : DAYS[dow]} <b>{day}</b></span>
+            <span className={`wall__smark${d.off ? ' wall__smark--off' : ''}`}>{d.off ? 'Nick off' : d.work ? 'Nick at work' : '\u00a0'}</span>
+            <span className="wall__stitles">{titles.length ? titles.slice(0, 2).join(' · ') + (titles.length > 2 ? ` +${titles.length - 2}` : '') : '\u00a0'}</span>
+          </span>
+        );
+      })}
+    </button>
+  );
+}
+
+function TodayView({ week, today, now, gap, onOpenWeek }) {
+  if (gap || !Array.isArray(week)) {
+    return <section className="wall__week--gap"><Gap>I couldn&rsquo;t read the diary. That isn&rsquo;t an empty day &mdash; I couldn&rsquo;t look.</Gap></section>;
+  }
+  return (
+    <div className="wall__todayview">
+      <div className="wall__hero">
+        <DayPanel day={week[0]} title="Today" now={now} big />
+        <DayPanel day={week[1]} title="Tomorrow" />
+      </div>
+      <WeekStrip week={week} today={today} onOpen={onOpenWeek} />
+    </div>
+  );
+}
+
 /**
  * The calendar with its controls. A horizontal swipe moves a week or a month;
  * a vertical one is left alone.
  */
-function Calendar({ data, gap, cal }) {
+function Calendar({ data, gap, cal, now }) {
   const start = useRef(null);
   const ready = data && data.from === cal.range.from && data.days === cal.range.days;
-  const step = (n) => cal.onStep && cal.onStep(n);
+  const step = (n) => cal.view !== 'today' && cal.onStep && cal.onStep(n);
   return (
     <div className="wall__cal"
          onPointerDown={(e) => { start.current = { x: e.clientX, y: e.clientY }; }}
@@ -216,19 +307,23 @@ function Calendar({ data, gap, cal }) {
            if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
          }}>
       <div className="wall__caltools">
-        <button className="wall__calbtn" onClick={() => step(-1)} aria-label={cal.view === 'month' ? 'Previous month' : 'Previous week'}>‹</button>
-        <span className="wall__callabel">{cal.range.label}</span>
-        <button className="wall__calbtn" onClick={() => step(1)} aria-label={cal.view === 'month' ? 'Next month' : 'Next week'}>›</button>
-        {cal.offset !== 0 && <button className="wall__calbtn wall__calbtn--today" onClick={() => cal.onToday && cal.onToday()}>Today</button>}
+        {cal.view !== 'today' && <>
+          <button className="wall__calbtn" onClick={() => step(-1)} aria-label={cal.view === 'month' ? 'Previous month' : 'Previous week'}>‹</button>
+          <span className="wall__callabel">{cal.range.label}</span>
+          <button className="wall__calbtn" onClick={() => step(1)} aria-label={cal.view === 'month' ? 'Next month' : 'Next week'}>›</button>
+          {cal.offset !== 0 && <button className="wall__calbtn wall__calbtn--today" onClick={() => cal.onToday && cal.onToday()}>This {cal.view}</button>}
+        </>}
         <span className="wall__calspacer" />
         <div className="wall__calview" role="group" aria-label="Calendar view">
-          {['week', 'month'].map((v) => (
+          {['today', 'week', 'month'].map((v) => (
             <button key={v} className={`wall__calbtn${cal.view === v ? ' wall__calbtn--on' : ''}`} aria-pressed={cal.view === v}
-                    onClick={() => cal.onView && cal.onView(v)}>{v === 'week' ? 'Week' : 'Month'}</button>
+                    onClick={() => cal.onView && cal.onView(v)}>{v === 'today' ? 'Today' : v === 'week' ? 'Week' : 'Month'}</button>
           ))}
         </div>
       </div>
       {!ready && !gap ? <p className="wall__loading">Getting the diary…</p>
+        : cal.view === 'today'
+          ? <TodayView week={data.week} today={data.today} now={now} gap={gap} onOpenWeek={() => cal.onView && cal.onView('week')} />
         : cal.view === 'month'
           ? <Month days={data.week} today={data.today} month={cal.range.month} gap={gap} />
           : <Week week={data.week} today={data.today} gap={gap} />}
@@ -246,7 +341,7 @@ function dueLabel(t, today) {
 
 function Tasks({ tasks, gap, today }) {
   return (
-    <section className="wall__card" aria-label="Family tasks">
+    <section className="wall__card wall__card--jobs" aria-label="Family tasks">
       <h2 className="wall__h">Jobs</h2>
       {gap || !tasks ? <Gap>I couldn&rsquo;t read the jobs list.</Gap>
         : tasks.tasks.length === 0 ? <p className="wall__nothing">Nothing to do.</p>
@@ -424,11 +519,11 @@ export function WallView({ data, now, error = null, onExit = null, cal = null })
       {!data ? <p className="wall__loading">Getting things…</p> : (
         <main className={`wall__body${can('calendar') ? '' : ' wall__body--nocal'}`}>
           {can('calendar') && (cal
-            ? <Calendar data={data} gap={gapFor('week')} cal={cal} />
+            ? <Calendar data={data} gap={gapFor('week')} cal={cal} now={now} />
             : <Week week={data.week} today={data.today} gap={gapFor('week')} />)}
           <aside className="wall__side">
-            {can('energy') && <WallEnergy energy={data.energy} gap={gapFor('energy')} />}
             <Tasks tasks={data.tasks} gap={gapFor('tasks')} today={data.today} />
+            {can('energy') && <WallEnergy energy={data.energy} gap={gapFor('energy')} />}
           </aside>
         </main>
       )}
@@ -568,7 +663,8 @@ export default function Wall({ onExit, onSignedOut }) {
   // What is keeping the screen on, sent with each poll (see /api/v/wall `held`).
   const heldRef = useRef('');
   heldRef.current = keepAwakeReport(how);
-  const [view, setView] = useState(() => { try { return localStorage.getItem('vesta_wall_view') === 'month' ? 'month' : 'week'; } catch { return 'week'; } });
+  // Today-first: the wall always starts on Today and returns there when left alone.
+  const [view, setView] = useState('today');
   const [offset, setOffset] = useState(0);
   const lastTouch = useRef(Date.now());
   const range = calRange(view, offset, keyOf(now));
@@ -598,7 +694,7 @@ export default function Wall({ onExit, onSignedOut }) {
       const t = new Date();
       setNow(t);
       // Left on another week or month, the wall comes back to now after three minutes untouched.
-      if (Date.now() - lastTouch.current > IDLE_RETURN_MS) setOffset((o) => (o === 0 ? o : 0));
+      if (Date.now() - lastTouch.current > IDLE_RETURN_MS) { setOffset((o) => (o === 0 ? o : 0)); setView((v) => (v === 'today' ? v : 'today')); }
       // A screen that is never closed never picks up a deploy. Reload once a
       // day in the small hours, while nobody is looking.
       if (t.getDate() !== bootDay.current && t.getHours() === 3) window.location.reload();
@@ -623,7 +719,7 @@ export default function Wall({ onExit, onSignedOut }) {
           view, offset, range,
           onStep: (n) => { lastTouch.current = Date.now(); setOffset((o) => o + n); },
           onToday: () => setOffset(0),
-          onView: (v) => { setView(v); setOffset(0); try { localStorage.setItem('vesta_wall_view', v); } catch { /* private mode */ } },
+          onView: (v) => { lastTouch.current = Date.now(); setView(v); setOffset(0); },
         }} />
       <footer className="wall__foot">
         <span className="wall__awakeinfo">{how ? `Screen kept on: ${how}` : 'Screen not held on'}</span>

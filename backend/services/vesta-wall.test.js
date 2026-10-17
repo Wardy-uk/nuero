@@ -269,6 +269,27 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
     cal: { view: 'month', offset: 0, range, onStep() {}, onToday() {}, onView() {} },
   }));
   assert.ok(stale.includes('Getting the diary') && !stale.includes('wall__mday'));
+
+  // Today-first: today and tomorrow as panels, the week as a strip; past items dim, the next is marked.
+  const { splitDay } = mod.exports;
+  const d0 = { date: '2026-10-19', events: [
+    { id: 'a', title: 'School run', start: '2026-10-19T08:30:00', end: '2026-10-19T09:00:00', allDay: false },
+    { id: 'b', title: 'Isaac swimming', start: '2026-10-19T17:00:00', end: '2026-10-19T18:00:00', allDay: false },
+  ] };
+  const split = splitDay(d0, '14:05');
+  assert.deepEqual(split.rows.map((x) => x.past), [true, false]);
+  assert.equal(split.nextId, 'b');
+  assert.equal(splitDay(d0, null).nextId, null, 'tomorrow has no "next"');
+  const todayRange = calRange('today', 0, '2026-10-19');
+  assert.deepEqual([todayRange.from, todayRange.days], ['2026-10-19', 7]);
+  const thtml = renderToString(React.createElement(WallView, {
+    data: { ...data, from: '2026-10-19', days: 7, week: [d0, ...week.slice(1)] }, now,
+    cal: { view: 'today', offset: 0, range: todayRange, onStep() {}, onToday() {}, onView() {} },
+  }));
+  assert.ok(thtml.includes('>Today<') && thtml.includes('Tomorrow') && thtml.includes('Isaac swimming'));
+  assert.ok(thtml.includes('wall__dpitem--past') && thtml.includes('>Next<'));
+  assert.equal((thtml.match(/class="wall__sday[ "]/g) || []).length, 7, 'the week strip');
+  assert.ok(!thtml.includes('Previous week'), 'no arrows on Today');
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──
