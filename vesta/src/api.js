@@ -75,7 +75,15 @@ export const login = (username, pin) =>
 export const home = (token) => call('/home', { token });
 
 /** The family wall: week, top tasks, who's in, station. Polled every minute. */
-export const wall = (token) => call('/wall', { token });
+export const wall = (token, { from = null, days = 7, held = '' } = {}) => {
+  const q = new URLSearchParams();
+  if (from) q.set('from', from);
+  if (days !== 7) q.set('days', String(days));
+  // What is keeping the screen on — recorded so it can be checked without the iPad.
+  if (held) q.set('held', held);
+  const qs = q.toString();
+  return call(`/wall${qs ? `?${qs}` : ''}`, { token });
+};
 
 /**
  * A household member's photo as an object URL. An <img> cannot send the

@@ -151,6 +151,16 @@ test('7. /api/v/wall over HTTP: scoped blocks absent without the scope; the week
 
     assert.equal((await call('/wall')).status, 401, 'no session, no wall');
     assert.equal((await call('/wall?from=next-week', { token: all })).status, 400, 'a junk date is refused, not guessed');
+    // The month view asks for six weeks; any other span is refused, never clamped.
+    const month = (await call('/wall?from=2026-09-28&days=42', { token: all })).json;
+    assert.equal(month.week.length, 42);
+    assert.equal(month.from, '2026-09-28');
+    assert.equal(month.days, 42);
+    assert.equal((await call('/wall?days=30', { token: all })).status, 400);
+    // The keep-awake report is recorded, filtered to a safe character set.
+    await call(`/wall?held=${encodeURIComponent('video + wake lock;home-screen;wakelock-api=yes;os=18.6<script>')}`, { token: all });
+    const seen = JSON.parse(db.getState('vesta_wall_seen') || '{}');
+    assert.equal(seen['wall-all'].held, 'video + wake lock;home-screen;wakelock-api=yes;os=18.6script');
 
     const m = await call('/wall', { token: min });
     assert.equal(m.status, 200);
@@ -186,7 +196,15 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   });
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
-  const { WallView, isNight, allDaySpans, bundleIn } = mod.exports;
+  const { WallView, isNight, allDaySpans, bundleIn, calRange } = mod.exports;
+
+  // Ranges: a week moves seven days a step; a month is six weeks from the Monday on or before the 1st.
+  assert.deepEqual([calRange('week', 0, '2026-10-17').from, calRange('week', 1, '2026-10-17').from, calRange('week', -1, '2026-10-17').from],
+    ['2026-10-17', '2026-10-24', '2026-10-10']);
+  const oct = calRange('month', 0, '2026-10-17');
+  assert.deepEqual([oct.from, oct.days, oct.month, oct.label], ['2026-09-28', 42, 9, 'October 2026']);
+  assert.equal(calRange('month', 3, '2026-10-17').label, 'January 2027', 'months cross the year');
+  assert.equal(calRange('month', 0, '2026-02-10').from, '2026-01-26');
   assert.equal(typeof WallView, 'function', 'positive control: the export exists');
 
   const week = vesta.redactWeek([
@@ -233,6 +251,24 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   // The update check compares bundle names; a dev page (no hashed bundle) claims nothing.
   assert.equal(bundleIn('<script type="module" crossorigin src="/assets/index-_kKaW-4d.js"></script>'), '/assets/index-_kKaW-4d.js');
   assert.equal(bundleIn('<script type="module" src="/src/main.jsx"></script>'), null);
+
+  // The month view renders a six-week grid with its controls, and a busy day says "+N more".
+  const busy = ['a', 'b', 'c', 'd'].map((x, i) => ({ event_id: x, subject: `Thing ${x}`, start_time: `2026-10-21T1${i}:00:00`, end_time: `2026-10-21T1${i}:30:00`, source: 'apple' }));
+  const monthDays = vesta.redactWeek([...busy, { event_id: 'h', subject: 'Half term', start_time: '2026-10-26T00:00:00', end_time: '2026-10-31T00:00:00', is_all_day: 1, source: 'apple' }], '2026-09-28', 42);
+  const range = calRange('month', 0, '2026-10-19');
+  const mhtml = renderToString(React.createElement(WallView, {
+    data: { ...data, week: monthDays, from: range.from, days: 42 }, now,
+    cal: { view: 'month', offset: 0, range, onStep() {}, onToday() {}, onView() {} },
+  }));
+  assert.equal((mhtml.match(/class="wall__mday[ "]/g) || []).length, 42);
+  assert.ok(mhtml.includes('October 2026') && mhtml.includes('Half term') && mhtml.includes('+2 more'));
+  assert.ok(mhtml.includes('aria-pressed="true"') && mhtml.includes('>Month<'));
+  // An answer for a different range is never drawn under this one's label.
+  const stale = renderToString(React.createElement(WallView, {
+    data: { ...data, from: '2026-10-19', days: 7 }, now,
+    cal: { view: 'month', offset: 0, range, onStep() {}, onToday() {}, onView() {} },
+  }));
+  assert.ok(stale.includes('Getting the diary') && !stale.includes('wall__mday'));
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──

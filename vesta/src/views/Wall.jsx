@@ -22,6 +22,7 @@ const POLL_MS = 60 * 1000;
 const NIGHT_FROM = 22 * 60;       // 22:00
 const NIGHT_TO = 6 * 60 + 30;     // 06:30
 const WAKE_MS = 3 * 60 * 1000;    // a tap lights it for three minutes
+const IDLE_RETURN_MS = 3 * 60 * 1000;
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -131,6 +132,107 @@ function Week({ week, today, gap }) {
         );
       })}
     </section>
+  );
+}
+
+/* ── Which days the calendar shows (PURE, local dates, no offsets) ─────────── */
+const pad2 = (n) => String(n).padStart(2, '0');
+export function keyOf(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function dateOf(key) { const [y, m, d] = String(key).split('-').map(Number); return new Date(y, m - 1, d); }
+export function addDays(key, n) { const d = dateOf(key); d.setDate(d.getDate() + n); return keyOf(d); }
+
+/**
+ * The range for a view. Week: seven days from today, moved a week per step.
+ * Month: six whole weeks from the Monday on or before the 1st, so every month
+ * fits the same grid. Returns {from, days, month, year, label}.
+ */
+export function calRange(view, offset, todayKey) {
+  if (view === 'month') {
+    const t = dateOf(todayKey);
+    const first = new Date(t.getFullYear(), t.getMonth() + offset, 1);
+    const back = (first.getDay() + 6) % 7;            // days since Monday
+    const start = new Date(first.getFullYear(), first.getMonth(), 1 - back);
+    return { from: keyOf(start), days: 42, month: first.getMonth(), year: first.getFullYear(),
+      label: `${MONTHS_LONG[first.getMonth()]} ${first.getFullYear()}` };
+  }
+  const from = addDays(todayKey, 7 * offset);
+  const to = addDays(from, 6);
+  const a = dayOfKey(from), b = dayOfKey(to);
+  const span = a.month === b.month ? `${a.day}–${b.day} ${MONTHS[b.month]}` : `${a.day} ${MONTHS[a.month]} – ${b.day} ${MONTHS[b.month]}`;
+  const label = offset === 0 ? `This week · ${span}` : offset === 1 ? `Next week · ${span}` : offset === -1 ? `Last week · ${span}` : span;
+  return { from, days: 7, month: null, year: null, label };
+}
+
+const MONTH_LINES = 3;
+function Month({ days, today, month, gap }) {
+  if (gap || !Array.isArray(days)) {
+    return <section className="wall__month wall__week--gap"><Gap>I couldn&rsquo;t read the diary. That isn&rsquo;t an empty month &mdash; I couldn&rsquo;t look.</Gap></section>;
+  }
+  return (
+    <section className="wall__month" aria-label="This month">
+      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} className="wall__mhead">{d}</div>)}
+      {days.map((d) => {
+        const { dow, day, month: m } = dayOfKey(d.date);
+        const lines = [];
+        if (d.off) lines.push(<li key="off" className="wall__mline wall__mline--off">Nick off</li>);
+        else if (d.work) lines.push(<li key="work" className="wall__mline wall__mline--work">{d.work.allDay ? 'Nick at work' : `Work ${time(d.work.start)}–${time(d.work.end)}`}</li>);
+        (d.events || []).forEach((e, i) => {
+          lines.push(e.allDay
+            ? <li key={`${e.id || i}-a`} className="wall__mline wall__mline--allday">{e.title}</li>
+            : <li key={`${e.id || i}-t`} className="wall__mline"><span className="wall__time">{time(e.start)}</span>{` ${e.title}`}</li>);
+        });
+        const shown = lines.length > MONTH_LINES ? lines.slice(0, MONTH_LINES - 1) : lines;
+        const more = lines.length - shown.length;
+        return (
+          <div key={d.date}
+               className={`wall__mday${d.date === today ? ' wall__mday--today' : ''}${m !== month ? ' wall__mday--other' : ''}${dow === 0 || dow === 6 ? ' wall__mday--weekend' : ''}`}>
+            <span className="wall__mnum">{day === 1 ? `${day} ${MONTHS[m]}` : String(day)}</span>
+            <ul className="wall__mlines">
+              {shown}
+              {more > 0 && <li className="wall__mline wall__mline--more">{`+${more} more`}</li>}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/**
+ * The calendar with its controls. A horizontal swipe moves a week or a month;
+ * a vertical one is left alone.
+ */
+function Calendar({ data, gap, cal }) {
+  const start = useRef(null);
+  const ready = data && data.from === cal.range.from && data.days === cal.range.days;
+  const step = (n) => cal.onStep && cal.onStep(n);
+  return (
+    <div className="wall__cal"
+         onPointerDown={(e) => { start.current = { x: e.clientX, y: e.clientY }; }}
+         onPointerUp={(e) => {
+           const s = start.current; start.current = null;
+           if (!s) return;
+           const dx = e.clientX - s.x, dy = e.clientY - s.y;
+           if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
+         }}>
+      <div className="wall__caltools">
+        <button className="wall__calbtn" onClick={() => step(-1)} aria-label={cal.view === 'month' ? 'Previous month' : 'Previous week'}>‹</button>
+        <span className="wall__callabel">{cal.range.label}</span>
+        <button className="wall__calbtn" onClick={() => step(1)} aria-label={cal.view === 'month' ? 'Next month' : 'Next week'}>›</button>
+        {cal.offset !== 0 && <button className="wall__calbtn wall__calbtn--today" onClick={() => cal.onToday && cal.onToday()}>Today</button>}
+        <span className="wall__calspacer" />
+        <div className="wall__calview" role="group" aria-label="Calendar view">
+          {['week', 'month'].map((v) => (
+            <button key={v} className={`wall__calbtn${cal.view === v ? ' wall__calbtn--on' : ''}`} aria-pressed={cal.view === v}
+                    onClick={() => cal.onView && cal.onView(v)}>{v === 'week' ? 'Week' : 'Month'}</button>
+          ))}
+        </div>
+      </div>
+      {!ready && !gap ? <p className="wall__loading">Getting the diary…</p>
+        : cal.view === 'month'
+          ? <Month days={data.week} today={data.today} month={cal.range.month} gap={gap} />
+          : <Week week={data.week} today={data.today} gap={gap} />}
+    </div>
   );
 }
 
@@ -300,7 +402,7 @@ export function WallEnergy({ energy, gap }) {
 }
 
 /** PURE view. Exported for the render test. */
-export function WallView({ data, now, error = null, onExit = null }) {
+export function WallView({ data, now, error = null, onExit = null, cal = null }) {
   const gapFor = (b) => ((data && data.gaps) || []).find((g) => g.block === b)?.why || null;
   const can = (s) => ((data && data.scopes) || []).includes(s);
   const hh = String(now.getHours()).padStart(2, '0');
@@ -319,7 +421,9 @@ export function WallView({ data, now, error = null, onExit = null }) {
       </header>
       {!data ? <p className="wall__loading">Getting things…</p> : (
         <main className={`wall__body${can('calendar') ? '' : ' wall__body--nocal'}`}>
-          {can('calendar') && <Week week={data.week} today={data.today} gap={gapFor('week')} />}
+          {can('calendar') && (cal
+            ? <Calendar data={data} gap={gapFor('week')} cal={cal} />
+            : <Week week={data.week} today={data.today} gap={gapFor('week')} />)}
           <aside className="wall__side">
             {can('energy') && <WallEnergy energy={data.energy} gap={gapFor('energy')} />}
             <Tasks tasks={data.tasks} gap={gapFor('tasks')} today={data.today} />
@@ -344,6 +448,15 @@ function useKeepAwake() {
   const [locked, setLocked] = useState(false);
   const lock = useRef(null);
   const video = useRef(null);
+  // ⚠ The silent video's source is loaded UP FRONT. iOS only lets a video start
+  // inside the tap itself; awaiting a module import first broke that link, so
+  // the video never actually played (17 Oct 2026).
+  const media = useRef(null);
+  useEffect(() => {
+    let dead = false;
+    import('nosleep.js/src/media.js').then((m) => { if (!dead) media.current = m; }).catch(() => {});
+    return () => { dead = true; };
+  }, []);
 
   const requestLock = useCallback(async () => {
     try {
@@ -355,11 +468,12 @@ function useKeepAwake() {
     } catch { /* refused — the video still covers it */ }
   }, []);
 
-  const arm = useCallback(async () => {
+  const arm = useCallback(() => {
     requestLock();
     try {
       if (!video.current) {
-        const { webm, mp4 } = await import('nosleep.js/src/media.js');
+        if (!media.current) return;      // not loaded yet: the next tap will do it
+        const { webm, mp4 } = media.current;
         const v = document.createElement('video');
         v.setAttribute('playsinline', '');
         v.setAttribute('muted', '');
@@ -378,8 +492,9 @@ function useKeepAwake() {
         document.body.appendChild(v);
         video.current = v;
       }
-      await video.current.play();
-      setAwake(true);
+      // play() is called synchronously inside the tap, which is what iOS requires.
+      const p = video.current.play();
+      if (p && p.then) p.then(() => setAwake(true)).catch(() => setAwake(false));
     } catch { setAwake(false); }
   }, [requestLock]);
 
@@ -431,6 +546,15 @@ function useNewVersion() {
   return fresh;
 }
 
+/** A short, device-free line describing what holds the screen on. */
+function keepAwakeReport(how) {
+  try {
+    const ios = (/OS (\d+)_(\d+)/.exec(navigator.userAgent || '') || []).slice(1, 3).join('.') || 'other';
+    const where = navigator.standalone ? 'home-screen' : 'browser';
+    return `${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios}`;
+  } catch { return how || 'none'; }
+}
+
 export default function Wall({ onExit, onSignedOut }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -439,10 +563,23 @@ export default function Wall({ onExit, onSignedOut }) {
   const bootDay = useRef(new Date().getDate());
   const { awake, arm, how } = useKeepAwake();
   const updateReady = useNewVersion();
+  // What is keeping the screen on, sent with each poll (see /api/v/wall `held`).
+  const heldRef = useRef('');
+  heldRef.current = keepAwakeReport(how);
+  const [view, setView] = useState(() => { try { return localStorage.getItem('vesta_wall_view') === 'month' ? 'month' : 'week'; } catch { return 'week'; } });
+  const [offset, setOffset] = useState(0);
+  const lastTouch = useRef(Date.now());
+  const range = calRange(view, offset, keyOf(now));
+  const want = useRef(range);
+  want.current = range;
 
   const refresh = useCallback(async () => {
+    const r = want.current;
     try {
-      setData(await api.wall(api.getToken()));
+      const next = await api.wall(api.getToken(), { from: r.from, days: r.days, held: heldRef.current });
+      // A slow answer for a range that has since been swiped away from is dropped.
+      if (want.current.from !== r.from || want.current.days !== r.days) return;
+      setData(next);
       setError(null);
     } catch (err) {
       if (err.expired) return onSignedOut();
@@ -450,12 +587,16 @@ export default function Wall({ onExit, onSignedOut }) {
     }
   }, [onSignedOut]);
 
+  // A new range is fetched at once, not at the next minute's poll.
+  useEffect(() => { refresh(); }, [range.from, range.days, refresh]);
+
   useEffect(() => {
-    refresh();
     const poll = setInterval(refresh, POLL_MS);
     const tick = setInterval(() => {
       const t = new Date();
       setNow(t);
+      // Left on another week or month, the wall comes back to now after three minutes untouched.
+      if (Date.now() - lastTouch.current > IDLE_RETURN_MS) setOffset((o) => (o === 0 ? o : 0));
       // A screen that is never closed never picks up a deploy. Reload once a
       // day in the small hours, while nobody is looking.
       if (t.getDate() !== bootDay.current && t.getHours() === 3) window.location.reload();
@@ -471,10 +612,17 @@ export default function Wall({ onExit, onSignedOut }) {
            // whatever was under the finger in the dark.
            if (dim) { e.stopPropagation(); e.preventDefault(); }
            setWakeUntil(Date.now() + WAKE_MS);
+           lastTouch.current = Date.now();
            // Every tap re-arms the keep-awake video (it can only start from one).
            if (!awake) arm();
          }}>
-      <WallView data={data} now={now} error={error} onExit={onExit} />
+      <WallView data={data} now={now} error={error} onExit={onExit}
+        cal={{
+          view, offset, range,
+          onStep: (n) => { lastTouch.current = Date.now(); setOffset((o) => o + n); },
+          onToday: () => setOffset(0),
+          onView: (v) => { setView(v); setOffset(0); try { localStorage.setItem('vesta_wall_view', v); } catch { /* private mode */ } },
+        }} />
       <footer className="wall__foot">
         <span className="wall__awakeinfo">{how ? `Screen kept on: ${how}` : 'Screen not held on'}</span>
         {updateReady && (

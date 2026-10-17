@@ -273,7 +273,25 @@ router.get('/wall', requireAccount, (req, res) => {
   if (!DATE_RE.test(from)) {
     return res.status(400).json({ ok: false, error: 'that is not a date I understand' });
   }
-  const out = { ok: true, label: req.account.label, scopes: capture.scopesOf(req.account), today, gaps: [], at: new Date().toISOString() };
+  // A week (7) or a month grid (42 = six weeks). Anything else is refused, never clamped.
+  const span = req.query && req.query.days != null ? Number(req.query.days) : 7;
+  if (span !== 7 && span !== 42) {
+    return res.status(400).json({ ok: false, error: 'days must be 7 or 42' });
+  }
+  const out = { ok: true, label: req.account.label, scopes: capture.scopesOf(req.account), today, from, days: span, gaps: [], at: new Date().toISOString() };
+
+  // The wall reports what is keeping its screen on (keep-awake method, home
+  // screen or browser, whether the Wake Lock API exists, the iOS version) so a
+  // screen that keeps sleeping can be diagnosed from the Pi. Bounded and
+  // filtered to a fixed character set; nothing about the device beyond that.
+  const held = String((req.query && req.query.held) || '').replace(/[^\w .;=+-]/g, '').slice(0, 100);
+  if (held) {
+    try {
+      const seen = JSON.parse(db.getState('vesta_wall_seen') || '{}') || {};
+      seen[req.account.username] = { at: out.at, held };
+      db.setState('vesta_wall_seen', JSON.stringify(seen));
+    } catch (e) { console.warn('[Vesta] Could not record the wall keep-awake report:', e.message); }
+  }
 
   try {
     // The jobs card scrolls (Nick, 17 Oct 2026), so it carries the whole open list up to 50.
@@ -286,20 +304,20 @@ router.get('/wall', requireAccount, (req, res) => {
 
   if (capture.hasScope(req.account, 'calendar')) {
     try {
-      const keys = vesta.dayKeys(from, 7);
+      const keys = vesta.dayKeys(from, span);
       // Read from a week EARLIER: the cache is keyed on start time, and a
       // holiday that began last Saturday is still on this week's wall.
       const [y, m, d] = from.split('-').map(Number);
       const back = new Date(y, m - 1, d - 7);
       const lookback = `${back.getFullYear()}-${_pad(back.getMonth() + 1)}-${_pad(back.getDate())}`;
-      const rows = db.getCalendarEvents(`${lookback}T00:00:00`, `${keys[6]}T23:59:59`) || [];
+      const rows = db.getCalendarEvents(`${lookback}T00:00:00`, `${keys[keys.length - 1]}T23:59:59`) || [];
       // Whether he is at work comes from the WORKING-DAY rule and People HR
       // (via NOVA) — never from the diary alone (17 Oct 2026).
       const workingDays = require('../services/working-days');
       const availability = require('../services/team-availability');
       let snap = null;
       try { snap = availability.snapshot(); } catch { snap = null; }
-      out.week = vesta.redactWeek(rows, from, 7, {
+      out.week = vesta.redactWeek(rows, from, span, {
         isWorkingDay: (d) => { try { return workingDays.isWorkingDay(d); } catch { return true; } },
         offOn: (d) => { try { return availability.selfAbsenceOn(d, snap); } catch { return null; } },
       });

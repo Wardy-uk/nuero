@@ -176,3 +176,29 @@
 .wall__update { font: inherit; font-size: 12px; font-weight: 600; color: #fff; background: var(--accent, #2f6fd6); border: 0; border-radius: 999px; padding: 4px 12px; cursor: pointer; animation: wall-update-pulse 2.4s ease-in-out infinite; }
 @keyframes wall-update-pulse { 50% { opacity: .7; } }
 @media (prefers-reduced-motion: reduce) { .wall__update { animation: none; } }
+
+/* ── Calendar controls, swipe and the month grid (17 Oct 2026) ─────────────── */
+.wall__cal { display: flex; flex-direction: column; gap: 8px; min-height: 0; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.wall__cal > .wall__week, .wall__cal > .wall__month { flex: 1; min-height: 0; }
+.wall__caltools { display: flex; align-items: center; gap: 8px; }
+.wall__callabel { font-size: 18px; font-weight: 600; min-width: 12ch; text-align: center; }
+.wall__calspacer { flex: 1; }
+.wall__calbtn { font: inherit; font-size: 15px; min-width: 44px; min-height: 40px; padding: 4px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: inherit; cursor: pointer; }
+.wall__calbtn--today { border-color: var(--ember); color: var(--ember); }
+.wall__calview { display: flex; gap: 4px; }
+.wall__calbtn--on { background: var(--ember); border-color: var(--ember); color: #fff; }
+
+.wall__month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: auto repeat(6, minmax(0, 1fr)); gap: 6px; }
+.wall__mhead { font-size: 13px; color: var(--ink-faint); text-align: center; padding-bottom: 2px; }
+.wall__mday { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 3px; }
+.wall__mday--weekend { filter: brightness(0.97); }
+.wall__mday--other { opacity: 0.45; }
+.wall__mday--today { border-color: var(--ember); box-shadow: inset 0 0 0 1px var(--ember); }
+.wall__mday--today .wall__mnum { color: var(--ember); }
+.wall__mnum { font-size: 15px; font-weight: 600; }
+.wall__mlines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wall__mline { font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wall__mline--allday { background: var(--line); border-radius: 4px; padding: 0 4px; }
+.wall__mline--work { color: var(--ink-faint); }
+.wall__mline--off { color: var(--ember); font-weight: 600; }
+.wall__mline--more { color: var(--ink-faint); }
