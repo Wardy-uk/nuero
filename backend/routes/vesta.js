@@ -297,6 +297,12 @@ router.get('/wall', requireAccount, (req, res) => {
   try {
     // The jobs card scrolls (Nick, 17 Oct 2026), so it carries the whole open list up to 50.
     out.tasks = vesta.topTasks(capture.submissions(req.account), today, 50);
+    // A short label for the wall beside each task's own wording (display only;
+    // the record is untouched — see services/task-titles.js).
+    try {
+      const short = require('../services/task-titles').titlesFor(out.tasks.tasks);
+      out.tasks.tasks = out.tasks.tasks.map((t) => ({ ...t, short: short[t.id] || null }));
+    } catch (e) { console.warn('[Vesta] Wall short titles failed:', e.message); }
   } catch (e) {
     out.tasks = null;
     out.gaps.push({ block: 'tasks', why: 'could not read the tasks' });
@@ -350,6 +356,13 @@ router.get('/wall', requireAccount, (req, res) => {
     }
     try {
       out.station = require('../services/home-board').readStation(Date.now());
+      // The current condition from Home Assistant's weather entity, for one
+      // icon beside the temperature. Cached; absent until first read.
+      try {
+        const c = require('../services/ha-rooms').cachedCondition();
+        out.station.condition = c && c.known ? c.condition : null;
+        out.station.conditionLabel = c && c.known ? require('../services/home-board').conditionLabel(c.condition) : null;
+      } catch { out.station.condition = null; }
     } catch (e) {
       out.station = { known: false, why: 'the weather station could not be read' };
       console.error('[Vesta] Wall station failed:', e.message);

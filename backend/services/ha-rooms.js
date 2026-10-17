@@ -422,6 +422,35 @@ async function readWeather() {
 }
 
 /**
+ * Just the current condition id of the weather entity (sunny, cloudy, rainy…),
+ * for the family wall's icon. One state read, cached five minutes — the wall
+ * polls every minute and the full readWeather() also fetches 48 hours of
+ * forecast it does not need.
+ */
+let _cond = { at: 0, value: null };
+async function readCondition({ maxAgeMs = 5 * 60 * 1000 } = {}) {
+  if (_cond.value && Date.now() - _cond.at < maxAgeMs) return _cond.value;
+  if (!isConfigured()) return { known: false, why: 'Home Assistant is not configured' };
+  const id = process.env.HA_WEATHER_ENTITY || 'weather.forecast_home';
+  try {
+    const e = await haGet('/api/states/' + encodeURIComponent(id));
+    const value = (!e || !e.state || e.state === 'unavailable' || e.state === 'unknown')
+      ? { known: false, why: 'the weather entity is ' + ((e && e.state) || 'missing') }
+      : { known: true, condition: e.state };
+    _cond = { at: Date.now(), value };
+    return value;
+  } catch (err) {
+    return { known: false, why: err.message };
+  }
+}
+
+/** The last condition read (no network), kicking off a refresh when it is old. */
+function cachedCondition() {
+  if (!_cond.value || Date.now() - _cond.at >= 5 * 60 * 1000) readCondition().catch(() => {});
+  return _cond.value;
+}
+
+/**
  * Build 15W: the DAILY forecast, for a planned hike a few days out. Same
  * service call as the hourly one with type 'daily'. Days are keyed by the
  * forecast's own date string (sliced, never re-zoned). Unreadable says so.
@@ -481,6 +510,8 @@ module.exports = {
   readHomeLocation,
   readHouse,
   readWeather,
+  readCondition,
+  cachedCondition,
   turnOnLights,
   setClimateTarget,
   setHvacMode,

@@ -158,6 +158,9 @@ test('7. /api/v/wall over HTTP: scoped blocks absent without the scope; the week
     assert.equal(month.days, 42);
     assert.equal((await call('/wall?days=30', { token: all })).status, 400);
     assert.equal((await call('/wall?days=8', { token: all })).json.week.length, 8, 'the eight-day strip');
+    // Each task carries a short label for the wall beside its own wording.
+    const wt = (await call('/wall', { token: all })).json.tasks.tasks;
+    assert.ok(wt.length > 0 && wt.every((t) => typeof t.short === 'string' && t.short.length > 0 && typeof t.text === 'string'), 'short label + the original text');
     // The keep-awake report is recorded, filtered to a safe character set.
     await call(`/wall?held=${encodeURIComponent('video + wake lock;home-screen;wakelock-api=yes;os=18.6<script>')}`, { token: all });
     const seen = JSON.parse(db.getState('vesta_wall_seen') || '{}');
@@ -306,7 +309,7 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   }));
   assert.ok(chtml.includes('14:05') && chtml.includes('Monday 19 October'));
   assert.ok(chtml.includes('Household jobs') && chtml.includes('Car tax') && chtml.includes('Overdue'));
-  assert.ok(chtml.includes('9.4 kWh') && chtml.includes('this month 150 kWh') && chtml.includes('Yesterday so far') && chtml.includes('meter running late'));
+  assert.ok(chtml.includes('9.4 kWh') && chtml.includes('This month 150 kWh') && chtml.includes('yesterday so far') && chtml.includes('running late') && chtml.includes('Energy yesterday'));
   assert.ok(chtml.includes('Coming up') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7, 'draws the days it was given');
   const six = renderToString(React.createElement(CinemaView, { data: { ...cdata, days: 42, week: vesta.redactWeek([], '2026-10-19', 42) }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
   assert.equal((six.match(/class="cine__sday[ "]/g) || []).length, 42, 'six weeks in the strip, eight on screen, the rest a swipe away');
@@ -339,13 +342,55 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
     { id: 4, text: 'Take bins out', dueDate: null, overdue: false, dueToday: false, who: [] },
   ] } };
   const jhtml = renderToString(React.createElement(CinemaView, { data: four, now, cal: { view: 'today', offset: 0, range: todayRange } }));
-  // Every tile scrolls (17 Oct 2026): all four jobs are in the tile, no "+N more".
-  assert.equal((jhtml.match(/class="cine__job[ "]/g) || []).length, 4, 'every job is in the scrolling tile');
-  assert.ok(!jhtml.includes('more</p>') && jhtml.includes('cine__jobs cine__scroll'));
+  // Iteration 3: two jobs on the tile, then "+N more".
+  assert.equal((jhtml.match(/class="cine__job cine__jobbtn/g) || []).length, 2, 'two jobs on the tile');
+  assert.ok(jhtml.includes('+2 more'));
   assert.ok(jhtml.includes(mot), 'the task wording is shown as it is — its old date is neither removed nor read as the due date');
   assert.deepEqual(stripItems([{ title: 'Bins', allDay: true }, { title: 'Swim', start: '2026-10-19T17:00:00' }]).shown, ['Bins', '17:00 Swim']);
   assert.deepEqual(stripItems([{ title: 'A', allDay: true }, { title: 'B', allDay: true }, { title: 'C', allDay: true }]).shown, ['A', 'B', 'C'], 'every label, the day scrolls');
   assert.ok((jhtml.match(/cine__sitems cine__scroll/g) || []).length === 7, 'each strip day scrolls');
+
+  // Iteration 3 — short labels on the tile, the full wording only on tap.
+  const { weatherIcon } = mod.exports;
+  const withShort = { ...four, tasks: { total: 4, tasks: four.tasks.tasks.map((t, i) => (i === 0 ? { ...t, short: 'Book Captur MOT' } : t)) } };
+  const shtml = renderToString(React.createElement(CinemaView, { data: withShort, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.ok(shtml.includes('Book Captur MOT') && !shtml.includes(mot), 'the tile shows the short label, not the long wording');
+  assert.ok(shtml.includes('Overdue'), 'overdue survives the short label');
+  for (const [n, expectMore] of [[0, null], [1, null], [2, null], [5, '+3 more']]) {
+    const list = Array.from({ length: n }, (_, i) => ({ id: i + 1, text: `Job number ${i + 1}`, dueDate: null, overdue: false, dueToday: false, who: [] }));
+    const h = renderToString(React.createElement(CinemaView, { data: { ...cdata, tasks: { total: n, tasks: list } }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+    assert.equal((h.match(/class="cine__job cine__jobbtn/g) || []).length, Math.min(n, 2), `${n} jobs`);
+    if (expectMore) assert.ok(h.includes(expectMore)); else assert.ok(!/\+\d+ more/.test(h), `${n} jobs: no count`);
+    if (n === 0) assert.ok(h.includes('Nothing to do'));
+  }
+  // Energy: one quiet line until a meter reports; never a row of dashes.
+  const noMeters = { ...cdata, energy: { connected: true, monthCostP: null, fuels: {
+    electricity: { yesterday: { kwh: null, costP: null, complete: false }, month: { kwh: null, costP: null }, freshness: { state: 'none' }, days: [] },
+    gas: { yesterday: { kwh: null, costP: null, complete: false }, month: { kwh: null, costP: null }, freshness: { state: 'none' }, days: [] } } } };
+  const ehtml = renderToString(React.createElement(CinemaView, { data: noMeters, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.equal((ehtml.match(/Awaiting meter data/g) || []).length, 1);
+  assert.ok(!ehtml.includes('—kWh') && !ehtml.includes('>— kWh') && !ehtml.includes('cine__fuel"'));
+  // Weather: the real condition id picks one icon; an unknown one draws nothing.
+  assert.equal(weatherIcon('partlycloudy'), 'partly');
+  assert.equal(weatherIcon('clear-night'), 'moon');
+  assert.equal(weatherIcon('rainy'), 'rain');
+  assert.equal(weatherIcon('something-new'), null);
+  assert.equal(weatherIcon(null), null);
+  const whtml = renderToString(React.createElement(CinemaView, { data: { ...cdata, station: { ...cdata.station, condition: 'cloudy', conditionLabel: 'Cloudy' } }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.ok(whtml.includes('aria-label="Cloudy"') && whtml.includes('82% humidity'));
+  const nohtml = renderToString(React.createElement(CinemaView, { data: cdata, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.ok(!nohtml.includes('cine__wicon'), 'no condition read yet: no icon, nothing guessed');
+  // The calendar across month and year ends: today first, every day kept, empty or not.
+  const nye = calRange('today', 0, '2026-12-29');
+  assert.equal(nye.from, '2026-12-29');
+  const yearEnd = vesta.redactWeek([], nye.from, 42);
+  assert.deepEqual(yearEnd.slice(0, 8).map((d) => d.date), ['2026-12-29', '2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03', '2027-01-04', '2027-01-05']);
+  const yhtml = renderToString(React.createElement(CinemaView, { data: { ...cdata, today: '2026-12-29', from: nye.from, days: 42, week: yearEnd }, now: new Date(2026, 11, 29, 9, 0), cal: { view: 'today', offset: 0, range: nye } }));
+  assert.equal((yhtml.match(/class="cine__sday[ "]/g) || []).length, 42, 'empty days are kept');
+  assert.ok(yhtml.indexOf('Tue 29') < yhtml.indexOf('Fri 1'), 'today first, then into January');
+  assert.deepEqual(vesta.redactWeek([], '2026-10-30', 4).map((d) => d.date), ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'], 'month end');
+  // A long event title is not cut in the day sheet's data or the strip's label.
+  assert.equal(stripItems([{ title: 'Wedding anniversary celebration dinner at the Wheatsheaf', allDay: true }]).shown[0], 'Wedding anniversary celebration dinner at the Wheatsheaf');
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──

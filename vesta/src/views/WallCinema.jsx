@@ -145,7 +145,32 @@ const I = {
   drop: <svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" /></svg>,
   gauge: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 12l4-3" /></svg>,
   chevron: <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>,
+  sun: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" /></svg>,
+  moon: <svg viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" /></svg>,
+  cloud: <svg viewBox="0 0 24 24"><path d="M7 18.5h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 6.9 9.6 4.5 4.5 0 0 0 7 18.5z" /></svg>,
+  partly: <svg viewBox="0 0 24 24"><path d="M8.5 7.5a3.5 3.5 0 0 1 6.3-1.4M10.5 2.5v1.4M4.6 5l1 1M3 9.5h1.4" /><path d="M8 19.5h9a3.5 3.5 0 0 0 .5-6.97A4.8 4.8 0 0 0 8.2 12 3.8 3.8 0 0 0 8 19.5z" /></svg>,
+  rain: <svg viewBox="0 0 24 24"><path d="M7 15h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 6.9 6.1 4.5 4.5 0 0 0 7 15z" /><path d="M8.5 18l-1 2.5M12.5 18l-1 2.5M16.5 18l-1 2.5" /></svg>,
+  snow: <svg viewBox="0 0 24 24"><path d="M7 15h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 6.9 6.1 4.5 4.5 0 0 0 7 15z" /><path d="M9 18.5h.01M12 20.5h.01M15 18.5h.01" /></svg>,
+  storm: <svg viewBox="0 0 24 24"><path d="M7 14h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 6.9 5.1 4.5 4.5 0 0 0 7 14z" /><path d="M12.5 15.5l-2 3.5h3l-2 3.5" /></svg>,
+  fog: <svg viewBox="0 0 24 24"><path d="M4 9.5h16M3 13h18M5 16.5h14M7 20h10" /></svg>,
+  wind: <svg viewBox="0 0 24 24"><path d="M3 9h11a2.5 2.5 0 1 0-2.5-2.5M3 13h15a2.5 2.5 0 1 1-2.5 2.5M3 17h8" /></svg>,
 };
+
+/** Home Assistant's condition id → one of the icons above. Unknown → none. PURE. */
+export function weatherIcon(condition) {
+  const c = String(condition || '').toLowerCase();
+  if (!c) return null;
+  if (c === 'sunny') return 'sun';
+  if (c === 'clear-night') return 'moon';
+  if (c === 'partlycloudy') return 'partly';
+  if (c === 'cloudy') return 'cloud';
+  if (c === 'rainy' || c === 'pouring') return 'rain';
+  if (c === 'snowy' || c === 'snowy-rainy' || c === 'hail') return 'snow';
+  if (c === 'lightning' || c === 'lightning-rainy') return 'storm';
+  if (c === 'fog') return 'fog';
+  if (c === 'windy' || c === 'windy-variant') return 'wind';
+  return null;
+}
 const Icon = ({ name, className = '' }) => <span className={`cine__icon ${className}`} aria-hidden="true">{I[name]}</span>;
 
 /* ── Words derived from the payload (never invented) ───────────────────────── */
@@ -203,6 +228,11 @@ function Outside({ station }) {
   }
   return (
     <div className="cine__outside" aria-label="Outside">
+      {weatherIcon(station.condition) && (
+        <span className="cine__wicon" role="img" aria-label={station.conditionLabel || station.condition} title={station.conditionLabel || ''}>
+          {I[weatherIcon(station.condition)]}
+        </span>
+      )}
       <div className="cine__temp">{station.tempC != null ? `${station.tempC.toFixed(1)}°` : '—'}</div>
       <div className="cine__odetail">
         <p className="cine__otrend">{station.tendency ? `Pressure ${station.tendency}` : 'Outside'}</p>
@@ -256,25 +286,35 @@ function DayCard({ day, title, now, onOpen, emptyLine }) {
   );
 }
 
-/** One job as a card. The wording is the task's own, shown on two lines at most — never rewritten. */
-function JobItem({ t, today }) {
+/**
+ * One job as a card. On the tile it shows the short label (`t.short`, made for
+ * display by the server — the task itself is untouched); `full` shows the task's
+ * own wording, as in the sheet.
+ */
+function JobItem({ t, today, full = false, onTap = null }) {
   const due = dueLabel(t, today);
-  return (
-    <li className={`cine__job${t.overdue ? ' cine__job--late' : ''}`}>
-      <span className="cine__jtext">{t.text}</span>
+  const Tag = onTap ? 'button' : 'li';
+  const inner = (
+    <>
+      <span className={`cine__jtext${full ? ' cine__jtext--full' : ''}`}>{full ? t.text : (t.short || t.text)}</span>
       <span className="cine__jmeta">
         {due && <span className={t.overdue ? 'cine__late' : t.dueToday ? 'cine__soon' : ''}>{t.overdue ? 'Overdue' : t.dueToday ? 'Due today' : `Due ${due}`}</span>}
-        {t.who.length > 0 && <span className="cine__jwho">{t.who.join(' & ')}</span>}
+        {full && t.who.length > 0 && <span className="cine__jwho">{t.who.join(' & ')}</span>}
       </span>
-    </li>
+    </>
   );
+  if (onTap) return <li className="cine__jobwrap"><button className={`cine__job cine__jobbtn${t.overdue ? ' cine__job--late' : ''}`} onClick={onTap}>{inner}</button></li>;
+  return <Tag className={`cine__job${t.overdue ? ' cine__job--late' : ''}`}>{inner}</Tag>;
 }
 
-// Every tile scrolls (Nick, 17 Oct 2026): the jobs list shows them all and
-// scrolls inside the tile; the header opens the full-screen list.
-function Jobs({ tasks, gap, today, onOpen }) {
+// Two jobs and a count (Nick, iteration 3); a job opens its full wording, the
+// header and the count open them all.
+const JOBS_SHOWN = 2;
+function Jobs({ tasks, gap, today, onOpen, onJob }) {
   const list = tasks ? tasks.tasks : [];
   const clickable = list.length > 0;
+  const total = tasks ? Math.max(tasks.total || 0, list.length) : 0;
+  const more = total - Math.min(list.length, JOBS_SHOWN);
   return (
     <section className="cine__panel cine__panel--jobs" aria-label="Household jobs">
       <button className="cine__phead" onClick={clickable ? onOpen : undefined} aria-label="Open all household jobs">
@@ -285,9 +325,12 @@ function Jobs({ tasks, gap, today, onOpen }) {
       {gap || !tasks ? <p className="cine__gap">I couldn’t read the jobs list.</p>
         : list.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
         : (
-          <ul className="cine__jobs cine__scroll">
-            {list.map((t) => <JobItem key={t.id} t={t} today={today} />)}
-          </ul>
+          <>
+            <ul className="cine__jobs">
+              {list.slice(0, JOBS_SHOWN).map((t) => <JobItem key={t.id} t={t} today={today} onTap={() => onJob && onJob(t)} />)}
+            </ul>
+            {more > 0 && <button className="cine__more" onClick={onOpen}>{`+${more} more`}</button>}
+          </>
         )}
     </section>
   );
@@ -301,13 +344,15 @@ function Energy({ energy, gap }) {
     <section className="cine__panel" aria-label="Energy">
       <div className="cine__phead cine__phead--static">
         <Icon name="bolt" className="cine__icon--amber" />
-        <span className="cine__ptitle">Energy</span>
+        <span className="cine__ptitle">Energy yesterday</span>
       </div>
       {gap || !energy ? <p className="cine__gap">I couldn’t read the meters.</p>
-        : !fuels.length ? <div className="cine__pbody"><p className="cine__sub">{energy.connected ? 'Waiting for the first readings.' : 'Meters not connected yet.'}</p></div>
+        : !fuels.length ? <div className="cine__pbody"><p className="cine__sub">{energy.connected ? 'Awaiting meter data' : 'Meters not connected yet'}</p></div>
+        : !fuels.some(([, f]) => (f.yesterday && f.yesterday.kwh != null) || (f.month && f.month.kwh != null))
+          ? <div className="cine__pbody"><p className="cine__sub">Awaiting meter data</p></div>
         : (
           <div className="cine__fuels cine__scroll">
-            {fuels.map(([fuel, f]) => {
+            {fuels.filter(([, f]) => (f.yesterday && f.yesterday.kwh != null) || (f.month && f.month.kwh != null)).map(([fuel, f]) => {
               const y = f.yesterday;
               const late = f.freshness && f.freshness.state !== 'usual' && f.freshness.state !== 'none';
               return (
@@ -316,11 +361,12 @@ function Energy({ energy, gap }) {
                   <div className="cine__fbody">
                     <span className="cine__fline">
                       <span className="cine__fname">{(FUEL[fuel] || {}).name || fuel}</span>
-                      <span className="cine__fval">{y && y.kwh != null ? `${y.kwh.toFixed(1)} kWh` : '—'}</span>
+                      <span className="cine__fval">{y && y.kwh != null ? `${y.kwh.toFixed(1)} kWh` : '—'}{y && y.costP != null && <small>{` ~${gbp(y.costP)}`}</small>}</span>
                     </span>
                     <span className="cine__fmonth">
-                      {`${y && y.kwh != null && !y.complete ? 'Yesterday so far' : 'Yesterday'}${y && y.costP != null ? ` ~${gbp(y.costP)}` : ''} · this month ${f.month && f.month.kwh != null ? `${Math.round(f.month.kwh)} kWh` : '—'}${f.month && f.month.costP != null ? ` ~${gbp(f.month.costP)}` : ''}`}
-                      {late && <span className="cine__late"> · meter running late</span>}
+                      {`This month ${f.month && f.month.kwh != null ? `${Math.round(f.month.kwh)} kWh` : '—'}${f.month && f.month.costP != null ? ` · ~${gbp(f.month.costP)}` : ''}`}
+                      {y && y.kwh != null && !y.complete && <span> · yesterday so far</span>}
+                      {late && <span className="cine__late"> · running late</span>}
                     </span>
                   </div>
                 </div>
@@ -349,14 +395,22 @@ function NextDays({ week, today, onOpen, onDay }) {
   const idle = useRef(null);
   const onScroll = () => {
     clearTimeout(idle.current);
-    idle.current = setTimeout(() => { if (box.current) box.current.scrollTo({ left: 0, behavior: 'smooth' }); }, STRIP_IDLE_MS);
+    idle.current = setTimeout(() => { if (box.current) box.current.scrollLeft = 0; }, STRIP_IDLE_MS);
   };
+  const [away, setAway] = useState(false);
   useEffect(() => () => clearTimeout(idle.current), []);
+  // A new day starts the strip on today again.
+  useEffect(() => { if (box.current) box.current.scrollLeft = 0; setAway(false); }, [today]);
+  // An instant jump: a smooth scroll fights the day-snapping and stops short.
+  const back = () => { if (box.current) { box.current.scrollLeft = 0; setAway(false); } };
   if (!Array.isArray(week)) return <section className="cine__strip"><p className="cine__gap">I couldn’t read the diary.</p></section>;
   return (
     <section className="cine__strip" aria-label="Days ahead">
-      <div className="cine__striphead"><Icon name="cal" /><span>Coming up</span></div>
-      <div className="cine__sdays" ref={box} onScroll={onScroll}>
+      <div className="cine__striphead">
+        <Icon name="cal" />
+        {away ? <button className="cine__backtoday" onClick={back}>‹ Back to today</button> : <span>Coming up</span>}
+      </div>
+      <div className="cine__sdays" ref={box} onScroll={(e) => { setAway(e.currentTarget.scrollLeft > 8); onScroll(); }}>
         {week.map((d) => {
           const { dow, day } = dayOfKey(d.date);
           const items = (d.events || []);
@@ -384,7 +438,10 @@ function Sheet({ sheet, data, onClose, onOpenWeek }) {
   if (sheet.kind === 'jobs') {
     const list = (data && data.tasks && data.tasks.tasks) || [];
     title = `Household jobs · ${list.length}`;
-    body = <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} />)}</ul>;
+    body = <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} full />)}</ul>;
+  } else if (sheet.kind === 'job') {
+    title = 'Household job';
+    body = <ul className="cine__jobs cine__jobs--all"><JobItem t={sheet.task} today={data.today} full /></ul>;
   } else if (sheet.kind === 'day') {
     const d = sheet.day; const { dow, day, month } = dayOfKey(d.date);
     title = `${DAYS_LONG[dow]} ${day} ${MONTHS_LONG[month]}`;
@@ -462,7 +519,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
               <div className={`cine__panels${can('energy') ? '' : ' cine__panels--three'}`}>
                 {can('calendar') && <DayCard day={week && week[0]} title="Today" now={now} onOpen={open} emptyLine="Nothing planned today" />}
                 {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" />}
-                <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} onOpen={() => setSheet({ kind: 'jobs' })} />
+                <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} onOpen={() => setSheet({ kind: 'jobs' })} onJob={(t) => setSheet({ kind: 'job', task: t })} />
                 {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} />}
               </div>
               {can('calendar') && <NextDays week={week} today={data.today} onOpen={open} onDay={(d) => setSheet({ kind: 'day', day: d })} />}
