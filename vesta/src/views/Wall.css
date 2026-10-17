@@ -125,3 +125,18 @@
 .wall__time { font-size: 14px; }
 .wall__task { font-size: 20px; }
 .wall__taskmeta { font-size: 14px; }
+
+/* Energy (the `energy` scope) — above the jobs; jobs keep the rest of the column. */
+.wall__side .wall__card--energy { flex: 0 0 auto; }
+.wall__efuel { margin-bottom: 10px; }
+.wall__efuel:last-of-type { margin-bottom: 4px; }
+.wall__ehead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.wall__ename { font-size: 17px; font-weight: 600; min-width: 96px; }
+.wall__eval { font-size: 26px; font-weight: 600; }
+.wall__emeta { font-size: 15px; color: var(--ink-faint); }
+.wall__ebars { display: flex; align-items: flex-end; gap: 3px; height: 40px; margin: 6px 0 4px; }
+.wall__ebar { flex: 1 1 0; min-width: 3px; background: var(--ink-faint); border-radius: 2px 2px 0 0; }
+.wall__ebar--part { opacity: .4; }
+.wall__ebar--none { opacity: 0; }
+.wall__emonth { margin: 0; font-size: 15px; }
+.wall__etotal { margin: 6px 0 0; font-size: 16px; font-weight: 600; }

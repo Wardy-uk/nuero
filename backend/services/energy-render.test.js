@@ -106,3 +106,34 @@ test('VESTA Energy: a day with no reading is a gap, not a zero bar; an unread bl
   assert.match(html, /estimates, not the bill/);
   assert.match(r(React.createElement(Energy, { energy: null, gap: 'could not read the energy meters' })), /couldn.t read this/);
 });
+
+test('VESTA wall: the energy card sits in the side column with the scope, is ABSENT without it, and a no-reading day is a gap', async () => {
+  const out = await esbuild.build({
+    entryPoints: [path.resolve(__dirname, '..', '..', 'vesta', 'src', 'views', 'Wall.jsx')],
+    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
+    external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent',
+  });
+  const m = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
+  const { WallView } = m.exports;
+  const energy = { connected: true, monthCostP: 5120, fuels: {
+    electricity: { yesterday: { kwh: 9.4, costP: 288, complete: true }, month: { kwh: 160, costP: 4100 }, freshness: { state: 'usual' },
+      days: [{ day: '2026-10-17', kwh: 9.4, complete: true }, { day: '2026-10-18', kwh: null, complete: false }] },
+    gas: { yesterday: { kwh: 38.2, costP: null, complete: false }, month: { kwh: 400, costP: null }, freshness: { state: 'late' }, days: [] } } };
+  const base = { today: '2026-10-19', gaps: [], tasks: { total: 0, tasks: [] }, energy };
+  const now = new Date(2026, 9, 19, 9, 0);
+  const html = r(React.createElement(WallView, { data: { ...base, scopes: ['tasks', 'energy'] }, now }));
+  const side = html.slice(html.indexOf('wall__side'));
+  assert.match(side, /wall__card--energy/, 'in the side column, not the top bar');
+  assert.match(html, /9\.4 kWh/);
+  assert.match(html, /~£2\.88/);
+  assert.match(html, /yesterday so far/, 'partial gas day is marked');
+  assert.match(html, /meter data running late/);
+  assert.match(html, /wall__ebar--none/);
+  assert.match(html, /Both this month ~£51\.20/);
+  const bare = r(React.createElement(WallView, { data: { ...base, scopes: ['tasks'] }, now }));
+  assert.ok(!bare.includes('wall__card--energy'), 'absent without the scope');
+  const gap = r(React.createElement(WallView, { data: { ...base, energy: null, gaps: [{ block: 'energy', why: 'x' }], scopes: ['tasks', 'energy'] }, now }));
+  assert.match(gap, /couldn.t read the meters/);
+});

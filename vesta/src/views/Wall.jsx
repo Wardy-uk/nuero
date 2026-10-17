@@ -165,19 +165,59 @@ function Station({ station }) {
   );
 }
 
-/** Yesterday's energy, one line per fuel (the `energy` scope). */
-function WallEnergy({ energy }) {
-  if (energy === undefined) return null;
+/**
+ * Household energy on the wall (the `energy` scope): yesterday and this month
+ * per fuel, the last fortnight as bars. A day with no reading is a GAP in the
+ * bars, never a zero; a partial day is faint; every £ is an estimate.
+ */
+const FUEL_NAME = { electricity: 'Electricity', gas: 'Gas' };
+const gbp = (p) => `£${(p / 100).toFixed(2)}`;
+
+function EnergyBars({ days }) {
+  const vals = days.map((d) => d.kwh).filter((v) => v != null);
+  const max = vals.length ? Math.max(...vals) : 0;
+  return (
+    <div className="wall__ebars" role="img" aria-label="Last 14 days">
+      {days.map((d) => (
+        <span key={d.day} className={`wall__ebar${d.kwh == null ? ' wall__ebar--none' : d.complete ? '' : ' wall__ebar--part'}`}
+          style={{ height: d.kwh == null || !max ? '0' : `${Math.max(6, (d.kwh / max) * 100)}%` }} />
+      ))}
+    </div>
+  );
+}
+
+export function WallEnergy({ energy, gap }) {
   const fuels = energy ? Object.entries(energy.fuels || {}) : [];
   return (
-    <section className="wall__topcard" aria-label="Energy">
-      <h2 className="wall__h">Energy yesterday</h2>
-      {!energy ? <Gap>can&rsquo;t read the meters</Gap> : !fuels.length ? <p className="wall__note">No readings yet.</p> : fuels.map(([fuel, f]) => (
-        <p key={fuel} className="wall__reading">
-          {fuel === 'gas' ? 'Gas' : 'Electricity'}: {f.yesterday && f.yesterday.kwh != null ? `${f.yesterday.kwh.toFixed(1)} kWh${f.yesterday.complete ? '' : ' (so far)'}` : '—'}
-          {f.yesterday && f.yesterday.costP != null ? ` · ~£${(f.yesterday.costP / 100).toFixed(2)}` : ''}
-        </p>
-      ))}
+    <section className="wall__card wall__card--energy" aria-label="Energy">
+      <h2 className="wall__h">Energy</h2>
+      {gap || !energy ? <Gap>I couldn&rsquo;t read the meters.</Gap>
+        : !fuels.length ? <p className="wall__nothing">{energy.connected ? 'Waiting for the first readings.' : 'Meters not connected yet.'}</p>
+        : (
+          <>
+            {fuels.map(([fuel, f]) => {
+              const y = f.yesterday;
+              return (
+                <div key={fuel} className="wall__efuel">
+                  <div className="wall__ehead">
+                    <span className="wall__ename">{FUEL_NAME[fuel]}</span>
+                    <span className="wall__eval">{y && y.kwh != null ? `${y.kwh.toFixed(1)} kWh` : '—'}</span>
+                    <span className="wall__emeta">
+                      {y && y.kwh != null && !y.complete ? 'yesterday so far' : 'yesterday'}
+                      {y && y.costP != null ? ` · ~${gbp(y.costP)}` : ''}
+                    </span>
+                  </div>
+                  <EnergyBars days={(f.days || []).slice(-14)} />
+                  <p className="wall__emonth">
+                    This month {f.month.kwh != null ? `${Math.round(f.month.kwh)} kWh` : '—'}{f.month.costP != null ? ` · ~${gbp(f.month.costP)}` : ''}
+                    {f.freshness && f.freshness.state !== 'usual' && f.freshness.state !== 'none' ? ' · meter data running late' : ''}
+                  </p>
+                </div>
+              );
+            })}
+            {energy.monthCostP != null && <p className="wall__etotal">Both this month ~{gbp(energy.monthCostP)} <span className="wall__note">estimated</span></p>}
+          </>
+        )}
     </section>
   );
 }
@@ -197,7 +237,6 @@ export function WallView({ data, now, error = null, onExit = null }) {
         </div>
         {data && can('house') && <Who who={data.who} />}
         {data && can('house') && <Station station={data.station} />}
-        {data && can('energy') && <WallEnergy energy={data.energy} />}
         {error && <div className="wall__stale" role="status">Can&rsquo;t reach home &mdash; showing what I last had.</div>}
         {onExit && <button className="wall__exit" onClick={onExit} aria-label="Leave wall view">⋯</button>}
       </header>
@@ -205,6 +244,7 @@ export function WallView({ data, now, error = null, onExit = null }) {
         <main className={`wall__body${can('calendar') ? '' : ' wall__body--nocal'}`}>
           {can('calendar') && <Week week={data.week} today={data.today} gap={gapFor('week')} />}
           <aside className="wall__side">
+            {can('energy') && <WallEnergy energy={data.energy} gap={gapFor('energy')} />}
             <Tasks tasks={data.tasks} gap={gapFor('tasks')} today={data.today} />
           </aside>
         </main>
