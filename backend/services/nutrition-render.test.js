@@ -80,3 +80,19 @@ test('a window with nothing logged says so, and never renders a zero day', async
   assert.match(html, /Nothing logged in the last 7 days/);
   assert.doesNotMatch(html, /0 kcal/);
 });
+
+test('alcohol: a column per day and a summary line; an unreadable day shows — not 0', async () => {
+  await load();
+  const data = nutrition.compose({
+    entries: [
+      { metric: 'dietary_energy_consumed', value: 825, recorded_at: '2026-10-11 19:14:13', food_type: 'Blended Scotch Whisky Aged 3 Years', food_item: 'W1' },
+      { metric: 'dietary_energy_consumed', value: 1800, recorded_at: '2026-10-10 12:00:00', food_type: null, food_item: null },
+    ],
+    today: TODAY, windowDays: 7,
+  });
+  const html = render(data);
+  assert.match(html, /Alcohol <span class="nut-unit">units/);
+  assert.match(html, />14\.7</);
+  assert.match(html, /data-testid="nut-alcohol"[^>]*>alcohol <b>14\.7<\/b> units \(1 drink\) over 1 day with drink names/);
+  assert.match(html, /No named entries this day[^>]*>—</);
+});

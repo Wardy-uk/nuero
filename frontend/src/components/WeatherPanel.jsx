@@ -424,6 +424,61 @@ function Latest({ latest, staleAfterMs }) {
   );
 }
 
+function Extreme({ label, x, dayFmt }) {
+  return (
+    <div className="wx-ext-cell">
+      <span className="wx-tile-label">{label}</span>
+      <span className="wx-tile-value">{x ? `${num(x.c, 1)}°C` : '—'}</span>
+      <span className="wx-tile-sub">{x ? (dayFmt
+        ? fmt({ day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(x.at))
+        : fmt({ hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(x.at))) : 'no reading'}</span>
+    </div>
+  );
+}
+
+/** Today's and all-time temperature range. Reset starts the all-time record again; nothing is deleted. */
+export function Extremes({ extremes, onReset }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  if (!extremes) return null;
+  const { today, allTime } = extremes;
+  const since = allTime.sinceMs ?? allTime.firstReadingAt;
+  const run = async (undo) => {
+    setBusy(true); setErr(null);
+    try { await onReset?.(undo); setConfirm(false); } catch (e) { setErr(e.message || 'failed'); } finally { setBusy(false); }
+  };
+  return (
+    <section className="wx-extremes" aria-label="Temperature range" data-testid="weather-extremes">
+      <div className="wx-ext-group">
+        <h2>Today</h2>
+        <div className="wx-ext-row"><Extreme label="Min" x={today.min} /><Extreme label="Max" x={today.max} /></div>
+      </div>
+      <div className="wx-ext-group">
+        <h2>All time{since ? <span className="wx-ext-since"> · since {fmt({ day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(since))}{allTime.sinceMs ? ' (reset)' : ''}</span> : null}</h2>
+        <div className="wx-ext-row"><Extreme label="Min" x={allTime.min} dayFmt /><Extreme label="Max" x={allTime.max} dayFmt /></div>
+        {onReset && (
+          <div className="wx-ext-actions">
+            {confirm ? (
+              <>
+                <span>Start the all-time record again from now? No readings are deleted.</span>
+                <button className="wx-link" disabled={busy} onClick={() => run(false)}>Reset</button>
+                <button className="wx-link" disabled={busy} onClick={() => setConfirm(false)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <button className="wx-link" onClick={() => setConfirm(true)}>Reset all-time</button>
+                {allTime.canUndo && <button className="wx-link" disabled={busy} onClick={() => run(true)}>Undo reset</button>}
+              </>
+            )}
+            {err && <span className="wx-ext-err" role="alert">Couldn’t reset: {err}</span>}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function StaleWarning({ latest, staleAfterMs }) {
   if (!latest || !latest.stale) return null;
   return (
@@ -457,7 +512,7 @@ function DataTable({ data }) {
 }
 
 /** The screen, given a payload. Exported so a render test reaches every state. */
-export function WeatherView({ data, range, onRange, error, loading, onRetry, rain = null, sources = null, nowcast = null, nowMs = Date.now() }) {
+export function WeatherView({ data, range, onRange, error, loading, onRetry, rain = null, sources = null, nowcast = null, nowMs = Date.now(), onResetExtremes = null }) {
   const [table, setTable] = useState(false);
   const ranges = data?.ranges || [
     { id: 'hour', label: 'Hourly' }, { id: 'day', label: 'Daily' }, { id: 'week', label: 'Weekly' },
@@ -501,6 +556,7 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry, rai
           <Outlook summary={data.summary} nowMs={data.plan?.nowMs}
             tiles={<Latest latest={data.latest} staleAfterMs={data.staleAfterMs} />} />
           <StaleWarning latest={data.latest} staleAfterMs={data.staleAfterMs} />
+          <Extremes extremes={data.extremes} onReset={onResetExtremes} />
           <NowcastCard nowcast={nowcast} />
           <div className="wx-meta">
             <span>Node <strong>{data.node}</strong> · {data.history?.n?.toLocaleString('en-GB') ?? 0} readings kept
@@ -591,5 +647,15 @@ export default function WeatherPanel() {
     try { localStorage.setItem('neuro_weather_range', r); } catch { /* per-viewer convenience only */ }
   };
 
-  return <WeatherView data={data} range={range} onRange={pick} error={error} loading={loading} onRetry={load} rain={rain} sources={sources} nowcast={nowcast} nowMs={nowMs} />;
+  const resetExtremes = async (undo) => {
+    const res = await apiFetch('/api/weather/extremes/reset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node: data?.node, undo: !!undo }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body || body.ok === false) throw new Error((body && (body.reason || body.error)) || `HTTP ${res.status}`);
+    setData((d) => (d ? { ...d, extremes: body.extremes } : d));
+  };
+
+  return <WeatherView data={data} range={range} onRange={pick} error={error} loading={loading} onRetry={load} rain={rain} sources={sources} nowcast={nowcast} nowMs={nowMs} onResetExtremes={resetExtremes} />;
 }

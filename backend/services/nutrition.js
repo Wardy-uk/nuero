@@ -127,6 +127,19 @@ function compose({ samples = [], entries = [], today, windowDays = 14, tz } = {}
     t[s.metric] = (t[s.metric] || 0) + Number(s.value);
   }
 
+  // Alcohol, by the drinks service's own rules (strength from the NAME). A day
+  // counts only if some entry that day carries a name: MyFitnessPal sends none,
+  // so on a MyFitnessPal-only day a drink is invisible — "—", never 0. A drink
+  // whose units are unknown makes its day unknown too.
+  const drinks = require('./drinks').fromEntries(entries, (s) => localDay(s, tz));
+  const namedDays = new Set(entries.filter((e) => e.food_type).map((e) => localDay(e.recorded_at, tz)).filter(Boolean));
+  const alcoholFor = (day) => {
+    if (!namedDays.has(day)) return { units: null, why: 'no-names' };
+    const ds = drinks.filter((d) => d.day === day);
+    if (ds.some((d) => d.units == null)) return { units: null, why: 'unknown-drink', drinks: ds.length };
+    return { units: round(ds.reduce((a, d) => a + d.units, 0), 1), drinks: ds.length };
+  };
+
   const firstDay = shiftDay(today, -(windowDays - 1));
   const days = [];
   for (let k = today; k >= firstDay; k = shiftDay(k, -1)) {
@@ -145,6 +158,7 @@ function compose({ samples = [], entries = [], today, windowDays = 14, tz } = {}
       logged,
       kcal: logged ? round(kcal, 0) : null,
       totals: logged ? totals : {},
+      alcohol: logged ? alcoholFor(k) : null,
     });
   }
 
@@ -179,6 +193,16 @@ function compose({ samples = [], entries = [], today, windowDays = 14, tz } = {}
       unloggedDays: days.filter((d) => !d.logged).length,
       lastLoggedDay: lastLogged,
       todayKcal: days[0]?.kcal ?? null,
+      alcohol: (() => {
+        const known = days.filter((d) => d.alcohol && d.alcohol.units != null);
+        return {
+          units: known.length ? round(known.reduce((a, d) => a + d.alcohol.units, 0), 1) : null,
+          drinks: known.reduce((a, d) => a + (d.alcohol.drinks || 0), 0),
+          daysKnown: known.length,
+          daysUnknown: days.filter((d) => d.alcohol && d.alcohol.units == null).length,
+          guideline: { unitsPerWeek: 14, source: 'UK Chief Medical Officers’ low-risk guideline' },
+        };
+      })(),
     },
     days,
     nutrients,

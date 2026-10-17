@@ -121,11 +121,25 @@ router.get('/overview', (req, res) => {
       latest,
       staleAfterMs: station.STALE_AFTER_MS,
       history: station.count(node),
+      extremes: station.extremes(node, nowMs),
       plan: { fromMs: plan.fromMs, toMs: plan.toMs, bucketMs: plan.bucketMs, nowMs },
       forecast: { provider: fc.provider, label: fc.label || null, lastIssuedAt: fc.lastIssuedAt ?? null, points: fc.points.length },
       series,
       summary,
     });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/weather/extremes/reset — start the station's all-time minimum/maximum temperature record again from now, or undo the last reset. No reading is deleted. Keywords: weather min max temperature record reset. Body: { node, undo }
+router.post('/extremes/reset', (req, res) => {
+  try {
+    const { node, undo } = req.body || {};
+    const nodeId = typeof node === 'string' && node ? node : station.defaultNode();
+    const r = station.resetExtremes(nodeId, { undo: undo === true });
+    if (!r.ok) return res.status(409).json(r);
+    res.json({ ...r, extremes: station.extremes(nodeId) });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

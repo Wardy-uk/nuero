@@ -120,3 +120,14 @@ test('dew point: known values, and nothing from a missing reading', () => {
   assert.equal(s.dewPointC(20, 0), null);
   assert.equal(s.dewPointC(20, 101), null);
 });
+
+test('⚠ the day starts at Europe/London midnight, not UTC — BST and GMT both', () => {
+  // 00:30 BST on 7 Oct is 23:30 UTC on 6 Oct: today began at 23:00 UTC on the 6th.
+  assert.equal(s.londonDayStart(Date.parse('2026-10-06T23:30:00Z')), Date.parse('2026-10-06T23:00:00Z'));
+  // Midday in BST.
+  assert.equal(s.londonDayStart(Date.parse('2026-10-06T11:00:00Z')), Date.parse('2026-10-05T23:00:00Z'));
+  // Winter: midnight is UTC midnight.
+  assert.equal(s.londonDayStart(Date.parse('2026-12-01T09:00:00Z')), Date.parse('2026-12-01T00:00:00Z'));
+  // The clocks-back day (25 Oct 2026) still starts at its BST midnight.
+  assert.equal(s.londonDayStart(Date.parse('2026-10-25T12:00:00Z')), Date.parse('2026-10-24T23:00:00Z'));
+});

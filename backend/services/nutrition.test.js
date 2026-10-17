@@ -109,3 +109,22 @@ test('compose wires the nutrition input into the picture, and an unread input is
   assert.equal(blind.systems.find((s) => s.id === 'nutrition').status, 'unknown');
   assert.equal(blind.complete, false);
 });
+
+test('alcohol: named drinks give units per day; a day with no named entries is unknown, never 0', () => {
+  // Live 16 Oct 2026: Foodnoms sent the whisky by name with its calories and nothing else.
+  const whisky = { metric: 'dietary_energy_consumed', value: 825, recorded_at: '2026-10-16 19:14:13', food_type: 'Blended Scotch Whisky Aged 3 Years', food_item: '4B5F23A0-2175-4EED-8484-D0D7E9DC77EF' };
+  const lamb = { metric: 'dietary_energy_consumed', value: 324, recorded_at: '2026-10-16 18:00:00', food_type: 'Lamb Casserole with a Rich Red Wine Gravy', food_item: '7A7E19BB' };
+  const namedDry = { metric: 'dietary_energy_consumed', value: 500, recorded_at: '2026-10-15 12:00:00', food_type: 'Chicken salad', food_item: 'C1' };
+  const mfpOnly = { metric: 'dietary_energy_consumed', value: 1800, recorded_at: '2026-10-14 12:00:00', food_type: null, food_item: null };
+  const out = nutrition.compose({ entries: [whisky, lamb, namedDry, mfpOnly], today: '2026-10-17', windowDays: 7 });
+  const day = (k) => out.days.find((d) => d.day === k);
+  assert.strictEqual(day('2026-10-16').alcohol.units, 14.7);
+  assert.strictEqual(day('2026-10-16').alcohol.drinks, 1, 'the lamb in red wine gravy is food, not a drink');
+  assert.strictEqual(day('2026-10-15').alcohol.units, 0);
+  assert.strictEqual(day('2026-10-14').alcohol.units, null);
+  assert.strictEqual(day('2026-10-14').alcohol.why, 'no-names');
+  assert.strictEqual(day('2026-10-13').alcohol, null, 'nothing logged, nothing said');
+  assert.deepStrictEqual(
+    { units: out.summary.alcohol.units, drinks: out.summary.alcohol.drinks, daysKnown: out.summary.alcohol.daysKnown, daysUnknown: out.summary.alcohol.daysUnknown },
+    { units: 14.7, drinks: 1, daysKnown: 2, daysUnknown: 1 });
+});

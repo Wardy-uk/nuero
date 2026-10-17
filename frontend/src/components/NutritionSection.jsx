@@ -68,6 +68,13 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
             <span><b>{s.loggedDays}</b> day{s.loggedDays === 1 ? '' : 's'} logged</span>
             <span><b>{s.unloggedDays}</b> not logged</span>
             {s.todayKcal != null && <span>today <b>{s.todayKcal}</b> kcal</span>}
+            {s.alcohol && (
+              <span data-testid="nut-alcohol" title={`${s.alcohol.guideline?.source || ''}: ≤ ${s.alcohol.guideline?.unitsPerWeek ?? 14} units a week`}>
+                alcohol {s.alcohol.units != null
+                  ? <><b>{s.alcohol.units}</b> unit{s.alcohol.units === 1 ? '' : 's'} ({s.alcohol.drinks} drink{s.alcohol.drinks === 1 ? '' : 's'}) over {s.alcohol.daysKnown} day{s.alcohol.daysKnown === 1 ? '' : 's'} with drink names</>
+                  : <>not readable — no day in this window has named food entries</>}
+              </span>
+            )}
           </div>
 
           <div className="nut-scroll">
@@ -76,6 +83,7 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
                 <tr>
                   <th>Day</th><th className="hp-num">kcal</th>
                   {DAY_COLS.map(([, l, u]) => <th key={l} className="hp-num">{l} <span className="nut-unit">{u}</span></th>)}
+                  <th className="hp-num" title="UK units, from drinks read by name (Foodnoms). — means the day has no named entries, so a drink could not be seen.">Alcohol <span className="nut-unit">units</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -89,9 +97,13 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
                       <>
                         <td className="hp-num">{d.kcal}</td>
                         {DAY_COLS.map(([m, l]) => <td key={l} className="hp-num">{d.totals[m] ?? '—'}</td>)}
+                        <td className="hp-num" title={d.alcohol?.why === 'no-names' ? 'No named entries this day — a drink would not be seen'
+                          : d.alcohol?.why === 'unknown-drink' ? 'A drink whose strength or amount is unknown' : undefined}>
+                          {d.alcohol?.units != null ? d.alcohol.units : d.alcohol?.why === 'unknown-drink' ? '?' : '—'}
+                        </td>
                       </>
                     ) : (
-                      <td className="nut-none" colSpan={DAY_COLS.length + 1}>not logged</td>
+                      <td className="nut-none" colSpan={DAY_COLS.length + 2}>not logged</td>
                     )}
                   </tr>
                 ))}

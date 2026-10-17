@@ -193,3 +193,52 @@ test('⚠ a stored snapshot overlays the chart — standing values for the past,
   assert.equal(o.summary.forecast.horizons.length, 3);
   assert.ok(o.summary.sensor.verdict.length > 0);
 });
+
+test('min/max: today and all time, each with when it happened; reset starts the record again, undo puts it back', async () => {
+  const station = require('../services/weather-station');
+  const dayStart = station.londonDayStart(NOW);
+  const span = NOW - dayStart;
+  const node = 'extremes-1';
+  const x = (seq, ms, t) => rec(seq, ms, { node_id: node, temperature_c: t });
+  const cold = NOW - 3 * 24 * H;
+  const hot = NOW - 2 * 24 * H;
+  const tLow = dayStart + Math.floor(span / 3);
+  const tHigh = dayStart + Math.floor((2 * span) / 3);
+  const r = await post({ observations: [x(1, cold, -4.2), x(2, hot, 27.9), x(3, tLow, 6.1), x(4, tHigh, 14.3)] });
+  assert.equal((await r.json()).stored, 4);
+
+  const e = (await overview(`?node=${node}`)).extremes;
+  assert.deepEqual(e.today.min, { c: 6.1, at: tLow });
+  assert.deepEqual(e.today.max, { c: 14.3, at: tHigh });
+  assert.deepEqual(e.allTime.min, { c: -4.2, at: cold });
+  assert.deepEqual(e.allTime.max, { c: 27.9, at: hot });
+  assert.equal(e.allTime.sinceMs, null);
+  assert.equal(e.allTime.canUndo, false);
+
+  const reset = await (await fetch(`${base}/api/weather/extremes/reset`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ node }),
+  })).json();
+  assert.equal(reset.ok, true);
+  assert.equal(reset.extremes.allTime.min, null, 'nothing read since the reset');
+  assert.equal(reset.extremes.allTime.canUndo, true);
+  assert.equal(reset.extremes.today.min, null, 'today is bounded by the reset too');
+
+  // A reading after the reset is the new record; the old rows are still stored.
+  const after = Date.now();
+  await post({ observations: [x(5, after, 9.5)] });
+  const e2 = (await overview(`?node=${node}`)).extremes;
+  assert.equal(e2.allTime.max.c, 9.5);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM weather_observations WHERE node_id = ?', [node]).n, 5);
+
+  const undone = await (await fetch(`${base}/api/weather/extremes/reset`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ node, undo: true }),
+  })).json();
+  assert.equal(undone.extremes.allTime.min.c, -4.2);
+  assert.equal(undone.extremes.allTime.max.c, 27.9);
+  assert.equal(undone.extremes.allTime.canUndo, false);
+
+  const again = await fetch(`${base}/api/weather/extremes/reset`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ node, undo: true }),
+  });
+  assert.equal(again.status, 409, 'nothing left to undo');
+});

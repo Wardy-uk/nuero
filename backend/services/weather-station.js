@@ -319,9 +319,106 @@ function dewPointC(temperatureC, humidityPct) {
   return Math.round(((243.04 * g) / (17.625 - g)) * 10) / 10;
 }
 
+// ── Temperature extremes ─────────────────────────────────────────────────────
+
+const EXTREMES_KEY = 'weather_extremes_since';
+const EXTREMES_CACHE_MS = 10 * 60 * 1000;
+const _allTimeCache = new Map(); // `${node}|${since}` → { at, min, max }
+
+/**
+ * Start of the Europe/London day containing `nowMs`, as epoch ms. PURE.
+ * The Pi may run UTC, so the host clock is never asked. UK clocks change at
+ * 01:00 UTC, so the offset AT that midnight is the same as the offset found
+ * at UTC midnight of the same date.
+ */
+function londonDayStart(nowMs) {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const part = (ms, t) => Number(f.formatToParts(new Date(ms)).find((p) => p.type === t).value);
+  const utcMidnight = Date.UTC(part(nowMs, 'year'), part(nowMs, 'month') - 1, part(nowMs, 'day'));
+  const asLocal = Date.UTC(part(utcMidnight, 'year'), part(utcMidnight, 'month') - 1, part(utcMidnight, 'day'), part(utcMidnight, 'hour'), part(utcMidnight, 'minute'));
+  return utcMidnight - (asLocal - utcMidnight);
+}
+
+function _sinceMap() {
+  try { return JSON.parse(_db().getState(EXTREMES_KEY) || '{}') || {}; } catch { return {}; }
+}
+
+/** The coldest and warmest reading in a window, each with when it happened. */
+function _minMax(db, nodeId, fromMs, toMs) {
+  const q = (dir) => db.get(
+    `SELECT temperature_c AS c, observed_at AS t FROM weather_observations
+      WHERE node_id = ? AND observed_at >= ? AND observed_at <= ?
+      ORDER BY temperature_c ${dir}, observed_at DESC LIMIT 1`, [nodeId, fromMs, toMs]);
+  const lo = q('ASC'); const hi = q('DESC');
+  return { min: lo ? { c: round(lo.c, 1), at: lo.t } : null, max: hi ? { c: round(hi.c, 1), at: hi.t } : null };
+}
+
+function _pick(a, b, lower) {
+  if (!a) return b; if (!b) return a;
+  if (a.c === b.c) return a.at >= b.at ? a : b; // a tie names the most recent
+  return (lower ? a.c < b.c : a.c > b.c) ? a : b;
+}
+
+/**
+ * Today's and all-time minimum/maximum temperature for a node.
+ * "All time" means since Nick last reset it (or since the first reading);
+ * a reset never deletes a reading, it only moves where the record starts.
+ * The all-time scan reads every row, so it is cached for ten minutes and
+ * topped up with anything newer, which keeps it exact without a full scan
+ * on every poll.
+ */
+function extremes(nodeId, nowMs = Date.now()) {
+  if (!nodeId) return null;
+  const db = _db();
+  const entry = _sinceMap()[nodeId] || null;
+  const sinceMs = entry && Number.isFinite(entry.sinceMs) ? entry.sinceMs : null;
+  const dayStart = londonDayStart(nowMs);
+  const today = _minMax(db, nodeId, Math.max(dayStart, sinceMs ?? 0), nowMs);
+
+  const key = `${nodeId}|${sinceMs ?? 0}`;
+  let c = _allTimeCache.get(key);
+  if (!c || nowMs - c.at > EXTREMES_CACHE_MS) {
+    c = { at: nowMs, ..._minMax(db, nodeId, sinceMs ?? 0, nowMs) };
+    _allTimeCache.set(key, c);
+  }
+  const fresh = _minMax(db, nodeId, c.at, nowMs);
+  const first = db.get('SELECT MIN(observed_at) AS t FROM weather_observations WHERE node_id = ? AND observed_at >= ?', [nodeId, sinceMs ?? 0]);
+  return {
+    today: { fromMs: dayStart, ...today },
+    allTime: {
+      sinceMs,
+      firstReadingAt: first?.t ?? null,
+      min: _pick(c.min, fresh.min, true),
+      max: _pick(c.max, fresh.max, false),
+      canUndo: !!entry && entry.previousSinceMs !== undefined,
+    },
+  };
+}
+
+/**
+ * Start the all-time record again from now — or, with `undo`, put back the
+ * start that was in place before the last reset. Readings are never touched.
+ */
+function resetExtremes(nodeId, { undo = false, nowMs = Date.now() } = {}) {
+  if (!nodeId) return { ok: false, reason: 'no station node' };
+  const db = _db();
+  const map = _sinceMap();
+  const entry = map[nodeId];
+  if (undo) {
+    if (!entry || entry.previousSinceMs === undefined) return { ok: false, reason: 'nothing to undo' };
+    if (entry.previousSinceMs === null) delete map[nodeId];
+    else map[nodeId] = { sinceMs: entry.previousSinceMs, at: nowMs };
+  } else {
+    map[nodeId] = { sinceMs: nowMs, previousSinceMs: entry && Number.isFinite(entry.sinceMs) ? entry.sinceMs : null, at: nowMs };
+  }
+  db.setState(EXTREMES_KEY, JSON.stringify(map));
+  for (const k of _allTimeCache.keys()) if (k.startsWith(`${nodeId}|`)) _allTimeCache.delete(k);
+  return { ok: true, sinceMs: map[nodeId]?.sinceMs ?? null };
+}
+
 module.exports = {
   SCHEMA, BOUNDS, STALE_AFTER_MS, MAX_BATCH, RANGES,
-  dewPointC,
+  dewPointC, londonDayStart, extremes, resetExtremes,
   validateObservation, assignBoot, bucketPlan,
   ingest, nodes, defaultNode, latest, buckets, recent, count,
 };
