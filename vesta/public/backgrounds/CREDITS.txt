@@ -1,13 +1,39 @@
-Wall background photographs (resized and re-encoded for the VESTA family wall).
+Wall background photographs (resized to 1920px and re-encoded for the VESTA family wall).
+All from Wikimedia Commons. The resized copies are shared under the same licences as the originals.
 
-morning.v1.jpg  "Peak District Sunrise" by Mark Richards from Sheffield, United Kingdom
-                CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
-                https://commons.wikimedia.org/wiki/File:Peak_District_Sunrise_(8728110745).jpg
-day.v1.jpg      "Mam Tor Approach" by mendhak
-                CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
-                https://commons.wikimedia.org/wiki/File:Mam_Tor_Approach.jpg
-evening.v1.jpg  "Peak District Bakewell Sunset" by Brian Toward from London, United Kingdom
-                CC0 - https://creativecommons.org/publicdomain/zero/1.0/
-                https://commons.wikimedia.org/wiki/File:02_peak_district_Bakewell_Sunset_(601074437).jpg
-
-The resized copies are shared under the same licences as the originals.
+morning.v1.jpg         "Peak District Sunrise" by Mark Richards from Sheffield, United Kingdom
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:Peak_District_Sunrise_(8728110745).jpg
+morning-fog.v1.jpg     "Milky Derbyshire Landscape" by Neil Theasby (geograph.org.uk 5993327)
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:Milky_Derbyshire_Landscape_-_geograph.org.uk_-_5993327.jpg
+day-clear.v1.jpg       "The Vale of Edale" by Jeff Buck (geograph.org.uk 7025736)
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:The_Vale_of_Edale_-_geograph.org.uk_-_7025736.jpg
+day.v1.jpg             "Mam Tor Approach" by mendhak
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:Mam_Tor_Approach.jpg
+day-cloudy.v1.jpg      "Edale" by Peter McDermott (geograph.org.uk 4492022)
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:Edale_-_geograph.org.uk_-_4492022.jpg
+day-rain.v1.jpg        "Kinder Scout summer showers" by Stephen Burton (geograph.org.uk 3094689)
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:Kinder_Scout_summer_showers_-_geograph.org.uk_-_3094689.jpg
+day-fog.v1.jpg         "Mist at The Roaches" by Mark Rickaby from Nottingham, United Kingdom
+                       CC BY 2.0 - https://creativecommons.org/licenses/by/2.0/
+                       https://commons.wikimedia.org/wiki/File:Mist_at_The_Roaches_(40320732062).jpg
+day-snow.v1.jpg        "Kinder Scout" by Stephen Burton (geograph.org.uk 2788106)
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:Kinder_Scout_-_geograph.org.uk_-_2788106.jpg
+snow-golden.v1.jpg     "Curbar Edge, Peak District National Park, England" by Hansheap
+                       CC BY-SA 4.0 - https://creativecommons.org/licenses/by-sa/4.0/
+                       https://commons.wikimedia.org/wiki/File:Curbar_Edge,_Peak_District_National_Park,_England.jpg
+evening.v1.jpg         "Peak District Bakewell Sunset" by Brian Toward from London, United Kingdom
+                       CC0 - https://creativecommons.org/publicdomain/zero/1.0/
+                       https://commons.wikimedia.org/wiki/File:02_peak_district_Bakewell_Sunset_(601074437).jpg
+evening-cloudy.v1.jpg  "The Hope Valley from Surprise View" by Neil Theasby (geograph.org.uk 5447331)
+                       CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                       https://commons.wikimedia.org/wiki/File:The_Hope_Valley_from_Surprise_View_-_geograph.org.uk_-_5447331.jpg
+night-clear.v1.jpg     "The Milky Way Over Dartmoor" by Charlie Marshall from Bristol UK
+                       CC BY 2.0 - https://creativecommons.org/licenses/by/2.0/
+                       https://commons.wikimedia.org/wiki/File:The_Milky_Way_Over_Dartmoor_(30887912658).jpg

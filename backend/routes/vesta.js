@@ -363,6 +363,12 @@ router.get('/wall', requireAccount, (req, res) => {
         out.station.condition = c && c.known ? c.condition : null;
         out.station.conditionLabel = c && c.known ? require('../services/home-board').conditionLabel(c.condition) : null;
       } catch { out.station.condition = null; }
+      // The sun's height at the house, for the background's time of day. Absent
+      // until first read; the wall then falls back to its own calculation.
+      try {
+        const sun = require('../services/ha-rooms').cachedSun();
+        out.sun = sun && sun.known ? { elevation: sun.elevation, rising: sun.rising } : null;
+      } catch { out.sun = null; }
     } catch (e) {
       out.station = { known: false, why: 'the weather station could not be read' };
       console.error('[Vesta] Wall station failed:', e.message);

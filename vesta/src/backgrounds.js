@@ -15,9 +15,10 @@
  * screen). When NEURO has its own photo store, add a provider with the same
  * `pick`/`all` shape; the views do not change.
  *
- * ⚠ Gaps in the bundled set (17 Oct 2026): no cloudy-day, rain, fog, snow or
- * true night photograph. Those conditions fall back to the time-of-day image.
- * `gaps()` lists them so the report stays honest.
+ * Selection, fixed and never random: (1) an image tagged with this slot AND this
+ * weather; (2) for weather you can see (cloudy, rain, fog, snow) the DAYTIME
+ * image of that weather, darkened at night; (3) the slot's default image.
+ * `gaps()` lists every slot x weather pair with no exact image.
  */
 
 /** Home Assistant's condition id → a weather category, or null (no preference). PURE. */
@@ -35,14 +36,36 @@ export function weatherCategory(condition) {
 export const SLOTS = ['morning', 'day', 'evening', 'night'];
 export const WEATHER = ['clear', 'partly', 'cloudy', 'rain', 'fog', 'snow'];
 
+// One fixed photograph per combination. `default` = the slot's fallback;
+// `nightPhoto` = genuinely taken at night (never darkened further).
 const BUNDLED_IMAGES = [
   { id: 'peak-sunrise', src: '/backgrounds/morning.v1.jpg', place: 'Sunrise, Peak District', credit: 'Mark Richards', licence: 'CC BY-SA 2.0',
-    slots: ['morning'], weather: ['clear', 'partly'] },
+    slots: ['morning'], weather: ['clear', 'partly'], default: ['morning'] },
+  { id: 'morning-mist', src: '/backgrounds/morning-fog.v1.jpg', place: 'Misty morning, Derbyshire', credit: 'Neil Theasby', licence: 'CC BY-SA 2.0',
+    slots: ['morning'], weather: ['fog'] },
+  { id: 'vale-of-edale', src: '/backgrounds/day-clear.v1.jpg', place: 'The Vale of Edale', credit: 'Jeff Buck', licence: 'CC BY-SA 2.0',
+    slots: ['day'], weather: ['clear'] },
   { id: 'mam-tor', src: '/backgrounds/day.v1.jpg', place: 'Mam Tor, Peak District', credit: 'mendhak', licence: 'CC BY-SA 2.0',
-    slots: ['day'], weather: ['clear', 'partly'] },
+    slots: ['day'], weather: ['partly'], default: ['day'] },
+  { id: 'edale-overcast', src: '/backgrounds/day-cloudy.v1.jpg', place: 'Edale, Peak District', credit: 'Peter McDermott', licence: 'CC BY-SA 2.0',
+    slots: ['day'], weather: ['cloudy'] },
+  { id: 'kinder-showers', src: '/backgrounds/day-rain.v1.jpg', place: 'Summer showers, Kinder Scout', credit: 'Stephen Burton', licence: 'CC BY-SA 2.0',
+    slots: ['day'], weather: ['rain'] },
+  { id: 'roaches-mist', src: '/backgrounds/day-fog.v1.jpg', place: 'Mist at the Roaches', credit: 'Mark Rickaby', licence: 'CC BY 2.0',
+    slots: ['day'], weather: ['fog'] },
+  { id: 'kinder-snow', src: '/backgrounds/day-snow.v1.jpg', place: 'Kinder Scout in snow', credit: 'Stephen Burton', licence: 'CC BY-SA 2.0',
+    slots: ['day'], weather: ['snow'] },
+  { id: 'curbar-snow', src: '/backgrounds/snow-golden.v1.jpg', place: 'Curbar Edge in snow', credit: 'Hansheap', licence: 'CC BY-SA 4.0',
+    slots: ['morning', 'evening'], weather: ['snow'] },
   { id: 'bakewell-sunset', src: '/backgrounds/evening.v1.jpg', place: 'Sunset near Bakewell', credit: 'Brian Toward', licence: 'CC0',
-    slots: ['evening', 'night'], weather: ['partly', 'cloudy'] },
+    slots: ['evening'], weather: ['clear', 'partly'], default: ['evening', 'night'] },
+  { id: 'surprise-view', src: '/backgrounds/evening-cloudy.v1.jpg', place: 'The Hope Valley from Surprise View', credit: 'Neil Theasby', licence: 'CC BY-SA 2.0',
+    slots: ['evening'], weather: ['cloudy'] },
+  { id: 'dartmoor-night', src: '/backgrounds/night-clear.v1.jpg', place: 'The Milky Way over Dartmoor', credit: 'Charlie Marshall', licence: 'CC BY 2.0',
+    slots: ['night'], weather: ['clear', 'partly'], nightPhoto: true },
 ];
+
+const VISIBLE_WEATHER = new Set(['cloudy', 'rain', 'fog', 'snow']);
 
 /** A provider over a tagged image list. Exported so a future source can reuse it. */
 export function makeProvider(name, images) {
@@ -50,13 +73,15 @@ export function makeProvider(name, images) {
     name,
     images,
     pick(slot, weather = null) {
-      const forSlot = images.filter((i) => i.slots.includes(slot));
-      const pool = forSlot.length ? forSlot : images.filter((i) => i.slots.includes('day'));
-      if (!pool.length) return null;
-      const exact = weather ? pool.find((i) => i.weather.includes(weather)) : null;
-      const img = exact || pool[0];
-      // Night reuses an evening photograph, darkened by the view.
-      return { ...img, night: slot === 'night', matched: Boolean(exact) };
+      const dark = (img) => slot === 'night' && !img.nightPhoto;
+      const exact = weather ? images.find((i) => i.slots.includes(slot) && i.weather.includes(weather)) : null;
+      if (exact) return { ...exact, night: dark(exact), matched: 'exact' };
+      // Weather you can see outranks the hour: rain at dusk shows rain.
+      const seen = weather && VISIBLE_WEATHER.has(weather) ? images.find((i) => i.slots.includes('day') && i.weather.includes(weather)) : null;
+      if (seen) return { ...seen, night: dark(seen), matched: 'weather' };
+      const def = images.find((i) => (i.default || []).includes(slot)) || images.find((i) => i.slots.includes(slot)) || images[0];
+      if (!def) return null;
+      return { ...def, night: dark(def), matched: 'time' };
     },
     all() { return images.map((i) => i.src); },
     /** Every slot × weather pair with no image that shows it. */
@@ -110,11 +135,20 @@ export async function cachedUrl(src) {
   } catch { return src; }
 }
 
-/** Fetch every photo of a provider into the cache, so a later slot works offline. */
-export async function warmCache(provider = BUNDLED) {
+/**
+ * Fetch these photos into the cache ahead of need (the next time of day), so a
+ * change is instant and works offline. Only what is asked for, never the whole
+ * set, to keep the iPad's network and memory use small.
+ */
+export async function warmCache(srcs = []) {
   try {
     if (typeof caches === 'undefined') return;
     const c = await caches.open(CACHE);
-    for (const src of provider.all()) { if (!(await c.match(src))) await c.add(src); }
+    for (const src of srcs) { if (src && !(await c.match(src))) await c.add(src); }
   } catch { /* offline or refused: the next attempt will try again */ }
+}
+
+/** The slot that follows this one: what to preload. PURE. */
+export function nextSlot(slot) {
+  return { morning: 'day', day: 'evening', evening: 'night', night: 'morning' }[slot] || 'day';
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
-import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice } from '../backgrounds';
+import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot } from '../backgrounds';
 import './WallCinema.css';
 
 /**
@@ -37,8 +37,20 @@ export function sunTimes(date) {
   return { rise: noon - 4 * ha, set: noon + 4 * ha };
 }
 
-/** night | dawn | day | golden | dusk — from the clock and the sun. PURE. */
-export function skyPhase(now) {
+/**
+ * night | dawn | day | golden | dusk. PURE. With `sun` ({elevation, rising})
+ * from Home Assistant at the house, the real sun decides; without it, a
+ * generic mid-England sunrise/sunset calculation.
+ */
+export function skyPhase(now, sun = null) {
+  if (sun && typeof sun.elevation === 'number') {
+    const e = sun.elevation;
+    if (e < -4) return 'night';
+    if (sun.rising && e < 6) return 'dawn';
+    if (!sun.rising && e < 2) return 'dusk';
+    if (!sun.rising && e < 10) return 'golden';
+    return 'day';
+  }
   const m = now.getHours() * 60 + now.getMinutes();
   const { rise, set } = sunTimes(now);
   if (m < rise - 45 || m > set + 50) return 'night';
@@ -49,8 +61,8 @@ export function skyPhase(now) {
 }
 
 /** Which photograph: morning | day | evening | night. PURE. */
-export function photoSlot(now) {
-  const phase = skyPhase(now);
+export function photoSlot(now, sun = null) {
+  const phase = skyPhase(now, sun);
   if (phase === 'night') return 'night';
   if (phase === 'golden' || phase === 'dusk') return 'evening';
   if (phase === 'dawn' || now.getHours() < 11) return 'morning';
@@ -63,35 +75,69 @@ export function photoSlot(now) {
  * a weather-only change is held 30 minutes (`steadyChoice`) so it never flickers.
  */
 function Photo({ slot, condition }) {
-  const wanted = backgroundFor(slot, weatherCategory(condition));
+  const weather = weatherCategory(condition);
+  const wanted = backgroundFor(slot, weather);
   const [shown, setShown] = useState(() => (wanted ? { bg: { ...wanted, slot }, slot, at: Date.now() } : null));
   useEffect(() => {
     if (!wanted) return;
     setShown((cur) => steadyChoice(cur, { ...wanted, slot }, Date.now()));
   }, [slot, wanted && wanted.src, wanted && wanted.night]);
-  const bg = shown ? shown.bg : wanted;
-  const [url, setUrl] = useState(null);
+  // Re-check once a minute so a held weather change lands after its 30 minutes.
   useEffect(() => {
-    let dead = false; let made = null;
-    setUrl(null);
-    if (bg && typeof window !== 'undefined') {
-      cachedUrl(bg.src).then((u) => {
-        if (dead) { if (u && u.startsWith('blob:')) URL.revokeObjectURL(u); return; }
-        if (u && u.startsWith('blob:')) made = u;
-        setUrl(u);
+    const t = setInterval(() => { const w = backgroundFor(slot, weatherCategory(condition)); if (w) setShown((cur) => steadyChoice(cur, { ...w, slot }, Date.now())); }, 60 * 1000);
+    return () => clearInterval(t);
+  }, [slot, condition]);
+  const bg = shown ? shown.bg : wanted;
+  // Two layers: the new photo loads underneath and fades in over the old, so a
+  // change never flashes back to the drawn sky.
+  const [layers, setLayers] = useState([]);
+  useEffect(() => {
+    if (!bg || typeof window === 'undefined') return undefined;
+    let dead = false;
+    cachedUrl(bg.src).then((u) => {
+      if (dead || !u) return;
+      setLayers((cur) => {
+        if (cur.length && cur[cur.length - 1].src === bg.src && cur[cur.length - 1].night === bg.night) return cur;
+        return [...cur.slice(-1), { src: bg.src, url: u, night: bg.night, key: `${bg.src}|${bg.night}|${Date.now()}` }];
       });
-    }
-    return () => { dead = true; if (made) URL.revokeObjectURL(made); };
-  }, [bg && bg.src]);
-  useEffect(() => { if (typeof window !== 'undefined') warmCache(); }, []);
+    });
+    return () => { dead = true; };
+  }, [bg && bg.src, bg && bg.night]);
+  // Drop the layer underneath once the new one has faded in.
+  useEffect(() => {
+    if (layers.length < 2) return undefined;
+    const t = setTimeout(() => setLayers((cur) => {
+      const gone = cur.slice(0, -1);
+      for (const g of gone) if (g.url && g.url.startsWith('blob:')) URL.revokeObjectURL(g.url);
+      return cur.slice(-1);
+    }), 1600);
+    return () => clearTimeout(t);
+  }, [layers]);
+  // Preload the next time of day's photo for this weather (only that one).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const next = backgroundFor(nextSlot(slot), weather);
+    warmCache([bg && bg.src, next && next.src]);
+  }, [slot, weather, bg && bg.src]);
   if (!bg) return null;
   return (
     <>
-      <div className={`cine__photo${bg.night ? ' cine__photo--night' : ''}${url ? ' cine__photo--in' : ''}`}
-           style={url ? { backgroundImage: `url("${url}")` } : undefined} aria-hidden="true" />
+      {layers.map((l, i) => (
+        <PhotoLayer key={l.key} layer={l} top={i === layers.length - 1} />
+      ))}
       <div className="cine__scrim" aria-hidden="true" />
       <p className="cine__credit">{`${bg.place} · ${bg.credit} · ${bg.licence}`}</p>
     </>
+  );
+}
+
+/** One photograph layer: mounts transparent, fades in on the next frame. */
+function PhotoLayer({ layer, top }) {
+  const [on, setOn] = useState(false);
+  useEffect(() => { const id = requestAnimationFrame(() => setOn(true)); return () => cancelAnimationFrame(id); }, []);
+  return (
+    <div className={`cine__photo${layer.night ? ' cine__photo--night' : ''}${on ? ' cine__photo--in' : ''}${top ? ' cine__photo--top' : ''}`}
+         style={{ backgroundImage: `url("${layer.url}")` }} aria-hidden="true" />
   );
 }
 
@@ -154,6 +200,7 @@ const I = {
   flame: <svg viewBox="0 0 24 24"><path d="M12 21a6 6 0 0 1-6-6c0-4 4-6 4-10 3 2 4 4 4 6 1-1 1.5-2 1.5-3 2 2 2.5 4 2.5 7a6 6 0 0 1-6 6z" /></svg>,
   drop: <svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" /></svg>,
   gauge: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 12l4-3" /></svg>,
+  dew: <svg viewBox="0 0 24 24"><path d="M9 4s4 4.3 4 7.3a4 4 0 0 1-8 0C5 8.3 9 4 9 4z" /><path d="M16.5 11s2.5 2.7 2.5 4.6a2.5 2.5 0 0 1-5 0c0-1.9 2.5-4.6 2.5-4.6z" /></svg>,
   chevron: <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>,
   sun: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" /></svg>,
   moon: <svg viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" /></svg>,
@@ -182,6 +229,17 @@ export function weatherIcon(condition) {
   return null;
 }
 const Icon = ({ name, className = '' }) => <span className={`cine__icon ${className}`} aria-hidden="true">{I[name]}</span>;
+
+/**
+ * Dew point from the station's own temperature and relative humidity (Magnus
+ * formula, Alduchov & Eskridge constants). PURE; null without both readings.
+ */
+export function dewPoint(tempC, humidityPct) {
+  if (typeof tempC !== 'number' || typeof humidityPct !== 'number' || humidityPct <= 0 || humidityPct > 100) return null;
+  const a = 17.625; const b = 243.04;
+  const g = Math.log(humidityPct / 100) + (a * tempC) / (b + tempC);
+  return (b * g) / (a - g);
+}
 
 /* ── Words derived from the payload (never invented) ───────────────────────── */
 const PART_OF_DAY = (h) => (h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 22 ? 'evening' : 'night');
@@ -248,6 +306,7 @@ function Outside({ station }) {
         <p className="cine__otrend">{station.tendency ? `Pressure ${station.tendency}` : 'Outside'}</p>
         <ul className="cine__orows">
           {station.humidityPct != null && <li><Icon name="drop" /> {`${station.humidityPct}% humidity`}</li>}
+          {dewPoint(station.tempC, station.humidityPct) != null && <li><Icon name="dew" /> {`Dew point ${dewPoint(station.tempC, station.humidityPct).toFixed(1)}°`}</li>}
           {station.pressureHpa != null && <li><Icon name="gauge" /> {`${station.pressureHpa} hPa`}</li>}
         </ul>
         {station.indoorLikely && <p className="cine__note">The sensor reads like it’s indoors.</p>}
@@ -491,7 +550,7 @@ function Sheet({ sheet, data, onClose, onOpenWeek }) {
 export function CinemaView({ data, now, error = null, onExit = null, cal = null }) {
   const gapFor = (b) => ((data && data.gaps) || []).find((g) => g.block === b)?.why || null;
   const can = (s) => ((data && data.scopes) || []).includes(s);
-  const phase = skyPhase(now);
+  const phase = skyPhase(now, data && data.sun);
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const [sheet, setSheet] = useState(null);
@@ -506,7 +565,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
   return (
     <div className={`cine cine--${phase}`}>
       <Sky phase={phase} />
-      <Photo slot={photoSlot(now)} condition={data && data.station ? data.station.condition : null} />
+      <Photo slot={photoSlot(now, data && data.sun)} condition={data && data.station ? data.station.condition : null} />
       {overlay ? (
         <div className="cine__overlay">
           <Calendar data={data} gap={gapFor('week')} cal={cal} now={now} />

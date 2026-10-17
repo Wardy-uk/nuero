@@ -315,6 +315,7 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.equal((six.match(/class="cine__sday[ "]/g) || []).length, 42, 'six weeks in the strip, eight on screen, the rest a swipe away');
   assert.ok(chtml.includes('Isaac swimming') && chtml.includes('Next: Isaac swimming at 17:00'));
   assert.ok(chtml.includes('11.4°') && chtml.includes('82% humidity'));
+  assert.ok(chtml.includes('Dew point 8.4°'), 'dew point from the station’s own temperature and humidity');
   for (const invented of ['Feels like', 'breeze', 'vs yesterday']) assert.ok(!chtml.includes(invented), `nothing NEURO does not hold: ${invented}`);
   const cbare = renderToString(React.createElement(CinemaView, { data: { ...cdata, scopes: ['tasks'] }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
   assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Coming up'), 'scopes still decide what is drawn');

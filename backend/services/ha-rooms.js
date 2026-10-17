@@ -444,10 +444,40 @@ async function readCondition({ maxAgeMs = 5 * 60 * 1000 } = {}) {
   }
 }
 
-/** The last condition read (no network), kicking off a refresh when it is old. */
+/**
+ * The last condition read (no network), kicking off a refresh when it is old.
+ * ⚠ A reading over an hour old is STALE and answered as unknown, so a Home
+ * Assistant outage cannot leave the wall showing this morning's weather.
+ */
+const STALE_MS = 60 * 60 * 1000;
 function cachedCondition() {
   if (!_cond.value || Date.now() - _cond.at >= 5 * 60 * 1000) readCondition().catch(() => {});
+  if (_cond.value && Date.now() - _cond.at >= STALE_MS) return { known: false, why: 'the weather reading is over an hour old' };
   return _cond.value;
+}
+
+/**
+ * Where the sun is, from Home Assistant's `sun.sun` (local to the house):
+ * { known, elevation (degrees), rising }. Cached five minutes; stale after an
+ * hour, like the condition. Used by the wall to pick morning/day/evening/night.
+ */
+let _sun = { at: 0, value: null };
+async function readSun() {
+  if (!isConfigured()) return { known: false, why: 'Home Assistant is not configured' };
+  try {
+    const e = await haGet('/api/states/sun.sun');
+    const a = (e && e.attributes) || {};
+    const value = typeof a.elevation === 'number'
+      ? { known: true, elevation: a.elevation, rising: a.rising === true }
+      : { known: false, why: 'the sun entity has no elevation' };
+    _sun = { at: Date.now(), value };
+    return value;
+  } catch (err) { return { known: false, why: err.message }; }
+}
+function cachedSun() {
+  if (!_sun.value || Date.now() - _sun.at >= 5 * 60 * 1000) readSun().catch(() => {});
+  if (_sun.value && Date.now() - _sun.at >= STALE_MS) return { known: false, why: 'the sun reading is over an hour old' };
+  return _sun.value;
 }
 
 /**
@@ -512,6 +542,8 @@ module.exports = {
   readWeather,
   readCondition,
   cachedCondition,
+  readSun,
+  cachedSun,
   turnOnLights,
   setClimateTarget,
   setHvacMode,
