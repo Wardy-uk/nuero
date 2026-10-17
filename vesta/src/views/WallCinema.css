@@ -215,3 +215,19 @@
 .cine__panels { grid-template-columns: 1.1fr 0.85fr 1.15fr 1.3fr; gap: 1.3vw; }
 .cine__fval { white-space: nowrap; }
 .cine__fuel { gap: 10px; }
+
+/* ── Iteration 4 (17 Oct 2026) ─────────────────────────────────────────── */
+/* Clock ~10% smaller; same place and type. */
+.cine__clock { font-size: clamp(47px, 9.7vh, 153px); }
+/* Jobs: the title wraps onto two lines, the due state sits beneath it, and the
+   count lives in the header, so two jobs fit the same panel height. */
+.cine__jobbtn { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 1px; padding: 0.6vh 0.8vw; }
+.cine__jobbtn .cine__jtext { white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; font-size: clamp(12px, 1.95vh, 20px); }
+.cine__jobbtn .cine__jmeta { font-size: clamp(10px, 1.55vh, 16px); }
+.cine__jobs { gap: 0.7vh; }
+.cine__headmore { font-size: clamp(11px, 1.7vh, 17px); color: var(--amber); white-space: nowrap; }
+.cine__panel--jobs .cine__phead { margin-bottom: 1vh; }
+/* The jobs header stays on ONE line: "+X more" takes the arrow's place. */
+.cine__panel--jobs .cine__phead { gap: 8px; flex-wrap: nowrap; }
+.cine__panel--jobs .cine__ptitle { font-size: clamp(14px, 2.15vh, 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cine__headmore { flex: none; }

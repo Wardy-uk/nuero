@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
-import { backgroundFor, cachedUrl, warmCache } from '../backgrounds';
+import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice } from '../backgrounds';
 import './WallCinema.css';
 
 /**
@@ -57,9 +57,19 @@ export function photoSlot(now) {
   return 'day';
 }
 
-/** The photograph for this time of day, over the drawn sky (which stays as the fallback). */
-function Photo({ slot }) {
-  const bg = backgroundFor(slot);
+/**
+ * The photograph for this time of day and weather, over the drawn sky (which
+ * stays as the fallback). The weather is Home Assistant's observed condition;
+ * a weather-only change is held 30 minutes (`steadyChoice`) so it never flickers.
+ */
+function Photo({ slot, condition }) {
+  const wanted = backgroundFor(slot, weatherCategory(condition));
+  const [shown, setShown] = useState(() => (wanted ? { bg: { ...wanted, slot }, slot, at: Date.now() } : null));
+  useEffect(() => {
+    if (!wanted) return;
+    setShown((cur) => steadyChoice(cur, { ...wanted, slot }, Date.now()));
+  }, [slot, wanted && wanted.src, wanted && wanted.night]);
+  const bg = shown ? shown.bg : wanted;
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let dead = false; let made = null;
@@ -320,7 +330,8 @@ function Jobs({ tasks, gap, today, onOpen, onJob }) {
       <button className="cine__phead" onClick={clickable ? onOpen : undefined} aria-label="Open all household jobs">
         <Icon name="tools" className="cine__icon--amber" />
         <span className="cine__ptitle">Household jobs</span>
-        {clickable && <Icon name="chevron" className="cine__chev" />}
+        {more > 0 && <span className="cine__headmore">{`+${more} more`}</span>}
+        {clickable && more <= 0 && <Icon name="chevron" className="cine__chev" />}
       </button>
       {gap || !tasks ? <p className="cine__gap">I couldn’t read the jobs list.</p>
         : list.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
@@ -329,7 +340,7 @@ function Jobs({ tasks, gap, today, onOpen, onJob }) {
             <ul className="cine__jobs">
               {list.slice(0, JOBS_SHOWN).map((t) => <JobItem key={t.id} t={t} today={today} onTap={() => onJob && onJob(t)} />)}
             </ul>
-            {more > 0 && <button className="cine__more" onClick={onOpen}>{`+${more} more`}</button>}
+
           </>
         )}
     </section>
@@ -495,7 +506,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
   return (
     <div className={`cine cine--${phase}`}>
       <Sky phase={phase} />
-      <Photo slot={photoSlot(now)} />
+      <Photo slot={photoSlot(now)} condition={data && data.station ? data.station.condition : null} />
       {overlay ? (
         <div className="cine__overlay">
           <Calendar data={data} gap={gapFor('week')} cal={cal} now={now} />

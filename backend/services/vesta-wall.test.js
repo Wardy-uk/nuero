@@ -342,9 +342,13 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
     { id: 4, text: 'Take bins out', dueDate: null, overdue: false, dueToday: false, who: [] },
   ] } };
   const jhtml = renderToString(React.createElement(CinemaView, { data: four, now, cal: { view: 'today', offset: 0, range: todayRange } }));
-  // Iteration 3: two jobs on the tile, then "+N more".
+  // Two jobs on the tile; the "+N more" count sits in the tile header (iteration 4).
   assert.equal((jhtml.match(/class="cine__job cine__jobbtn/g) || []).length, 2, 'two jobs on the tile');
-  assert.ok(jhtml.includes('+2 more'));
+  assert.ok(jhtml.includes('cine__headmore">+2 more'));
+  // A long short-title wraps (two lines) rather than being cut, and the due state sits beneath it.
+  const longJob = { ...four, tasks: { total: 1, tasks: [{ id: 9, text: 'x', short: 'Arrange the boiler service with British Gas', dueDate: '2026-10-10', overdue: true, dueToday: false, who: [] }] } };
+  const lhtml = renderToString(React.createElement(CinemaView, { data: longJob, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.ok(lhtml.includes('Arrange the boiler service with British Gas') && lhtml.indexOf('Arrange the boiler') < lhtml.indexOf('Overdue'), 'full short title, Overdue after it');
   assert.ok(jhtml.includes(mot), 'the task wording is shown as it is — its old date is neither removed nor read as the due date');
   assert.deepEqual(stripItems([{ title: 'Bins', allDay: true }, { title: 'Swim', start: '2026-10-19T17:00:00' }]).shown, ['Bins', '17:00 Swim']);
   assert.deepEqual(stripItems([{ title: 'A', allDay: true }, { title: 'B', allDay: true }, { title: 'C', allDay: true }]).shown, ['A', 'B', 'C'], 'every label, the day scrolls');
