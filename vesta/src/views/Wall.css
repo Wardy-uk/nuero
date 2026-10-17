@@ -249,3 +249,23 @@
 .wall__smark { font-size: 12px; color: var(--ink-faint); }
 .wall__smark--off { color: var(--ember); font-weight: 600; }
 .wall__stitles { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Energy in the header row, between Who's in and Outside (17 Oct 2026). */
+.wall__topcard--energy { flex: 0 1 340px; min-width: 260px; }
+.wall__topcard--energy .wall__efuels { gap: 14px; }
+.wall__topcard--energy .wall__ename { font-size: 13px; }
+.wall__topcard--energy .wall__eval { font-size: 22px; }
+.wall__topcard--energy .wall__emeta { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.wall__topcard--energy .wall__ebars { height: 12px; margin: 3px 0 0; }
+.wall__topcard--energy .wall__emonth { font-size: 12px; color: var(--warn); }
+.wall__top > .wall__topcard[aria-label="Who's in"] { flex: 0 1 auto; }
+.wall__topcard--station { flex: 1 1 320px; min-width: 300px; }
+.wall__station .wall__readings { min-width: 0; }
+.wall__station .wall__reading { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Header row holds four cards: keep each on one line. */
+.wall__when .wall__today { white-space: nowrap; font-size: 18px; }
+.wall__top .wall__who { flex-wrap: nowrap; gap: 6px; }
+.wall__top .wall__person { font-size: 16px; padding: 3px 10px 3px 3px; gap: 6px; white-space: nowrap; }
+.wall__top .wall__face { width: 30px; height: 30px; }
+/* A green ring already says "in"; the word is kept for screen readers only. */
+.wall__person--home .wall__pstate { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
