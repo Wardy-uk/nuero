@@ -402,6 +402,35 @@ function useKeepAwake() {
   return { awake, arm, how: awake && locked ? 'video + wake lock' : awake ? 'video' : locked ? 'wake lock' : null };
 }
 
+/**
+ * Has a newer build been deployed? The page names its own bundle
+ * (`/assets/index-<hash>.js`); the live index.html is asked every five minutes
+ * and a different hash means a deploy has landed. Dev builds have no hashed
+ * bundle, so nothing is ever claimed there.
+ */
+const BUNDLE_RE = /\/assets\/index-[\w-]+\.js/;
+export function bundleIn(html) { const m = BUNDLE_RE.exec(String(html || '')); return m ? m[0] : null; }
+function useNewVersion() {
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    const el = document.querySelector('script[src*="/assets/index-"]');
+    const mine = el ? bundleIn(el.getAttribute('src')) : null;
+    if (!mine) return undefined;
+    let dead = false;
+    const check = async () => {
+      try {
+        const res = await fetch(`/?v=${Date.now()}`, { cache: 'no-store' });
+        const live = bundleIn(await res.text());
+        if (!dead && live && live !== mine) setFresh(true);
+      } catch { /* offline: say nothing */ }
+    };
+    check();
+    const t = setInterval(check, 5 * 60 * 1000);
+    return () => { dead = true; clearInterval(t); };
+  }, []);
+  return fresh;
+}
+
 export default function Wall({ onExit, onSignedOut }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -409,6 +438,7 @@ export default function Wall({ onExit, onSignedOut }) {
   const [wakeUntil, setWakeUntil] = useState(0);
   const bootDay = useRef(new Date().getDate());
   const { awake, arm, how } = useKeepAwake();
+  const updateReady = useNewVersion();
 
   const refresh = useCallback(async () => {
     try {
@@ -445,7 +475,14 @@ export default function Wall({ onExit, onSignedOut }) {
            if (!awake) arm();
          }}>
       <WallView data={data} now={now} error={error} onExit={onExit} />
-      <span className="wall__awakeinfo">{how ? `Screen kept on: ${how}` : 'Screen not held on'}</span>
+      <footer className="wall__foot">
+        <span className="wall__awakeinfo">{how ? `Screen kept on: ${how}` : 'Screen not held on'}</span>
+        {updateReady && (
+          <button className="wall__update" onClick={() => window.location.reload()}>New version — tap to update</button>
+        )}
+        <button className="wall__refresh" onClick={() => window.location.reload()} aria-label="Refresh">↻ Refresh</button>
+        <span className="wall__version">{`v ${api.BUILD_LABEL}`}</span>
+      </footer>
       {!awake && (
         <button className="wall__awake" onClick={arm}>
           Tap once to keep this screen on

@@ -186,7 +186,7 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   });
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
-  const { WallView, isNight, allDaySpans } = mod.exports;
+  const { WallView, isNight, allDaySpans, bundleIn } = mod.exports;
   assert.equal(typeof WallView, 'function', 'positive control: the export exists');
 
   const week = vesta.redactWeek([
@@ -229,6 +229,10 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.equal(isNight(new Date(2026, 9, 19, 23, 0)), true);
   assert.equal(isNight(new Date(2026, 9, 19, 6, 29)), true);
   assert.equal(isNight(new Date(2026, 9, 19, 6, 30)), false);
+
+  // The update check compares bundle names; a dev page (no hashed bundle) claims nothing.
+  assert.equal(bundleIn('<script type="module" crossorigin src="/assets/index-_kKaW-4d.js"></script>'), '/assets/index-_kKaW-4d.js');
+  assert.equal(bundleIn('<script type="module" src="/src/main.jsx"></script>'), null);
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──
