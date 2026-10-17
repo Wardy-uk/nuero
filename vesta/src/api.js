@@ -123,6 +123,11 @@ export function getWallLook() {
   } catch { return 'classic'; }
 }
 
+/** Switch look from the wall itself — a Home Screen app cannot be given a URL. */
+export function setWallLook(look) {
+  try { localStorage.setItem(LOOK_KEY, look === 'cinema' ? 'cinema' : 'classic'); } catch { /* private mode */ }
+}
+
 export function setWallMode(on) {
   try { on ? localStorage.setItem(WALL_KEY, '1') : localStorage.removeItem(WALL_KEY); } catch { /* private mode */ }
 }

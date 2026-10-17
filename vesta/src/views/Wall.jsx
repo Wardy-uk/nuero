@@ -732,6 +732,9 @@ export default function Wall({ onExit, onSignedOut }) {
         {updateReady && (
           <button className="wall__update" onClick={() => window.location.reload()}>New version — tap to update</button>
         )}
+        <button className="wall__refresh" onClick={() => { api.setWallLook(look === 'cinema' ? 'classic' : 'cinema'); window.location.reload(); }}>
+          {look === 'cinema' ? 'Classic look' : 'Try new look'}
+        </button>
         <button className="wall__refresh" onClick={() => window.location.reload()} aria-label="Refresh">↻ Refresh</button>
         <span className="wall__version">{`v ${api.BUILD_LABEL}`}</span>
       </footer>
