@@ -93,7 +93,11 @@
   padding: 1.4vh 1.6vw;
 }
 .cine__striphead { display: flex; align-items: center; gap: 12px; font-size: clamp(15px, 2.4vh, 24px); font-weight: 500; padding-right: 0.6vw; }
-.cine__sdays { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); min-width: 0; }
+.cine__sdays { display: grid; grid-auto-flow: column; grid-auto-columns: calc(100% / 8); min-width: 0;
+  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 94%, transparent); mask-image: linear-gradient(90deg, #000 94%, transparent); }
+.cine__sdays::-webkit-scrollbar { display: none; }
+.cine__sdays > .cine__sday { scroll-snap-align: start; }
 .cine__sday { display: flex; flex-direction: column; align-items: center; gap: 0.3vh; padding: 0.4vh 0.5vw; border: 0; border-left: 1px solid rgba(255, 255, 255, 0.09); background: none; color: inherit; font: inherit; cursor: pointer; min-width: 0; overflow: hidden; position: relative; }
 .cine__sday:first-child { border-left: 0; }
 .cine__sdow { font-size: clamp(13px, 2.1vh, 21px); }
@@ -165,7 +169,8 @@
 .cine__ewhat--full { white-space: normal; }
 
 /* Every tile scrolls (17 Oct 2026). A finger drag scrolls the tile, never the page. */
-.cine__scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; min-height: 0; scrollbar-width: none; touch-action: pan-y; }
+/* No touch-action limit: a sideways swipe that starts on a day must still move the strip. */
+.cine__scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; min-height: 0; scrollbar-width: none; }
 .cine__scroll::-webkit-scrollbar { display: none; }
 .cine__panel:not(.cine__panel--jobs) .cine__pbody { -webkit-mask-image: none; mask-image: none; flex: 1; }
 .cine__fuels { flex: 1; }

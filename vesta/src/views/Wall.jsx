@@ -149,8 +149,9 @@ export function addDays(key, n) { const d = dateOf(key); d.setDate(d.getDate() +
  */
 export function calRange(view, offset, todayKey) {
   if (view === 'today') {
-    // Today plus the next seven: the eight-day strip (Nick, 17 Oct 2026).
-    return { from: todayKey, days: 8, month: null, year: null, label: 'Today' };
+    // Six weeks from today: the strip shows eight days at a time and scrolls
+    // sideways through the rest (Nick, 17 Oct 2026). 42 is an existing span.
+    return { from: todayKey, days: 42, month: null, year: null, label: 'Today' };
   }
   if (view === 'month') {
     const t = dateOf(todayKey);

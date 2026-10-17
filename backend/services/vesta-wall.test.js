@@ -282,9 +282,9 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.equal(split.nextId, 'b');
   assert.equal(splitDay(d0, null).nextId, null, 'tomorrow has no "next"');
   const todayRange = calRange('today', 0, '2026-10-19');
-  assert.deepEqual([todayRange.from, todayRange.days], ['2026-10-19', 8]);
+  assert.deepEqual([todayRange.from, todayRange.days], ['2026-10-19', 42]);
   const thtml = renderToString(React.createElement(WallView, {
-    data: { ...data, from: '2026-10-19', days: 8, week: [d0, ...week.slice(1)] }, now,
+    data: { ...data, from: '2026-10-19', days: 42, week: [d0, ...week.slice(1)] }, now,
     cal: { view: 'today', offset: 0, range: todayRange, onStep() {}, onToday() {}, onView() {} },
   }));
   assert.ok(thtml.includes('>Today<') && thtml.includes('Tomorrow') && thtml.includes('Isaac swimming'));
@@ -295,7 +295,7 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   // The cinema look (17 Oct 2026): same payload, new presentation, nothing invented.
   const { CinemaView, presenceLine, nextLine, sunTimes, skyPhase } = mod.exports;
   const cdata = {
-    ...data, from: '2026-10-19', days: 8, week: [d0, ...week.slice(1)],
+    ...data, from: '2026-10-19', days: 42, week: [d0, ...week.slice(1)],
     energy: { connected: true, monthCostP: 7500, fuels: {
       electricity: { yesterday: { kwh: 9.4, costP: 260, complete: true }, month: { kwh: 150, costP: 4160 }, freshness: { state: 'usual' }, days: [] },
       gas: { yesterday: { kwh: 31.2, costP: null, complete: false }, month: { kwh: 499, costP: null }, freshness: { state: 'late' }, days: [] } } },
@@ -307,14 +307,14 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.ok(chtml.includes('14:05') && chtml.includes('Monday 19 October'));
   assert.ok(chtml.includes('Household jobs') && chtml.includes('Car tax') && chtml.includes('Overdue'));
   assert.ok(chtml.includes('9.4 kWh') && chtml.includes('this month 150 kWh') && chtml.includes('Yesterday so far') && chtml.includes('meter running late'));
-  assert.ok(chtml.includes('Next 8 days') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7, 'draws the days it was given');
-  const eight = renderToString(React.createElement(CinemaView, { data: { ...cdata, days: 8, week: vesta.redactWeek([], '2026-10-19', 8) }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
-  assert.equal((eight.match(/class="cine__sday[ "]/g) || []).length, 8, 'eight days by default');
+  assert.ok(chtml.includes('Coming up') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7, 'draws the days it was given');
+  const six = renderToString(React.createElement(CinemaView, { data: { ...cdata, days: 42, week: vesta.redactWeek([], '2026-10-19', 42) }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.equal((six.match(/class="cine__sday[ "]/g) || []).length, 42, 'six weeks in the strip, eight on screen, the rest a swipe away');
   assert.ok(chtml.includes('Isaac swimming') && chtml.includes('Next: Isaac swimming at 17:00'));
   assert.ok(chtml.includes('11.4°') && chtml.includes('82% humidity'));
   for (const invented of ['Feels like', 'breeze', 'vs yesterday']) assert.ok(!chtml.includes(invented), `nothing NEURO does not hold: ${invented}`);
   const cbare = renderToString(React.createElement(CinemaView, { data: { ...cdata, scopes: ['tasks'] }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
-  assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Next 8 days'), 'scopes still decide what is drawn');
+  assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Coming up'), 'scopes still decide what is drawn');
 
   assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'home' }, { name: 'Ember', role: 'companion', state: 'out' }] }), 'Everyone’s home');
   assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Isaac', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'out' }] }), 'Helen and Isaac are home');

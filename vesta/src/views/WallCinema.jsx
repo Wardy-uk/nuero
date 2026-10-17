@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
 import { backgroundFor, cachedUrl, warmCache } from '../backgrounds';
 import './WallCinema.css';
@@ -339,13 +339,25 @@ export function stripItems(events) {
   return { shown: labels, twoLine: true, more: 0 };
 }
 
+/**
+ * The days ahead: eight showing, swipe sideways for the rest of the six weeks.
+ * Left alone for three minutes it scrolls back to today.
+ */
+const STRIP_IDLE_MS = 3 * 60 * 1000;
 function NextDays({ week, today, onOpen, onDay }) {
+  const box = useRef(null);
+  const idle = useRef(null);
+  const onScroll = () => {
+    clearTimeout(idle.current);
+    idle.current = setTimeout(() => { if (box.current) box.current.scrollTo({ left: 0, behavior: 'smooth' }); }, STRIP_IDLE_MS);
+  };
+  useEffect(() => () => clearTimeout(idle.current), []);
   if (!Array.isArray(week)) return <section className="cine__strip"><p className="cine__gap">I couldn’t read the diary.</p></section>;
   return (
-    <section className="cine__strip" aria-label="Next eight days">
-      <div className="cine__striphead"><Icon name="cal" /><span>Next 8 days</span></div>
-      <div className="cine__sdays">
-        {week.slice(0, 8).map((d) => {
+    <section className="cine__strip" aria-label="Days ahead">
+      <div className="cine__striphead"><Icon name="cal" /><span>Coming up</span></div>
+      <div className="cine__sdays" ref={box} onScroll={onScroll}>
+        {week.map((d) => {
           const { dow, day } = dayOfKey(d.date);
           const items = (d.events || []);
           return (
