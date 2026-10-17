@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../api';
+import { backgroundReport } from '../backgrounds';
 import './Wall.css';
 import { CinemaView, presenceLine, nextLine, sunTimes, skyPhase, photoSlot, stripItems, weatherIcon, dewPoint } from './WallCinema';
 
@@ -651,7 +652,8 @@ function keepAwakeReport(how) {
   try {
     const ios = (/OS (\d+)_(\d+)/.exec(navigator.userAgent || '') || []).slice(1, 3).join('.') || 'other';
     const where = navigator.standalone ? 'home-screen' : 'browser';
-    return `${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios};vw=${window.innerWidth}x${window.innerHeight}`;
+    const bg = backgroundReport.id ? `;bg=${backgroundReport.id};bgstate=${backgroundReport.state}` : `;bgstate=${backgroundReport.state}`;
+    return `${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios};vw=${window.innerWidth}x${window.innerHeight}${bg}`;
   } catch { return how || 'none'; }
 }
 

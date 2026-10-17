@@ -96,6 +96,14 @@ test('held steady: a new time of day changes at once, a weather change waits 30 
   let cur = first;
   for (let m = 1; m <= 600; m += 1) cur = b.steadyChoice(cur, A, t0 + m * 60 * 1000);
   assert.equal(cur, first, 'ten hours of unchanged conditions: the very same choice');
+  // Regression (17 Oct 2026): the photo chosen before the first weather reading
+  // must not lock the screen for 30 minutes once the real reading arrives.
+  const P = { src: '/time-only.jpg', night: true, slot: 'night', provisional: true };
+  const R = { src: '/real.jpg', night: false, slot: 'night', provisional: false };
+  const early = b.steadyChoice(null, P, t0);
+  assert.equal(b.steadyChoice(early, R, t0 + 60 * 1000).bg.src, '/real.jpg', 'the first real observation replaces a provisional photo at once');
+  const real = b.steadyChoice(early, R, t0 + 60 * 1000);
+  assert.equal(b.steadyChoice(real, { ...B, slot: 'night', provisional: false }, t0 + 5 * 60 * 1000).bg.src, '/real.jpg', 'between real readings the 30-minute hold still applies');
   assert.equal(b.nextSlot('evening'), 'night');
   assert.equal(b.nextSlot('night'), 'morning');
 });

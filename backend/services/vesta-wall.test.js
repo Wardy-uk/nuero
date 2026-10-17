@@ -334,7 +334,8 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   const { photoSlot, stripItems } = mod.exports;
   assert.deepEqual([photoSlot(new Date(2026, 9, 17, 2, 0)), photoSlot(new Date(2026, 9, 17, 8, 30)), photoSlot(new Date(2026, 9, 17, 13, 0)), photoSlot(new Date(2026, 9, 17, 17, 30))],
     ['night', 'morning', 'day', 'evening']);
-  assert.ok(chtml.includes('CC BY-SA') || chtml.includes('CC0'), 'the photo credit is on screen');
+  // The credit names the photo ON SCREEN, so nothing is credited before a photo has loaded (17 Oct 2026 fix).
+  assert.ok(!chtml.includes('cine__credit'), 'no credit until a photograph is actually showing');
   const mot = 'Book car in for MOT (due 12/03/2025)';
   const four = { ...cdata, tasks: { total: 4, tasks: [
     { id: 1, text: mot, dueDate: '2026-10-10', overdue: true, dueToday: false, who: ['Nick'] },

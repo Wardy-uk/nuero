@@ -285,7 +285,7 @@ router.get('/wall', requireAccount, (req, res) => {
   // screen or browser, whether the Wake Lock API exists, the iOS version) so a
   // screen that keeps sleeping can be diagnosed from the Pi. Bounded and
   // filtered to a fixed character set; nothing about the device beyond that.
-  const held = String((req.query && req.query.held) || '').replace(/[^\w .;=+-]/g, '').slice(0, 100);
+  const held = String((req.query && req.query.held) || '').replace(/[^\w .;=+-]/g, '').slice(0, 200);
   if (held) {
     try {
       const seen = JSON.parse(db.getState('vesta_wall_seen') || '{}') || {};

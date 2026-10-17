@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
-import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot } from '../backgrounds';
+import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot, decodeImage, FALLBACK_SRC, backgroundReport, logBackground, imageBySrc } from '../backgrounds';
 import './WallCinema.css';
 
 /**
@@ -77,30 +77,59 @@ export function photoSlot(now, sun = null) {
 function Photo({ slot, condition }) {
   const weather = weatherCategory(condition);
   const wanted = backgroundFor(slot, weather);
-  const [shown, setShown] = useState(() => (wanted ? { bg: { ...wanted, slot }, slot, at: Date.now() } : null));
+  const provisional = !weather;
+  const [shown, setShown] = useState(() => (wanted ? { bg: { ...wanted, slot, provisional }, slot, at: Date.now() } : null));
   useEffect(() => {
     if (!wanted) return;
-    setShown((cur) => steadyChoice(cur, { ...wanted, slot }, Date.now()));
-  }, [slot, wanted && wanted.src, wanted && wanted.night]);
+    setShown((cur) => steadyChoice(cur, { ...wanted, slot, provisional }, Date.now()));
+  }, [slot, wanted && wanted.src, wanted && wanted.night, provisional]);
   // Re-check once a minute so a held weather change lands after its 30 minutes.
   useEffect(() => {
-    const t = setInterval(() => { const w = backgroundFor(slot, weatherCategory(condition)); if (w) setShown((cur) => steadyChoice(cur, { ...w, slot }, Date.now())); }, 60 * 1000);
+    const t = setInterval(() => { const wc = weatherCategory(condition); const w = backgroundFor(slot, wc); if (w) setShown((cur) => steadyChoice(cur, { ...w, slot, provisional: !wc }, Date.now())); }, 60 * 1000);
     return () => clearInterval(t);
   }, [slot, condition]);
   const bg = shown ? shown.bg : wanted;
   // Two layers: the new photo loads underneath and fades in over the old, so a
   // change never flashes back to the drawn sky.
   const [layers, setLayers] = useState([]);
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+  // ⚠ A photo is added ONLY once it has loaded and decoded. A failure keeps the
+  // last good photo on screen; with none yet, the known-working sunset is used.
+  // So a failed request can never leave the wall dark (17 Oct 2026 regression).
   useEffect(() => {
     if (!bg || typeof window === 'undefined') return undefined;
     let dead = false;
-    cachedUrl(bg.src).then((u) => {
-      if (dead || !u) return;
+    // Each layer carries its OWN credit, so the attribution always names the
+    // photograph actually on screen (the fallback included).
+    const add = (src, url, night, id, state, meta) => {
+      if (dead) { if (url.startsWith('blob:')) URL.revokeObjectURL(url); return; }
+      backgroundReport.id = id; backgroundReport.state = state;
       setLayers((cur) => {
-        if (cur.length && cur[cur.length - 1].src === bg.src && cur[cur.length - 1].night === bg.night) return cur;
-        return [...cur.slice(-1), { src: bg.src, url: u, night: bg.night, key: `${bg.src}|${bg.night}|${Date.now()}` }];
+        if (cur.length && cur[cur.length - 1].src === src && cur[cur.length - 1].night === night) return cur;
+        return [...cur.slice(-1), { src, url, night, nightPhoto: Boolean(meta && meta.nightPhoto), place: meta && meta.place, credit: meta && meta.credit, licence: meta && meta.licence, key: `${src}|${night}|${Date.now()}` }];
       });
-    });
+    };
+    (async () => {
+      try {
+        const u = await cachedUrl(bg.src);
+        await decodeImage(u);
+        add(bg.src, u, bg.night, bg.id, 'ok', bg);
+      } catch (e) {
+        logBackground('load', bg.src, e, layersRef.current.length ? 'kept the last photo' : FALLBACK_SRC);
+        if (dead) return;
+        if (layersRef.current.length) { backgroundReport.state = `kept-last-after-${bg.id}-failed`; return; }
+        try {
+          const u = await cachedUrl(FALLBACK_SRC);
+          await decodeImage(u);
+          // Darkened whenever it stands in at night (the failed photo may have been a true night photo).
+          add(FALLBACK_SRC, u, slot === 'night', 'fallback-sunset', `fallback-after-${bg.id}-failed`, imageBySrc(FALLBACK_SRC));
+        } catch (e2) {
+          logBackground('fallback', FALLBACK_SRC, e2, 'drawn sky');
+          backgroundReport.state = 'no-photo-drawn-sky';
+        }
+      }
+    })();
     return () => { dead = true; };
   }, [bg && bg.src, bg && bg.night]);
   // Drop the layer underneath once the new one has faded in.
@@ -126,7 +155,9 @@ function Photo({ slot, condition }) {
         <PhotoLayer key={l.key} layer={l} top={i === layers.length - 1} />
       ))}
       <div className="cine__scrim" aria-hidden="true" />
-      <p className="cine__credit">{`${bg.place} · ${bg.credit} · ${bg.licence}`}</p>
+      {layers.length > 0 && layers[layers.length - 1].credit && (
+        <p className="cine__credit">{`${layers[layers.length - 1].place} · ${layers[layers.length - 1].credit} · ${layers[layers.length - 1].licence}`}</p>
+      )}
     </>
   );
 }
@@ -136,7 +167,7 @@ function PhotoLayer({ layer, top }) {
   const [on, setOn] = useState(false);
   useEffect(() => { const id = requestAnimationFrame(() => setOn(true)); return () => cancelAnimationFrame(id); }, []);
   return (
-    <div className={`cine__photo${layer.night ? ' cine__photo--night' : ''}${on ? ' cine__photo--in' : ''}${top ? ' cine__photo--top' : ''}`}
+    <div className={`cine__photo${layer.night ? ' cine__photo--night' : ''}${layer.nightPhoto ? ' cine__photo--nightphoto' : ''}${on ? ' cine__photo--in' : ''}${top ? ' cine__photo--top' : ''}`}
          style={{ backgroundImage: `url("${layer.url}")` }} aria-hidden="true" />
   );
 }

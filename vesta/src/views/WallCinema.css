@@ -231,3 +231,11 @@
 .cine__panel--jobs .cine__phead { gap: 8px; flex-wrap: nowrap; }
 .cine__panel--jobs .cine__ptitle { font-size: clamp(14px, 2.15vh, 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cine__headmore { flex: none; }
+
+/* ── Night fix (17 Oct 2026, regression in e6f406d) ────────────────────────
+   The night overlay (45–75%) plus a 0.3 brightness on darkened photos left
+   ~13–22/255 behind the panels: black across a room. Night now stays visibly
+   photographic (~40/255, against ~50 at dusk) and text still reads. */
+.cine__photo--night { filter: brightness(0.6) saturate(0.65); }
+.cine__photo--nightphoto { filter: brightness(1.15); }
+.cine--night .cine__scrim { background: linear-gradient(180deg, rgba(4, 6, 14, 0.2) 0%, rgba(0, 0, 0, 0.12) 35%, rgba(0, 0, 0, 0.3) 60%, rgba(0, 0, 0, 0.5) 100%); }

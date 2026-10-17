@@ -98,6 +98,11 @@ export function makeProvider(name, images) {
 const BUNDLED = makeProvider('bundled', BUNDLED_IMAGES);
 export const providers = { bundled: BUNDLED };
 
+/** A bundled image's details by its src (for crediting whatever is on screen). */
+export function imageBySrc(src, provider = BUNDLED) {
+  return provider.images.find((i) => i.src === src) || null;
+}
+
 /** The background for a slot (+ optional weather category) from a provider. */
 export function backgroundFor(slot, weather = null, provider = BUNDLED) {
   try { return provider.pick(slot, weather) || null; } catch { return null; }
@@ -113,26 +118,75 @@ export function steadyChoice(shown, wanted, nowMs, holdMs = HOLD_MS) {
   if (!wanted) return shown;
   if (!shown || !shown.bg) return { bg: wanted, slot: wanted.slot, at: nowMs };
   if (shown.bg.src === wanted.src && shown.bg.night === wanted.night) return shown;
+  // A photo chosen with no weather reading (before the first data, or while the
+  // reading was unavailable) is provisional: the first real observation replaces
+  // it at once instead of waiting out the 30-minute hold.
+  if (shown.bg.provisional && !wanted.provisional) return { bg: wanted, slot: wanted.slot, at: nowMs };
   if (shown.slot !== wanted.slot) return { bg: wanted, slot: wanted.slot, at: nowMs };
   return nowMs - shown.at >= holdMs ? { bg: wanted, slot: wanted.slot, at: nowMs } : shown;
 }
 
-const CACHE = 'vesta-backgrounds-v1';
+// v2 (17 Oct 2026): a new name drops anything the v1 cache held.
+const CACHE = 'vesta-backgrounds-v2';
+const OLD_CACHES = ['vesta-backgrounds-v1'];
+
+/** The last-resort photograph: the sunset that displayed in every build. */
+export const FALLBACK_SRC = '/backgrounds/evening.v1.jpg';
+
+const isImage = (res) => Boolean(res && res.ok && /^image\//i.test(res.headers.get('content-type') || ''));
 
 /**
  * A URL for the image that keeps working offline: kept in the browser's Cache
- * Storage once fetched, handed back as a blob URL. Falls back to the plain URL
+ * Storage once fetched, handed back as a blob URL. ⚠ Only a real image (200 and
+ * image/*) is ever cached or handed back — a stored error page would otherwise
+ * be shown, for ever, as a black photograph. Falls back to the plain URL
  * wherever Cache Storage is missing or refuses.
  */
 export async function cachedUrl(src) {
   try {
     if (typeof caches === 'undefined') return src;
+    for (const old of OLD_CACHES) caches.delete(old).catch(() => {});
     const c = await caches.open(CACHE);
     let res = await c.match(src);
-    if (!res) { await c.add(src); res = await c.match(src); }
-    if (!res) return src;
+    if (res && !isImage(res)) { await c.delete(src); res = null; }
+    if (!res) {
+      const got = await fetch(src, { cache: 'no-cache' });
+      if (!isImage(got)) throw new Error(`not an image (${got.status} ${got.headers.get('content-type') || 'no type'})`);
+      await c.put(src, got.clone());
+      res = got;
+    }
     return URL.createObjectURL(await res.blob());
-  } catch { return src; }
+  } catch (e) {
+    logBackground('cache', src, e);
+    return src;
+  }
+}
+
+/** Load and DECODE an image before it is shown. Resolves with the url; rejects on any failure. */
+export function decodeImage(url) {
+  return new Promise((resolve, reject) => {
+    if (typeof Image === 'undefined') { resolve(url); return; }
+    const img = new Image();
+    img.onload = () => {
+      if (!img.naturalWidth) { reject(new Error('decoded to an empty image')); return; }
+      if (typeof img.decode === 'function') img.decode().then(() => resolve(url), () => resolve(url));
+      else resolve(url);
+    };
+    img.onerror = () => reject(new Error('the image would not load'));
+    img.src = url;
+  });
+}
+
+/**
+ * What the wall is showing, for its regular check-in to NEURO (so a black
+ * screen can be diagnosed from the Pi) and for the console.
+ */
+export const backgroundReport = { id: null, state: 'none' };
+export function logBackground(stage, src, err, fallback = null) {
+  try {
+    // eslint-disable-next-line no-console
+    console.warn('[wall background]', { stage, src, error: err && err.message, fallback });
+  } catch { /* no console */ }
 }
 
 /**
