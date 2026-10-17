@@ -322,6 +322,26 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.ok(Math.abs((octSun.set - octSun.rise) / 60 - 10.5) < 0.5, 'about 10½ hours of daylight in mid-October');
   assert.ok(junSun.set - junSun.rise > octSun.set - octSun.rise + 300, 'midsummer days are much longer');
   assert.equal(skyPhase(new Date(2026, 9, 17, 2, 0)), 'night');
+
+  // Iteration 2: photographs by time of day, two jobs and a count, two-line strip labels.
+  const { photoSlot, stripItems } = mod.exports;
+  assert.deepEqual([photoSlot(new Date(2026, 9, 17, 2, 0)), photoSlot(new Date(2026, 9, 17, 8, 30)), photoSlot(new Date(2026, 9, 17, 13, 0)), photoSlot(new Date(2026, 9, 17, 17, 30))],
+    ['night', 'morning', 'day', 'evening']);
+  assert.ok(chtml.includes('CC BY-SA') || chtml.includes('CC0'), 'the photo credit is on screen');
+  const mot = 'Book car in for MOT (due 12/03/2025)';
+  const four = { ...cdata, tasks: { total: 4, tasks: [
+    { id: 1, text: mot, dueDate: '2026-10-10', overdue: true, dueToday: false, who: ['Nick'] },
+    { id: 2, text: 'Order school shoes', dueDate: null, overdue: false, dueToday: false, who: [] },
+    { id: 3, text: 'Fix the extractor fan', dueDate: null, overdue: false, dueToday: false, who: [] },
+    { id: 4, text: 'Take bins out', dueDate: null, overdue: false, dueToday: false, who: [] },
+  ] } };
+  const jhtml = renderToString(React.createElement(CinemaView, { data: four, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.equal((jhtml.match(/class="cine__job[ "]/g) || []).length, 2, 'two jobs on the panel');
+  assert.ok(jhtml.includes('+2 more'));
+  assert.ok(jhtml.includes(mot), 'the task wording is shown as it is — its old date is neither removed nor read as the due date');
+  assert.deepEqual(stripItems([{ title: 'Bins', allDay: true }, { title: 'Swim', start: '2026-10-19T17:00:00' }]), { shown: ['Bins', '17:00 Swim'], twoLine: false, more: 0 });
+  assert.deepEqual(stripItems([{ title: 'Wedding anniversary', allDay: true }]), { shown: ['Wedding anniversary'], twoLine: true, more: 0 }, 'a long label gets two lines, not "Wedding anni…"');
+  assert.equal(stripItems([{ title: 'A', allDay: true }, { title: 'B', allDay: true }, { title: 'C', allDay: true }]).more, 2);
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──

@@ -1,0 +1,13 @@
+Wall background photographs (resized and re-encoded for the VESTA family wall).
+
+morning.v1.jpg  "Peak District Sunrise" by Mark Richards from Sheffield, United Kingdom
+                CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                https://commons.wikimedia.org/wiki/File:Peak_District_Sunrise_(8728110745).jpg
+day.v1.jpg      "Mam Tor Approach" by mendhak
+                CC BY-SA 2.0 - https://creativecommons.org/licenses/by-sa/2.0/
+                https://commons.wikimedia.org/wiki/File:Mam_Tor_Approach.jpg
+evening.v1.jpg  "Peak District Bakewell Sunset" by Brian Toward from London, United Kingdom
+                CC0 - https://creativecommons.org/publicdomain/zero/1.0/
+                https://commons.wikimedia.org/wiki/File:02_peak_district_Bakewell_Sunset_(601074437).jpg
+
+The resized copies are shared under the same licences as the originals.

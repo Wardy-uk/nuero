@@ -1,4 +1,6 @@
-import { Face, Calendar, dayOfKey, time, DAYS, MONTHS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
+import { useEffect, useState } from 'react';
+import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
+import { backgroundFor, cachedUrl, warmCache } from '../backgrounds';
 import './WallCinema.css';
 
 /**
@@ -44,6 +46,43 @@ export function skyPhase(now) {
   if (m > set - 15) return 'dusk';
   if (m > set - 110) return 'golden';
   return 'day';
+}
+
+/** Which photograph: morning | day | evening | night. PURE. */
+export function photoSlot(now) {
+  const phase = skyPhase(now);
+  if (phase === 'night') return 'night';
+  if (phase === 'golden' || phase === 'dusk') return 'evening';
+  if (phase === 'dawn' || now.getHours() < 11) return 'morning';
+  return 'day';
+}
+
+/** The photograph for this time of day, over the drawn sky (which stays as the fallback). */
+function Photo({ slot }) {
+  const bg = backgroundFor(slot);
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let dead = false; let made = null;
+    setUrl(null);
+    if (bg && typeof window !== 'undefined') {
+      cachedUrl(bg.src).then((u) => {
+        if (dead) { if (u && u.startsWith('blob:')) URL.revokeObjectURL(u); return; }
+        if (u && u.startsWith('blob:')) made = u;
+        setUrl(u);
+      });
+    }
+    return () => { dead = true; if (made) URL.revokeObjectURL(made); };
+  }, [bg && bg.src]);
+  useEffect(() => { if (typeof window !== 'undefined') warmCache(); }, []);
+  if (!bg) return null;
+  return (
+    <>
+      <div className={`cine__photo${bg.night ? ' cine__photo--night' : ''}${url ? ' cine__photo--in' : ''}`}
+           style={url ? { backgroundImage: `url("${url}")` } : undefined} aria-hidden="true" />
+      <div className="cine__scrim" aria-hidden="true" />
+      <p className="cine__credit">{`${bg.place} · ${bg.credit} · ${bg.licence}`}</p>
+    </>
+  );
 }
 
 const SKIES = {
@@ -217,31 +256,44 @@ function DayCard({ day, title, now, onOpen, emptyLine }) {
   );
 }
 
-function Jobs({ tasks, gap, today }) {
+/** One job as a card. The wording is the task's own, shown on two lines at most — never rewritten. */
+function JobItem({ t, today }) {
+  const due = dueLabel(t, today);
   return (
-    <section className="cine__panel cine__panel--jobs" aria-label="Household jobs">
+    <li className={`cine__job${t.overdue ? ' cine__job--late' : ''}`}>
+      <span className="cine__jtext">{t.text}</span>
+      <span className="cine__jmeta">
+        {due && <span className={t.overdue ? 'cine__late' : t.dueToday ? 'cine__soon' : ''}>{t.overdue ? 'Overdue' : t.dueToday ? 'Due today' : `Due ${due}`}</span>}
+        {t.who.length > 0 && <span className="cine__jwho">{t.who.join(' & ')}</span>}
+      </span>
+    </li>
+  );
+}
+
+const JOBS_SHOWN = 2;
+
+function Jobs({ tasks, gap, today, onOpen }) {
+  const list = tasks ? tasks.tasks : [];
+  const total = tasks ? Math.max(tasks.total || 0, list.length) : 0;
+  const more = total - Math.min(list.length, JOBS_SHOWN);
+  const clickable = list.length > 0;
+  return (
+    <section className={`cine__panel cine__panel--jobs${clickable ? ' cine__panel--tap' : ''}`} aria-label="Household jobs"
+             onClick={clickable ? onOpen : undefined} role={clickable ? 'button' : undefined}>
       <div className="cine__phead cine__phead--static">
         <Icon name="tools" className="cine__icon--amber" />
         <span className="cine__ptitle">Household jobs</span>
-        {tasks && tasks.tasks.length > 0 && <span className="cine__count">{tasks.total > tasks.tasks.length ? `${tasks.tasks.length} of ${tasks.total}` : tasks.tasks.length}</span>}
+        {clickable && <Icon name="chevron" className="cine__chev" />}
       </div>
       {gap || !tasks ? <p className="cine__gap">I couldn’t read the jobs list.</p>
-        : tasks.tasks.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
+        : list.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
         : (
-          <ul className="cine__jobs">
-            {tasks.tasks.map((t) => {
-              const due = dueLabel(t, today);
-              return (
-                <li key={t.id} className="cine__job">
-                  <span className="cine__jtext">{t.text}</span>
-                  <span className="cine__jmeta">
-                    {due && <span className={t.overdue ? 'cine__late' : t.dueToday ? 'cine__soon' : ''}>{t.overdue ? 'Overdue' : t.dueToday ? 'Due today' : `Due ${due}`}</span>}
-                    {t.who.length > 0 && <span className="cine__jwho">{t.who.join(' & ')}</span>}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <ul className="cine__jobs">
+              {list.slice(0, JOBS_SHOWN).map((t) => <JobItem key={t.id} t={t} today={today} />)}
+            </ul>
+            {more > 0 && <p className="cine__more">{`+${more} more`}</p>}
+          </>
         )}
     </section>
   );
@@ -286,7 +338,14 @@ function Energy({ energy, gap }) {
   );
 }
 
-function NextDays({ week, today, onOpen }) {
+/** Labels for a strip day: two short ones, or one on up to two lines and a count. PURE. */
+export function stripItems(events) {
+  const labels = (events || []).map((e) => (e.allDay ? e.title : `${time(e.start)} ${e.title}`));
+  if (labels.length <= 2 && labels.every((l) => l.length <= 16)) return { shown: labels, twoLine: false, more: 0 };
+  return { shown: labels.slice(0, 1), twoLine: true, more: Math.max(0, labels.length - 1) };
+}
+
+function NextDays({ week, today, onOpen, onDay }) {
   if (!Array.isArray(week)) return <section className="cine__strip"><p className="cine__gap">I couldn’t read the diary.</p></section>;
   return (
     <section className="cine__strip" aria-label="Next seven days">
@@ -296,17 +355,65 @@ function NextDays({ week, today, onOpen }) {
           const { dow, day } = dayOfKey(d.date);
           const items = (d.events || []);
           return (
-            <button key={d.date} className={`cine__sday${d.date === today ? ' cine__sday--today' : ''}`} onClick={onOpen} aria-label={`Open ${DAYS_LONG[dow]}`}>
+            <button key={d.date} className={`cine__sday${d.date === today ? ' cine__sday--today' : ''}`} onClick={() => (onDay ? onDay(d) : onOpen && onOpen())} aria-label={`Open ${DAYS_LONG[dow]}`}>
               <span className="cine__sdow">{`${DAYS[dow]} ${day}`}</span>
               <span className={`cine__smark${d.off ? ' cine__smark--off' : ''}`}>{d.off ? 'Nick off' : d.work ? 'Nick at work' : ' '}</span>
-              {/* Two lines of room: two items, or one and a count. */}
-              {items.slice(0, items.length > 2 ? 1 : 2).map((e, i) => <span key={`${e.id || i}`} className="cine__sitem">{e.allDay ? e.title : `${time(e.start)} ${e.title}`}</span>)}
-              {items.length > 2 && <span className="cine__smore">{`+${items.length - 1} more`}</span>}
+              {(() => {
+                const { shown, twoLine, more } = stripItems(items);
+                return (
+                  <>
+                    {shown.map((l, i) => <span key={i} className={`cine__sitem${twoLine ? ' cine__sitem--two' : ''}`}>{l}</span>)}
+                    {more > 0 && <span className="cine__smore">{`+${more} more`}</span>}
+                  </>
+                );
+              })()}
             </button>
           );
         })}
       </div>
     </section>
+  );
+}
+
+/** A sheet over the wall: every job, or one day in full. Tap outside or Done to close. */
+function Sheet({ sheet, data, onClose, onOpenWeek }) {
+  if (!sheet) return null;
+  let title = ''; let body = null;
+  if (sheet.kind === 'jobs') {
+    const list = (data && data.tasks && data.tasks.tasks) || [];
+    title = `Household jobs · ${list.length}`;
+    body = <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} />)}</ul>;
+  } else if (sheet.kind === 'day') {
+    const d = sheet.day; const { dow, day, month } = dayOfKey(d.date);
+    title = `${DAYS_LONG[dow]} ${day} ${MONTHS_LONG[month]}`;
+    const events = d.events || [];
+    body = (
+      <div className="cine__daysheet">
+        {d.off && <p className="cine__work cine__work--off">Nick off</p>}
+        {d.work && <p className="cine__work">{d.work.allDay ? 'Nick at work' : `Nick at work · ${time(d.work.start)}–${time(d.work.end)}`}</p>}
+        {events.length === 0 && !d.off && !d.work && <p className="cine__sub">Nothing in the diary</p>}
+        <ul className="cine__events cine__events--full">
+          {events.map((e, i) => (
+            <li key={`${e.id || i}`} className="cine__event cine__event--full">
+              <span className="cine__etime">{e.allDay ? 'All day' : `${time(e.start)}${e.end ? `–${time(e.end)}` : ''}`}</span>
+              <span className="cine__ewhat cine__ewhat--full">{e.title}</span>
+            </li>
+          ))}
+        </ul>
+        <button className="cine__sheetbtn" onClick={onOpenWeek}>Open the week</button>
+      </div>
+    );
+  }
+  return (
+    <div className="cine__sheetwrap" onClick={onClose}>
+      <section className="cine__sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <header className="cine__sheethead">
+          <span className="cine__ptitle">{title}</span>
+          <button className="cine__sheetbtn" onClick={onClose}>Done</button>
+        </header>
+        {body}
+      </section>
+    </div>
   );
 }
 
@@ -317,6 +424,9 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
   const phase = skyPhase(now);
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
+  const [sheet, setSheet] = useState(null);
+  // A sheet left open closes itself after two minutes, like the rest of the wall.
+  useEffect(() => { if (!sheet) return undefined; const t = setTimeout(() => setSheet(null), 2 * 60 * 1000); return () => clearTimeout(t); }, [sheet]);
   const overlay = cal && cal.view !== 'today';
   const open = () => cal && cal.onView && cal.onView('week');
   // The panels read the seven days from today; while another range is loading
@@ -326,6 +436,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
   return (
     <div className={`cine cine--${phase}`}>
       <Sky phase={phase} />
+      <Photo slot={photoSlot(now)} />
       {overlay ? (
         <div className="cine__overlay">
           <Calendar data={data} gap={gapFor('week')} cal={cal} now={now} />
@@ -349,14 +460,15 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
               <div className={`cine__panels${can('energy') ? '' : ' cine__panels--three'}`}>
                 {can('calendar') && <DayCard day={week && week[0]} title="Today" now={now} onOpen={open} emptyLine="Nothing planned today" />}
                 {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" />}
-                <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} />
+                <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} onOpen={() => setSheet({ kind: 'jobs' })} />
                 {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} />}
               </div>
-              {can('calendar') && <NextDays week={week} today={data.today} onOpen={open} />}
+              {can('calendar') && <NextDays week={week} today={data.today} onOpen={open} onDay={(d) => setSheet({ kind: 'day', day: d })} />}
             </>
           )}
         </div>
       )}
+      {!overlay && <Sheet sheet={sheet} data={data} onClose={() => setSheet(null)} onOpenWeek={() => { setSheet(null); open(); }} />}
       {onExit && <button className="cine__exit" onClick={onExit} aria-label="Leave wall view">⋯</button>}
     </div>
   );

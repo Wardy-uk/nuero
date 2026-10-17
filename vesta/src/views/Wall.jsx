@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../api';
 import './Wall.css';
-import { CinemaView, presenceLine, nextLine, sunTimes, skyPhase } from './WallCinema';
+import { CinemaView, presenceLine, nextLine, sunTimes, skyPhase, photoSlot, stripItems } from './WallCinema';
 
 /**
  * The family wall — VESTA on an always-on iPad in the house (15 Oct 2026).
@@ -749,4 +749,4 @@ export default function Wall({ onExit, onSignedOut }) {
 
 // Shared with the cinema look (WallCinema.jsx), which reuses these unchanged.
 export { Face, Calendar, dayOfKey, time, DAYS, MONTHS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp };
-export { CinemaView, presenceLine, nextLine, sunTimes, skyPhase };
+export { CinemaView, presenceLine, nextLine, sunTimes, skyPhase, photoSlot, stripItems };
