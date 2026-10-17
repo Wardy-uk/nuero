@@ -124,17 +124,16 @@ test('VESTA wall: the energy card sits in the side column with the scope, is ABS
   const base = { today: '2026-10-19', gaps: [], tasks: { total: 0, tasks: [] }, energy };
   const now = new Date(2026, 9, 19, 9, 0);
   const html = r(React.createElement(WallView, { data: { ...base, scopes: ['tasks', 'energy'] }, now }));
-  // Moved to the header row between Who's in and Outside (Nick, 17 Oct 2026).
-  const top = html.slice(html.indexOf('wall__top'), html.indexOf('wall__body'));
-  assert.match(top, /wall__topcard--energy/, 'in the top bar, not the side column');
+  const side = html.slice(html.indexOf('wall__side'));
+  assert.match(side, /wall__card--energy/, 'in the side column, not the top bar');
   assert.match(html, /9\.4 kWh/);
   assert.match(html, /~£2\.88/);
-  assert.match(html, /so far/, 'partial gas day is marked');
+  assert.match(html, /yesterday so far/, 'partial gas day is marked');
   assert.match(html, /meter data running late/);
   assert.match(html, /wall__ebar--none/);
-  assert.match(html, /month ~£41\.00/, 'the month cost rides on the slim card');
+  assert.match(html, /Both this month ~£51\.20/);
   const bare = r(React.createElement(WallView, { data: { ...base, scopes: ['tasks'] }, now }));
-  assert.ok(!bare.includes('wall__topcard--energy'), 'absent without the scope');
+  assert.ok(!bare.includes('wall__card--energy'), 'absent without the scope');
   const gap = r(React.createElement(WallView, { data: { ...base, energy: null, gaps: [{ block: 'energy', why: 'x' }], scopes: ['tasks', 'energy'] }, now }));
   assert.match(gap, /couldn.t read the meters/);
 });
