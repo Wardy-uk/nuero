@@ -374,6 +374,13 @@ async function init() {
       db.exec('ALTER TABLE tasks ADD COLUMN origin_detail TEXT');
       console.log('[DB] tasks.origin_detail added');
     }
+    // Migration: tasks.recurrence_json — a repeating task's schedule (17 Oct
+    // 2026, shared/task-recurrence.cjs). NULL is "does not repeat" and is every
+    // existing row. Added by ALTER, never a rebuild.
+    if (taskColumns.length && !taskColumns.includes('recurrence_json')) {
+      db.exec('ALTER TABLE tasks ADD COLUMN recurrence_json TEXT');
+      console.log('[DB] tasks.recurrence_json added');
+    }
   } catch (e) {
     console.error('[DB] tasks migration check failed:', e.message);
   }
@@ -1311,11 +1318,14 @@ function logActivity(eventType, eventData, dateKey) {
   const hour = now.getHours();
   const dayOfWeek = now.getDay();
   const dk = dateKey || now.toISOString().split('T')[0];
-  run(
+  // The row id is returned so a writer that may need to UNDO this row (a
+  // repeating task's un-tick) can name it. Existing callers ignore it.
+  const info = run(
     `INSERT INTO activity_log (event_type, event_data, hour, day_of_week, date_key)
      VALUES (?, ?, ?, ?, ?)`,
     [eventType, eventData ? JSON.stringify(eventData) : null, hour, dayOfWeek, dk]
   );
+  return info && info.lastInsertRowid != null ? Number(info.lastInsertRowid) : null;
 }
 
 function getActivityForDate(dateKey) {
@@ -2587,8 +2597,33 @@ const TASK_FIELDS = [
   'text', 'status', 'moscow', 'moscow_proposed', 'priority', 'due_date', 'source',
   'origin_path', 'origin_line', 'origin_detail', 'context', 'domain', 'origin', 'origin_proposed',
   'notes', 'ms_id', 'ms_source', 'ms_plan',
-  'estimate_minutes', 'assignee', 'household', 'criticality',
+  'estimate_minutes', 'assignee', 'household', 'criticality', 'recurrence_json',
 ];
+
+// ── Repeating tasks: one row per completed occurrence (17 Oct 2026) ─────────
+// The task row itself is reopened with its next due date, so this is the only
+// record of WHICH occurrences were done and when. Append-only apart from the
+// `undone_at` stamp an undo writes.
+function insertRecurrenceLog(row) {
+  const info = run(
+    `INSERT INTO task_recurrence_log (task_id, slot_due, next_due, completed_at, activity_id, rule_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [row.task_id, row.slot_due || null, row.next_due || null, row.completed_at,
+      row.activity_id == null ? null : row.activity_id, row.rule_json || null]
+  );
+  return info.lastInsertRowid;
+}
+
+function listRecurrenceLog(taskId, limit = 20) {
+  return all(
+    'SELECT * FROM task_recurrence_log WHERE task_id = ? ORDER BY id DESC LIMIT ?',
+    [taskId, limit]
+  );
+}
+
+function markRecurrenceLogUndone(id, at) {
+  return run('UPDATE task_recurrence_log SET undone_at = ? WHERE id = ? AND undone_at IS NULL', [at, id]).changes;
+}
 
 function createTaskRow(task) {
   const info = run(
@@ -3177,6 +3212,9 @@ module.exports = {
   getTaskByDedupeKey,
   listTaskRows,
   updateTaskRow,
+  insertRecurrenceLog,
+  listRecurrenceLog,
+  markRecurrenceLogUndone,
   createTaskBlockRow,
   addTaskBlockItem,
   getTaskBlockRow,

@@ -279,6 +279,10 @@ function buildTodayLane(tasks, todayStr = todayDateString(), limit = 5, opts = {
       // Recurring tasks come BACK by design; a lane row that does not say so
       // reads as a completion NEURO lost.
       recurrence: task.recurrence || null,
+      // A NEURO repeating task (task-store) — its rule and label, so the lane
+      // row shows ↻ like the list does.
+      repeat: task.repeat || null,
+      recurrenceLabel: task.recurrenceLabel || null,
       text: task.text,
       priority: task.priority,
       moscow: task.moscow,

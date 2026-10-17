@@ -36,7 +36,8 @@ router.get('/', (req, res) => {
     });
     const q = (req.query.q || '').toLowerCase().trim();
     const filtered = q ? rows.filter(r => r.text.toLowerCase().includes(q)) : rows;
-    res.json({ tasks: filtered, counts: taskStore.counts() });
+    // Each row carries its repeat rule and label (`recurrence`, `recurrenceLabel`).
+    res.json({ tasks: filtered.map(taskStore.withRecurrence), counts: taskStore.counts() });
   } catch (e) {
     console.error('[Tasks] List error:', e);
     res.status(500).json({ error: e.message });
@@ -57,7 +58,7 @@ router.get('/untriaged', (req, res) => {
 // POST /api/tasks — create (route 2: NEURO direct)
 router.post('/', (req, res) => {
   try {
-    const { text, moscow, priority, due_date, source, notes, origin_path, origin_line, estimateMinutes, estimateExact, domain, origin, criticality } = req.body;
+    const { text, moscow, priority, due_date, source, notes, origin_path, origin_line, estimateMinutes, estimateExact, domain, origin, criticality, recurrence } = req.body;
     if (!text || !String(text).trim()) return res.status(400).json({ error: 'text is required' });
     const result = taskStore.createTask({
       text, moscow, priority, due_date, notes, origin_path, origin_line,
@@ -84,6 +85,9 @@ router.post('/', (req, res) => {
       // would give one question two answers. Absent is the normal case and does
       // not mean "low".
       criticality,
+      // A repeat rule (shared/task-recurrence.cjs). Omitted = a one-off task; a
+      // bad rule is refused with a 400 and nothing is created.
+      recurrence,
       // ⚠ NOT `|| 'manual'`. This is the human-facing create endpoint, but it is
       // reachable by any machine client holding the API token, so defaulting
       // here asserted "a person typed this" on behalf of callers that never said
@@ -186,9 +190,46 @@ router.post('/:id/complete', async (req, res) => {
     // Linked to a Microsoft task, so completing it here completes it there too —
     // that is the whole point of confirming the pair (17 Aug 2026).
     const msPush = await pushCompletionToMicrosoft(task, req.apiClient ? `machine:${req.apiClient}` : 'nick');
-    res.json({ ok: true, task, msPush });
+    // A repeating task comes back OPEN at its next slot; `recurred` says so
+    // ({completedDue, nextDue, label, notice}), so a client never paints it done.
+    res.json({ ok: true, task, msPush, recurred: task.recurred || null });
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/tasks/:id/recurrence — a repeating task's rule, label, next few due dates and completed occurrences. Keywords: repeating task, recurring task, repeat history.
+router.get('/:id/recurrence', (req, res) => {
+  try {
+    const row = taskStore.getTask(Number(req.params.id));
+    if (!row) return res.status(404).json({ error: 'Task not found' });
+    const shaped = taskStore.withRecurrence(row);
+    const rec = require('../../shared/task-recurrence.cjs');
+    const upcoming = shaped.recurrence && row.due_date
+      ? rec.upcoming(shaped.recurrence, { from: row.due_date, count: 5 })
+      : [];
+    res.json({
+      ok: true,
+      taskId: row.id,
+      recurrence: shaped.recurrence,
+      recurrenceLabel: shaped.recurrenceLabel,
+      due_date: row.due_date || null,
+      upcoming,
+      history: taskStore.recurrenceHistory(row.id),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/tasks/:id/recurrence/undo — un-tick a repeating task: undoes ONLY its most recent completed occurrence (within 24h, nothing changed since): due date restored, that occurrence's task_done and win removed. Refused (409) otherwise. Keywords: untick, undo repeating task.
+router.post('/:id/recurrence/undo', (req, res) => {
+  try {
+    const r = taskStore.undoLastOccurrence(Number(req.params.id));
+    if (!r.ok) return res.status(r.reason === 'not-found' ? 404 : 409).json(r);
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

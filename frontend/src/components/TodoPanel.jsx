@@ -2,7 +2,12 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import { duePresets } from '../../../shared/due-dates.cjs';
-import { msPlanBadge, recurrenceLabel } from '../../../shared/ms-task.cjs';
+import { msPlanBadge, recurrenceLabel as msRecurrenceLabel } from '../../../shared/ms-task.cjs';
+import RepeatControl, { valueFromRule, ruleFromValue } from './RepeatControl.jsx';
+
+// The ↻ chip's words: Microsoft's own token for a mirrored task, NEURO's rule
+// label (server-composed) for a repeating NEURO task. One chip, two owners.
+const recurrenceLabel = (item) => msRecurrenceLabel(item) || (item && item.recurrenceLabel) || null;
 import { domainBadge } from '../../../shared/task-domain.cjs';
 import { SIZES, sizeOf, minutesFor } from '../../../shared/task-size.cjs';
 import { originBadge, ORIGINS, SHORT_LABELS, DESCRIPTIONS, LABELS, UNCLASSIFIED_LABEL } from '../../../shared/task-origin.cjs';
@@ -218,9 +223,19 @@ const ORIGIN_OPTIONS = ORIGINS.map(key => ({ key, label: SHORT_LABELS[key], desc
 // services/ms-task-local.js; only the wording is local.
 // What an unsaved change is CALLED, so the Save row can name it. A card can sit
 // open for a while and "unsaved changes" on its own is a prompt to go hunting.
+// Repeat presets on the Add row. The card's Repeat control has every pattern.
+const ADD_REPEAT_PRESETS = [
+  { id: '', label: 'Once', rule: null },
+  { id: 'day', label: '↻ Daily', rule: { kind: 'interval', every: 1, unit: 'day' } },
+  { id: 'week', label: '↻ Weekly', rule: { kind: 'interval', every: 1, unit: 'week' } },
+  { id: '2week', label: '↻ Every 2 weeks', rule: { kind: 'interval', every: 2, unit: 'week' } },
+  { id: 'month', label: '↻ Monthly', rule: { kind: 'interval', every: 1, unit: 'month' } },
+  { id: 'lwd', label: '↻ Last working day', rule: { kind: 'last-working-day', every: 1 } },
+];
+
 const FIELD_LABELS = {
   moscow: 'MoSCoW', domain: 'domain', origin: 'origin',
-  priority: 'priority', due_date: 'due date', state: 'state',
+  priority: 'priority', due_date: 'due date', state: 'state', repeat: 'repeat',
 };
 
 const MS_LOCAL_STATES = [
@@ -488,6 +503,8 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
     due_date: t.due_date ? t.due_date.split('T')[0] : null,
     // A size is a band of the estimate (shared/task-size.cjs), not a field.
     size: sizeOf(t.estimateMinutes),
+    // The repeat rule as a comparable string (RepeatControl), anchor dropped.
+    repeat: valueFromRule(t.repeat),
   });
 
   const identity = rowKey(todo);
@@ -522,6 +539,11 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
         // Exact: a chosen size is Nick's figure, never snapped or assumed.
         body.estimateMinutes = m;
         body.estimateExact = true;
+      }
+      if ('repeat' in body) {
+        // null stops it repeating; a rule is anchored server-side on the due date.
+        body.recurrence = ruleFromValue(body.repeat);
+        delete body.repeat;
       }
       await onPatch(body);
       // Optimistic, matching the parent's own localPatches: the row already
@@ -682,6 +704,13 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
           </button>
         )}
       </div>
+
+      {/* Repeat (17 Oct 2026). Drafted like every field above; saved with them.
+          A task Microsoft or Jira owns cannot repeat here — the server refuses,
+          and the control is not offered for them. */}
+      {!todo.ms_id && !todo.jiraKey && (
+        <RepeatControl value={draft.repeat} disabled={locked} onChange={(v) => edit({ repeat: v })} />
+      )}
 
       {/* "Block an hour for this" is a thought you have while looking AT the
           task, so it lives on the row that is already open rather than behind a
@@ -1374,7 +1403,8 @@ function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
   );
 }
 
-function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch, onRefresh }) {
+// Exported for the render test (task-recurrence-render.test.js).
+export function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch, onRefresh }) {
   // ⚠ The date is still shown, and still says how late the card is — what
   // changes is that it stops being painted as Nick's failure. Hiding the date
   // would hide the fact that the board is waiting on somebody; painting it red
@@ -1424,6 +1454,13 @@ function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch, onRef
           {/* Which Planner board / To Do list this is on. Absent when NEURO
               could not read it — never a placeholder standing in for a board. */}
           {planBadge(todo) && <span className="todo-ms-plan" title="Microsoft board / list">{planBadge(todo)}</span>}
+          {/* A repeating task comes back when ticked — the chip says so before
+              the tick, so "it reappeared" never reads as a lost completion. */}
+          {recurrenceLabel(todo) && (
+            <span className="todo-tag todo-recurring" title="Repeats — ticking it closes this occurrence and moves it to the next date">
+              &#8635; {recurrenceLabel(todo)}
+            </span>
+          )}
           {todo.moscow && (
             <span
               className={`todo-moscow-badge ${todo.moscow}`}
@@ -1539,6 +1576,24 @@ function RefusalNotice({ notice, onDismiss }) {
     <div className="todo-hold-notice todo-refusal-notice" onClick={onDismiss}>
       <strong>Not closed.</strong>{' '}
       &ldquo;{notice.text}&rdquo; &mdash; {notice.reason}
+    </div>
+  );
+}
+
+/**
+ * A repeating task was ticked: the occurrence is done and the SAME task is back
+ * at its next date. The words are the server's (`recurred.notice`), so the card,
+ * the chat tool and the phone say it the same way. Undo puts the date back and
+ * un-counts the occurrence; the server refuses it once anything has moved.
+ */
+export function RepeatNotice({ notice, onUndo, onDismiss }) {
+  return (
+    <div className="todo-hold-notice todo-repeat-notice">
+      <strong>&#8635; {notice.notice || `Done — next due ${notice.nextDue}`}</strong>{' '}
+      &ldquo;{notice.text}&rdquo; repeats ({notice.label}).{' '}
+      <button type="button" className="todo-edit-btn" onClick={onUndo}>Undo</button>{' '}
+      <button type="button" className="todo-edit-btn" onClick={onDismiss}>OK</button>
+      {notice.undoError && <span className="todo-edit-note todo-edit-note--bad"> Not undone: {notice.undoError}</span>}
     </div>
   );
 }
@@ -1881,7 +1936,7 @@ function MustMoveLane({ items, held, gaps, toggling, onToggle, onSetWip, onDefer
                     so is the difference between "it reappeared" and "NEURO lost
                     my tick". */}
                 {recurrenceLabel(item) && (
-                  <span className="todo-tag todo-recurring" title="Recurring — completing this closes one occurrence and rolls it forward">
+                  <span className="todo-tag todo-recurring" title="Repeats — completing this closes one occurrence and moves it to the next date">
                     &#8635; {recurrenceLabel(item)}
                   </span>
                 )}
@@ -2033,6 +2088,21 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   // from holdNotice above because "held until you write it up" and "this is
   // Jira's to close" ask for opposite things next.
   const [refusalNotice, setRefusalNotice] = useState(null);
+  // A repeating task ticked: "Done — next due Fri 14 Nov", with Undo.
+  const [repeatNotice, setRepeatNotice] = useState(null);
+  const undoRepeat = async () => {
+    if (!repeatNotice) return;
+    try {
+      const res = await fetch(apiUrl(`/api/tasks/${repeatNotice.taskId}/recurrence/undo`), { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      setRepeatNotice(res.ok
+        ? null
+        : { ...repeatNotice, undoError: data.message || data.error || `refused (${res.status})` });
+      if (mode === 'focused') refreshFocus(); else await fetchTodos();
+    } catch (e) {
+      setRepeatNotice({ ...repeatNotice, undoError: e.message });
+    }
+  };
   const [syncing, setSyncing] = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [showMoscow, setShowMoscow] = useState(false);
@@ -2082,6 +2152,8 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   const [localDone, setLocalDone] = useState({}); // "filePath:lineNumber" | "task:id" -> 1
   const [localPatches, setLocalPatches] = useState({}); // task_id -> pending field edits
   const [newTaskText, setNewTaskText] = useState('');
+  const [newTaskRepeat, setNewTaskRepeat] = useState('');
+  const [addError, setAddError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState([]);
   const [batching, setBatching] = useState(false);
@@ -2354,13 +2426,22 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     if (!text || adding) return;
     setAdding(true);
     try {
+      const preset = ADD_REPEAT_PRESETS.find(p => p.id === newTaskRepeat);
       const res = await fetch(apiUrl('/api/tasks'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, source: 'manual' }),
+        // A repeat with no date starts at its first slot from today; anything
+        // finer (weekdays, Nth weekday) is set on the card afterwards.
+        body: JSON.stringify({ text, source: 'manual', ...(preset && preset.rule ? { recurrence: preset.rule } : {}) }),
       });
+      setAddError(null);
+      if (!res.ok) {
+        const data = await res.clone().json().catch(() => ({}));
+        setAddError(data.error || `Not added (${res.status})`);
+      }
       if (res.ok) {
         setNewTaskText('');
+        setNewTaskRepeat('');
         if (mode === 'focused') refreshFocus(); else await fetchTodos();
       } else {
         console.error('[TodoPanel] Add task failed:', res.status);
@@ -2450,10 +2531,14 @@ export default function TodoPanel({ focusContext, onClearContext }) {
         });
         const data = await res.clone().json().catch(() => ({}));
         const held = data?.task?.held || null;
+        // A repeating task came back OPEN at its next date. Painting it done
+        // would show a tick the next refresh removes — so say where it went.
+        const recurred = res.ok ? (data?.recurred || null) : null;
+        setRepeatNotice(recurred ? { ...recurred, taskId: todo.task_id, text: todo.text } : null);
         // Only paint it done locally if it actually went done. Optimistically
         // ticking a held task would show the opposite of what happened, and the
         // next refresh would silently un-tick it.
-        if (res.ok && !held) setLocalDone(prev => ({ ...prev, [key]: todo.done ? 0 : 1 }));
+        if (res.ok && !held && !recurred) setLocalDone(prev => ({ ...prev, [key]: todo.done ? 0 : 1 }));
         setHoldNotice(held ? { ...held, text: todo.text } : null);
         // ⚠ A refusal is SHOWN, not logged. This was a console.error, so every
         // guard in updateTask — the Jira link, and anything added later — reached
@@ -2566,6 +2651,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
 
         {holdNotice && <HoldNotice notice={holdNotice} onDismiss={() => setHoldNotice(null)} />}
         {refusalNotice && <RefusalNotice notice={refusalNotice} onDismiss={() => setRefusalNotice(null)} />}
+        {repeatNotice && <RepeatNotice notice={repeatNotice} onUndo={undoRepeat} onDismiss={() => setRepeatNotice(null)} />}
 
         {/* Focus filter pills */}
         <div className="todo-filters">
@@ -2794,6 +2880,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       )}
       {holdNotice && <HoldNotice notice={holdNotice} onDismiss={() => setHoldNotice(null)} />}
         {refusalNotice && <RefusalNotice notice={refusalNotice} onDismiss={() => setRefusalNotice(null)} />}
+        {repeatNotice && <RepeatNotice notice={repeatNotice} onUndo={undoRepeat} onDismiss={() => setRepeatNotice(null)} />}
       <div className="todo-header">
         <h2 className="todo-title">Todos</h2>
         <div className="todo-header-right">
@@ -2878,9 +2965,20 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           onChange={(e) => setNewTaskText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addTask(); }}
         />
+        <select
+          className="todo-edit-date todo-add-repeat"
+          aria-label="Repeat"
+          title="Repeat — finer patterns (weekdays, first Monday…) are on the task card"
+          value={newTaskRepeat}
+          disabled={adding}
+          onChange={(e) => setNewTaskRepeat(e.target.value)}
+        >
+          {ADD_REPEAT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
         <button className="btn btn-primary btn-sm" disabled={adding || !newTaskText.trim()} onClick={addTask}>
           {adding ? 'Adding...' : 'Add'}
         </button>
+        {addError && <span className="todo-edit-note todo-edit-note--bad">{addError}</span>}
       </div>
 
       <div className="todo-filters">

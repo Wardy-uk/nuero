@@ -293,6 +293,9 @@ function applyTodoComplete(payload) {
       held: !!held,
       heldReason: held ? (held.reason || 'awaiting write-up') : null,
       status: updated ? updated.status : null,
+      // A repeating task reopens at its next slot rather than staying done, so
+      // `status: open` here is the occurrence being done, not the tick failing.
+      nextDue: updated && updated.recurred ? updated.recurred.nextDue : null,
     }),
   };
 }

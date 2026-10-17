@@ -103,6 +103,10 @@ router.get('/', (req, res) => {
       // closes the occurrence and rolls the same task forward, so a card that
       // does not say so reads as a completion that failed — see shared/ms-task.
       recurrence: t.recurrence || null,
+      // A NEURO repeating task's own rule + label (task-store). ⚠ Kept OFF
+      // `recurrence`, which is Microsoft's string token above.
+      repeat: t.repeat || null,
+      recurrenceLabel: t.recurrenceLabel || null,
       mustdo: t.mustdo || false,
       vault_task: true,
       filePath: t.filePath || null,
@@ -297,6 +301,8 @@ router.get('/focus', async (req, res) => {
         msPlan: t.msPlan || null,
         msSource: t.msSource || null,
         recurrence: t.recurrence || null,
+        repeat: t.repeat || null,
+        recurrenceLabel: t.recurrenceLabel || null,
         vault_task: true,
         filePath: t.filePath || null,
         lineNumber: t.lineNumber != null ? t.lineNumber : null,

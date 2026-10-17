@@ -17,6 +17,8 @@ const db = require('../db/database');
 const todoIntelligence = require('./todo-intelligence');
 const { domainOrDefault, normaliseDomain } = require('../../shared/task-domain.cjs');
 const { normaliseOrigin, inferOrigin } = require('../../shared/task-origin.cjs');
+const recurrence = require('../../shared/task-recurrence.cjs');
+const { toDateStr } = require('../../shared/working-days.cjs');
 
 const VALID_MOSCOW = ['must', 'should', 'could', 'wont'];
 const VALID_STATUS = ['open', 'in-progress', 'done', 'dropped'];
@@ -167,6 +169,12 @@ function toTodoShape(row, jiraKeys) {
     // rather than showing a Graph id or nothing at all. Null for the majority of
     // rows, whose vault path already reads as a sentence.
     originDetail: row.origin_detail || null,
+    // A NEURO repeating task (17 Oct 2026). ⚠ `repeat`, deliberately NOT
+    // `recurrence`: Microsoft mirror rows already carry `recurrence` as a STRING
+    // token (`monthly`), and one key holding a string on some rows and an
+    // object on others is a decoding trap for every typed client.
+    repeat: recurrence.parseStored(row.recurrence_json),
+    recurrenceLabel: recurrence.describe(recurrence.parseStored(row.recurrence_json)),
     createdAt: (row.created_at || '').split(' ')[0] || null,
     updatedAt: row.updated_at || null,
     meta: {
@@ -324,6 +332,71 @@ function encodeOriginDetail(value) {
   }
 }
 
+// ── Repeating tasks (17 Oct 2026) ─────────────────────────────────────────────
+//
+// A rule lives on the task (`recurrence_json`, schedule in
+// shared/task-recurrence.cjs). Completing a repeating task records the
+// occurrence — a `task_done` activity row, so the wins ledger and the weekly
+// target count EACH occurrence — and then REOPENS the same row with the next
+// due date. Same id, so links, blocks and history all stay attached to one task,
+// and there is only ever one open copy.
+
+/** Local today. The Pi may run UTC, so never toISOString(). */
+function _today() {
+  return toDateStr(new Date());
+}
+
+/** Bank holidays, for "last working day". Unknown is null, never a guess. */
+function _nonWorking() {
+  try { return require('./working-days').holidaySet(); } catch { return null; }
+}
+
+/** A task row plus its rule and label — what every route hands back. */
+function withRecurrence(row) {
+  if (!row) return row;
+  const rule = recurrence.parseStored(row.recurrence_json);
+  return { ...row, recurrence: rule, recurrenceLabel: recurrence.describe(rule) };
+}
+
+/**
+ * Validate an incoming rule against the task it is for. Throws (→ 400) on
+ * anything refused: a bad rule, a Microsoft-linked task, a Jira-owned task.
+ */
+function _checkRule(input, { msId = null, taskId = null, dueDate = null, today }) {
+  if (msId) {
+    throw new Error('This task is linked to Microsoft, which owns its schedule — set it to repeat there, not in NEURO.');
+  }
+  if (taskId != null) {
+    const key = require('./jira-tasks').keyForTask(taskId);
+    if (key) throw new Error(`${key} closes this task, so it cannot repeat — completion follows the ticket.`);
+  }
+  // A stored due date may carry a time part from an older writer; the anchor is the day.
+  const v = recurrence.validateRule(input, { defaultAnchor: (dueDate ? String(dueDate).slice(0, 10) : null) || today });
+  if (!v.ok) throw new Error(v.error);
+  return v.rule;
+}
+
+/**
+ * Close every open attention record about this task, because the occurrence it
+ * was about is done. ⚠ Without this a "not today" deferral (or an
+ * acknowledgement) made against THIS occurrence would sit on the same
+ * `todo:<slug>` key and silently apply to the NEXT one — the key names the task
+ * text, and the text does not change between occurrences.
+ */
+function _resolveAttentionFor(row, at) {
+  try {
+    const lifecycle = require('./attention-lifecycle');
+    const key = lifecycle.dedupeKeyFor({ type: 'todo', title: row.text });
+    for (const rec of db.getOpenAttentionRecords()) {
+      if (rec.dedupe_key !== key) continue;
+      db.setAttentionState(rec.id, lifecycle.STATES.RESOLVED, at, { resolution: 'occurrence-done' });
+      try { db.logAttentionEvent(rec.id, 'resolved', at, 'this occurrence of a repeating task was done'); } catch {}
+    }
+  } catch (e) {
+    console.warn(`[TaskStore] Could not close attention records for repeating #${row.id}: ${e.message}`);
+  }
+}
+
 function createTask(input = {}) {
   const text = String(input.text || '').trim();
   if (!text) throw new Error('text is required');
@@ -332,6 +405,13 @@ function createTask(input = {}) {
   if (!baseKey) throw new Error('text has no matchable content');
 
   const domain = domainOrDefault(input.domain);
+
+  // Checked BEFORE anything is written: a refused rule must not leave a task
+  // behind that the caller believes was never created.
+  const today = input.today || _today();
+  const rule = input.recurrence != null
+    ? _checkRule(input.recurrence, { msId: input.ms_id || null, dueDate: input.due_date || null, today })
+    : null;
 
   // Whose idea is this? An explicit answer is a decision; otherwise ask the
   // classifier, which reads provenance and returns null for most routes in. A
@@ -410,8 +490,14 @@ function createTask(input = {}) {
     // came out of if nothing had, and never rewrites detail already recorded.
     const detail = encodeOriginDetail(input.origin_detail || input.originDetail);
     if (detail && !existing.origin_detail) patch.origin_detail = detail;
+    // A rule fills a blank like everything else here — never replaces one.
+    if (rule && !existing.recurrence_json) {
+      _checkRule(input.recurrence, { msId: existing.ms_id, taskId: existing.id, dueDate: existing.due_date, today });
+      patch.recurrence_json = JSON.stringify(rule);
+      if (!existing.due_date && !patch.due_date) patch.due_date = recurrence.firstDue(rule, { today, nonWorking: _nonWorking() });
+    }
     if (Object.keys(patch).length) { db.updateTaskRow(existing.id, patch); revision++; }
-    return { id: existing.id, created: false, task: db.getTaskRow(existing.id) };
+    return { id: existing.id, created: false, task: withRecurrence(db.getTaskRow(existing.id)) };
   }
 
   // Asked for, never automatic: it costs a pass over the open list, and the bulk
@@ -431,7 +517,9 @@ function createTask(input = {}) {
     moscow: normMoscow(input.moscow),
     moscow_proposed: input.moscowProposed ? 1 : 0,
     priority: normPriority(input.priority),
-    due_date: input.due_date || null,
+    // A repeating task with no date is given its first slot — a series that
+    // never falls due is a series nothing will ever surface.
+    due_date: input.due_date || (rule ? recurrence.firstDue(rule, { today, nonWorking: _nonWorking() }) : null),
     // ⚠ NOT `|| 'manual'`. That fallback made "manual" a CLAIM rather than a
     // fact: any writer that forgot to pass a source had its output silently
     // attributed to Nick, which is how model output from the chat marker came to
@@ -484,9 +572,11 @@ function createTask(input = {}) {
     dedupe_key: key,
   });
 
+  if (rule) db.updateTaskRow(id, { recurrence_json: JSON.stringify(rule) });
+
   revision++;
   if (input.skipExport !== true) scheduleExport();
-  return { id, created: true, task: db.getTaskRow(id), similar };
+  return { id, created: true, task: withRecurrence(db.getTaskRow(id)), similar };
 }
 
 function normMoscow(value) {
@@ -548,11 +638,24 @@ function normPriority(value) {
   return null;
 }
 
-function updateTask(id, fields = {}) {
+function updateTask(id, fields = {}, opts = {}) {
   const row = db.getTaskRow(id);
   if (!row) return null;
+  const today = opts.today || _today();
 
   const patch = {};
+  // `recurrence`: OMITTED leaves the schedule alone, NULL stops it repeating,
+  // an object replaces it. A refused rule throws before anything is written.
+  if ('recurrence' in fields) {
+    if (fields.recurrence === null) {
+      patch.recurrence_json = null;
+    } else {
+      const due = 'due_date' in fields ? (fields.due_date || null) : row.due_date;
+      const rule = _checkRule(fields.recurrence, { msId: row.ms_id, taskId: id, dueDate: due, today });
+      patch.recurrence_json = JSON.stringify(rule);
+      if (!due) patch.due_date = recurrence.firstDue(rule, { today, nonWorking: _nonWorking() });
+    }
+  }
   if ('text' in fields) {
     const text = String(fields.text || '').trim();
     if (!text) throw new Error('text cannot be empty');
@@ -635,6 +738,12 @@ function updateTask(id, fields = {}) {
     if (!VALID_STATUS.includes(fields.status)) throw new Error(`status must be one of ${VALID_STATUS.join(', ')}`);
     patch.status = fields.status;
   }
+  // Dropping a repeating task ENDS the series. Abandoning it is a decision about
+  // the whole thing, and a series that quietly came back after a drop would be
+  // a task Nick cannot get rid of.
+  if (patch.status === 'dropped' && row.recurrence_json && !('recurrence' in fields)) {
+    patch.recurrence_json = null;
+  }
 
   // ── A ticket is closed in Jira, and nowhere else ──────────────────────────
   //
@@ -701,9 +810,10 @@ function updateTask(id, fields = {}) {
   // Finishing something is the one event the activity log never recorded, which
   // left "what did I actually get done today" unanswerable from the data. Logged
   // on the transition only, so re-saving a done task doesn't inflate the count.
+  let doneActivityId = null;
   if (patch.status === 'done' && row.status !== 'done') {
     try {
-      db.logActivity('task_done', {
+      doneActivityId = db.logActivity('task_done', {
         taskId: id,
         text: row.text,
         moscow: row.moscow || null,
@@ -748,6 +858,52 @@ function updateTask(id, fields = {}) {
     } catch {}
   }
 
+  // ── A repeating task: record the occurrence, reopen at the next slot ──────
+  //
+  // The completion above is real and stays real: the `task_done` row counts
+  // this occurrence in wins and the weekly target. Then the SAME row reopens
+  // with the next fixed slot after both the occurrence that was due and today,
+  // so missed slots are skipped rather than stacked (one open copy, ever).
+  const ruleNow = 'recurrence_json' in patch ? patch.recurrence_json : row.recurrence_json;
+  let recurred = null;
+  if (completing && ruleNow) {
+    const rule = recurrence.parseStored(ruleNow);
+    const slotDue = ('due_date' in patch ? patch.due_date : row.due_date) || null;
+    const nextDue = rule ? recurrence.nextDueAfterCompletion(rule, { completedDue: slotDue ? String(slotDue).slice(0, 10) : null, today, nonWorking: _nonWorking() }) : null;
+    if (nextDue) {
+      const at = new Date().toISOString();
+      db.updateTaskRow(id, { status: 'open', due_date: nextDue });
+      let logId = null;
+      try {
+        logId = db.insertRecurrenceLog({
+          task_id: id, slot_due: slotDue, next_due: nextDue, completed_at: at,
+          activity_id: doneActivityId, rule_json: ruleNow,
+        });
+      } catch (e) {
+        console.warn(`[TaskStore] Could not record repeating #${id}'s occurrence: ${e.message}`);
+      }
+      // ⚠ Clear the tick from every open block BEFORE anything reads it: a
+      // block's write-up sweep completes the tasks whose items are ticked, and
+      // left ticked it would complete the NEXT occurrence on the strength of
+      // this one's write-up.
+      try { require('./task-blocks').settleTaskElsewhere(id, null); } catch (e) {
+        console.warn(`[TaskStore] Could not settle repeating #${id}'s blocks: ${e.message}`);
+      }
+      _resolveAttentionFor(row, at);
+      recurred = {
+        completedDue: slotDue,
+        nextDue,
+        logId: logId == null ? null : Number(logId),
+        label: recurrence.describe(rule),
+        notice: `Done — next due ${recurrence.shortDate(nextDue)}`,
+      };
+    } else {
+      // A stored rule nothing can read leaves the task DONE and says so, rather
+      // than reopening it on a guessed date.
+      console.warn(`[TaskStore] Repeating #${id} has an unreadable rule — left done, not reopened.`);
+    }
+  }
+
   scheduleExport();
 
   // ⚠ `held` is deliberately GONE from the returned row rather than left as a
@@ -756,7 +912,51 @@ function updateTask(id, fields = {}) {
   // with-no-writer shape this codebase keeps getting bitten by. They already
   // handle its absence (`data?.task?.held || null`), so a null-safe read is
   // simply never true and the tick paints — which is the new rule.
-  return db.getTaskRow(id);
+  const out = withRecurrence(db.getTaskRow(id));
+  if (recurred) out.recurred = recurred;
+  return out;
+}
+
+/**
+ * Un-tick a repeating task: undo its MOST RECENT completed occurrence.
+ *
+ * Only the latest, only while nothing has moved since (the task is still open
+ * on the date the completion set), and within UNDO_WINDOW_MS. It puts the due
+ * date back, deletes the occurrence's `task_done` row and its win (quick-log's
+ * undo rule — an un-ticked occurrence must not stay counted), and stamps the
+ * log row undone rather than deleting it. Anything else is refused with a
+ * reason and changes nothing.
+ */
+const RECURRENCE_UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function undoLastOccurrence(id, { now = Date.now() } = {}) {
+  const row = db.getTaskRow(id);
+  if (!row) return { ok: false, reason: 'not-found', message: 'Task not found.' };
+  const last = (db.listRecurrenceLog(id, 1) || [])[0];
+  if (!last) return { ok: false, reason: 'nothing-to-undo', message: 'No completed occurrence to undo.' };
+  if (last.undone_at) return { ok: false, reason: 'already-undone', message: 'The last occurrence was already un-ticked.' };
+  if (now - new Date(last.completed_at).getTime() > RECURRENCE_UNDO_WINDOW_MS) {
+    return { ok: false, reason: 'expired', message: 'Too long ago to un-tick — change the due date instead.' };
+  }
+  if (!['open', 'in-progress'].includes(row.status) || row.due_date !== last.next_due) {
+    return { ok: false, reason: 'changed', message: 'The task has changed since it was ticked — nothing was undone.' };
+  }
+  db.updateTaskRow(id, { due_date: last.slot_due || null });
+  if (last.activity_id != null) {
+    try { db.run(`DELETE FROM activity_log WHERE id = ? AND event_type = 'task_done'`, [last.activity_id]); } catch {}
+    try { db.run('DELETE FROM wins WHERE evidence = ?', [`activity:${last.activity_id}`]); } catch {}
+  }
+  db.markRecurrenceLogUndone(last.id, new Date(now).toISOString());
+  revision++;
+  scheduleExport();
+  return { ok: true, task: withRecurrence(db.getTaskRow(id)), restoredDue: last.slot_due || null };
+}
+
+/** The completed occurrences of a repeating task, newest first. */
+function recurrenceHistory(id, limit = 20) {
+  return (db.listRecurrenceLog(id, limit) || []).map(r => ({
+    id: r.id, slotDue: r.slot_due, nextDue: r.next_due, completedAt: r.completed_at, undoneAt: r.undone_at || null,
+  }));
 }
 
 function setStatus(id, status) {
@@ -851,4 +1051,8 @@ module.exports = {
   setStatus,
   toTodoShape,
   updateTask,
+  undoLastOccurrence,
+  recurrenceHistory,
+  withRecurrence,
+  RECURRENCE_UNDO_WINDOW_MS,
 };

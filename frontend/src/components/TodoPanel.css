@@ -1595,4 +1595,10 @@
 .todo-email-head { display: flex; flex-direction: column; gap: 2px; }
 .todo-email-head strong { font-size: 13px; color: var(--text-primary); }
 .todo-email-acts { display: flex; gap: 6px; }
+
+/* Repeating tasks (17 Oct 2026) */
+.todo-repeat { flex-wrap: wrap; align-items: center; }
+.todo-repeat-every { width: 4.5em; }
+.todo-add-repeat { flex: 0 0 auto; }
+.todo-repeat-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .todo-email-body { white-space: pre-wrap; max-height: 320px; overflow-y: auto; padding: 8px 10px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; line-height: 1.5; color: var(--text-secondary); }

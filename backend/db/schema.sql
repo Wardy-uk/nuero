@@ -3545,3 +3545,18 @@ CREATE TABLE IF NOT EXISTS mail_attachments (
   content     BLOB NOT NULL,
   created_at  TEXT NOT NULL
 );
+
+-- Repeating tasks (17 Oct 2026): one row per completed occurrence. The task row
+-- is reopened with its next due date, so this is the only record of which
+-- occurrences were done. undone_at is stamped by an un-tick; nothing deletes.
+CREATE TABLE IF NOT EXISTS task_recurrence_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id      INTEGER NOT NULL,
+  slot_due     TEXT,
+  next_due     TEXT,
+  completed_at TEXT NOT NULL,
+  activity_id  INTEGER,
+  rule_json    TEXT,
+  undone_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_task_recurrence_log_task ON task_recurrence_log(task_id, id DESC);

@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
+const recurrence = require('../../shared/task-recurrence.cjs');
 
 const EXPORT_RELATIVE = 'Tasks/NEURO Tasks (export).md';
 
@@ -46,6 +47,11 @@ function renderTaskLine(row) {
   if (row.priority) bits.push(`P${row.priority}`);
   if (row.moscow_proposed) bits.push(`${row.moscow}? (proposed)`);
   if (row.due_date) bits.push(`📅 ${row.due_date}`);
+  // A repeating task says so, or the copy shows one date and hides the series.
+  if (row.recurrence_json) {
+    const label = recurrence.describe(recurrence.parseStored(row.recurrence_json));
+    if (label) bits.push(`↻ ${label}`);
+  }
   if (row.source && row.source !== 'manual') bits.push(row.source);
   const link = wikiLink(row.origin_path);
   if (link) bits.push(link);

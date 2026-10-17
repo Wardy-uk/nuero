@@ -102,6 +102,10 @@ const TOOLS = [
         text: { type: 'string', description: 'The action, phrased as something to do.' },
         moscow: { type: 'string', enum: ['must', 'should', 'could', 'wont'], description: 'MoSCoW classification if it is clear from context.' },
         due_date: { type: 'string', description: 'Due date, YYYY-MM-DD.' },
+        recurrence: {
+          type: 'object',
+          description: 'Only when Nick says the task REPEATS. One of: {kind:"interval", every:N, unit:"day"|"week"|"month"}; {kind:"weekdays", every:N, days:["mon","wed"]}; {kind:"nth-weekday", nth:1-4 or -1 (last), weekday:"mon"}; {kind:"last-working-day"}. Optional anchor YYYY-MM-DD (defaults to due_date). Slots are fixed; completing moves it to the next future slot.',
+        },
       },
       required: ['text'],
     },
@@ -425,28 +429,42 @@ const HANDLERS = {
     };
   },
 
-  create_task({ text, moscow, due_date }) {
+  create_task({ text, moscow, due_date, recurrence }) {
     if (!text || !String(text).trim()) return { ok: false, error: 'text is required' };
     const taskStore = require('./task-store');
-    const { id, created, task, similar } = taskStore.createTask({
-      text: String(text).trim(),
-      moscow: moscow || null,
-      due_date: due_date || null,
-      source: 'chat',
-      // The exact-key fold below only catches identical wording. This is what
-      // catches "Consult Annabelle for insights" arriving on top of "Nick Ward
-      // will consult Annabelle, who is further ahead in this process" — the shape
-      // that put eleven duplicate pairs in the live list. It REPORTS: the task is
-      // still created, because refusing on a matcher's say-so loses a commitment.
-      checkSimilar: true,
-    });
+    let made;
+    try {
+      made = taskStore.createTask({
+        text: String(text).trim(),
+        moscow: moscow || null,
+        due_date: due_date || null,
+        // A refused rule throws before anything is written — said back, never
+        // quietly created as a one-off.
+        recurrence: recurrence || undefined,
+        source: 'chat',
+        checkSimilar: true,
+      });
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+    const { id, created, task, similar } = made;
+    // checkSimilar above: the exact-key fold only catches identical wording.
+    // This catches "Consult Annabelle for insights" arriving on top of "Nick
+    // Ward will consult Annabelle, who is further ahead in this process" — the
+    // shape that put eleven duplicate pairs in the live list. It REPORTS: the
+    // task is still created, because refusing on a matcher's say-so loses a
+    // commitment.
     return {
       ok: true,
       task_id: id,
       created,
       text: task.text,
       similar: similar || null,
-      note: created
+      repeats: task.recurrenceLabel || null,
+      due_date: task.due_date || null,
+      note: created && task.recurrenceLabel
+        ? `Task created — repeats (${task.recurrenceLabel}), first due ${task.due_date}.`
+        : created
         ? (similar
             ? `Task created — but #${similar.id} looks like the same job ("${similar.text}"). Say so, and offer to merge them on the Tasks screen rather than assuming.`
             : 'Task created.')
@@ -460,8 +478,15 @@ const HANDLERS = {
     const existing = taskStore.getTask(task_id);
     if (!existing) return { ok: false, error: `No task with id ${task_id}` };
 
-    taskStore.setStatus(task_id, 'done');
+    const updated = taskStore.setStatus(task_id, 'done');
     const out = { ok: true, task_id, text: existing.text, completed: true };
+    // A repeating task reopens at its next slot — say so, or "done" reads as
+    // the series ending.
+    if (updated && updated.recurred) {
+      out.repeats = updated.recurred.label;
+      out.nextDue = updated.recurred.nextDue;
+      out.note = `This occurrence is done; it repeats and is next due ${updated.recurred.nextDue}.`;
+    }
 
     // Microsoft-owned tasks have to be completed there too, or the next sync
     // brings them straight back.

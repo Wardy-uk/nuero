@@ -629,6 +629,12 @@ function linkPair(taskId, msId, msSource = null, msPlan = null, options = {}) {
   if (row.ms_id && row.ms_id !== msId) {
     return { ok: false, reason: 'already_linked', linkedTo: row.ms_id };
   }
+  // A repeating NEURO task cannot be linked: completing it REOPENS it with the
+  // next due date, while the linked Microsoft task would be closed for good —
+  // two lists disagreeing about the same work. Microsoft owns its own repeats.
+  if (row.recurrence_json) {
+    return { ok: false, reason: 'task_repeats', message: 'This task repeats in NEURO — stop it repeating before linking it to Microsoft.' };
+  }
 
   // One Microsoft task cannot back two NEURO tasks — the second link would hide a
   // real task behind a completion it never earned.
