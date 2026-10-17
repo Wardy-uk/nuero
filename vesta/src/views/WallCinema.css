@@ -1,0 +1,129 @@
+/* The family wall, "cinema" look (17 Oct 2026). Sized from the viewport so one
+   landscape iPad screen holds everything with no scrolling. Nothing animates. */
+
+.cine {
+  position: relative; height: 100vh; height: 100dvh; width: 100%; overflow: hidden;
+  color: #f6efe7; background: #050608;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "Helvetica Neue", sans-serif;
+  --amber: #f0a43a; --rose: #f07a6a; --good: #46c96b; --late: #ff6b5b;
+  --panel-bg: rgba(14, 11, 9, 0.72); --panel-line: rgba(255, 255, 255, 0.09);
+  --soft: rgba(246, 239, 231, 0.62); --faint: rgba(246, 239, 231, 0.42);
+}
+.cine__sky { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.cine--night { --panel-bg: rgba(6, 7, 10, 0.72); }
+
+.cine__layout {
+  position: relative; z-index: 1; height: 100%;
+  display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 2vh;
+  padding: 3.2vh 3vw 4vh;
+}
+
+/* ── Top ───────────────────────────────────────────────────────────────── */
+.cine__top { overflow: hidden; display: flex; justify-content: space-between; align-items: flex-start; gap: 3vw; min-height: 0; }
+.cine__left { min-width: 0; display: flex; flex-direction: column; }
+.cine__clock { font-size: clamp(56px, 12.5vh, 170px); font-weight: 600; line-height: 0.9; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cine__date { margin-top: 1.4vh; font-size: clamp(13px, 2.3vh, 24px); letter-spacing: 0.32em; text-transform: uppercase; }
+.cine__rule { display: block; width: 64px; height: 3px; border-radius: 2px; background: var(--amber); margin: 2.2vh 0 1.6vh; }
+.cine__headline { margin: 0; font-size: clamp(28px, 6vh, 60px); font-weight: 600; line-height: 1.05; }
+.cine__subline { margin: 0.8vh 0 0; font-size: clamp(16px, 3vh, 30px); color: var(--soft); }
+
+.cine__people { list-style: none; margin: 2.2vh 0 0; padding: 0; display: flex; gap: 3.2vw; }
+.cine__person { display: flex; flex-direction: column; align-items: center; gap: 0.3vh; }
+.cine__avatar { position: relative; width: clamp(44px, 8vh, 96px); height: clamp(44px, 8vh, 96px); }
+.cine__avatar .wall__face { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255, 255, 255, 0.75); display: flex; align-items: center; justify-content: center; font-size: 3.4vh; background: rgba(255, 255, 255, 0.12); color: #fff; }
+.cine__dot { position: absolute; right: 2%; bottom: 4%; width: 22%; height: 22%; border-radius: 50%; border: 2px solid #151210; background: var(--faint); }
+.cine__person--home .cine__dot { background: var(--good); }
+.cine__person--out .wall__face { filter: grayscale(1); opacity: 0.7; }
+.cine__person--unknown .cine__dot { background: var(--amber); }
+.cine__pname { margin-top: 0.6vh; font-size: clamp(14px, 2.4vh, 24px); font-weight: 500; }
+.cine__pstate { font-size: clamp(12px, 1.9vh, 19px); color: var(--soft); }
+
+.cine__outside { display: flex; align-items: flex-start; gap: 2vw; text-align: left; }
+.cine__temp { font-size: clamp(48px, 10vh, 110px); font-weight: 500; line-height: 0.95; padding-right: 2vw; border-right: 1px solid rgba(255, 255, 255, 0.35); }
+.cine__odetail { display: flex; flex-direction: column; gap: 1vh; padding-top: 0.6vh; }
+.cine__otrend { margin: 0; font-size: clamp(15px, 2.6vh, 26px); }
+.cine__orows { list-style: none; margin: 0.6vh 0 0; padding: 1.2vh 0 0; border-top: 1px solid rgba(255, 255, 255, 0.18); display: flex; flex-direction: column; gap: 1.2vh; font-size: clamp(13px, 2.1vh, 21px); }
+.cine__orows li { display: flex; align-items: center; gap: 10px; }
+
+/* ── Panels ────────────────────────────────────────────────────────────── */
+.cine__panels { display: grid; grid-template-columns: 1.15fr 1fr 1.2fr 1.1fr; gap: 1.6vw; height: 25vh; }
+.cine__panels--three { grid-template-columns: 1.2fr 1fr 1.4fr; }
+.cine__panel {
+  min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  background: var(--panel-bg); border: 1px solid var(--panel-line); border-radius: 18px;
+  padding: 2vh 1.6vw; overflow: hidden;
+}
+.cine__phead { display: flex; align-items: center; gap: 12px; padding: 0; margin: 0 0 1.2vh; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.cine__phead--static { cursor: default; }
+.cine__ptitle { flex: 1; font-size: clamp(15px, 2.4vh, 24px); font-weight: 500; }
+.cine__count { font-size: clamp(12px, 1.8vh, 17px); color: var(--faint); }
+.cine__pbody { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 0.9vh; }
+.cine__big { margin: 0.6vh 0 0; font-size: clamp(16px, 2.8vh, 28px); }
+.cine__sub { margin: 0; font-size: clamp(13px, 2.1vh, 21px); color: var(--soft); }
+.cine__chip { margin: 0; align-self: flex-start; padding: 2px 10px; border-radius: 6px; background: rgba(240, 164, 58, 0.22); color: #ffd9a6; font-size: clamp(12px, 1.9vh, 19px); font-weight: 600; }
+.cine__work { margin: 0; font-size: clamp(12px, 1.9vh, 19px); color: var(--soft); }
+.cine__work--off { color: var(--amber); font-weight: 600; }
+.cine__events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.8vh; }
+.cine__event { display: grid; grid-template-columns: 3.3em minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: clamp(14px, 2.3vh, 23px); }
+.cine__etime { color: var(--soft); font-variant-numeric: tabular-nums; }
+.cine__ewhat { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cine__event--past { opacity: 0.4; }
+.cine__event--next .cine__etime { color: var(--amber); }
+
+.cine__jobs { list-style: none; margin: 0; padding: 0 4px 0 0; display: flex; flex-direction: column; gap: 0.9vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; min-height: 0; flex: 1; }
+.cine__job { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 1vh 0.9vw; display: flex; flex-direction: column; gap: 2px; }
+.cine__jtext { font-size: clamp(13px, 2.1vh, 21px); }
+.cine__jmeta { display: flex; gap: 10px; font-size: clamp(11px, 1.7vh, 17px); color: var(--faint); }
+.cine__late { color: var(--late); }
+.cine__soon { color: var(--amber); }
+
+.cine__fuels { display: flex; flex-direction: column; gap: 1vh; min-height: 0; }
+.cine__fuel { display: flex; gap: 14px; align-items: flex-start; }
+.cine__ficon { width: clamp(22px, 3.6vh, 36px); height: clamp(22px, 3.6vh, 36px); margin-top: 0.6vh; opacity: 0.85; }
+.cine__fbody { display: flex; flex-direction: column; min-width: 0; }
+.cine__fname { font-size: clamp(11px, 1.8vh, 18px); color: var(--soft); }
+.cine__fval { font-size: clamp(17px, 2.9vh, 32px); font-weight: 500; line-height: 1.1; }
+.cine__fval small { font-size: 0.5em; color: var(--soft); font-weight: 400; margin-left: 6px; }
+.cine__fmonth { font-size: clamp(11px, 1.7vh, 17px); color: var(--faint); }
+
+/* ── Next seven days ───────────────────────────────────────────────────── */
+.cine__strip {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch; gap: 1.6vw; height: 13.5vh;
+  background: var(--panel-bg); border: 1px solid var(--panel-line); border-radius: 18px;
+  padding: 1.4vh 1.6vw;
+}
+.cine__striphead { display: flex; align-items: center; gap: 12px; font-size: clamp(15px, 2.4vh, 24px); font-weight: 500; padding-right: 0.6vw; }
+.cine__sdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
+.cine__sday { display: flex; flex-direction: column; align-items: center; gap: 0.3vh; padding: 0.4vh 0.5vw; border: 0; border-left: 1px solid rgba(255, 255, 255, 0.09); background: none; color: inherit; font: inherit; cursor: pointer; min-width: 0; overflow: hidden; position: relative; }
+.cine__sday:first-child { border-left: 0; }
+.cine__sdow { font-size: clamp(13px, 2.1vh, 21px); }
+.cine__sday--today .cine__sdow { color: var(--amber); font-weight: 600; }
+.cine__sday--today::after { content: ''; position: absolute; left: 18%; right: 18%; bottom: 0; height: 3px; border-radius: 2px; background: var(--amber); }
+.cine__smark { font-size: clamp(10px, 1.6vh, 16px); color: var(--faint); }
+.cine__smark--off { color: var(--amber); font-weight: 600; }
+.cine__sitem, .cine__smore { max-width: 100%; font-size: clamp(10px, 1.7vh, 17px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cine__smore { color: var(--faint); }
+
+/* ── Icons, gaps, overlay ──────────────────────────────────────────────── */
+.cine__icon { display: inline-flex; width: 1.1em; height: 1.1em; flex: none; }
+.cine__icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cine__phead .cine__icon, .cine__striphead .cine__icon { width: clamp(20px, 3vh, 30px); height: clamp(20px, 3vh, 30px); }
+.cine__icon--amber { color: var(--amber); }
+.cine__icon--rose { color: var(--rose); }
+.cine__chev { color: var(--soft); }
+.cine__gap { margin: 0; color: #ffc27a; font-size: clamp(13px, 2vh, 20px); }
+.cine__note { margin: 0; font-size: 13px; color: var(--faint); }
+.cine__stale { position: absolute; top: 1.2vh; left: 50%; transform: translateX(-50%); z-index: 3; margin: 0; padding: 4px 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.6); color: #ffc27a; font-size: 14px; }
+.cine__loading { margin: 0; color: var(--soft); }
+.cine__exit { position: absolute; top: 1.6vh; right: 1.4vw; z-index: 3; border: 0; background: none; color: var(--soft); font-size: 26px; cursor: pointer; }
+
+.cine__overlay { position: relative; z-index: 1; height: 100%; padding: 3vh 2.5vw 4.4vh; background: rgba(8, 7, 6, 0.82); display: flex; flex-direction: column; }
+.cine__overlay > .wall__cal { flex: 1; min-height: 0; }
+
+.cine__fline { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cine__fline .cine__fname { font-size: clamp(13px, 2vh, 20px); color: var(--soft); }
+.cine__fbody { flex: 1; }
+.cine__fuel .cine__ficon { margin-top: 0.2vh; }
+
+/* A busy day fades at the bottom rather than being cut mid-line. */
+.cine__panel:not(.cine__panel--jobs) .cine__pbody { -webkit-mask-image: linear-gradient(#000 82%, transparent); mask-image: linear-gradient(#000 82%, transparent); }

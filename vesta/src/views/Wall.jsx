@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../api';
 import './Wall.css';
+import { CinemaView, presenceLine, nextLine, sunTimes, skyPhase } from './WallCinema';
 
 /**
  * The family wall — VESTA on an always-on iPad in the house (15 Oct 2026).
@@ -648,7 +649,7 @@ function keepAwakeReport(how) {
   try {
     const ios = (/OS (\d+)_(\d+)/.exec(navigator.userAgent || '') || []).slice(1, 3).join('.') || 'other';
     const where = navigator.standalone ? 'home-screen' : 'browser';
-    return `${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios}`;
+    return `${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios};vw=${window.innerWidth}x${window.innerHeight}`;
   } catch { return how || 'none'; }
 }
 
@@ -702,7 +703,12 @@ export default function Wall({ onExit, onSignedOut }) {
     return () => { clearInterval(poll); clearInterval(tick); };
   }, [refresh]);
 
-  const dim = isNight(now) && Date.now() > wakeUntil;
+  const look = api.getWallLook();
+  // The cinema look also dims when nobody (no person) is positively home.
+  const people = data && data.who && data.who.known ? (data.who.people || []).filter((p) => p.role !== 'companion') : [];
+  const empty = look === 'cinema' && people.length > 0 && !people.some((p) => p.state === 'home');
+  const dim = (isNight(now) || empty) && Date.now() > wakeUntil;
+  const View = look === 'cinema' ? CinemaView : WallView;
   return (
     <div className={`wall-shell${dim ? ' wall-shell--dim' : ''}`}
          onClickCapture={(e) => {
@@ -714,7 +720,7 @@ export default function Wall({ onExit, onSignedOut }) {
            // Every tap re-arms the keep-awake video (it can only start from one).
            if (!awake) arm();
          }}>
-      <WallView data={data} now={now} error={error} onExit={onExit}
+      <View data={data} now={now} error={error} onExit={onExit}
         cal={{
           view, offset, range,
           onStep: (n) => { lastTouch.current = Date.now(); setOffset((o) => o + n); },
@@ -737,3 +743,7 @@ export default function Wall({ onExit, onSignedOut }) {
     </div>
   );
 }
+
+// Shared with the cinema look (WallCinema.jsx), which reuses these unchanged.
+export { Face, Calendar, dayOfKey, time, DAYS, MONTHS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp };
+export { CinemaView, presenceLine, nextLine, sunTimes, skyPhase };

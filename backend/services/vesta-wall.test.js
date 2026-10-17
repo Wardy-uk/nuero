@@ -290,6 +290,38 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.ok(thtml.includes('wall__dpitem--past') && thtml.includes('>Next<'));
   assert.equal((thtml.match(/class="wall__sday[ "]/g) || []).length, 7, 'the week strip');
   assert.ok(!thtml.includes('Previous week'), 'no arrows on Today');
+
+  // The cinema look (17 Oct 2026): same payload, new presentation, nothing invented.
+  const { CinemaView, presenceLine, nextLine, sunTimes, skyPhase } = mod.exports;
+  const cdata = {
+    ...data, from: '2026-10-19', days: 7, week: [d0, ...week.slice(1)],
+    energy: { connected: true, monthCostP: 7500, fuels: {
+      electricity: { yesterday: { kwh: 9.4, costP: 260, complete: true }, month: { kwh: 150, costP: 4160 }, freshness: { state: 'usual' }, days: [] },
+      gas: { yesterday: { kwh: 31.2, costP: null, complete: false }, month: { kwh: 499, costP: null }, freshness: { state: 'late' }, days: [] } } },
+    scopes: ['tasks', 'calendar', 'house', 'energy'],
+  };
+  const chtml = renderToString(React.createElement(CinemaView, {
+    data: cdata, now, cal: { view: 'today', offset: 0, range: todayRange, onStep() {}, onToday() {}, onView() {} },
+  }));
+  assert.ok(chtml.includes('14:05') && chtml.includes('Monday 19 October'));
+  assert.ok(chtml.includes('Household jobs') && chtml.includes('Car tax') && chtml.includes('Overdue'));
+  assert.ok(chtml.includes('9.4 kWh') && chtml.includes('this month 150 kWh') && chtml.includes('Yesterday so far') && chtml.includes('meter running late'));
+  assert.ok(chtml.includes('Next 7 days') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7);
+  assert.ok(chtml.includes('Isaac swimming') && chtml.includes('Next: Isaac swimming at 17:00'));
+  assert.ok(chtml.includes('11.4°') && chtml.includes('82% humidity'));
+  for (const invented of ['Feels like', 'breeze', 'vs yesterday']) assert.ok(!chtml.includes(invented), `nothing NEURO does not hold: ${invented}`);
+  const cbare = renderToString(React.createElement(CinemaView, { data: { ...cdata, scopes: ['tasks'] }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Next 7 days'), 'scopes still decide what is drawn');
+
+  assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'home' }, { name: 'Ember', role: 'companion', state: 'out' }] }), 'Everyone’s home');
+  assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Isaac', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'out' }] }), 'Helen and Isaac are home');
+  assert.equal(presenceLine({ known: true, people: [{ name: 'Nick', role: 'person', state: 'out' }] }), 'Nobody’s home');
+  assert.equal(presenceLine({ known: false }), "Can't see who's home", 'unknown is never "nobody"');
+  assert.equal(nextLine({ date: '2026-10-19', events: [] }, now), 'A quiet afternoon');
+  const octSun = sunTimes(new Date(2026, 9, 17)); const junSun = sunTimes(new Date(2026, 5, 21));
+  assert.ok(Math.abs((octSun.set - octSun.rise) / 60 - 10.5) < 0.5, 'about 10½ hours of daylight in mid-October');
+  assert.ok(junSun.set - junSun.rise > octSun.set - octSun.rise + 300, 'midsummer days are much longer');
+  assert.equal(skyPhase(new Date(2026, 9, 17, 2, 0)), 'night');
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──

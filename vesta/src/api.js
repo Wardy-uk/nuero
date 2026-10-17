@@ -109,6 +109,20 @@ export function getWallMode() {
     return localStorage.getItem(WALL_KEY) === '1';
   } catch { return false; }
 }
+/**
+ * Which look the wall uses on this device: 'classic' (default) or 'cinema'.
+ * `?look=cinema` / `?look=classic` sets it and it is remembered, so a Home
+ * Screen app keeps it; classic is always one URL away (the rollback).
+ */
+const LOOK_KEY = 'vesta_wall_look';
+export function getWallLook() {
+  try {
+    const m = /[?&]look=(cinema|classic)\b/.exec(window.location.search);
+    if (m) localStorage.setItem(LOOK_KEY, m[1]);
+    return localStorage.getItem(LOOK_KEY) === 'cinema' ? 'cinema' : 'classic';
+  } catch { return 'classic'; }
+}
+
 export function setWallMode(on) {
   try { on ? localStorage.setItem(WALL_KEY, '1') : localStorage.removeItem(WALL_KEY); } catch { /* private mode */ }
 }
