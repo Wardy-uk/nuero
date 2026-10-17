@@ -51,9 +51,12 @@ test('2. daysOf: an all-day end is exclusive, a midnight end stays on its day, a
   assert.deepEqual(vesta.daysOf({ start: '2026-10-16T00:00:00', end: '2026-10-19T00:00:00', allDay: true }, keys), []);
 });
 
-test('3. redactWeek: work is "Busy" with NO subject or location; personal keeps its title; all-day first', () => {
+test('3. redactWeek: work collapses to ONE at-work span per day — no events, no titles, no count; family keeps its titles', () => {
   const rows = [
     { event_id: 'w1', subject: 'Chancellors renewal', location: 'Coalville', start_time: '2026-10-19T10:00:00', end_time: '2026-10-19T11:00:00', source: 'graph', show_as: 'busy' },
+    { event_id: 'w2', subject: 'Standup', start_time: '2026-10-19T09:15:00', end_time: '2026-10-19T09:30:00', source: 'graph', show_as: 'busy' },
+    { event_id: 'w3', subject: 'Late call', start_time: '2026-10-19T15:00:00', end_time: '2026-10-19T16:30:00', source: 'graph', show_as: 'tentative' },
+    { event_id: 'w4', subject: 'Offsite', start_time: '2026-10-21T00:00:00', end_time: '2026-10-22T00:00:00', is_all_day: 1, source: 'graph', show_as: 'busy' },
     { event_id: 'p1', subject: 'Isaac swimming', location: 'Leisure centre', start_time: '2026-10-19T17:00:00', end_time: '2026-10-19T18:00:00', source: 'apple', show_as: 'busy' },
     { event_id: 'p2', subject: 'Half term', start_time: '2026-10-19T00:00:00', end_time: '2026-10-24T00:00:00', is_all_day: 1, source: 'apple' },
     { event_id: 'f1', subject: 'Hold', start_time: '2026-10-20T09:00:00', end_time: '2026-10-20T10:00:00', source: 'graph', show_as: 'free' },
@@ -61,9 +64,12 @@ test('3. redactWeek: work is "Busy" with NO subject or location; personal keeps 
   const week = vesta.redactWeek(rows, '2026-10-19', 7);
   assert.equal(week.length, 7);
   const mon = week[0];
-  assert.deepEqual(mon.events.map((e) => e.title), ['Half term', 'Busy', 'Isaac swimming']);
+  assert.deepEqual(mon.events.map((e) => e.title), ['Half term', 'Isaac swimming'], 'family only in events');
+  assert.deepEqual(mon.work, { allDay: false, start: '2026-10-19T09:15:00', end: '2026-10-19T16:30:00' }, 'first in, last out');
+  assert.equal(week[1].work, null, 'a day with only a free-marked hold is not a work day');
+  assert.deepEqual(week[2].work, { allDay: true, start: null, end: null });
   const json = JSON.stringify(week);
-  assert.ok(!/Chancellors|Coalville/.test(json), 'no work subject or location anywhere in the payload');
+  assert.ok(!/Chancellors|Coalville|Standup|Late call|Offsite|Busy/.test(json), 'no work subject, location or event row anywhere');
   assert.ok(/Isaac swimming/.test(json) && /Leisure centre/.test(json), 'positive control: personal detail does arrive');
   assert.ok(!/Hold/.test(json), 'a free-marked event is not on the wall');
   assert.equal(week.filter((d) => d.events.some((e) => e.title === 'Half term')).length, 5, 'Mon–Fri, end exclusive');
@@ -154,7 +160,8 @@ test('7. /api/v/wall over HTTP: scoped blocks absent without the scope; the week
     assert.equal(a.json.week[0].date, today);
     const body = JSON.stringify(a.json);
     assert.ok(!/Chancellors|Coalville/.test(body), 'no work subject or location on the wire');
-    assert.ok(a.json.week[0].events.some((e) => e.title === 'Busy'), 'the work event is there, as Busy');
+    assert.deepEqual(a.json.week[0].work, { allDay: false, start: `${today}T10:00:00`, end: `${today}T11:00:00` }, 'the work day is there, as a span only');
+    assert.ok(!a.json.week[0].events.some((e) => !e.personal), 'no work event row on the wire');
     assert.ok(a.json.week[1].events.some((e) => e.title === 'Isaac swimming'), 'positive control: personal title arrives');
     assert.ok(a.json.week[0].events.some((e) => e.title === 'Grandma visiting'), 'an all-day event that began yesterday is still on today');
     assert.ok(a.json.tasks.tasks.some((t) => t.text === 'Book the dentist'), 'the household task is on the wall');
@@ -165,23 +172,24 @@ test('7. /api/v/wall over HTTP: scoped blocks absent without the scope; the week
 
 // ── Real render ────────────────────────────────────────────────────────────
 
-test('8. the wall renders for real: week columns, Busy without detail, tasks, who, station, and the gap states', async () => {
+test('8. the wall renders for real: week columns, Nick at work without detail, a half-term bar, tasks, who, station, and the gap states', async () => {
   const React = require('react');
   const { renderToString } = require('react-dom/server');
   const esbuild = require('esbuild');
   const out = await esbuild.build({
     entryPoints: [path.join(__dirname, '..', '..', 'vesta', 'src', 'views', 'Wall.jsx')],
     bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
-    external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent',
+    external: ['react', 'react-dom', 'nosleep.js/*'], loader: { '.css': 'empty' }, logLevel: 'silent',
   });
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
-  const { WallView, isNight } = mod.exports;
+  const { WallView, isNight, allDaySpans } = mod.exports;
   assert.equal(typeof WallView, 'function', 'positive control: the export exists');
 
   const week = vesta.redactWeek([
     { event_id: 'w', subject: 'Chancellors renewal', start_time: '2026-10-19T10:00:00', end_time: '2026-10-19T11:00:00', source: 'graph' },
     { event_id: 'p', subject: 'Isaac swimming', start_time: '2026-10-20T17:00:00', end_time: '2026-10-20T18:00:00', source: 'apple' },
+    { event_id: 'h', subject: 'Half term', start_time: '2026-10-19T00:00:00', end_time: '2026-10-24T00:00:00', is_all_day: 1, source: 'apple' },
   ], '2026-10-19', 7);
   const data = {
     scopes: ['tasks', 'calendar', 'house'], today: '2026-10-19', gaps: [], week,
@@ -193,7 +201,9 @@ test('8. the wall renders for real: week columns, Busy without detail, tasks, wh
   const html = renderToString(React.createElement(WallView, { data, now }));
   assert.ok(html.includes('14:05') && html.includes('Monday 19 October'));
   assert.equal((html.match(/class="wall__day[ "]/g) || []).length, 7, 'seven day columns');
-  assert.ok(html.includes('Busy') && !html.includes('Chancellors'));
+  assert.ok(html.includes('Nick at work') && html.includes('10:00–11:00') && !html.includes('Chancellors') && !html.includes('Busy'));
+  assert.equal((html.match(/class="wall__span"/g) || []).length, 1, 'half term is ONE bar');
+  assert.ok(html.includes('grid-column:1 / 6'), 'spanning Mon to Fri');
   assert.ok(html.includes('Isaac swimming') && html.includes('17:00'));
   assert.ok(html.includes('Car tax') && html.includes('Overdue') && html.includes('+8 more'));
   assert.ok(html.includes('Helen') && html.includes('11.4°') && html.includes('↓ falling slowly'));
@@ -207,6 +217,11 @@ test('8. the wall renders for real: week columns, Busy without detail, tasks, wh
   const gaps = renderToString(React.createElement(WallView, { data: { ...data, week: null, gaps: [{ block: 'week', why: 'x' }], who: { known: false, why: "can't see the house just now", people: [] } }, now }));
   assert.ok(gaps.includes('couldn&rsquo;t read the diary') || gaps.includes('couldn’t read the diary'));
   assert.ok(/isn.{1,8}t the same as everyone being out/.test(gaps));
+
+  // Bars: consecutive days join, a repeat later is its own bar, overlaps take separate lanes.
+  const ev = (id) => ({ id, title: id, allDay: true });
+  const spans = allDaySpans([{ events: [ev('a'), ev('b')] }, { events: [ev('a')] }, { events: [] }, { events: [ev('a')] }]);
+  assert.deepEqual(spans.map((s) => [s.title, s.from, s.to, s.lane]), [['a', 0, 1, 0], ['b', 0, 0, 1], ['a', 3, 3, 0]]);
 
   assert.equal(isNight(new Date(2026, 9, 19, 23, 0)), true);
   assert.equal(isNight(new Date(2026, 9, 19, 6, 29)), true);

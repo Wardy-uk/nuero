@@ -44,32 +44,88 @@ function Gap({ children }) {
   return <p className="wall__gap" role="status">{children}</p>;
 }
 
+/**
+ * All-day events as BARS across the days they cover, one lane each, so half
+ * term is one bar rather than the same chip in five columns. PURE: the week's
+ * days → [{key, title, from, to, lane}] (column indexes). Exported for tests.
+ */
+export function allDaySpans(week) {
+  const open = new Map();   // event key → its bar still running
+  const all = [];
+  week.forEach((d, col) => {
+    for (const e of d.events || []) {
+      if (!e.allDay) continue;
+      const key = e.id || `${e.title}|${e.start}`;
+      const s = open.get(key);
+      // Only CONSECUTIVE columns join one bar; a repeat later in the week is its own bar.
+      if (s && s.to === col - 1) { s.to = col; continue; }
+      const bar = { key: `${key}@${col}`, title: e.title, from: col, to: col };
+      open.set(key, bar);
+      all.push(bar);
+    }
+  });
+  const spans = all.sort((a, b) => a.from - b.from || (b.to - b.from) - (a.to - a.from));
+  const laneEnds = [];
+  for (const s of spans) {
+    let lane = laneEnds.findIndex((end) => end < s.from);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(s.to); } else laneEnds[lane] = s.to;
+    s.lane = lane;
+  }
+  return spans;
+}
+
 function Week({ week, today, gap }) {
   if (gap || !Array.isArray(week)) {
     return <section className="wall__week wall__week--gap"><Gap>I couldn&rsquo;t read the diary. That isn&rsquo;t an empty week &mdash; I couldn&rsquo;t look.</Gap></section>;
   }
+  const spans = allDaySpans(week);
+  const lanes = spans.reduce((n, s) => Math.max(n, s.lane + 1), 0);
+  const bodyRow = lanes + 2;
   return (
-    <section className="wall__week" aria-label="This week">
-      {week.map((d) => {
+    <section className="wall__week" aria-label="This week" style={{ gridTemplateRows: `auto ${'auto '.repeat(lanes)}1fr` }}>
+      {week.map((d, col) => {
+        const { dow } = dayOfKey(d.date);
+        return (
+          <div key={`bg-${d.date}`} aria-hidden="true"
+               className={`wall__day${d.date === today ? ' wall__day--today' : ''}${dow === 0 || dow === 6 ? ' wall__day--weekend' : ''}`}
+               style={{ gridColumn: col + 1, gridRow: `1 / span ${bodyRow}` }} />
+        );
+      })}
+      {week.map((d, col) => {
         const { dow, day, month } = dayOfKey(d.date);
         return (
-          <div key={d.date} className={`wall__day${d.date === today ? ' wall__day--today' : ''}${dow === 0 || dow === 6 ? ' wall__day--weekend' : ''}`}>
-            <header className="wall__dayhead">
-              <span className="wall__dow">{d.date === today ? 'Today' : DAYS[dow]}</span>
-              <span className="wall__date">{`${day} ${MONTHS[month]}`}</span>
-            </header>
-            {d.events.length === 0
-              ? <p className="wall__nothing">Nothing in</p>
-              : (
-                <ul className="wall__events">
-                  {d.events.map((e, i) => (
-                    <li key={`${e.id || i}-${d.date}`} className={`wall__event ${e.personal ? 'wall__event--personal' : 'wall__event--busy'}${e.allDay ? ' wall__event--allday' : ''}`}>
-                      {!e.allDay && <span className="wall__time">{time(e.start)}</span>}
-                      <span className="wall__title">{e.title}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+          <header key={`h-${d.date}`} className={`wall__dayhead${d.date === today ? ' wall__dayhead--today' : ''}`} style={{ gridColumn: col + 1, gridRow: 1 }}>
+            <span className="wall__dow">{d.date === today ? 'Today' : DAYS[dow]}</span>
+            <span className="wall__date">{`${day} ${MONTHS[month]}`}</span>
+          </header>
+        );
+      })}
+      {spans.map((s) => (
+        <div key={s.key} className="wall__span" style={{ gridColumn: `${s.from + 1} / ${s.to + 2}`, gridRow: s.lane + 2 }}>
+          {s.title}
+        </div>
+      ))}
+      {week.map((d, col) => {
+        const timed = (d.events || []).filter((e) => !e.allDay);
+        const coveredBySpan = spans.some((s) => s.from <= col && s.to >= col);
+        return (
+          <div key={`b-${d.date}`} className="wall__daybody" style={{ gridColumn: col + 1, gridRow: bodyRow }}>
+            {d.work && (
+              <p className="wall__atwork">
+                <span className="wall__atwork-label">Nick at work</span>
+                {!d.work.allDay && <span className="wall__time">{`${time(d.work.start)}–${time(d.work.end)}`}</span>}
+              </p>
+            )}
+            {timed.length > 0 ? (
+              <ul className="wall__events">
+                {timed.map((e, i) => (
+                  <li key={`${e.id || i}-${d.date}`} className="wall__event">
+                    <span className="wall__time">{time(e.start)}</span>
+                    <span className="wall__title">{e.title}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (!d.work && !coveredBySpan && <p className="wall__nothing">Nothing in</p>)}
           </div>
         );
       })}
@@ -253,22 +309,73 @@ export function WallView({ data, now, error = null, onExit = null }) {
   );
 }
 
-/** Ask the browser to keep the screen on; re-asked whenever the page returns. */
-function useWakeLock() {
-  useEffect(() => {
-    let lock = null;
-    let dead = false;
-    const ask = async () => {
-      try {
-        if (!dead && document.visibilityState === 'visible' && navigator.wakeLock) {
-          lock = await navigator.wakeLock.request('screen');
-        }
-      } catch { /* not granted — Auto-Lock "Never" still covers it */ }
-    };
-    ask();
-    document.addEventListener('visibilitychange', ask);
-    return () => { dead = true; document.removeEventListener('visibilitychange', ask); try { lock && lock.release(); } catch { /* gone */ } };
+/**
+ * Keep the screen on — two ways at once, because neither is reliable alone on
+ * an iPad (Nick, 17 Oct 2026: "screen doesn't stay awake"):
+ *   • the Screen Wake Lock API, where Safari honours it;
+ *   • a tiny silent looping video (NoSleep.js's own clip) — iOS keeps the
+ *     display on while a video plays. A video may only START from a tap, so
+ *     the wall asks for one tap and says so until it has it.
+ * Re-armed whenever the page comes back; a video iOS paused needs the tap again.
+ */
+function useKeepAwake() {
+  const [awake, setAwake] = useState(false);
+  const lock = useRef(null);
+  const video = useRef(null);
+
+  const requestLock = useCallback(async () => {
+    try {
+      if (navigator.wakeLock && document.visibilityState === 'visible' && !lock.current) {
+        lock.current = await navigator.wakeLock.request('screen');
+        lock.current.addEventListener('release', () => { lock.current = null; });
+      }
+    } catch { /* refused — the video still covers it */ }
   }, []);
+
+  const arm = useCallback(async () => {
+    requestLock();
+    try {
+      if (!video.current) {
+        const { webm, mp4 } = await import('nosleep.js/src/media.js');
+        const v = document.createElement('video');
+        v.setAttribute('playsinline', '');
+        v.setAttribute('muted', '');
+        v.muted = true;
+        v.setAttribute('title', 'Keeping the screen on');
+        v.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;pointer-events:none;left:0;bottom:0';
+        for (const [type, src] of [['webm', webm], ['mp4', mp4]]) {
+          const s = document.createElement('source'); s.src = src; s.type = `video/${type}`; v.appendChild(s);
+        }
+        v.addEventListener('loadedmetadata', () => {
+          if (v.duration <= 1) v.setAttribute('loop', '');
+          else v.addEventListener('timeupdate', () => { if (v.currentTime > 0.5) v.currentTime = Math.random(); });
+        });
+        v.addEventListener('pause', () => setAwake(false));
+        v.addEventListener('playing', () => setAwake(true));
+        document.body.appendChild(v);
+        video.current = v;
+      }
+      await video.current.play();
+      setAwake(true);
+    } catch { setAwake(false); }
+  }, [requestLock]);
+
+  useEffect(() => {
+    requestLock();
+    const back = () => {
+      if (document.visibilityState !== 'visible') return;
+      requestLock();
+      if (video.current) video.current.play().then(() => setAwake(true)).catch(() => setAwake(false));
+    };
+    document.addEventListener('visibilitychange', back);
+    return () => {
+      document.removeEventListener('visibilitychange', back);
+      try { lock.current && lock.current.release(); } catch { /* gone */ }
+      if (video.current) { video.current.pause(); video.current.remove(); video.current = null; }
+    };
+  }, [requestLock]);
+
+  return { awake, arm };
 }
 
 export default function Wall({ onExit, onSignedOut }) {
@@ -277,7 +384,7 @@ export default function Wall({ onExit, onSignedOut }) {
   const [now, setNow] = useState(() => new Date());
   const [wakeUntil, setWakeUntil] = useState(0);
   const bootDay = useRef(new Date().getDate());
-  useWakeLock();
+  const { awake, arm } = useKeepAwake();
 
   const refresh = useCallback(async () => {
     try {
@@ -310,8 +417,15 @@ export default function Wall({ onExit, onSignedOut }) {
            // whatever was under the finger in the dark.
            if (dim) { e.stopPropagation(); e.preventDefault(); }
            setWakeUntil(Date.now() + WAKE_MS);
+           // Every tap re-arms the keep-awake video (it can only start from one).
+           if (!awake) arm();
          }}>
       <WallView data={data} now={now} error={error} onExit={onExit} />
+      {!awake && (
+        <button className="wall__awake" onClick={arm}>
+          Tap once to keep this screen on
+        </button>
+      )}
     </div>
   );
 }

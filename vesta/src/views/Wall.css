@@ -28,27 +28,33 @@
 
 .wall__body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 2.6fr) minmax(260px, 1fr); gap: 16px; }
 
-/* ── The week ─────────────────────────────────────────────────────────────── */
-.wall__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; min-height: 0; }
+/* ── The week ───────────────────────────────────────────────────────────────
+   One grid: a header row, one lane per all-day bar, then the day bodies.
+   The day "cards" are background cells spanning every row, so a bar can run
+   across several days on top of them (17 Oct 2026). */
+.wall__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); column-gap: 8px; row-gap: 4px; min-height: 0; }
 .wall__week--gap { display: block; }
-.wall__day {
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 10px 8px; overflow: hidden; display: flex; flex-direction: column; min-height: 0;
-}
+.wall__day { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .wall__day--weekend { background: var(--panel-2); }
 .wall__day--today { border-color: var(--ember); box-shadow: inset 0 3px 0 var(--ember); }
-.wall__dayhead { display: flex; flex-direction: column; margin-bottom: 8px; }
-.wall__dow { font-size: 19px; font-weight: 600; }
-.wall__day--today .wall__dow { color: var(--ember); }
+.wall__dayhead, .wall__daybody, .wall__span { position: relative; z-index: 1; }
+.wall__dayhead { display: flex; flex-direction: column; padding: 10px 10px 4px; }
+.wall__dow { font-size: 20px; font-weight: 600; }
+.wall__dayhead--today .wall__dow { color: var(--ember); }
 .wall__date { font-size: 14px; color: var(--ink-faint); }
+.wall__span {
+  margin: 0 6px; padding: 4px 10px; border-radius: 8px;
+  background: var(--ember-soft); color: var(--ink); font-size: 16px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wall__daybody { padding: 6px 10px 10px; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.wall__atwork { margin: 0; display: flex; flex-direction: column; padding: 4px 8px; border-radius: 8px; border: 1px dashed var(--line); }
+.wall__atwork-label { font-size: 15px; color: var(--ink-dim); }
 .wall__nothing { color: var(--ink-faint); font-size: 15px; margin: 0; }
-.wall__events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
-.wall__event { font-size: 15px; line-height: 1.25; display: flex; flex-direction: column; }
-.wall__time { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-.wall__title { overflow-wrap: anywhere; }
-.wall__event--personal .wall__title { color: var(--ink); }
-.wall__event--busy .wall__title { color: var(--ink-faint); font-style: italic; }
-.wall__event--allday { background: var(--ember-soft); border-radius: 8px; padding: 3px 6px; }
+.wall__events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.wall__event { font-size: 17px; line-height: 1.25; display: flex; flex-direction: column; }
+.wall__time { font-size: 14px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.wall__title { overflow-wrap: anywhere; color: var(--ink); }
 
 /* ── The side column ──────────────────────────────────────────────────────── */
 .wall__side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
@@ -57,7 +63,6 @@
 .wall__h { margin: 0 0 8px; font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
 .wall__gap { margin: 0; color: var(--warn); font-size: 15px; }
 .wall__note { margin: 6px 0 0; font-size: 13px; color: var(--ink-faint); }
-
 .wall__who { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .wall__person { display: flex; gap: 8px; align-items: baseline; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 18px; }
 .wall__person--home { border-color: var(--good); }
@@ -77,13 +82,13 @@
 .wall__taskmeta { display: flex; gap: 10px; font-size: 13px; color: var(--ink-faint); }
 .wall__due--today { color: var(--ember); }
 .wall__due--late { color: var(--warn); font-weight: 600; }
+
 .wall__more { margin: 8px 0 0; font-size: 13px; color: var(--ink-faint); }
 
 /* Portrait or a small screen: stack rather than squash seven columns. */
 @media (max-width: 900px) {
   .wall-shell { overflow: auto; height: auto; min-height: 100vh; }
   .wall__body { grid-template-columns: 1fr; }
-  .wall__week { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
 
 /* The jobs card fills what is left: the list fades rather than cutting a line
@@ -140,3 +145,10 @@
 .wall__ebar--none { opacity: 0; }
 .wall__emonth { margin: 0; font-size: 15px; }
 .wall__etotal { margin: 6px 0 0; font-size: 16px; font-weight: 600; }
+
+/* Shown only until a tap has started the keep-awake video. */
+.wall__awake {
+  position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 5; appearance: none; border: 0; border-radius: 999px; padding: 12px 22px;
+  background: var(--ember); color: #1a1208; font-size: 17px; font-weight: 600; cursor: pointer;
+}

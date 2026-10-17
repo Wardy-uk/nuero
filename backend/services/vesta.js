@@ -163,11 +163,30 @@ function redactWeek(rows = [], startKey, n = 7) {
   for (const e of redactDay(rows)) {
     for (const k of daysOf(e, keys)) byDay[k].push(e);
   }
-  // All-day first, then by start time — how a wall calendar reads.
-  return keys.map((date) => ({
-    date,
-    events: byDay[date].sort((a, b) => (Number(b.allDay) - Number(a.allDay)) || String(a.start || '').localeCompare(String(b.start || ''))),
-  }));
+  // Nick, 17 Oct 2026: "just show that I'm AT work — not what I'm doing".
+  // A day's work events become ONE span: no events, no count, no titles —
+  // only when he is first and last at work (all day if any work event is).
+  // Everything left is family. All-day first, then by start time.
+  return keys.map((date) => {
+    const work = byDay[date].filter((e) => !e.personal);
+    const family = byDay[date].filter((e) => e.personal);
+    let atWork = null;
+    if (work.length) {
+      if (work.some((e) => e.allDay)) {
+        atWork = { allDay: true, start: null, end: null };
+      } else {
+        // Clipped to this day: a span that runs past midnight ends at 24:00.
+        const starts = work.map((e) => (String(e.start || '').slice(0, 10) < date ? `${date}T00:00:00` : String(e.start || '')));
+        const ends = work.map((e) => (String(e.end || '').slice(0, 10) > date ? `${date}T23:59:00` : String(e.end || '')));
+        atWork = { allDay: false, start: starts.sort()[0], end: ends.sort().slice(-1)[0] };
+      }
+    }
+    return {
+      date,
+      work: atWork,
+      events: family.sort((a, b) => (Number(b.allDay) - Number(a.allDay)) || String(a.start || '').localeCompare(String(b.start || ''))),
+    };
+  });
 }
 
 /**
