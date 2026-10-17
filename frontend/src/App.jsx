@@ -69,6 +69,7 @@ const VaultBrowser = lazyLoad(() => import('./components/VaultBrowser'));
 const BrainHealthPanel = lazyLoad(() => import('./components/BrainHealthPanel'));
 const PlaudTranscriptsPanel = lazyLoad(() => import('./components/PlaudTranscriptsPanel'));
 const WeatherPanel = lazyLoad(() => import('./components/WeatherPanel'));
+const EnergyPanel = lazyLoad(() => import('./components/EnergyPanel'));
 const PersonalInboxPanel = lazyLoad(() => import('./components/PersonalInboxPanel'));
 const HikeSafetyPanel = lazyLoad(() => import('./components/HikeSafetyPanel'));
 const BriefingsPanel = lazyLoad(() => import('./components/BriefingsPanel'));
@@ -446,6 +447,7 @@ function AuthenticatedApp() {
       case 'screen-usage': return <ScreenUsagePanel />;
       case 'notion-sync': return <NotionSyncPanel />;
       case 'catalogues': return <CataloguesPanel />;
+      case 'energy': return <EnergyPanel />;
       case 'about-me': return <ProfilePanel />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       // An unknown view lands on the execution surface, not on the briefing.

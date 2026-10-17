@@ -232,9 +232,26 @@ export function HomeView({ data }) {
   );
 }
 
+/** One line: yesterday's energy, linking to Home → Energy. Silent until Bright is connected. */
+export function EnergyLine({ energy }) {
+  if (!energy || !energy.connection || !energy.connection.configured) return null;
+  const parts = Object.entries(energy.fuels || {})
+    .filter(([, f]) => f.present && f.yesterday && f.yesterday.kwh != null)
+    .map(([fuel, f]) => `${fuel} ${f.yesterday.kwh.toFixed(1)} kWh${f.yesterday.complete ? '' : ' (so far)'}`);
+  const all = Object.values(energy.fuels || {}).filter((f) => f.present);
+  const cost = all.length && all.every((f) => f.yesterday && f.yesterday.costP != null)
+    ? all.reduce((s, f) => s + f.yesterday.costP, 0) : null;
+  return (
+    <a className="cn-muted" href="?view=energy" data-testid="home-energy-line">
+      Energy yesterday: {parts.length ? parts.join(' · ') : 'no readings yet'}{cost != null ? ` · ~£${(cost / 100).toFixed(2)} est.` : ''} →
+    </a>
+  );
+}
+
 export default function HomeCard() {
   const { data, error } = useCanonical('/api/household/home');
+  const { data: energy } = useCanonical('/api/energy?days=3');
   if (error && !data) return <div className="cn-error">Couldn’t read the home — {error}</div>;
   if (!data) return <div className="cn-muted">Reading the home…</div>;
-  return <HomeView data={data} />;
+  return (<><EnergyLine energy={energy} /><HomeView data={data} /></>);
 }

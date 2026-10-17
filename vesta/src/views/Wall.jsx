@@ -165,6 +165,23 @@ function Station({ station }) {
   );
 }
 
+/** Yesterday's energy, one line per fuel (the `energy` scope). */
+function WallEnergy({ energy }) {
+  if (energy === undefined) return null;
+  const fuels = energy ? Object.entries(energy.fuels || {}) : [];
+  return (
+    <section className="wall__topcard" aria-label="Energy">
+      <h2 className="wall__h">Energy yesterday</h2>
+      {!energy ? <Gap>can&rsquo;t read the meters</Gap> : !fuels.length ? <p className="wall__note">No readings yet.</p> : fuels.map(([fuel, f]) => (
+        <p key={fuel} className="wall__reading">
+          {fuel === 'gas' ? 'Gas' : 'Electricity'}: {f.yesterday && f.yesterday.kwh != null ? `${f.yesterday.kwh.toFixed(1)} kWh${f.yesterday.complete ? '' : ' (so far)'}` : '—'}
+          {f.yesterday && f.yesterday.costP != null ? ` · ~£${(f.yesterday.costP / 100).toFixed(2)}` : ''}
+        </p>
+      ))}
+    </section>
+  );
+}
+
 /** PURE view. Exported for the render test. */
 export function WallView({ data, now, error = null, onExit = null }) {
   const gapFor = (b) => ((data && data.gaps) || []).find((g) => g.block === b)?.why || null;
@@ -180,6 +197,7 @@ export function WallView({ data, now, error = null, onExit = null }) {
         </div>
         {data && can('house') && <Who who={data.who} />}
         {data && can('house') && <Station station={data.station} />}
+        {data && can('energy') && <WallEnergy energy={data.energy} />}
         {error && <div className="wall__stale" role="status">Can&rsquo;t reach home &mdash; showing what I last had.</div>}
         {onExit && <button className="wall__exit" onClick={onExit} aria-label="Leave wall view">⋯</button>}
       </header>

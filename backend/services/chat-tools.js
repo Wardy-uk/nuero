@@ -170,6 +170,18 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
+    name: 'get_energy',
+    tier: 'read',
+    description:
+      'Read household energy from the smart meters (via Bright): electricity and gas kWh for '
+      + 'today, yesterday, this month and last month, estimated cost, the household baseline, '
+      + 'always-on electricity, gas against outdoor temperature (weather-normalised), unusual '
+      + 'days and how fresh the data is. Use it for ANY question about energy, electricity, gas, '
+      + 'usage or the energy bill. Costs are ESTIMATES from the tariff NEURO holds, not the bill; '
+      + 'today is usually partial because meter data arrives late. Say so when it matters.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name: 'get_home_state',
     tier: 'read',
     description:
@@ -551,6 +563,16 @@ const HANDLERS = {
   async get_leisure() {
     try { return { ok: true, ...require('./leisure').chatView() }; } catch (e) {
       return { ok: false, error: `I could not read Leisure: ${e.message}. Say that, rather than that he has no interests.` };
+    }
+  },
+
+  async get_energy() {
+    try {
+      const v = require('./energy').chatView();
+      if (!v.connection.configured) return { ok: false, error: 'Bright is not connected in NEURO yet (Settings → Integrations). Say that, rather than that there is no usage.' };
+      return { ok: true, ...v };
+    } catch (e) {
+      return { ok: false, error: `I could not read energy: ${e.message}. Say that you could not look.` };
     }
   },
 

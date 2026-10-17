@@ -3560,3 +3560,75 @@ CREATE TABLE IF NOT EXISTS task_recurrence_log (
   undone_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_task_recurrence_log_task ON task_recurrence_log(task_id, id DESC);
+
+-- ── Home energy (services/energy*.js) ─────────────────────────────────────────
+-- Bright / Glowmarkt supplies the readings; NEURO owns the history. One row per
+-- Glowmarkt resource (electricity/gas × consumption/cost), discovered, never typed.
+CREATE TABLE IF NOT EXISTS energy_resources (
+  resource_id   TEXT PRIMARY KEY,
+  ve_id         TEXT,
+  fuel          TEXT NOT NULL CHECK (fuel IN ('electricity','gas')),
+  kind          TEXT NOT NULL CHECK (kind IN ('consumption','cost')),
+  classifier    TEXT NOT NULL,
+  name          TEXT,
+  base_unit     TEXT,
+  first_ts      INTEGER,
+  last_ts       INTEGER,
+  active        INTEGER NOT NULL DEFAULT 1,
+  discovered_at INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+
+-- Half-hourly readings, exactly as Bright gave them. `value` NULL means Bright
+-- answered "no reading for this slot" (asked with nulls=1) — NEVER zero use.
+-- kwh is the normalised energy (consumption resources only), pence the cost
+-- (cost resources only). A changed re-read is a REVISION: previous_value keeps
+-- what it replaced; a NULL slot later filled is counted as `filled`, not revised.
+CREATE TABLE IF NOT EXISTS energy_readings (
+  resource_id    TEXT NOT NULL,
+  period_s       INTEGER NOT NULL,
+  start_ts       INTEGER NOT NULL,          -- epoch SECONDS, UTC, start of slot
+  value          REAL,
+  unit           TEXT,
+  kwh            REAL,
+  pence          REAL,
+  received_at    INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL,
+  revision       INTEGER NOT NULL DEFAULT 0,
+  previous_value REAL,
+  PRIMARY KEY (resource_id, period_s, start_ts)
+);
+
+-- Per-resource sync + backfill state (restart-safe checkpoint).
+CREATE TABLE IF NOT EXISTS energy_sync (
+  resource_id          TEXT PRIMARY KEY,
+  last_attempt_at      INTEGER,
+  last_success_at      INTEGER,
+  last_failure_at      INTEGER,
+  last_error           TEXT,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  retry_after          INTEGER,
+  newest_value_ts      INTEGER,
+  last_catchup_at      INTEGER,
+  backfill_state       TEXT
+);
+
+-- Tariffs with effective dates. `meter` rows come from Bright's tariff-list
+-- (keyed on Bright's id); `manual` rows are Nick's. Rates in pence (as reported
+-- / as entered — normally including VAT). A non-flat tariff (time-of-use,
+-- dynamic) is stored with flat = 0 and is NOT used for costing.
+CREATE TABLE IF NOT EXISTS energy_tariffs (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  fuel             TEXT NOT NULL CHECK (fuel IN ('electricity','gas')),
+  source           TEXT NOT NULL CHECK (source IN ('meter','manual')),
+  provider_id      TEXT,
+  effective_from   TEXT NOT NULL,           -- YYYY-MM-DD, Europe/London
+  unit_rate_p      REAL,                    -- pence per kWh
+  standing_p_day   REAL,                    -- pence per day
+  flat             INTEGER NOT NULL DEFAULT 1,
+  label            TEXT,
+  raw_json         TEXT,
+  created_at       INTEGER NOT NULL,
+  removed_at       INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_energy_tariffs_meter ON energy_tariffs(fuel, provider_id, effective_from) WHERE source = 'meter';

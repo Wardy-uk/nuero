@@ -1349,6 +1349,8 @@ function start() {
     // External weather (EA rain gauge, WU) registers its own jobs, kept out of
     // registerDurableJobs() so runtime tests that register it make no network calls.
     require('./weather-jobs').register();
+    // Home energy (Bright / Glowmarkt) — same reason: these reach the internet.
+    require('./energy-jobs').register();
     // Hike safety: the trail, the check-in prompts and the overdue alert. Every
     // minute, durable, never too late — an alert missed during a restart must
     // still go the moment the backend is back. Here (not registerDurableJobs)

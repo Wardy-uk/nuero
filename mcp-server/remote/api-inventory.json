@@ -108,6 +108,22 @@
     "stream": false
   },
   {
+    "id": "delete_energy_credentials",
+    "method": "DELETE",
+    "route": "/api/energy/credentials",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 99,
+    "description": "DELETE /api/energy/credentials. disconnect Bright: forget the stored username, password and token (readings are kept)",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "delete_friction_note_by_id",
     "method": "DELETE",
     "route": "/api/friction/note/:id",
@@ -1854,6 +1870,113 @@
     "description": "GET /api/email/triage/muted. what is muted: whole senders (\"Mute sender\") and single subjects from a sender (\"Not relevant\").",
     "params": [],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_energy",
+    "method": "GET",
+    "route": "/api/energy",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 20,
+    "description": "GET /api/energy. the Energy page: today, yesterday, this month vs last, estimated cost, freshness, backfill progress and connection health for electricity and gas (energy-v1)",
+    "params": [],
+    "query": [
+      "days"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_energy_connection",
+    "method": "GET",
+    "route": "/api/energy/connection",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 82,
+    "description": "GET /api/energy/connection. whether Bright is connected (never the password or token)",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_energy_daily",
+    "method": "GET",
+    "route": "/api/energy/daily",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 32,
+    "description": "GET /api/energy/daily. energy usage and estimated cost per day (Europe/London) for one fuel between two dates; gas days carry outdoor temperature and heating degree days",
+    "params": [],
+    "query": [
+      "from",
+      "fuel",
+      "to"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_energy_halfhourly",
+    "method": "GET",
+    "route": "/api/energy/halfhourly",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 43,
+    "description": "GET /api/energy/halfhourly. the half-hour energy readings for one fuel on one day; a slot Bright has no reading for is null, never zero",
+    "params": [],
+    "query": [
+      "day",
+      "fuel"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_energy_insights",
+    "method": "GET",
+    "route": "/api/energy/insights",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 51,
+    "description": "GET /api/energy/insights. energy analysis: household baseline, always-on electricity, gas against outdoor temperature (weather-normalised), heating efficiency trend, unusual days, weekly totals, missing data",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_energy_tariffs",
+    "method": "GET",
+    "route": "/api/energy/tariffs",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 56,
+    "description": "GET /api/energy/tariffs. energy tariffs held, meter-reported and manual, with effective dates",
+    "params": [],
+    "query": [
+      "all"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -5379,7 +5502,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 265,
+    "line": 266,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5833,7 +5956,7 @@
     "route": "/api/v/calendar",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 228,
+    "line": 242,
     "description": "GET /api/v/calendar.",
     "params": [],
     "query": [
@@ -5851,7 +5974,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 310,
+    "line": 334,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -5883,7 +6006,7 @@
     "route": "/api/v/wall",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 256,
+    "line": 270,
     "description": "GET /api/v/wall.",
     "params": [],
     "query": [
@@ -6802,7 +6925,7 @@
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 349,
+    "line": 373,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -8904,6 +9027,101 @@
     "line": 396,
     "description": "POST /api/email/triage/run. trigger a fresh triage cycle.",
     "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_energy_credentials",
+    "method": "POST",
+    "route": "/api/energy/credentials",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 87,
+    "description": "POST /api/energy/credentials. connect Bright { username, password }: verified against Bright and stored on the Pi only if accepted; never returned",
+    "params": [],
+    "query": [],
+    "body": [
+      "password",
+      "username"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_energy_gas_calorific_value",
+    "method": "POST",
+    "route": "/api/energy/gas-calorific-value",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 74,
+    "description": "POST /api/energy/gas-calorific-value. set { cv } (MJ/m³ from the gas bill) used only if Bright ever reports gas in cubic metres; null clears it",
+    "params": [],
+    "query": [],
+    "body": [
+      "cv"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_energy_sync",
+    "method": "POST",
+    "route": "/api/energy/sync",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 104,
+    "description": "POST /api/energy/sync. run an energy sync from Bright now (the recent window; add {backfill:true} for a backfill step)",
+    "params": [],
+    "query": [],
+    "body": [
+      "backfill"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_energy_tariffs",
+    "method": "POST",
+    "route": "/api/energy/tariffs",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 61,
+    "description": "POST /api/energy/tariffs. add a manual energy tariff { fuel, effectiveFrom, unitRateP, standingPDay, label }; refused, never clamped",
+    "params": [],
+    "query": [],
+    "body": [
+      "effectiveFrom",
+      "fuel",
+      "label",
+      "standingPDay",
+      "unitRateP"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_energy_tariffs_by_id_remove",
+    "method": "POST",
+    "route": "/api/energy/tariffs/:id/remove",
+    "domain": "energy",
+    "source": "routes/energy.js",
+    "line": 68,
+    "description": "POST /api/energy/tariffs/:id/remove. withdraw a manual energy tariff (kept on record); a meter tariff cannot be removed",
+    "params": [
+      "id"
+    ],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -13820,7 +14038,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 388,
+    "line": 412,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -13841,7 +14059,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 422,
+    "line": 446,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -13862,7 +14080,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 398,
+    "line": 422,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -13902,7 +14120,7 @@
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 324,
+    "line": 348,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],

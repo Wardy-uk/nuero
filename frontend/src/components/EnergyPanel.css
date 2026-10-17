@@ -1,0 +1,21 @@
+/* Home → Energy. Full width: the two fuels sit side by side on a wide screen
+   and stack only on a phone. */
+.energy-panel { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; padding: 0 0 24px; }
+/* `.main-view > *` caps every page at 960px; this page uses the whole screen. */
+.main-view > .energy-panel { max-width: none; }
+.energy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; width: 100%; }
+.energy-fuel { background: var(--surface, var(--bg-card)); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.energy-fuel__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.energy-fuel__head h3 { margin: 0; font-size: 1.05rem; }
+.energy-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.energy-note { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+.energy-note--warn { color: var(--warning); }
+.energy-insights { display: flex; flex-direction: column; gap: 10px; }
+.energy-unusual { margin: 0; padding-left: 18px; color: var(--warning); font-size: 0.9rem; }
+.energy-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.energy-table th, .energy-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.energy-row--removed td { opacity: 0.5; text-decoration: line-through; }
+.energy-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.energy-form input, .energy-form select { min-width: 120px; }
+.energy-connect .admin-inline-form { flex-wrap: wrap; }
+@media (max-width: 640px) { .energy-grid { grid-template-columns: 1fr; } }

@@ -391,3 +391,14 @@ body {
   .home > .section { margin-bottom: 0; }
   .home__head, .home__stale, .home__foot, .home > .walk { grid-column: 1 / -1; margin: 0; }
 }
+
+/* Energy (the `energy` scope) */
+.energy__fuel { margin: 0 0 14px; }
+.energy__name { margin: 0 0 2px; font-size: 1rem; }
+.energy__fact { margin: 0; }
+.energy__total { margin: 4px 0 0; font-weight: 600; }
+.energy__note { margin: 6px 0 0; font-size: 0.85rem; opacity: 0.75; }
+.energy__bars { display: flex; align-items: flex-end; gap: 2px; height: 48px; margin-top: 6px; }
+.energy__bar { flex: 1 1 0; background: currentColor; opacity: 0.7; border-radius: 2px 2px 0 0; min-width: 2px; }
+.energy__bar--partial { opacity: 0.35; }
+.energy__bar--none { opacity: 0; }

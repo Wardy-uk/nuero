@@ -111,6 +111,20 @@ router.get('/home', requireAccount, async (req, res) => {
     }
   }
 
+  // ── Household energy ─────────────────────────────────────────────────────
+  // ⚠ ABSENT without the `energy` scope. services/energy.householdView decides
+  // what leaves NEURO: daily kWh, estimated £, freshness — never half-hours,
+  // tariffs or anything about the Bright login.
+  if (capture.hasScope(req.account, 'energy')) {
+    try {
+      out.energy = require('../services/energy').householdView();
+    } catch (e) {
+      out.energy = null;
+      out.gaps.push({ block: 'energy', why: 'could not read the energy meters' });
+      console.error('[Vesta] Energy block failed:', e.message);
+    }
+  }
+
   // ── Where Nick is in the house ───────────────────────────────────────────
   //
   // ⚠ ABSENT unless the account holds `presence`, not hidden. The section is
@@ -284,6 +298,16 @@ router.get('/wall', requireAccount, (req, res) => {
       out.week = null;
       out.gaps.push({ block: 'week', why: 'could not read the diary' });
       console.error('[Vesta] Wall week failed:', e.message);
+    }
+  }
+
+  if (capture.hasScope(req.account, 'energy')) {
+    try {
+      out.energy = require('../services/energy').householdView();
+    } catch (e) {
+      out.energy = null;
+      out.gaps.push({ block: 'energy', why: 'could not read the energy meters' });
+      console.error('[Vesta] Wall energy failed:', e.message);
     }
   }
 

@@ -17,6 +17,7 @@ export const VIEW_GROUPS = Object.freeze({
   ],
   home: [
     { id: 'home', label: 'Home' },
+    { id: 'energy', label: 'Energy' },
     { id: 'catalogues', label: 'Catalogues' },
   ],
   outdoor: [

@@ -58,6 +58,10 @@ const SUPPRESSIBLE = new Set([
   // The SOAP report (Thursday heads-up, Friday provisional ready, Monday sent/held).
   // All daytime and once each; nothing about it is a 03:00 problem.
   'soap_report',
+  // Home energy: a complete day clearly above its baseline (Nick, 17 Oct 2026:
+  // push when clearly unusual). Once per fuel per day, about YESTERDAY — never
+  // a 03:00 problem.
+  'energy_unusual',
 ]);
 
 const ROOTS = ['services', 'routes'];

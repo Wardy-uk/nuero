@@ -6,6 +6,7 @@ import Kitchen from '../components/Kitchen.jsx';
 import Meals from '../components/Meals.jsx';
 import Presence from '../components/Presence.jsx';
 import Walk from '../components/Walk.jsx';
+import Energy from '../components/Energy.jsx';
 
 const KITCHEN_SLUG = 'kitchen';
 
@@ -124,6 +125,8 @@ export default function Home({ onSignedOut, onWall }) {
           so the block is ABSENT without it, never rendered-then-hidden — the
           client enforces nothing and must never start. */}
       {can('presence') && <Presence presence={data.presence} />}
+
+      {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} />}
 
       {can('calendar') && (
         <Calendar events={data.calendar} gap={gapFor('calendar')} todayKey={data.calendarDate} />

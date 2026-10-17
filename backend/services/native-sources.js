@@ -257,6 +257,23 @@ const SOURCES = Object.freeze({
     importance: 'low', group: 'local-weather', expected: true, push: false,
     expectedIntervalMs: 15 * 60 * 1000, staleAfterMs: 3 * HOUR,
   },
+  // Home energy (Bright / Glowmarkt, 17 Oct 2026). Judged on the SYNC run, not
+  // on reading age: smart-meter half-hours reach Bright from the DCC a day or
+  // two late by design, so an old newest-reading is not a stale source (the
+  // Energy page shows the lag against the usual one). OPTIONAL until Bright is
+  // connected on the Pi — flip to expected once the first sync has run.
+  'energy.bright-electricity': {
+    label: 'Bright — electricity meter',
+    what: 'half-hourly electricity use from the smart meter',
+    importance: 'low', group: 'home-energy', lifecycle: 'optional', push: false,
+    expectedIntervalMs: 30 * 60 * 1000, staleAfterMs: 6 * HOUR,
+  },
+  'energy.bright-gas': {
+    label: 'Bright — gas meter',
+    what: 'half-hourly gas use from the smart meter',
+    importance: 'low', group: 'home-energy', lifecycle: 'optional', push: false,
+    expectedIntervalMs: 30 * 60 * 1000, staleAfterMs: 6 * HOUR,
+  },
   'weather.ea-3641-qualified': {
     label: 'EA rain gauge (Mount St Bernards) — qualified record',
     what: 'the quality-checked rainfall history',

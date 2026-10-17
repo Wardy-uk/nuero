@@ -190,6 +190,12 @@ const ROUTE_RULES = Object.freeze([
   R('DELETE', '/api/push/subscriptions', 'config.security'),
   R('*', '/api/rescuetime/key', 'config.security'),
   R('*', '/api/weather/wu/key', 'config.security'),
+  // Home energy: the Bright login is a credential; tariffs and the gas
+  // calorific value decide what every cost says, so they are Nick's too.
+  R('*', '/api/energy/credentials', 'config.security'),
+  R('*', '/api/energy/tariffs', 'config.preference', { machine: 'refuse' }),
+  R('*', '/api/energy/tariffs/:id/remove', 'config.preference', { machine: 'refuse' }),
+  R('*', '/api/energy/gas-calorific-value', 'config.preference', { machine: 'refuse' }),
   // Personal mailboxes (12 Oct 2026): passwords, connection checks and the
   // self-only test send are Nick's, in Settings — never a machine's.
   R('*', '/api/mail/accounts/:key/credential', 'config.security'),
@@ -363,7 +369,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   tasks: 'task.status', todos: 'task.status', 'task-dedupe': 'task.status', 'do-next': 'task.status', c: 'task.status', v: 'task.status', 'waiting-on': 'task.status',
   // sensors and devices
   location: 'ingest', health: 'ingest', device: 'ingest', apple: 'ingest', environment: 'ingest', weather: 'ingest', desktop: 'ingest', router: 'ingest', 'nova-signals': 'ingest',
-  v1: 'ingest', mobile: 'ingest', performance: 'ingest', rescuetime: 'ingest', jira: 'ingest',
+  v1: 'ingest', mobile: 'ingest', performance: 'ingest', rescuetime: 'ingest', jira: 'ingest', energy: 'ingest',
   // notifications to Nick
   nudges: 'push.self', briefing: 'push.self', briefings: 'push.self', push: 'push.self',
   // preferences

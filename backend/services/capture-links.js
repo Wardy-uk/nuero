@@ -75,7 +75,10 @@ const STATE_KEY = 'capture_links';
 // household card's home/away/unknown) plus the outdoor weather station. Coarser
 // than `presence` (no rooms) but still a live record of whether people are home,
 // so it is its own scope and not a default either.
-const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house'];
+// `energy` (17 Oct 2026) is the household's electricity and gas: yesterday,
+// this month, a 30-day chart and ESTIMATED cost. Read-only, no half-hours, no
+// tariff detail and nothing about Bright's login. Money, so not a default.
+const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy'];
 const DEFAULT_SCOPES = ['tasks'];
 
 /** Normalise a requested scope list. Unknown scopes are DROPPED, never passed
