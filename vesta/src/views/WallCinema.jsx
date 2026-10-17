@@ -230,7 +230,7 @@ function DayCard({ day, title, now, onOpen, emptyLine }) {
   return (
     <section className="cine__panel" aria-label={title}>
       {head}
-      <div className="cine__pbody">
+      <div className="cine__pbody cine__scroll">
         {empty ? (
           <>
             <p className="cine__big">{emptyLine}</p>
@@ -270,30 +270,24 @@ function JobItem({ t, today }) {
   );
 }
 
-const JOBS_SHOWN = 2;
-
+// Every tile scrolls (Nick, 17 Oct 2026): the jobs list shows them all and
+// scrolls inside the tile; the header opens the full-screen list.
 function Jobs({ tasks, gap, today, onOpen }) {
   const list = tasks ? tasks.tasks : [];
-  const total = tasks ? Math.max(tasks.total || 0, list.length) : 0;
-  const more = total - Math.min(list.length, JOBS_SHOWN);
   const clickable = list.length > 0;
   return (
-    <section className={`cine__panel cine__panel--jobs${clickable ? ' cine__panel--tap' : ''}`} aria-label="Household jobs"
-             onClick={clickable ? onOpen : undefined} role={clickable ? 'button' : undefined}>
-      <div className="cine__phead cine__phead--static">
+    <section className="cine__panel cine__panel--jobs" aria-label="Household jobs">
+      <button className="cine__phead" onClick={clickable ? onOpen : undefined} aria-label="Open all household jobs">
         <Icon name="tools" className="cine__icon--amber" />
         <span className="cine__ptitle">Household jobs</span>
         {clickable && <Icon name="chevron" className="cine__chev" />}
-      </div>
+      </button>
       {gap || !tasks ? <p className="cine__gap">I couldn’t read the jobs list.</p>
         : list.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
         : (
-          <>
-            <ul className="cine__jobs">
-              {list.slice(0, JOBS_SHOWN).map((t) => <JobItem key={t.id} t={t} today={today} />)}
-            </ul>
-            {more > 0 && <p className="cine__more">{`+${more} more`}</p>}
-          </>
+          <ul className="cine__jobs cine__scroll">
+            {list.map((t) => <JobItem key={t.id} t={t} today={today} />)}
+          </ul>
         )}
     </section>
   );
@@ -312,7 +306,7 @@ function Energy({ energy, gap }) {
       {gap || !energy ? <p className="cine__gap">I couldn’t read the meters.</p>
         : !fuels.length ? <div className="cine__pbody"><p className="cine__sub">{energy.connected ? 'Waiting for the first readings.' : 'Meters not connected yet.'}</p></div>
         : (
-          <div className="cine__fuels">
+          <div className="cine__fuels cine__scroll">
             {fuels.map(([fuel, f]) => {
               const y = f.yesterday;
               const late = f.freshness && f.freshness.state !== 'usual' && f.freshness.state !== 'none';
@@ -340,34 +334,30 @@ function Energy({ energy, gap }) {
 
 /** Labels for a strip day: two short ones, or one on up to two lines and a count. PURE. */
 export function stripItems(events) {
+  // Every label is shown (the day scrolls); each may take two lines.
   const labels = (events || []).map((e) => (e.allDay ? e.title : `${time(e.start)} ${e.title}`));
-  if (labels.length <= 2 && labels.every((l) => l.length <= 16)) return { shown: labels, twoLine: false, more: 0 };
-  return { shown: labels.slice(0, 1), twoLine: true, more: Math.max(0, labels.length - 1) };
+  return { shown: labels, twoLine: true, more: 0 };
 }
 
 function NextDays({ week, today, onOpen, onDay }) {
   if (!Array.isArray(week)) return <section className="cine__strip"><p className="cine__gap">I couldn’t read the diary.</p></section>;
   return (
-    <section className="cine__strip" aria-label="Next seven days">
-      <div className="cine__striphead"><Icon name="cal" /><span>Next 7 days</span></div>
+    <section className="cine__strip" aria-label="Next eight days">
+      <div className="cine__striphead"><Icon name="cal" /><span>Next 8 days</span></div>
       <div className="cine__sdays">
-        {week.slice(0, 7).map((d) => {
+        {week.slice(0, 8).map((d) => {
           const { dow, day } = dayOfKey(d.date);
           const items = (d.events || []);
           return (
-            <button key={d.date} className={`cine__sday${d.date === today ? ' cine__sday--today' : ''}`} onClick={() => (onDay ? onDay(d) : onOpen && onOpen())} aria-label={`Open ${DAYS_LONG[dow]}`}>
-              <span className="cine__sdow">{`${DAYS[dow]} ${day}`}</span>
-              <span className={`cine__smark${d.off ? ' cine__smark--off' : ''}`}>{d.off ? 'Nick off' : d.work ? 'Nick at work' : ' '}</span>
-              {(() => {
-                const { shown, twoLine, more } = stripItems(items);
-                return (
-                  <>
-                    {shown.map((l, i) => <span key={i} className={`cine__sitem${twoLine ? ' cine__sitem--two' : ''}`}>{l}</span>)}
-                    {more > 0 && <span className="cine__smore">{`+${more} more`}</span>}
-                  </>
-                );
-              })()}
-            </button>
+            <div key={d.date} className={`cine__sday${d.date === today ? ' cine__sday--today' : ''}`}>
+              <button className="cine__sdaybtn" onClick={() => (onDay ? onDay(d) : onOpen && onOpen())} aria-label={`Open ${DAYS_LONG[dow]}`}>
+                <span className="cine__sdow">{`${DAYS[dow]} ${day}`}</span>
+                <span className={`cine__smark${d.off ? ' cine__smark--off' : ''}`}>{d.off ? 'Nick off' : d.work ? 'Nick at work' : ' '}</span>
+              </button>
+              <div className="cine__sitems cine__scroll">
+                {stripItems(items).shown.map((l, i) => <span key={i} className="cine__sitem cine__sitem--two">{l}</span>)}
+              </div>
+            </div>
           );
         })}
       </div>

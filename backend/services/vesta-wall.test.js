@@ -157,6 +157,7 @@ test('7. /api/v/wall over HTTP: scoped blocks absent without the scope; the week
     assert.equal(month.from, '2026-09-28');
     assert.equal(month.days, 42);
     assert.equal((await call('/wall?days=30', { token: all })).status, 400);
+    assert.equal((await call('/wall?days=8', { token: all })).json.week.length, 8, 'the eight-day strip');
     // The keep-awake report is recorded, filtered to a safe character set.
     await call(`/wall?held=${encodeURIComponent('video + wake lock;home-screen;wakelock-api=yes;os=18.6<script>')}`, { token: all });
     const seen = JSON.parse(db.getState('vesta_wall_seen') || '{}');
@@ -281,9 +282,9 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.equal(split.nextId, 'b');
   assert.equal(splitDay(d0, null).nextId, null, 'tomorrow has no "next"');
   const todayRange = calRange('today', 0, '2026-10-19');
-  assert.deepEqual([todayRange.from, todayRange.days], ['2026-10-19', 7]);
+  assert.deepEqual([todayRange.from, todayRange.days], ['2026-10-19', 8]);
   const thtml = renderToString(React.createElement(WallView, {
-    data: { ...data, from: '2026-10-19', days: 7, week: [d0, ...week.slice(1)] }, now,
+    data: { ...data, from: '2026-10-19', days: 8, week: [d0, ...week.slice(1)] }, now,
     cal: { view: 'today', offset: 0, range: todayRange, onStep() {}, onToday() {}, onView() {} },
   }));
   assert.ok(thtml.includes('>Today<') && thtml.includes('Tomorrow') && thtml.includes('Isaac swimming'));
@@ -294,7 +295,7 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   // The cinema look (17 Oct 2026): same payload, new presentation, nothing invented.
   const { CinemaView, presenceLine, nextLine, sunTimes, skyPhase } = mod.exports;
   const cdata = {
-    ...data, from: '2026-10-19', days: 7, week: [d0, ...week.slice(1)],
+    ...data, from: '2026-10-19', days: 8, week: [d0, ...week.slice(1)],
     energy: { connected: true, monthCostP: 7500, fuels: {
       electricity: { yesterday: { kwh: 9.4, costP: 260, complete: true }, month: { kwh: 150, costP: 4160 }, freshness: { state: 'usual' }, days: [] },
       gas: { yesterday: { kwh: 31.2, costP: null, complete: false }, month: { kwh: 499, costP: null }, freshness: { state: 'late' }, days: [] } } },
@@ -306,12 +307,14 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   assert.ok(chtml.includes('14:05') && chtml.includes('Monday 19 October'));
   assert.ok(chtml.includes('Household jobs') && chtml.includes('Car tax') && chtml.includes('Overdue'));
   assert.ok(chtml.includes('9.4 kWh') && chtml.includes('this month 150 kWh') && chtml.includes('Yesterday so far') && chtml.includes('meter running late'));
-  assert.ok(chtml.includes('Next 7 days') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7);
+  assert.ok(chtml.includes('Next 8 days') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7, 'draws the days it was given');
+  const eight = renderToString(React.createElement(CinemaView, { data: { ...cdata, days: 8, week: vesta.redactWeek([], '2026-10-19', 8) }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
+  assert.equal((eight.match(/class="cine__sday[ "]/g) || []).length, 8, 'eight days by default');
   assert.ok(chtml.includes('Isaac swimming') && chtml.includes('Next: Isaac swimming at 17:00'));
   assert.ok(chtml.includes('11.4°') && chtml.includes('82% humidity'));
   for (const invented of ['Feels like', 'breeze', 'vs yesterday']) assert.ok(!chtml.includes(invented), `nothing NEURO does not hold: ${invented}`);
   const cbare = renderToString(React.createElement(CinemaView, { data: { ...cdata, scopes: ['tasks'] }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
-  assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Next 7 days'), 'scopes still decide what is drawn');
+  assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Next 8 days'), 'scopes still decide what is drawn');
 
   assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'home' }, { name: 'Ember', role: 'companion', state: 'out' }] }), 'Everyone’s home');
   assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Isaac', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'out' }] }), 'Helen and Isaac are home');
@@ -336,12 +339,13 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
     { id: 4, text: 'Take bins out', dueDate: null, overdue: false, dueToday: false, who: [] },
   ] } };
   const jhtml = renderToString(React.createElement(CinemaView, { data: four, now, cal: { view: 'today', offset: 0, range: todayRange } }));
-  assert.equal((jhtml.match(/class="cine__job[ "]/g) || []).length, 2, 'two jobs on the panel');
-  assert.ok(jhtml.includes('+2 more'));
+  // Every tile scrolls (17 Oct 2026): all four jobs are in the tile, no "+N more".
+  assert.equal((jhtml.match(/class="cine__job[ "]/g) || []).length, 4, 'every job is in the scrolling tile');
+  assert.ok(!jhtml.includes('more</p>') && jhtml.includes('cine__jobs cine__scroll'));
   assert.ok(jhtml.includes(mot), 'the task wording is shown as it is — its old date is neither removed nor read as the due date');
-  assert.deepEqual(stripItems([{ title: 'Bins', allDay: true }, { title: 'Swim', start: '2026-10-19T17:00:00' }]), { shown: ['Bins', '17:00 Swim'], twoLine: false, more: 0 });
-  assert.deepEqual(stripItems([{ title: 'Wedding anniversary', allDay: true }]), { shown: ['Wedding anniversary'], twoLine: true, more: 0 }, 'a long label gets two lines, not "Wedding anni…"');
-  assert.equal(stripItems([{ title: 'A', allDay: true }, { title: 'B', allDay: true }, { title: 'C', allDay: true }]).more, 2);
+  assert.deepEqual(stripItems([{ title: 'Bins', allDay: true }, { title: 'Swim', start: '2026-10-19T17:00:00' }]).shown, ['Bins', '17:00 Swim']);
+  assert.deepEqual(stripItems([{ title: 'A', allDay: true }, { title: 'B', allDay: true }, { title: 'C', allDay: true }]).shown, ['A', 'B', 'C'], 'every label, the day scrolls');
+  assert.ok((jhtml.match(/cine__sitems cine__scroll/g) || []).length === 7, 'each strip day scrolls');
 });
 
 // ── 17 Oct 2026: at work only on evidence; off from People HR; dates are dates ──

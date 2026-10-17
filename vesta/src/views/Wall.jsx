@@ -149,7 +149,8 @@ export function addDays(key, n) { const d = dateOf(key); d.setDate(d.getDate() +
  */
 export function calRange(view, offset, todayKey) {
   if (view === 'today') {
-    return { from: todayKey, days: 7, month: null, year: null, label: 'Today' };
+    // Today plus the next seven: the eight-day strip (Nick, 17 Oct 2026).
+    return { from: todayKey, days: 8, month: null, year: null, label: 'Today' };
   }
   if (view === 'month') {
     const t = dateOf(todayKey);
@@ -260,7 +261,7 @@ function DayPanel({ day, title, now, big }) {
 function WeekStrip({ week, today, onOpen }) {
   return (
     <button className="wall__strip" onClick={onOpen} aria-label="Open the week">
-      {week.map((d) => {
+      {week.slice(0, 7).map((d) => {
         const { dow, day } = dayOfKey(d.date);
         const titles = (d.events || []).map((e) => e.title);
         return (

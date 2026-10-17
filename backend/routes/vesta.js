@@ -273,10 +273,11 @@ router.get('/wall', requireAccount, (req, res) => {
   if (!DATE_RE.test(from)) {
     return res.status(400).json({ ok: false, error: 'that is not a date I understand' });
   }
-  // A week (7) or a month grid (42 = six weeks). Anything else is refused, never clamped.
+  // A week (7), the wall's eight-day strip (8) or a month grid (42 = six weeks).
+  // Anything else is refused, never clamped.
   const span = req.query && req.query.days != null ? Number(req.query.days) : 7;
-  if (span !== 7 && span !== 42) {
-    return res.status(400).json({ ok: false, error: 'days must be 7 or 42' });
+  if (span !== 7 && span !== 8 && span !== 42) {
+    return res.status(400).json({ ok: false, error: 'days must be 7, 8 or 42' });
   }
   const out = { ok: true, label: req.account.label, scopes: capture.scopesOf(req.account), today, from, days: span, gaps: [], at: new Date().toISOString() };
 
