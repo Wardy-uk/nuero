@@ -374,6 +374,7 @@ export function WallEnergy({ energy, gap }) {
         : !fuels.length ? <p className="wall__nothing">{energy.connected ? 'Waiting for the first readings.' : 'Meters not connected yet.'}</p>
         : (
           <>
+            <div className="wall__efuels">
             {fuels.map(([fuel, f]) => {
               const y = f.yesterday;
               return (
@@ -394,6 +395,7 @@ export function WallEnergy({ energy, gap }) {
                 </div>
               );
             })}
+            </div>
             {energy.monthCostP != null && <p className="wall__etotal">Both this month ~{gbp(energy.monthCostP)} <span className="wall__note">estimated</span></p>}
           </>
         )}

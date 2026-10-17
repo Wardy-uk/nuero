@@ -202,3 +202,17 @@
 .wall__mline--work { color: var(--ink-faint); }
 .wall__mline--off { color: var(--ember); font-weight: 600; }
 .wall__mline--more { color: var(--ink-faint); }
+
+/* Energy, compact (17 Oct 2026, Nick): gas and electricity side by side at about
+   half the height, so the jobs card below gets the space. */
+.wall__card--energy { padding: 8px 12px; }
+.wall__card--energy .wall__h { margin-bottom: 4px; }
+.wall__efuels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.wall__efuels .wall__efuel { margin: 0; min-width: 0; }
+.wall__efuels .wall__ehead { flex-direction: column; align-items: flex-start; gap: 0; }
+.wall__efuels .wall__ename { font-size: 14px; min-width: 0; }
+.wall__efuels .wall__eval { font-size: 20px; line-height: 1.1; }
+.wall__efuels .wall__emeta { font-size: 12px; }
+.wall__efuels .wall__ebars { height: 18px; margin: 3px 0 2px; gap: 2px; }
+.wall__efuels .wall__emonth { font-size: 12px; color: var(--ink-faint); }
+.wall__card--energy .wall__etotal { margin-top: 4px; font-size: 13px; }
