@@ -192,6 +192,17 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
       const path = ({ finished: 'finished', 'not-attending': 'not-attending' })[intent.action] || 'resume';
       const res = await apiFetch(`/api/attention/meeting/${path}`, { method: 'POST', body: JSON.stringify({ key: intent.key }) });
       if (res && res.ok === false) setActNote(res.error || 'NEURO refused that.');
+    } else if (intent.kind === 'room') {
+      // A room offer (17 Oct 2026): the KEY and nothing else — NEURO re-reads the
+      // house and re-derives what the offer was. Said as NEURO answered it; a
+      // refusal is said as a refusal, never as "done".
+      const verb = intent.action === 'accept' ? 'accept' : 'decline';
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(intent.key)}/${verb}`, { method: 'POST', body: JSON.stringify({}) })
+        .catch((e) => refused(e, (m) => `Not done — ${m}`));
+      if (verb === 'accept') {
+        if (res && res.ok) setActOk(res.say || 'Done.');
+        else setActNote((res && (res.say || (res.reason && `Not done — ${res.reason}.`))) || 'Not done — NEURO didn’t answer.');
+      } else if (res && res.ok === false) setActNote(`Not saved — ${res.reason || 'NEURO refused it'}.`);
     } else if (intent.kind === 'navigate' && intent.tab) {
       go(intent.tab);
     }

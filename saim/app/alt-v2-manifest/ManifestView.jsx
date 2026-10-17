@@ -87,6 +87,28 @@ export default function ManifestView({ v, live = null }) {
             </div>
           )}
 
+          {v.room && (
+            <div className="wk__place mf__dest mf__room" aria-label="This room">
+              <p className="wk__label">This room</p>
+              {v.room.offers.map((o) => (
+                <div key={o.say} className="wk__placerow">
+                  <div><p className="wk__app">{o.say}</p></div>
+                  <span className="mf__roomacts">
+                    {o.actions.map((a) => {
+                      const on = Boolean(live && live.onAct && actable(a));
+                      return (
+                        <button key={a.say} type="button" className={a.lead ? 'wk__open' : 'wk__act'} disabled={!on || busy}
+                          title={on ? undefined : (live ? 'This screen can’t do that' : INERT)}
+                          onClick={on ? () => live.onAct(a) : undefined}>{a.say}</button>
+                      );
+                    })}
+                  </span>
+                </div>
+              ))}
+              {v.room.lines.map((l) => <p key={l} className="wk__why mf__roomline">{l}</p>)}
+            </div>
+          )}
+
           {v.basis && (
             <div className="wk__place mf__dest mf__basis">
               <p className="wk__label">About</p>

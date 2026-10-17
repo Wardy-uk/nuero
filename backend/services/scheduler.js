@@ -286,6 +286,30 @@ function start() {
     }
   });
 
+  // Every minute — a radiator Nick warmed "until I leave" is put back once he
+  // has left the room (rooms.sweepHolds / room-heat.js), and a cold room he has
+  // just walked into is offered ONCE per visit by push (ambient-push
+  // .deliverRoomOffer). Both are cheap when there is nothing to do: the sweep
+  // returns before reading HA when no restore is pending, and the push reads
+  // the moment only for an offer it has not already judged in the last 10 min.
+  // Not a durable job: both are live reads; a missed minute self-corrects.
+  cron.schedule('* * * * *', async () => {
+    try {
+      const r = await require('./rooms').sweepHolds();
+      if (r && (r.restored || r.dropped || r.failed)) {
+        console.log(`[Scheduler] Room heat: ${r.restored || 0} restored, ${r.dropped || 0} dropped, ${r.failed || 0} failed, ${r.held || 0} held`);
+      }
+    } catch (e) {
+      console.error(`[Scheduler] Room heat sweep failed: ${e.message}`);
+    }
+    try {
+      const p = await require('./ambient-push').deliverRoomOffer();
+      if (p && p.sent) console.log(`[Scheduler] Room offer pushed: ${p.key}`);
+    } catch (e) {
+      console.error(`[Scheduler] Room offer push failed: ${e.message}`);
+    }
+  });
+
   // Every 20 min in working hours — offer NOVA any 1-2-1 transcript that has landed in
   // the vault. Frequent because Nick processes a recording and then goes looking for it
   // in NOVA; a nightly sweep would mean the test he just ran shows nothing for hours.

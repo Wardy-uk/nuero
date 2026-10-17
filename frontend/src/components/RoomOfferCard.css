@@ -1,0 +1,28 @@
+.room-offer {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning, var(--accent));
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  font-size: 13px;
+}
+.room-offer__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.room-offer__say { color: var(--text-primary); margin-right: auto; }
+.room-offer__acts { display: inline-flex; gap: 8px; }
+.room-offer__btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.room-offer__btn--lead { color: var(--text-primary); border-color: var(--accent); }
+.room-offer__btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent); }
+.room-offer__btn:disabled { opacity: 0.5; cursor: default; }
+.room-offer__line { margin: 6px 0 0; color: var(--text-secondary); }
+.room-offer__note { margin: 6px 0 0; color: var(--text-primary); }
+.room-offer__note--bad { color: var(--danger); }

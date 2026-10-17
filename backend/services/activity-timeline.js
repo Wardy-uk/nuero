@@ -417,6 +417,10 @@ function fromEventLog(rows) {
 }
 
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Room-heat helpers (17 Oct 2026). `previous` is { hvacMode, targetC } as room-heat recorded it.
+function _room(a) { return String(a || 'room').toLowerCase(); }
+function _c(v) { return typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(1)) + '°C' : 'its target'; }
+function _radiator(p) { return require('./room-heat').describeState(p); }
 function _dayName(d) { return d ? DAY[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()] : ''; }
 
 /**
@@ -525,6 +529,25 @@ function fromPersonalOps(rows) {
       case 'home-exception-opened': return entry({ ...base, category: 'sensed', type: `home.${d.category || 'exception'}`, headline: `${d.what || 'Something unusual at home'}`, summary: (d.evidence && d.evidence[0]) || null, status: d.category === 'source' ? 'failing' : 'open' });
       case 'home-exception-resolved': return entry({ ...base, category: 'verified', type: `home.${d.category || 'exception'}`, headline: `Resolved at home: ${d.what || 'an exception'}`, summary: 'The condition is no longer present.', status: 'recovered' });
       case 'home-hazard-blind': return entry({ ...base, category: 'sensed', type: 'home.hazard', headline: `NEURO cannot reach a hazard sensor: ${d.sensor}`, status: 'failing' });
+      // 17 Oct 2026 — "warm this room until I leave": his tap, then NEURO's restore.
+      case 'room-heat-raised': return entry({ ...base, category: 'acted', type: 'home.heating', actor: 'nick',
+        headline: `You warmed the ${_room(d.area)} to ${_c(d.setTo && d.setTo.targetC)} until you leave`,
+        summary: [`It was ${_radiator(d.previous)}; NEURO puts that back when you leave.`, d.verified ? null : (d.reason || 'The radiator has not confirmed yet.')].filter(Boolean).join(' '),
+        status: d.verified ? 'verified' : 'unverified' });
+      case 'room-heat-raise-failed': return entry({ ...base, category: 'blocked', type: 'home.heating', actor: 'nick', severity: 'warning',
+        headline: `Could not warm the ${_room(d.area)}`, summary: d.reason || null, status: 'failed' });
+      case 'room-heat-restored': return entry({ ...base, category: 'acted', type: 'home.heating',
+        headline: `Put the ${_room(d.area)} radiator back to ${_radiator(d.previous)}`,
+        summary: [`${d.why ? d.why.charAt(0).toUpperCase() + d.why.slice(1) : 'You left the room'}.`, d.verified ? null : (d.reason || 'The radiator has not confirmed yet.')].filter(Boolean).join(' '),
+        status: d.verified ? 'verified' : 'unverified' });
+      case 'room-heat-restore-held': return entry({ ...base, category: 'decided', type: 'home.heating',
+        headline: `Holding the ${_room(d.area)} radiator at ${_c(d.setTo && d.setTo.targetC)} — ${d.why || 'someone else is home'}`,
+        summary: `It goes back to ${_radiator(d.previous)} when the house is empty.`, status: 'held' });
+      case 'room-heat-restore-dropped': return entry({ ...base, category: 'decided', type: 'home.heating',
+        headline: `Left the ${_room(d.area)} radiator as it is`,
+        summary: `Someone changed it after NEURO did (${d.why || 'changed since'}), so it was not put back.`, status: 'skipped' });
+      case 'room-heat-restore-failed': return entry({ ...base, category: 'blocked', type: 'home.heating', severity: 'warning',
+        headline: `Could not put the ${_room(d.area)} radiator back yet`, summary: `${d.reason || 'Home Assistant refused it'}. NEURO tries again every minute.`, status: 'failed' });
       // Build 29AB — outdoor: plans and Nick's corrections only. Never a GPS
       // point, a walk, a weather update or a source refresh.
       case 'outdoor-route-planned': return entry({ ...base, category: 'configured', type: 'outdoor.route', headline: `You planned ${d.kind === 'walk' ? 'a walk' : 'a hike'}: "${d.name}"`, summary: [d.plannedDate ? `For ${d.plannedDate}.` : 'No date yet.', d.source === 'gpx' ? 'From a GPX file.' : null, 'A plan, not an activity.'].filter(Boolean).join(' '), status: 'planned' });

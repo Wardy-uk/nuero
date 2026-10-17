@@ -216,6 +216,20 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: [o.text, o.detail].filter(Boolean).join(' ') }),
   },
 
+  // 17 Oct 2026 — Nick: "when I'm in a room that is below comfort — give me a
+  // mechanism to turn the heating on". The offer is made on every screen; this
+  // is the push for when he is not looking at one. Asked ONCE PER VISIT
+  // (deliverRoomOffer's ledger, keyed on the visit-scoped offer key), never on
+  // the 40-minute ambient pass. Not duty-gated: comfort at home is not work.
+  // Every universal veto above still applies — a meeting, Focus mode, driving,
+  // a focus session, a quiet moment — and the governor holds quiet hours.
+  // The push ASKS; the radiator only moves on his tap on a screen.
+  'warm-room': {
+    when: () => true,
+    urgency: 'low',
+    say: o => ({ title: 'SAiM', body: o.text }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.
@@ -456,7 +470,103 @@ async function deliver({ now = new Date() } = {}) {
   }
 }
 
+// ── The cold-room push (17 Oct 2026) ─────────────────────────────────────────
+
+const ROOM_PUSH_KEY = 'room_offer_push_ledger';
+const ROOM_REJUDGE_MS = 10 * 60 * 1000;
+const ROOM_LEDGER_MAX = 100;
+
+/**
+ * Which heating offer, if any, is worth judging for a push right now. PURE.
+ * One per visit: an offer key already SENT is never sent again (the key is
+ * visit-scoped, so the next visit is a fair question); one judged and vetoed
+ * is re-judged at most every ROOM_REJUDGE_MS, so a cold room during a meeting
+ * can still be asked about once the meeting ends without reading the moment
+ * every minute.
+ */
+function pickRoomOffer(snap, ledger, now = Date.now()) {
+  if (!snap || snap.known !== true || !Array.isArray(snap.offers)) return null;
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  for (const o of snap.offers) {
+    if (!o || o.kind !== 'warm-room' || !o.key) continue;
+    const seen = ledger && ledger[o.key];
+    if (seen && seen.sentAt) continue;
+    if (seen && seen.judgedAt && nowMs - Date.parse(seen.judgedAt) < ROOM_REJUDGE_MS) continue;
+    return o;
+  }
+  return null;
+}
+
+function _roomLedger() {
+  try {
+    const raw = require('../db/database').getState(ROOM_PUSH_KEY);
+    const v = raw ? JSON.parse(raw) : {};
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return null; // unreadable: cannot know what was sent — send nothing
+  }
+}
+
+function _saveRoomLedger(map) {
+  const keys = Object.keys(map);
+  if (keys.length > ROOM_LEDGER_MAX) {
+    keys.sort((a, b) => String((map[a].sentAt || map[a].judgedAt) || '').localeCompare(String((map[b].sentAt || map[b].judgedAt) || '')))
+      .slice(0, keys.length - ROOM_LEDGER_MAX).forEach((k) => delete map[k]);
+  }
+  try { require('../db/database').setState(ROOM_PUSH_KEY, JSON.stringify(map)); } catch (e) {
+    console.warn('[AmbientPush] room ledger not saved:', e.message);
+  }
+}
+
+/**
+ * Push a cold-room offer once per visit, through the same vetoes and the same
+ * governor as everything else. Called every minute by the scheduler.
+ */
+// `readMomentFn` / `snapshotFn` exist for the tests; production passes neither.
+async function deliverRoomOffer({ now = new Date(), readMomentFn = readMoment, snapshotFn = null } = {}) {
+  if (!ENABLED) return { sent: 0, skipped: 'disabled' };
+  const ledger = _roomLedger();
+  if (ledger === null) return { sent: 0, skipped: 'could not read what has already been pushed' };
+  let snap;
+  try { snap = await (snapshotFn || require('./rooms').snapshot)({ now }); } catch (e) {
+    return { sent: 0, skipped: 'rooms unreadable', why: e.message };
+  }
+  const offer = pickRoomOffer(snap, ledger, now);
+  if (!offer) return { sent: 0, skipped: 'no unasked cold-room offer' };
+
+  let moment;
+  try { moment = (await readMomentFn({ now })).moment; } catch (e) {
+    return { sent: 0, skipped: 'could not read the moment', why: e.message };
+  }
+  const verdict = worthInterrupting({ kind: 'warm-room', text: offer.say, offerKey: offer.key }, moment);
+  if (!verdict.push) {
+    ledger[offer.key] = { judgedAt: now.toISOString(), why: verdict.why };
+    _saveRoomLedger(ledger);
+    return { sent: 0, key: offer.key, why: verdict.why };
+  }
+  try {
+    await require('./webpush').sendToAll(verdict.message.title, verdict.message.body, {
+      type: 'ambient',
+      // ⚠ The VISIT-scoped offer key, never the wording and never a constant:
+      //   a constant key would make the lifecycle treat tomorrow's cold room as
+      //   the same, already-notified record.
+      key: `ambient:warm-room:${offer.key}`,
+      roomOfferKey: offer.key,
+      url: '/?view=today',
+    });
+  } catch (e) {
+    return { sent: 0, key: offer.key, error: e.message };
+  }
+  ledger[offer.key] = { sentAt: now.toISOString() };
+  _saveRoomLedger(ledger);
+  try { require('./attention-learning').recordDelivery('warm-room'); } catch { /* best effort */ }
+  return { sent: 1, key: offer.key };
+}
+
 module.exports = {
+  deliverRoomOffer,
+  pickRoomOffer,
+  ROOM_PUSH_KEY,
   sourceBlindVerdicts,
   momentObservations,
   momentFrom,

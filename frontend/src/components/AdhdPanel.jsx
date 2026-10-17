@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 import useAttention from '../useAttention';
 import AttentionCard from './AttentionCard';
 import MeetingControls from './MeetingControls';
+import RoomOfferCard from './RoomOfferCard';
 import FrictionSection from './FrictionSection';
 import AmbientSection from './AmbientSection';
 import NowSituation from './canonical/NowSituation';
@@ -760,6 +761,9 @@ export default function AdhdPanel({ onNavigate }) {
           knows he missed it (13 Oct 2026). */}
       {attention.data && (
         <MeetingControls meeting={attention.data.meeting} nextMeeting={attention.data.nextMeeting} onChanged={attention.refresh} />
+      )}
+      {attention.data && (
+        <RoomOfferCard rooms={attention.data.rooms} onChanged={attention.refresh} />
       )}
       {attention.data?.presentation && attention.data.presentation.contract === 'presentation-v1' ? (
         <section className="adhd__now adhd__now--situation">

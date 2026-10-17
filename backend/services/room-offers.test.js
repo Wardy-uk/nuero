@@ -402,3 +402,75 @@ test('householdPermitsActing is pure and names its reason', () => {
   assert.equal(ro.householdPermitsActing({ known: true, othersHome: true, who: ['Helen', 'Isaac'] }).why, 'Helen and Isaac are home');
   assert.equal(ro.householdPermitsActing(null).permitted, false);
 });
+
+// ── "Warm it until I leave" (17 Oct 2026) — what accepting would DO ──────────
+//
+// Fixtures are the live house on 17 Oct: the living room at 17.5°C with its TRV
+// in a 24°C BOOST somebody had just started (hvac_action heating) — the case
+// the old offer would have answered by LOWERING the target to 19.
+
+const LIVE_BOOST = { entity_id: 'climate.living_room_rad', state: 'heat', currentC: 17.5, targetC: 24.0, presetMode: 'boost', hvacAction: 'heating', hvacModes: ['auto', 'heat', 'off'], presetModes: ['boost', 'none'], minC: 5, maxC: 32 };
+const LIVE_AUTO_FROST = { entity_id: 'climate.office_rad', state: 'auto', currentC: 15.9, targetC: 7.0, presetMode: 'none', hvacAction: 'idle', hvacModes: ['auto', 'heat', 'off'], presetModes: ['boost', 'none'], minC: 5, maxC: 32 };
+const LIVE_OFF = { entity_id: 'climate.lizzy_s_room', state: 'off', currentC: 16.8, targetC: 7.0, presetMode: 'none', hvacAction: 'idle', hvacModes: ['auto', 'heat', 'off'], presetModes: ['boost', 'none'], minC: 5, maxC: 32 };
+
+test('⚠ ALREADY WARMING (boost to 24): no button — SAiM just says so', () => {
+  const out = run({ room: { climate: [LIVE_BOOST] } });
+  assert.equal(out.offers.filter(o => o.kind === 'warm-room').length, 0, 'never offered — accepting would have lowered it');
+  assert.equal(out.notes.length, 1);
+  assert.equal(out.notes[0].kind, 'already-warming');
+  assert.equal(out.notes[0].say, 'The living room is 17.5°C — it’s already warming to 24°C.');
+});
+
+test('heating to ≥ 20 without a boost is also already warming; SET to ≥ 20 but idle is "already set"', () => {
+  const heating = run({ room: { climate: [{ ...LIVE_BOOST, presetMode: 'none', targetC: 21 }] } });
+  assert.equal(heating.notes[0].kind, 'already-warming');
+  const idle = run({ room: { climate: [{ ...LIVE_BOOST, presetMode: 'none', hvacAction: 'idle', targetC: 22 }] } });
+  assert.equal(idle.offers.filter(o => o.kind === 'warm-room').length, 0, 'never lower a target');
+  assert.equal(idle.notes[0].kind, 'already-set');
+  assert.match(idle.notes[0].say, /already set to 22°C/);
+});
+
+test('a cold room on its frost schedule: warm to 20 until you leave, and the say line says exactly that', () => {
+  const out = run({ room: { climate: [LIVE_AUTO_FROST] } });
+  const warm = out.offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm);
+  assert.equal(warm.say, 'The living room is 15.9°C. Warm it to 20°C until you leave?');
+  assert.equal(warm.targetC, 20);
+  assert.deepEqual(warm.action, { kind: 'raise-until-leave', entity: 'climate.office_rad', toC: 20, hvacMode: 'heat', restoresOnLeave: true });
+  assert.equal(warm.acceptLabel, 'Warm it');
+  assert.equal(warm.declineLabel, 'Not now');
+  assert.deepEqual(warm.radiator, { hvacMode: 'auto', targetC: 7, presetMode: 'none', hvacAction: 'idle' });
+});
+
+test('⚠ an OFF radiator is still offered, worded as off and going back off', () => {
+  const warm = run({ room: { climate: [LIVE_OFF] } }).offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm);
+  assert.equal(warm.say, 'The living room is 16.8°C and its radiator is off. Turn it on to 20°C until you leave? It goes back off after.');
+  assert.equal(warm.acceptLabel, 'Turn it on');
+});
+
+test('⚠ an OFF radiator with a high stored target is still OFF — offered, not "already warming"', () => {
+  const warm = run({ room: { climate: [{ ...LIVE_OFF, targetC: 24 }] } }).offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm);
+});
+
+test('the trigger stays below 19 (Nick’s threshold) though the target is 20', () => {
+  assert.equal(ro.WARM_BELOW_C, 19);
+  assert.equal(ro.COMFORT_C, 20);
+  assert.equal(run({ room: { climate: [{ ...LIVE_AUTO_FROST, currentC: 19.2 }] } }).offers.filter(o => o.kind === 'warm-room').length, 0);
+  assert.equal(run({ room: { climate: [{ ...LIVE_AUTO_FROST, currentC: 18.9 }] } }).offers.filter(o => o.kind === 'warm-room').length, 1);
+});
+
+test('a radiator with no heat mode, or a range excluding 20, is a named gap — never a button that fails', () => {
+  const noHeat = run({ room: { climate: [{ ...LIVE_AUTO_FROST, hvacModes: ['auto', 'off'] }] } });
+  assert.equal(noHeat.offers.filter(o => o.kind === 'warm-room').length, 0);
+  assert.ok(noHeat.gaps.some(g => /heat mode/.test(g)));
+  const range = run({ room: { climate: [{ ...LIVE_AUTO_FROST, maxC: 18 }] } });
+  assert.ok(range.gaps.some(g => /outside what the radiator accepts/.test(g)));
+});
+
+test('light offers carry their button words too', () => {
+  const light = run().offers.find(o => o.kind === 'lights-on');
+  assert.equal(light.acceptLabel, 'Turn them on');
+  assert.equal(light.declineLabel, 'Not now');
+});

@@ -33,6 +33,7 @@ const db = require('../db/database');
 const haRooms = require('./ha-rooms');
 const offers = require('./room-offers');
 const episode = require('./room-episode');
+const roomHeat = require('./room-heat');
 
 const EPISODE_KEY = 'room_episode_state';
 const DECISIONS_KEY = 'room_offer_decisions';
@@ -115,7 +116,7 @@ async function snapshot({ now = new Date() } = {}) {
   const visit = _advanceEpisode(house.presence, now);
 
   if (!house.known) {
-    return { known: false, room: null, episode: null, offers: [], decided: [], household: house.household || null, gaps, considered: [] };
+    return { known: false, room: null, episode: null, offers: [], decided: [], notes: [], heating: roomHeat.active(), household: house.household || null, gaps, considered: [] };
   }
 
   // ⚠ A WORK room is not a room at home (5 Oct 2026). `office` is the work
@@ -125,8 +126,8 @@ async function snapshot({ now = new Date() } = {}) {
   // about where he is when he is in an offsite room: no reading, no offers.
   const here = house.presence && house.presence.room ? String(house.presence.room).toLowerCase() : null;
   if (here && require('./life-state').OFFSITE_ROOMS.includes(here)) {
-    return { known: true, room: visit.room, episode: visit.episode, offers: [], decided: [],
-      household: house.household, gaps, considered: [], offsite: true };
+    return { known: true, room: visit.room, episode: visit.episode, offers: [], decided: [], notes: [],
+      heating: roomHeat.active(), household: house.household, gaps, considered: [], offsite: true };
   }
 
   const judged = offers.assess({
@@ -153,19 +154,25 @@ async function snapshot({ now = new Date() } = {}) {
       episode: visit.episode,
       offers: [],
       decided: [],
+      notes: judged.notes || [],
+      heating: roomHeat.active(),
       household: house.household,
       gaps: [...judged.gaps, 'could not read what you have already answered — holding off rather than asking again'],
       considered: judged.considered,
     };
   }
 
+  const heating = roomHeat.active();
   const open = [];
   const decided = [];
   for (const o of judged.offers) {
     const key = episode.keyFor(o.key, visit.episode);
     const prior = decisions[key];
     if (prior) {
-      decided.push({ key, kind: o.kind, area: o.area, decision: prior.decision, at: prior.at });
+      // The OUTCOME rides with the decision, so a yes the house refused is
+      // visible on every screen rather than looking like a yes that worked.
+      decided.push({ key, kind: o.kind, area: o.area, decision: prior.decision, at: prior.at,
+        outcome: (prior.context && prior.context.outcome) || null });
       continue;
     }
     open.push({ ...o, key });
@@ -177,6 +184,11 @@ async function snapshot({ now = new Date() } = {}) {
     episode: visit.episode,
     offers: open,
     decided,
+    // Said with NO button: "it's already warming to 24°C". A radiator NEURO is
+    // itself holding at 20 is said ONCE, by `heating`, not again as a note.
+    notes: (judged.notes || []).filter((n) => !heating.some((h) => h.entity === n.entity)),
+    // Radiators NEURO has raised and will put back when he leaves.
+    heating,
     household: house.household,
     gaps: judged.gaps,
     considered: judged.considered,
@@ -225,7 +237,9 @@ async function act(key, { now = new Date() } = {}) {
   if (offer.kind === 'lights-on') {
     result = await haRooms.turnOnLights(offer.entities);
   } else if (offer.kind === 'warm-room') {
-    result = await haRooms.setClimateTarget(offer.entities[0], offer.targetC);
+    // ⚠ "Until you leave" (17 Oct 2026): heat at 20°C, the radiator's previous
+    //   state recorded BEFORE the write and put back on leaving (room-heat.js).
+    result = await roomHeat.raise({ offer, room: snap.room, episode: snap.episode, offerKey: key, now });
   } else {
     // ⚠ A kind with no executor is REFUSED locally, never passed through.
     return { ok: false, reason: 'no executor for "' + offer.kind + '"' };
@@ -233,15 +247,57 @@ async function act(key, { now = new Date() } = {}) {
 
   // Recorded whether or not the house obeyed: he said yes, and that is the
   // signal worth learning from. The failure is reported separately.
+  const outcome = { ok: !!result.ok, reason: result.reason || null, verified: result.verified === undefined ? null : !!result.verified };
   record(key, 'accepted', {
     kind: offer.kind,
     area: offer.area,
     why: offer.why,
     currentC: offer.currentC ?? null,
     subject: offer.subject,
+    // ⚠ What actually happened, beside what he said — a refused write must be
+    //   visible on decided[] and in the learning set, never just a console line.
+    outcome,
+    ...(offer.kind === 'warm-room' ? { previous: result.previous || null, setTo: result.setTo || null } : {}),
   });
 
-  return { ok: result.ok, reason: result.reason || null, offer: { kind: offer.kind, area: offer.area }, result };
+  return { ok: result.ok, reason: result.reason || null, verified: outcome.verified, say: acceptedSay(offer, result), offer: { kind: offer.kind, area: offer.area }, result };
+}
+
+/** The one sentence a surface shows after the press — what happened, never "done" over a refusal. */
+function acceptedSay(offer, result) {
+  const area = String(offer.area || 'room').toLowerCase();
+  if (!result.ok) return 'Not done — ' + (result.reason || 'Home Assistant refused it') + '.';
+  if (offer.kind === 'lights-on') return 'The ' + area + ' lights are on.';
+  if (offer.kind === 'warm-room') {
+    const back = result.previous ? roomHeat.describeState(result.previous) : 'how it was';
+    const head = 'Warming the ' + area + ' to ' + offer.targetC + '°C until you leave — then back to ' + back + '.';
+    return result.verified ? head : head + ' ' + (result.reason || 'The radiator has not confirmed yet.');
+  }
+  return 'Done.';
+}
+
+/**
+ * Put back any radiator NEURO raised, once he has left its room (17 Oct 2026).
+ * Run by the scheduler every minute; reads the house FRESH and advances the
+ * visit exactly as a poll would. Never throws.
+ */
+async function sweepHolds({ now = new Date() } = {}) {
+  try {
+    const pending = roomHeat.holds();
+    if (pending && !Object.keys(pending).length) return { checked: 0, skipped: 'nothing to restore' };
+    _cache = { at: 0, house: null };
+    const house = await _readHouse(now);
+    if (!house.known) return { checked: 0, skipped: 'could not read the house — restores wait' };
+    const visit = _advanceEpisode(house.presence, now);
+    return await roomHeat.sweep({
+      visit: { room: visit.room, unseenSince: visit.state ? visit.state.unseenSince : null },
+      household: house.household,
+      now,
+    });
+  } catch (e) {
+    console.warn('[rooms] restore sweep failed:', e.message);
+    return { checked: 0, error: e.message };
+  }
 }
 
 /** Say no. Records the decline against this visit; the next visit may ask again. */
@@ -326,6 +382,8 @@ async function areaReading(name, { now = new Date() } = {}) {
 module.exports = {
   snapshot,
   act,
+  sweepHolds,
+  acceptedSay,
   decline,
   record,
   history,

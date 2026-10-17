@@ -69,6 +69,13 @@ test.before(async () => {
   await db.init();
   haRooms.readHouse = async () => JSON.parse(JSON.stringify(house));
   haRooms.turnOnLights = async (ids) => { lightCalls.push(ids); return { ok: true, entities: ids }; };
+  // The radiator behind the offer, behaving like a Hive TRV (17 Oct 2026): the
+  // raise reads it before writing and reads it back after.
+  haRooms.readClimate = async (id) => {
+    const c = house.rooms[0].climate.find(x => x.entity_id === id);
+    return c ? { known: true, entity_id: id, state: c.state, currentC: c.currentC, targetC: c.targetC, presetMode: 'none', hvacAction: 'idle' } : { known: false, why: 'no state' };
+  };
+  haRooms.setHvacMode = async (id, mode) => { climateCalls.push({ id, mode }); return { ok: true }; };
   haRooms.setClimateTarget = async (id, c) => { climateCalls.push({ id, c }); return { ok: true, entity: id, targetC: c }; };
 
   const app = express();
@@ -87,6 +94,7 @@ test.after(() => new Promise(r => server.close(r)));
 function freshVisit() {
   db.setState(rooms.EPISODE_KEY, '');
   db.setState(rooms.DECISIONS_KEY, '');
+  db.setState('room_heat_holds', '');
 }
 
 async function get(p) {
@@ -142,7 +150,7 @@ test('⚠ the client CANNOT name what gets switched on', async () => {
   });
   assert.equal(body.ok, true);
   assert.equal(lightCalls.length, 0, 'no light was touched by a heating offer');
-  assert.deepEqual(climateCalls.at(-1), { id: 'climate.living_room_rad', c: 19 },
+  assert.deepEqual(climateCalls.at(-1), { id: 'climate.living_room_rad', c: 20 },
     'the radiator and target came from the server-side offer, not the request');
 });
 
@@ -260,4 +268,94 @@ test('⚠ REGRESSION: a house read carrying NO household may not act', async () 
   assert.equal(warm.act, false, 'but it must never act on a household nobody read');
   assert.match(warm.actWhy, /unreadable/);
   house.household = { known: true, othersHome: false, who: [], why: null };
+});
+
+
+// ── "Warm it until I leave", end to end (17 Oct 2026) ────────────────────────
+//
+// The radiator fakes below MOVE the house, so the raise's read-back and the
+// sweep's changed-since check see what a real TRV would report.
+
+function realisticRadiator() {
+  const rad = () => house.rooms[0].climate[0];
+  haRooms.setHvacMode = async (id, mode) => { climateCalls.push({ id, mode }); rad().state = mode; return { ok: true }; };
+  haRooms.setClimateTarget = async (id, c) => { climateCalls.push({ id, c }); rad().targetC = c; return { ok: true }; };
+}
+
+function coldHouse() {
+  house.rooms[0].climate = [{ entity_id: 'climate.living_room_rad', state: 'auto', currentC: 16.0, targetC: 7.0 }];
+  house.presence = { room: 'Living Room', confidence: 'sure', subject: 'watch', since: '2026-10-17T18:00:00Z' };
+  house.household = { known: true, othersHome: false, who: [], why: null };
+}
+
+test('accept warms to 20 until he leaves, says so, and the hold is on GET /api/rooms', async () => {
+  freshVisit(); coldHouse(); realisticRadiator(); climateCalls = [];
+  const warm = (await readRooms()).offers.find(o => o.kind === 'warm-room');
+  assert.equal(warm.say, 'The living room is 16.0°C. Warm it to 20°C until you leave?');
+  const { body } = await post('/api/rooms/' + encodeURIComponent(warm.key) + '/accept');
+  assert.equal(body.ok, true);
+  assert.equal(body.verified, true);
+  assert.equal(body.say, 'Warming the living room to 20°C until you leave — then back to on its schedule.');
+  assert.deepEqual(climateCalls, [{ id: 'climate.living_room_rad', mode: 'heat' }, { id: 'climate.living_room_rad', c: 20 }]);
+  const after = await readRooms();
+  assert.equal(after.heating.length, 1);
+  assert.match(after.heating[0].say, /Warming the living room to 20°C until you leave/);
+  assert.equal(after.notes.length, 0, 'NEURO\'s own raise is said once, by heating — not again as "already warming"');
+});
+
+test('⚠ a refused write is visible on decided[] with its outcome', async () => {
+  freshVisit(); coldHouse();
+  haRooms.setHvacMode = async () => ({ ok: false, reason: 'HA climate.set_hvac_mode -> 500' });
+  const warm = (await readRooms()).offers.find(o => o.kind === 'warm-room');
+  const { body } = await post('/api/rooms/' + encodeURIComponent(warm.key) + '/accept');
+  assert.equal(body.ok, false);
+  assert.match(body.say, /^Not done — Home Assistant refused to switch it to heat/);
+  const d = (await readRooms()).decided.find(x => x.key === warm.key);
+  assert.ok(d, 'the yes is recorded');
+  assert.equal(d.outcome.ok, false, 'and so is the fact that the house refused it');
+  assert.match(d.outcome.reason, /refused/);
+  realisticRadiator();
+});
+
+test('⚠ leaving the room puts the radiator back (rooms.sweepHolds over real state)', async () => {
+  freshVisit(); coldHouse(); realisticRadiator();
+  const warm = (await readRooms()).offers.find(o => o.kind === 'warm-room');
+  await post('/api/rooms/' + encodeURIComponent(warm.key) + '/accept');
+  climateCalls = [];
+  const stay = await rooms.sweepHolds({});
+  assert.equal(stay.waiting, 1, 'still in the room — nothing touched');
+  assert.deepEqual(climateCalls, []);
+  house.presence = { room: 'Kitchen', confidence: 'sure', subject: 'watch', since: '2026-10-17T19:00:00Z' };
+  const gone = await rooms.sweepHolds({});
+  assert.equal(gone.restored, 1);
+  assert.deepEqual(climateCalls, [{ id: 'climate.living_room_rad', mode: 'auto' }]);
+  assert.equal(house.rooms[0].climate[0].state, 'auto');
+  assert.deepEqual((await readRooms()).heating, []);
+});
+
+test('⚠ someone else home: the restore waits for the house to empty', async () => {
+  freshVisit(); coldHouse(); realisticRadiator();
+  const warm = (await readRooms()).offers.find(o => o.kind === 'warm-room');
+  await post('/api/rooms/' + encodeURIComponent(warm.key) + '/accept');
+  climateCalls = [];
+  house.presence = { room: 'Kitchen', confidence: 'sure', subject: 'watch', since: '2026-10-17T19:00:00Z' };
+  house.household = { known: true, othersHome: true, who: ['Helen'], why: null };
+  const held = await rooms.sweepHolds({});
+  assert.equal(held.held, 1);
+  assert.deepEqual(climateCalls, []);
+  assert.match((await readRooms()).heating[0].say, /stays at 20°C for now — Helen is home/);
+  house.household = { known: true, othersHome: false, who: [], why: null };
+  const done = await rooms.sweepHolds({});
+  assert.equal(done.restored, 1);
+});
+
+test('nothing pending → the sweep does not even read the house', async () => {
+  freshVisit();
+  const saved = haRooms.readHouse;
+  let reads = 0;
+  haRooms.readHouse = async () => { reads++; return JSON.parse(JSON.stringify(house)); };
+  const r = await rooms.sweepHolds({});
+  haRooms.readHouse = saved;
+  assert.equal(r.skipped, 'nothing to restore');
+  assert.equal(reads, 0);
 });

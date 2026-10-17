@@ -88,6 +88,35 @@ async function haGet(path) {
 // --- Pure shapers -----------------------------------------------------------
 
 /**
+ * One climate entity, as the heating offer needs it (17 Oct 2026).
+ *
+ * ⚠ `hvacAction`, `presetMode`, `hvacModes`, `presetModes`, `minC`, `maxC` are
+ *   carried because the offer could not tell "cold and ignored" from "cold and
+ *   ALREADY being warmed": on 17 Oct the living room read 17.5°C while its TRV
+ *   was in a 24°C boost (hvac_action heating), and the old offer would have
+ *   set it to 19 — lowering a target somebody had just raised. Every Hive TRV
+ *   reports `hvac_modes [auto, heat, off]`, `preset_modes [boost, none]`,
+ *   min 5 / max 32. Unknown is null, never a guess.
+ */
+function shapeClimate(s) {
+  const at = (s && s.attributes) || {};
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    entity_id: s.entity_id,
+    state: s.state,
+    // ⚠ Celsius, from the climate attributes. See the header.
+    currentC: num(at.current_temperature),
+    targetC: num(at.temperature),
+    hvacAction: typeof at.hvac_action === 'string' ? at.hvac_action : null,
+    presetMode: typeof at.preset_mode === 'string' ? at.preset_mode : null,
+    hvacModes: Array.isArray(at.hvac_modes) ? at.hvac_modes.map(String) : null,
+    presetModes: Array.isArray(at.preset_modes) ? at.preset_modes.map(String) : null,
+    minC: num(at.min_temp),
+    maxC: num(at.max_temp),
+  };
+}
+
+/**
  * Join the area registry to the state list.
  *
  * ⚠ Only `light.*` and `climate.*` are carried. Everything else in an area is
@@ -110,14 +139,7 @@ function shapeRooms(areas, states) {
       if (domain === 'light') {
         lights.push({ entity_id: id, state: s.state });
       } else if (domain === 'climate') {
-        const at = s.attributes || {};
-        climate.push({
-          entity_id: id,
-          state: s.state,
-          // ⚠ Celsius, from the climate attributes. See the header.
-          currentC: typeof at.current_temperature === 'number' ? at.current_temperature : null,
-          targetC: typeof at.temperature === 'number' ? at.temperature : null,
-        });
+        climate.push(shapeClimate(s));
       }
     }
     rooms.push({ area: a.area, lights, climate });
@@ -306,6 +328,42 @@ async function setClimateTarget(entityId, celsius) {
   }
 }
 
+// HVAC modes NEURO may put a radiator into. Hive TRVs report exactly these
+// three (verified live 17 Oct 2026); anything else is refused rather than sent.
+const HVAC_MODES = new Set(['heat', 'auto', 'off']);
+
+/** Put one radiator into an HVAC mode (heat / auto / off). Range of values is closed. */
+async function setHvacMode(entityId, mode) {
+  if (typeof entityId !== 'string' || !entityId.startsWith('climate.')) {
+    return { ok: false, reason: 'not a climate entity' };
+  }
+  if (!HVAC_MODES.has(mode)) return { ok: false, reason: 'hvac mode "' + mode + '" is not one NEURO sets' };
+  if (!isConfigured()) return { ok: false, reason: 'not-configured' };
+  try {
+    await haService('climate', 'set_hvac_mode', { entity_id: entityId, hvac_mode: mode });
+    return { ok: true, entity: entityId, hvacMode: mode };
+  } catch (e) {
+    return { ok: false, reason: e.message, entity: entityId };
+  }
+}
+
+/**
+ * One radiator's state RIGHT NOW, shaped like a room reading — the read-back
+ * after a write, and the "has anyone changed it since?" check before a restore.
+ * Unreadable is { known:false, why }, never a default.
+ */
+async function readClimate(entityId) {
+  if (typeof entityId !== 'string' || !entityId.startsWith('climate.')) return { known: false, why: 'not a climate entity' };
+  if (!isConfigured()) return { known: false, why: 'not-configured' };
+  try {
+    const s = await haGet('/api/states/' + encodeURIComponent(entityId));
+    if (!s || !s.entity_id) return { known: false, why: 'no state for ' + entityId };
+    return { known: true, ...shapeClimate(s) };
+  } catch (e) {
+    return { known: false, why: e.message };
+  }
+}
+
 /**
  * What it is doing outside. Read from Home Assistant's own weather entity, so
  * there is no second API, no key and no network call to anyone else.
@@ -425,9 +483,12 @@ module.exports = {
   readWeather,
   turnOnLights,
   setClimateTarget,
+  setHvacMode,
+  readClimate,
   isConfigured,
   // pure, so each shaper pins on its own
   shapeRooms,
+  shapeClimate,
   shapePresence,
   shapeSun,
   shapeHousehold,

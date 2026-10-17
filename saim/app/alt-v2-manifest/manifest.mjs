@@ -291,12 +291,48 @@ export function manifest(payload) {
     } : null,
     handoff, ask, handoffNote: choice ? null : handoffNote, joinGap,
     rail,
+    // Only present when NEURO has something to say about the room he is in.
+    ...(roomView(p.rooms) ? { room: roomView(p.rooms) } : {}),
     drive: { activity: 'working', confidenceLevel: 'high', quiet: false, degraded: false, pressing: false, ...(DRIVE[d.lead.rule] || {}) },
   };
 }
 
+/**
+ * The room Nick is in (17 Oct 2026): NEURO's room offers, verbatim, each with
+ * its own two sentences ("Warm it" / "Not now"), plus what NEURO is already
+ * doing there ("Warming the living room to 20°C until you leave") and what it
+ * will not offer because it is already happening ("…already warming to 24°C").
+ * Every word comes from `rooms` as NEURO composed it; a press sends the offer's
+ * KEY and nothing else. Null when there is nothing to say about the room.
+ */
+export function roomView(rooms) {
+  if (!rooms || rooms.known !== true) return null;
+  const offers = (Array.isArray(rooms.offers) ? rooms.offers : []).map((o) => {
+    const say = shown(o && o.say);
+    if (!say || !o.key) return null;
+    return {
+      say,
+      kind: o.kind,
+      actions: [
+        { say: shown(o.acceptLabel) || 'Yes', intent: { kind: 'room', action: 'accept', key: o.key }, lead: true },
+        { say: shown(o.declineLabel) || 'Not now', intent: { kind: 'room', action: 'decline', key: o.key } },
+      ],
+    };
+  }).filter(Boolean);
+  const lines = [
+    ...(Array.isArray(rooms.heating) ? rooms.heating : []).map((h) => shown(h && h.say)),
+    ...(Array.isArray(rooms.notes) ? rooms.notes : []).map((n) => shown(n && n.say)),
+    // A yes the house refused stays visible until the visit ends.
+    ...(Array.isArray(rooms.decided) ? rooms.decided : [])
+      .filter((d) => d && d.decision === 'accepted' && d.outcome && d.outcome.ok === false)
+      .map((d) => shown(`Tried, but it didn’t take — ${d.outcome.reason || 'Home Assistant refused it'}.`)),
+  ].filter(Boolean);
+  if (!offers.length && !lines.length) return null;
+  return { offers, lines };
+}
+
 /** The intent kinds the Alt shell can carry out (App.onAct). Anything else is shown but never pressable. */
-export const ACTABLE = Object.freeze(['start-block', 'block-next', 'act', 'session', 'meeting', 'navigate']);
+export const ACTABLE = Object.freeze(['start-block', 'block-next', 'act', 'session', 'meeting', 'navigate', 'room']);
 export const actable = (a) => Boolean(a && a.intent && ACTABLE.includes(a.intent.kind));
 
 /**

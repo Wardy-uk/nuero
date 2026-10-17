@@ -73,7 +73,14 @@ const DARK_BEFORE_SUNRISE_MIN = 15;
 //   every room permanently correct and the rule can never fire. Every radiator
 //   in this house sat at 7°C frost when this was written, which is exactly the
 //   state that mistake would render invisible.
-const COMFORT_C = 19;
+//
+// ⚠ 17 Oct 2026 — TWO numbers now, both Nick's. A room is offered heat when it
+//   is below WARM_BELOW_C (19, the original threshold) and accepting warms it
+//   to COMFORT_C (20). The gap is deliberate: offering at 19.6°C to gain 0.4°C
+//   is a question nobody wants asked, and warming only to the threshold leaves
+//   the room hovering at the line the offer fires on.
+const WARM_BELOW_C = 19;
+const COMFORT_C = 20;
 
 // A reading above this is not a room temperature in Celsius. 45°C is hotter
 // than any living space and cooler than every Fahrenheit room reading in this
@@ -247,6 +254,79 @@ function temperatureReading(climate = []) {
   return { reading: null, known: false, suspect, unready, why: 'no radiator in this room' };
 }
 
+/**
+ * What accepting a heating offer would DO, decided from the radiator's own
+ * state (17 Oct 2026). PURE.
+ *
+ * Nick's design: "raise the target until I leave". Accept puts the coolest
+ * radiator in the room into `heat` at COMFORT_C, NEURO records what it was
+ * before, and puts it back when he leaves the room (rooms.js / room-heat.js).
+ *
+ * ⚠ NEVER LOWER. Found live on 17 Oct: the living room read 17.5°C while its
+ *   TRV was in a 24°C BOOST that someone had started two minutes earlier
+ *   (hvac_action heating). The old offer would have set 19 — lowering a target
+ *   a person had just raised. So a radiator already heating to ≥ COMFORT_C, or
+ *   already SET to ≥ COMFORT_C and merely idle (the valve's own sensor thinks
+ *   the room is warm), gets NO button: SAiM says what is already happening.
+ *
+ * ⚠ A radiator that is OFF is still offered — off in an occupied cold room is
+ *   usually a TRV left that way, not a decision about tonight — but the words
+ *   say it is off and that it goes back off afterwards, because turning on
+ *   something someone switched off must never be a surprise.
+ *
+ * @returns {{ offer:boolean, action?, say, acceptLabel?, declineLabel?, note?, gap? }}
+ */
+function heatingDecision(reading, area, opts = {}) {
+  const comfort = opts.comfortC ?? COMFORT_C;
+  const name = String(area || 'room').toLowerCase();
+  const cur = reading.currentC;
+  const curText = cur.toFixed(1) + '°C';
+  const state = String(reading.state || '').toLowerCase();
+  const target = typeof reading.targetC === 'number' && Number.isFinite(reading.targetC) ? reading.targetC : null;
+  const fmt = (c) => (Number.isInteger(c) ? String(c) : c.toFixed(1)) + '°C';
+
+  if (state !== 'off' && target !== null && target >= comfort) {
+    const warming = reading.presetMode === 'boost' || reading.hvacAction === 'heating';
+    return {
+      offer: false,
+      note: {
+        kind: warming ? 'already-warming' : 'already-set',
+        say: warming
+          ? 'The ' + name + ' is ' + curText + ' — it’s already warming to ' + fmt(target) + '.'
+          : 'The ' + name + ' is ' + curText + ' — its radiator is already set to ' + fmt(target) + '.',
+      },
+    };
+  }
+
+  // The radiator must be able to do what the offer says. Hive TRVs report
+  // [auto, heat, off]; a device that cannot `heat`, or whose own range excludes
+  // the target, is a named gap rather than a button that will fail.
+  if (Array.isArray(reading.hvacModes) && !reading.hvacModes.includes('heat')) {
+    return { offer: false, gap: name + ': the radiator does not offer a heat mode — nothing to offer' };
+  }
+  if ((reading.minC !== null && reading.minC !== undefined && comfort < reading.minC)
+      || (reading.maxC !== null && reading.maxC !== undefined && comfort > reading.maxC)) {
+    return { offer: false, gap: name + ': ' + fmt(comfort) + ' is outside what the radiator accepts' };
+  }
+
+  const isOff = state === 'off';
+  return {
+    offer: true,
+    action: {
+      kind: 'raise-until-leave',
+      entity: reading.entity_id,
+      toC: comfort,
+      hvacMode: 'heat',
+      restoresOnLeave: true,
+    },
+    say: isOff
+      ? 'The ' + name + ' is ' + curText + ' and its radiator is off. Turn it on to ' + fmt(comfort) + ' until you leave? It goes back off after.'
+      : 'The ' + name + ' is ' + curText + '. Warm it to ' + fmt(comfort) + ' until you leave?',
+    acceptLabel: isOff ? 'Turn it on' : 'Warm it',
+    declineLabel: 'Not now',
+  };
+}
+
 /** Stable, room-scoped key. The EPISODE is the caller's to close; see header. */
 function offerKey(kind, area) {
   const slug = String(area || 'unknown')
@@ -313,6 +393,8 @@ function assess(input = {}) {
   const gaps = Array.isArray(input.gaps) ? [...input.gaps] : [];
   const offers = [];
   const considered = [];
+  // Things SAiM says with NO button — "it's already warming to 24°C".
+  const notes = [];
 
   if (!Array.isArray(rooms)) {
     gaps.push('room readings unavailable — this is not "nothing to do"');
@@ -362,6 +444,8 @@ function assess(input = {}) {
         episode: (presence && presence.since) || null,
         entities: lights.off,
         say: 'Want the ' + here.area.toLowerCase() + ' lights on?',
+        acceptLabel: 'Turn them on',
+        declineLabel: 'Not now',
         why: dark.why,
       });
     } else if (lights.noneReachable && lights.total > 0) {
@@ -376,29 +460,48 @@ function assess(input = {}) {
   // invisible, unlike a light. The caller still owns the rung.
   if (temp.known && temp.reading) {
     const cur = temp.reading.currentC;
-    const comfort = options.comfortC ?? COMFORT_C;
-    if (cur < comfort) {
-      offers.push({
-        kind: 'warm-room',
-        key: offerKey('warm-room', here.area),
-        area: here.area,
-        act: mayAct.permitted,
-        actRating: true,
-        actWhy: mayAct.why,
-        subject,
-        episode: (presence && presence.since) || null,
-        entities: [temp.reading.entity_id],
-        currentC: cur,
-        targetC: comfort,
-        say: 'The ' + here.area.toLowerCase() + ' is ' + cur.toFixed(1) + '°C. Warm it up?',
-        why: 'below ' + comfort + '°C',
-      });
+    const below = options.warmBelowC ?? WARM_BELOW_C;
+    if (cur < below) {
+      const h = heatingDecision(temp.reading, here.area, options);
+      if (h.offer) {
+        offers.push({
+          kind: 'warm-room',
+          key: offerKey('warm-room', here.area),
+          area: here.area,
+          act: mayAct.permitted,
+          actRating: true,
+          actWhy: mayAct.why,
+          subject,
+          episode: (presence && presence.since) || null,
+          entities: [temp.reading.entity_id],
+          currentC: cur,
+          targetC: h.action.toC,
+          action: h.action,
+          // What the radiator is doing now — what accepting changes, and what
+          // leaving the room puts back. The restore itself re-reads; this is so
+          // a screen can say it.
+          radiator: {
+            hvacMode: temp.reading.state || null,
+            targetC: temp.reading.targetC ?? null,
+            presetMode: temp.reading.presetMode ?? null,
+            hvacAction: temp.reading.hvacAction ?? null,
+          },
+          say: h.say,
+          acceptLabel: h.acceptLabel,
+          declineLabel: h.declineLabel,
+          why: 'below ' + below + '°C',
+        });
+      } else if (h.note) {
+        notes.push({ kind: h.note.kind, area: here.area, entity: temp.reading.entity_id, currentC: cur, targetC: temp.reading.targetC ?? null, say: h.note.say });
+      } else if (h.gap) {
+        gaps.push(h.gap);
+      }
     }
   } else if (temp.why) {
     gaps.push(here.area + ': ' + temp.why);
   }
 
-  return { offers, gaps, considered };
+  return { offers, gaps, considered, notes };
 }
 
 function slugEq(a, b) {
@@ -412,6 +515,7 @@ module.exports = {
   isDark,
   lightsState,
   temperatureReading,
+  heatingDecision,
   readingLooksFahrenheit,
   offerKey,
   slugEq,
@@ -420,6 +524,7 @@ module.exports = {
   DARK_BEFORE_SUNSET_MIN,
   DARK_BEFORE_SUNRISE_MIN,
   COMFORT_C,
+  WARM_BELOW_C,
   FAHRENHEIT_SUSPICION_C,
   STALE_GRACE_MS,
 };
