@@ -64,7 +64,9 @@ async function call(path, { method = 'GET', body, token } = {}) {
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.ok === false) {
-    throw new ApiError(json.error || 'Something went wrong.', res.status);
+    // A gateway that cannot reach the Pi (502–504) is the same fact as no network.
+    const unreachable = res.status >= 502 && res.status <= 504 && !json.error;
+    throw new ApiError(json.error || (unreachable ? "I can't reach home right now. Try again in a moment." : 'Something went wrong.'), res.status);
   }
   return json;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
 import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot, decodeImage, FALLBACK_SRC, backgroundReport, logBackground, imageBySrc } from '../backgrounds';
+import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary } from './WallSheets';
 import './WallCinema.css';
 
 /**
@@ -302,16 +303,18 @@ export function nextLine(day, now) {
 
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
 
-function Presence({ who }) {
+function Presence({ who, onPerson }) {
   if (!who) return null;
   if (!who.known) return <p className="cine__gap">{who.why || "I can't see the house"} — that isn’t the same as everyone being out.</p>;
   return (
     <ul className="cine__people">
       {(who.people || []).map((p) => (
         <li key={p.id || p.name} className={`cine__person cine__person--${p.state}`}>
-          <span className="cine__avatar"><Face person={p} /><span className="cine__dot" /></span>
-          <span className="cine__pname">{p.name}</span>
-          <span className="cine__pstate">{p.state === 'home' ? 'Home' : p.state === 'out' ? 'Out' : 'Not sure'}</span>
+          <button className="cine__personbtn" onClick={() => onPerson && onPerson(p)} aria-label={`${p.name}: ${p.state === 'home' ? 'home' : p.state === 'out' ? 'out' : 'not sure'}`}>
+            <span className="cine__avatar"><Face person={p} /><span className="cine__dot" /></span>
+            <span className="cine__pname">{p.name}</span>
+            <span className="cine__pstate">{p.state === 'home' ? 'Home' : p.state === 'out' ? 'Out' : 'Not sure'}</span>
+          </button>
         </li>
       ))}
     </ul>
@@ -320,13 +323,13 @@ function Presence({ who }) {
 
 const trendWord = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : null);
 
-function Outside({ station }) {
+function Outside({ station, onOpen }) {
   if (!station) return null;
   if (!station.known) {
     return <div className="cine__outside"><p className="cine__gap">{station.why || 'the weather station could not be read'}.</p></div>;
   }
   return (
-    <div className="cine__outside" aria-label="Outside">
+    <div className="cine__outside cine__tap" aria-label="Outside — tap for details" role="button" tabIndex={0} onClick={onOpen}>
       {weatherIcon(station.condition) && (
         <span className="cine__wicon" role="img" aria-label={station.conditionLabel || station.condition} title={station.conditionLabel || ''}>
           {I[weatherIcon(station.condition)]}
@@ -417,7 +420,7 @@ function Jobs({ tasks, gap, today, onOpen, onJob }) {
   const more = total - Math.min(list.length, JOBS_SHOWN);
   return (
     <section className="cine__panel cine__panel--jobs" aria-label="Household jobs">
-      <button className="cine__phead" onClick={clickable ? onOpen : undefined} aria-label="Open all household jobs">
+      <button className="cine__phead" onClick={onOpen} aria-label="Open all household jobs">
         <Icon name="tools" className="cine__icon--amber" />
         <span className="cine__ptitle">Household jobs</span>
         {more > 0 && <span className="cine__headmore">{`+${more} more`}</span>}
@@ -439,14 +442,15 @@ function Jobs({ tasks, gap, today, onOpen, onJob }) {
 
 const FUEL = { electricity: { name: 'Electricity', icon: 'plug' }, gas: { name: 'Gas', icon: 'flame' } };
 
-function Energy({ energy, gap }) {
+function Energy({ energy, gap, onOpen }) {
   const fuels = energy ? Object.entries(energy.fuels || {}) : [];
   return (
     <section className="cine__panel" aria-label="Energy">
-      <div className="cine__phead cine__phead--static">
+      <button className="cine__phead" onClick={onOpen} aria-label="Open energy details">
         <Icon name="bolt" className="cine__icon--amber" />
         <span className="cine__ptitle">Energy yesterday</span>
-      </div>
+        <Icon name="chevron" className="cine__chev" />
+      </button>
       {gap || !energy ? <p className="cine__gap">I couldn’t read the meters.</p>
         : !fuels.length ? <div className="cine__pbody"><p className="cine__sub">{energy.connected ? 'Awaiting meter data' : 'Meters not connected yet'}</p></div>
         : !fuels.some(([, f]) => (f.yesterday && f.yesterday.kwh != null) || (f.month && f.month.kwh != null))
@@ -533,16 +537,45 @@ function NextDays({ week, today, onOpen, onDay }) {
 }
 
 /** A sheet over the wall: every job, or one day in full. Tap outside or Done to close. */
-function Sheet({ sheet, data, onClose, onOpenWeek }) {
+function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirty }) {
+  const [confirm, setConfirm] = useState(false);
+  useEffect(() => { setConfirm(false); }, [sheet]);
+  // The last version of the open job NEURO returned, so a job that has just been
+  // completed (and has left the list) still shows its latest details.
+  const lastJob = useRef(null);
   if (!sheet) return null;
-  let title = ''; let body = null;
+  const close = () => { if (dirty) { setConfirm(true); return; } onClose(); };
+  const list = (data && data.tasks && data.tasks.tasks) || [];
+  const people = (data && data.people) || [];
+  let title = ''; let body = null; let top = false;
   if (sheet.kind === 'jobs') {
-    const list = (data && data.tasks && data.tasks.tasks) || [];
-    title = `Household jobs · ${list.length}`;
-    body = <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} full />)}</ul>;
+    title = `Household jobs \u00b7 ${list.length}`;
+    body = act
+      ? <AllJobsSheet tasks={data.tasks} today={data.today} act={act} onOpenJob={(t) => setSheet({ kind: 'job', task: t })} onAdd={() => setSheet({ kind: 'add' })} />
+      : <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} full />)}</ul>;
   } else if (sheet.kind === 'job') {
     title = 'Household job';
-    body = <ul className="cine__jobs cine__jobs--all"><JobItem t={sheet.task} today={data.today} full /></ul>;
+    // The LIVE task after each re-read; the snapshot only once it has gone (done).
+    const found = list.find((t) => t.id === sheet.task.id);
+    if (found) lastJob.current = found;
+    const live = found || (lastJob.current && lastJob.current.id === sheet.task.id ? lastJob.current : sheet.task);
+    body = act
+      ? <JobSheet task={live} people={people} today={data.today} act={act} onDone={onClose} />
+      : <ul className="cine__jobs cine__jobs--all"><JobItem t={live} today={data.today} full /></ul>;
+  } else if (sheet.kind === 'add' && act) {
+    title = 'New household job'; top = true;
+    body = <AddJobSheet people={people} today={data.today} act={act} prefill={sheet.prefill || ''} setDirty={setDirty}
+                        onSaved={() => setSheet({ kind: 'jobs' })} onCancel={() => { setDirty(false); onClose(); }} />;
+  } else if (sheet.kind === 'member') {
+    title = sheet.person.name;
+    body = <MemberSheet person={sheet.person} tasks={data.tasks} today={data.today} onOpenJob={(t) => setSheet({ kind: 'job', task: t })}
+                        onAddFor={(p) => setSheet({ kind: 'add', prefill: p.role === 'companion' ? `${p.name}: ` : '' })} />;
+  } else if (sheet.kind === 'weather') {
+    title = 'Outside';
+    body = <WeatherSheet station={data.station} dew={data.station ? dewPoint(data.station.tempC, data.station.humidityPct) : null} />;
+  } else if (sheet.kind === 'energy') {
+    title = 'Energy';
+    body = <EnergySheet energy={data.energy} />;
   } else if (sheet.kind === 'day') {
     const d = sheet.day; const { dow, day, month } = dayOfKey(d.date);
     title = `${DAYS_LONG[dow]} ${day} ${MONTHS_LONG[month]}`;
@@ -565,12 +598,19 @@ function Sheet({ sheet, data, onClose, onOpenWeek }) {
     );
   }
   return (
-    <div className="cine__sheetwrap" onClick={onClose}>
+    <div className={`cine__sheetwrap${top ? ' cine__sheetwrap--top' : ''}`} onClick={close}>
       <section className="cine__sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <header className="cine__sheethead">
           <span className="cine__ptitle">{title}</span>
-          <button className="cine__sheetbtn" onClick={onClose}>Done</button>
+          <button className="cine__sheetbtn" onClick={close} aria-label="Close">Close</button>
         </header>
+        {confirm && (
+          <div className="cine__confirm" role="alertdialog" aria-label="Discard changes?">
+            <span>Discard this new job?</span>
+            <button className="cine__sheetbtn" onClick={() => setConfirm(false)}>Keep editing</button>
+            <button className="cine__sheetbtn cine__sheetbtn--danger" onClick={() => { setDirty(false); onClose(); }}>Discard</button>
+          </div>
+        )}
         {body}
       </section>
     </div>
@@ -578,15 +618,17 @@ function Sheet({ sheet, data, onClose, onOpenWeek }) {
 }
 
 /** PURE view. Exported for the render test. */
-export function CinemaView({ data, now, error = null, onExit = null, cal = null }) {
+export function CinemaView({ data, now, error = null, onExit = null, cal = null, act = null }) {
   const gapFor = (b) => ((data && data.gaps) || []).find((g) => g.block === b)?.why || null;
   const can = (s) => ((data && data.scopes) || []).includes(s);
   const phase = skyPhase(now, data && data.sun);
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const [sheet, setSheet] = useState(null);
-  // A sheet left open closes itself after two minutes, like the rest of the wall.
-  useEffect(() => { if (!sheet) return undefined; const t = setTimeout(() => setSheet(null), 2 * 60 * 1000); return () => clearTimeout(t); }, [sheet]);
+  const [dirty, setDirty] = useState(false);
+  // A sheet left open closes itself after two minutes, like the rest of the wall —
+  // never while it holds unsaved work.
+  useEffect(() => { if (!sheet || dirty) return undefined; const t = setTimeout(() => setSheet(null), 2 * 60 * 1000); return () => clearTimeout(t); }, [sheet, dirty]);
   const overlay = cal && cal.view !== 'today';
   const open = () => cal && cal.onView && cal.onView('week');
   // The panels read the seven days from today; while another range is loading
@@ -610,9 +652,9 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
               <span className="cine__rule" />
               {data && can('house') && <h1 className="cine__headline">{presenceLine(data.who)}</h1>}
               {week && <p className="cine__subline">{nextLine(week[0], now)}</p>}
-              {data && can('house') && <Presence who={data.who} />}
+              {data && can('house') && <Presence who={data.who} onPerson={(p) => setSheet({ kind: 'member', person: p })} />}
             </div>
-            {data && can('house') && <Outside station={data.station} />}
+            {data && can('house') && <Outside station={data.station} onOpen={() => setSheet({ kind: 'weather' })} />}
           </header>
           {error && <p className="cine__stale" role="status">Can’t reach home — showing what I last had.</p>}
           {!data ? <p className="cine__loading">Getting things…</p> : (
@@ -621,14 +663,19 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null 
                 {can('calendar') && <DayCard day={week && week[0]} title="Today" now={now} onOpen={open} emptyLine="Nothing planned today" />}
                 {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" />}
                 <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} onOpen={() => setSheet({ kind: 'jobs' })} onJob={(t) => setSheet({ kind: 'job', task: t })} />
-                {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} />}
+                {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} onOpen={() => setSheet({ kind: 'energy' })} />}
               </div>
               {can('calendar') && <NextDays week={week} today={data.today} onOpen={open} onDay={(d) => setSheet({ kind: 'day', day: d })} />}
             </>
           )}
         </div>
       )}
-      {!overlay && <Sheet sheet={sheet} data={data} onClose={() => setSheet(null)} onOpenWeek={() => { setSheet(null); open(); }} />}
+      {!overlay && sheet && (
+        <SheetBoundary key={sheet.kind} onFail={() => { setDirty(false); setSheet(null); }}>
+          <Sheet sheet={sheet} data={data} act={act} setSheet={setSheet} dirty={dirty} setDirty={setDirty}
+                 onClose={() => { setDirty(false); setSheet(null); }} onOpenWeek={() => { setSheet(null); open(); }} />
+        </SheetBoundary>
+      )}
       {onExit && <button className="cine__exit" onClick={onExit} aria-label="Leave wall view">⋯</button>}
     </div>
   );

@@ -713,6 +713,22 @@ export default function Wall({ onExit, onSignedOut }) {
   const empty = look === 'cinema' && people.length > 0 && !people.some((p) => p.state === 'home');
   const dim = (isNight(now) || empty) && Date.now() > wakeUntil;
   const View = look === 'cinema' ? CinemaView : WallView;
+  // Household changes from the cinema sheets. Each goes to NEURO (/api/v) and
+  // the wall is re-read afterwards; nothing is changed locally first.
+  const act = {
+    task: async (id, patch) => {
+      lastTouch.current = Date.now();
+      const res = await api.updateTask(api.getToken(), id, patch);
+      await refresh();
+      return res;
+    },
+    addTask: async ({ text, dueDate, assignees }) => {
+      lastTouch.current = Date.now();
+      const res = await api.addTask(api.getToken(), text, assignees, dueDate);
+      await refresh();
+      return res;
+    },
+  };
   return (
     <div className={`wall-shell${dim ? ' wall-shell--dim' : ''}`}
          onClickCapture={(e) => {
@@ -724,7 +740,7 @@ export default function Wall({ onExit, onSignedOut }) {
            // Every tap re-arms the keep-awake video (it can only start from one).
            if (!awake) arm();
          }}>
-      <View data={data} now={now} error={error} onExit={onExit}
+      <View data={data} now={now} error={error} onExit={onExit} act={act}
         cal={{
           view, offset, range,
           onStep: (n) => { lastTouch.current = Date.now(); setOffset((o) => o + n); },
@@ -753,4 +769,5 @@ export default function Wall({ onExit, onSignedOut }) {
 
 // Shared with the cinema look (WallCinema.jsx), which reuses these unchanged.
 export { Face, Calendar, dayOfKey, time, DAYS, MONTHS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp };
+export { dueChoices } from './WallSheets';
 export { CinemaView, presenceLine, nextLine, sunTimes, skyPhase, photoSlot, stripItems, weatherIcon, dewPoint };

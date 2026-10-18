@@ -297,6 +297,8 @@ router.get('/wall', requireAccount, (req, res) => {
   try {
     // The jobs card scrolls (Nick, 17 Oct 2026), so it carries the whole open list up to 50.
     out.tasks = vesta.topTasks(capture.submissions(req.account), today, 50);
+    // Who a household job can be for (Nick + the household accounts), as /home gives it.
+    out.people = capture.people();
     // A short label for the wall beside each task's own wording (display only;
     // the record is untouched — see services/task-titles.js).
     try {

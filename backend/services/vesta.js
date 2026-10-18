@@ -234,6 +234,8 @@ function topTasks(tasks = [], todayKey, limit = 8) {
       overdue: !!(t.dueDate && t.dueDate < todayKey),
       dueToday: t.dueDate === todayKey,
       who: Array.isArray(t.assigneeLabels) ? t.assigneeLabels : [],
+      // The ids behind `who`, so the wall can show and change who a job is for.
+      assignees: Array.isArray(t.assignees) ? t.assignees : [],
     })),
   };
 }
