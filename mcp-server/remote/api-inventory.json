@@ -412,7 +412,7 @@
     "route": "/api/v/family-calendar/events/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 526,
+    "line": 537,
     "description": "DELETE /api/v/family-calendar/events/:id.",
     "params": [
       "id"
@@ -937,7 +937,7 @@
     "route": "/api/auth/check",
     "domain": "auth",
     "source": "server.js",
-    "line": 99,
+    "line": 101,
     "description": "GET /api/auth/check.",
     "params": [],
     "query": [
@@ -5536,7 +5536,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 267,
+    "line": 269,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -6008,7 +6008,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 444,
+    "line": 453,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -6040,7 +6040,7 @@
     "route": "/api/v/photo/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 423,
+    "line": 432,
     "description": "GET /api/v/photo/:id.",
     "params": [
       "id"
@@ -6064,7 +6064,8 @@
     "query": [
       "days",
       "from",
-      "held"
+      "held",
+      "perf"
     ],
     "body": [],
     "queryOpen": true,
@@ -6979,7 +6980,7 @@
     "route": "/api/v/family-calendar/events/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 516,
+    "line": 527,
     "description": "PATCH /api/v/family-calendar/events/:id.",
     "params": [
       "id"
@@ -6997,7 +6998,7 @@
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 483,
+    "line": 494,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -7680,7 +7681,7 @@
     "route": "/api/auth/login",
     "domain": "auth",
     "source": "server.js",
-    "line": 91,
+    "line": 93,
     "description": "POST /api/auth/login.",
     "params": [],
     "query": [],
@@ -14213,7 +14214,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 564,
+    "line": 575,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -14234,7 +14235,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 598,
+    "line": 609,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -14255,7 +14256,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 574,
+    "line": 585,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -14276,7 +14277,7 @@
     "route": "/api/v/family-calendar/events",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 506,
+    "line": 517,
     "description": "POST /api/v/family-calendar/events.",
     "params": [],
     "query": [],
@@ -14311,7 +14312,7 @@
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 458,
+    "line": 467,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],
