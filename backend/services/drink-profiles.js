@@ -53,7 +53,9 @@ function buildPrompt(names) {
   return [
     'You are building a reference table of foods and drinks logged in a UK food diary app.',
     'For EACH name below, say whether it is an ALCOHOLIC drink as served (a glass, bottle, can, measure or cocktail).',
-    'Food cooked with alcohol (gravy, casserole, cake, trifle, sauce) is NOT a drink. Alcohol-free versions are drinks with abv 0.',
+    'Food cooked with alcohol (gravy, casserole, cake, trifle, sauce) is NOT a drink.',
+    'Tea, coffee, hot chocolate, soft drinks, squash, juice, milk and water are NOT alcoholic drinks: isDrink false.',
+    'Only an alcohol-free VERSION of an alcoholic product (alcohol-free beer, wine, gin) is isDrink true with abv 0.',
     'For a drink give: kind (short, e.g. "whisky", "white wine", "lager", "liqueur"), abv as a percentage for the typical UK product of that name,',
     'and kcalPer100ml — the typical energy of the product per 100 ml as served. If the name states a strength (e.g. "12%"), use it.',
     'If you do not know a value, give null — never guess wildly. Non-drinks: isDrink false, other fields null.',
