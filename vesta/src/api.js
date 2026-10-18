@@ -45,10 +45,15 @@ export class ApiError extends Error {
   }
 }
 
-async function call(path, { method = 'GET', body, token } = {}) {
+async function call(path, { method = 'GET', body, token, timeoutMs = 0 } = {}) {
   let res;
+  // An optional deadline (family-calendar writes): a request that never answers
+  // must end in a message, not a "Saving…" that never stops.
+  const ctl = timeoutMs && typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
   try {
     res = await fetch(`${API_BASE}/api/v${path}`, {
+      ...(ctl ? { signal: ctl.signal } : {}),
       method,
       headers: {
         'Content-Type': 'application/json',
@@ -56,10 +61,15 @@ async function call(path, { method = 'GET', body, token } = {}) {
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-  } catch {
+  } catch (e) {
+    if (ctl && ctl.signal.aborted) {
+      throw new ApiError('No answer from home in time — it may or may not have saved. Check the calendar before trying again.', 0);
+    }
     // ⚠ Distinct from every server-sent failure, and it has to be: "the Pi is
     // unreachable" and "the fridge is empty" must never read alike.
     throw new ApiError("I can't reach home right now. Try again in a moment.", 0);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   const json = await res.json().catch(() => ({}));
@@ -158,11 +168,11 @@ export const updateTask = (token, id, patch) =>
  * after a lost answer cannot make a second event.
  */
 export const addFamilyEvent = (token, body) =>
-  call('/family-calendar/events', { method: 'POST', body, token });
+  call('/family-calendar/events', { method: 'POST', body, token, timeoutMs: 60000 });
 export const updateFamilyEvent = (token, id, body) =>
-  call(`/family-calendar/events/${encodeURIComponent(id)}`, { method: 'PATCH', body, token });
+  call(`/family-calendar/events/${encodeURIComponent(id)}`, { method: 'PATCH', body, token, timeoutMs: 60000 });
 export const deleteFamilyEvent = (token, id) =>
-  call(`/family-calendar/events/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+  call(`/family-calendar/events/${encodeURIComponent(id)}`, { method: 'DELETE', token, timeoutMs: 60000 });
 
 export const addItem = (token, slug, section, name) =>
   call(`/catalogue/${encodeURIComponent(slug)}/add`, {

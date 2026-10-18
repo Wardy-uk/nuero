@@ -188,6 +188,7 @@ function parsePasted(text) {
 
 async function _tokenCall(params) {
   const res = await _fetch(TOKEN_URL, {
+    signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString(),
   });
   const json = await res.json().catch(() => ({}));
@@ -245,6 +246,8 @@ async function _api(method, path, { query = null, body = null } = {}) {
   const token = await _accessToken();
   const url = `${API}${path}${query ? `?${new URLSearchParams(query)}` : ''}`;
   const res = await _fetch(url, {
+    // Google that never answers must not hold the wall's "Saving…" open.
+    signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,

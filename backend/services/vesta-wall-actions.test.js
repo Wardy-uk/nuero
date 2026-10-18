@@ -164,13 +164,13 @@ test('the event sheet: editable family events get a form; phone events say where
   });
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
-  const { EventSheet, eventForm, eventPatch, newWallEventId } = mod.exports;
+  const { EventSheet, eventForm, eventPatch, newWallEventId, eventProblem } = mod.exports;
   const act = { event: { add: async () => ({ ok: true }), update: async () => ({ ok: true }), remove: async () => ({ ok: true }) } };
   const fam = { id: 'google:neu1', calendarId: 'neu1abc', editable: true, title: 'Dentist', start: '2026-10-20T10:00:00', end: '2026-10-20T10:30:00', allDay: false, location: 'Coalville' };
   const phone = { id: 'apple:x', title: 'Football', start: '2026-10-20T15:00:00', end: '2026-10-20T16:00:00', allDay: false };
   const edit = renderToString(React.createElement(EventSheet, { event: fam, today: '2026-10-18', act, canEdit: true }));
   assert.ok(edit.includes('value="Dentist"') && edit.includes('>Delete<') && edit.includes('value="10:00"') && edit.includes('value="Coalville"'));
-  assert.ok(/disabled=""[^>]*>Save</.test(edit), 'nothing changed yet: Save is off');
+  assert.ok(!/disabled=""[^>]*>Save</.test(edit), 'Save is never silently disabled — a tap says what is wrong (the 18 Oct iPad bug)');
   const ro = renderToString(React.createElement(EventSheet, { event: phone, today: '2026-10-18', act, canEdit: true }));
   assert.ok(ro.includes('Football') && ro.includes('phone calendar') && !ro.includes('>Delete<'), 'a phone event is view-only');
   const nope = renderToString(React.createElement(EventSheet, { event: fam, today: '2026-10-18', act, canEdit: false, why: 'The family calendar isn’t connected yet.' }));
@@ -185,4 +185,14 @@ test('the event sheet: editable family events get a form; phone events say where
   const allDay = eventForm({ ...fam, allDay: true, start: '2026-10-20T00:00:00', end: '2026-10-23T00:00:00' }, null);
   assert.equal(allDay.endDate, '2026-10-22', 'Google’s exclusive end is shown as the last day');
   assert.match(newWallEventId(), /^[a-v0-9]{5,}$/, 'an id Google accepts');
+  const add2 = renderToString(React.createElement(EventSheet, { date: '2026-10-21', today: '2026-10-18', act, canEdit: true }));
+  assert.ok(!/disabled=""[^>]*>Save</.test(add2), 'a new event’s Save is tappable before anything is filled in');
+  // What a tap on Save says.
+  const blank = eventForm(null, '2026-10-21');
+  assert.equal(eventProblem(blank).message, 'Give the event a name.');
+  assert.equal(eventProblem({ ...blank, title: 'Swim' }).field, 'start', 'a name with no start time — the iPad case');
+  assert.equal(eventProblem({ ...blank, title: 'Swim', allDay: true }), null, 'all day needs no time');
+  assert.equal(eventProblem({ ...blank, title: 'Swim', start: '10:00', end: '09:00' }).field, 'end');
+  assert.equal(eventProblem({ ...blank, title: 'Swim', start: '10:00' }), null);
+  assert.equal(eventProblem(before, { isNew: false, changed: false }).message, 'Nothing has changed yet.');
 });

@@ -353,18 +353,41 @@ const whenWords = (e) => {
   return e.allDay ? `${d} · all day` : `${d} · ${hm(e.start)}${e.end ? `–${hm(e.end)}` : ''}`;
 };
 
+/**
+ * What is wrong with the form, in words, or null. PURE. Save is never silently
+ * disabled for this — a tap says what is missing (18 Oct 2026: on the iPad a
+ * name with no start time left Save faded but tappable-looking, and the tap did
+ * nothing at all).
+ */
+export function eventProblem(f, { isNew = true, changed = true } = {}) {
+  if (!String(f.title || '').trim()) return { field: 'title', message: 'Give the event a name.' };
+  if (!f.date) return { field: 'date', message: 'Pick a day.' };
+  if (f.allDay) {
+    if (f.endDate && f.endDate < f.date) return { field: 'endDate', message: 'The last day can’t be before the first.' };
+  } else {
+    if (!f.start) return { field: 'start', message: 'Pick a start time, or choose All day.' };
+    if (f.end && f.end <= f.start) return { field: 'end', message: 'It has to end after it starts.' };
+  }
+  if (!isNew && !changed) return { field: null, message: 'Nothing has changed yet.' };
+  return null;
+}
+
 export function EventSheet({ event = null, date, today, act, canEdit = false, why = null, onDone, setDirty }) {
   const s = useSaver();
   const idRef = useRef(null);
   const [start] = useState(() => eventForm(event, date || today));
   const [f, setF] = useState(start);
   const [askDelete, setAskDelete] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [saved, setSaved] = useState(null);
   const editable = !event || !!event.editable;
   const isNew = !event;
   const patch = isNew ? null : eventPatch(start, f);
   const changed = isNew ? Boolean(f.title.trim()) : Object.keys(patch).length > 0;
   useEffect(() => { if (setDirty) setDirty(changed); }, [changed]);
   useEffect(() => () => { if (setDirty) setDirty(false); }, []);
+  // Any edit clears the last validation message and the last save error.
+  useEffect(() => { setProblem(null); s.setError(null); }, [f]);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const setDay = (d) => setF((x) => ({ ...x, date: d, endDate: x.endDate < d ? d : x.endDate }));
   // Moving the start keeps the length, so the end never lands before it.
@@ -390,8 +413,14 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
     );
   }
 
-  const valid = Boolean(f.title.trim() && f.date && (f.allDay ? f.endDate >= f.date : (f.start && (!f.end || f.end > f.start))));
-  const save = () => s.run(() => {
+  const bad = (field) => (problem && problem.field === field ? ' cine__invalid' : '');
+  // Shown for a moment so a save is SEEN to have worked, then the sheet closes.
+  const finish = (words) => { if (setDirty) setDirty(false); setSaved(words); setTimeout(onDone, 1200); };
+  const save = () => {
+    if (s.busy || saved) return;
+    const p = eventProblem(f, { isNew, changed });
+    if (p) { setProblem(p); return; }
+    return s.run(() => {
     if (isNew) {
       if (!idRef.current) idRef.current = newWallEventId();   // the same id on every retry
       const body = { id: idRef.current, title: f.title.trim(), date: f.date, allDay: f.allDay, location: f.location.trim() };
@@ -399,12 +428,13 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
       return act.event.add(body);
     }
     return act.event.update(event.calendarId, patch);
-  }).then((r) => { if (r) { if (setDirty) setDirty(false); onDone(); } });
-  const remove = () => s.run(() => act.event.remove(event.calendarId)).then((r) => { if (r) { if (setDirty) setDirty(false); onDone(); } });
+    }).then((r) => { if (r) finish('Saved — checked with Google.'); });
+  };
+  const remove = () => s.run(() => act.event.remove(event.calendarId)).then((r) => { if (r) finish('Deleted — checked with Google.'); });
 
   return (
     <div className="cine__form">
-      <input className="cine__textin" value={f.title} maxLength={200} placeholder="What’s happening?" disabled={s.busy} autoFocus={isNew}
+      <input className={`cine__textin${bad('title')}`} value={f.title} maxLength={200} placeholder="What’s happening?" disabled={s.busy} autoFocus={isNew}
              onChange={(e) => set('title')(e.target.value)} />
       <p className="cine__formlabel">Day</p>
       <div className="cine__chips" role="group" aria-label="Day">
@@ -418,11 +448,11 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
       <div className="cine__chips" role="group" aria-label="Time">
         <button className={`cine__chip2${f.allDay ? ' cine__chip2--on' : ''}`} disabled={s.busy} aria-pressed={f.allDay} onClick={() => set('allDay')(!f.allDay)}>All day</button>
         {f.allDay ? (
-          <label className="cine__timelabel">until <input type="date" className="cine__datein" value={f.endDate} min={f.date} disabled={s.busy} onChange={(e) => { if (e.target.value) set('endDate')(e.target.value); }} /></label>
+          <label className="cine__timelabel">until <input type="date" className={`cine__datein${bad('endDate')}`} value={f.endDate} min={f.date} disabled={s.busy} onChange={(e) => { if (e.target.value) set('endDate')(e.target.value); }} /></label>
         ) : (
           <>
-            <label className="cine__timelabel">from <input type="time" className="cine__timein" value={f.start} disabled={s.busy} onChange={(e) => moveStart(e.target.value)} /></label>
-            <label className="cine__timelabel">to <input type="time" className="cine__timein" value={f.end} disabled={s.busy} onChange={(e) => set('end')(e.target.value)} /></label>
+            <label className="cine__timelabel">from <input type="time" className={`cine__timein${bad('start')}`} value={f.start} disabled={s.busy} onChange={(e) => moveStart(e.target.value)} /></label>
+            <label className="cine__timelabel">to <input type="time" className={`cine__timein${bad('end')}`} value={f.end} disabled={s.busy} onChange={(e) => set('end')(e.target.value)} /></label>
           </>
         )}
       </div>
@@ -438,10 +468,11 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
       ) : (
         <div className="cine__formfoot">
           {!isNew && <button className="cine__sheetbtn cine__sheetbtn--danger" disabled={s.busy} onClick={() => setAskDelete(true)}>Delete</button>}
-          <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy || !valid || !changed} onClick={save}>{s.busy ? 'Saving…' : 'Save'}</button>
+          <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy || !!saved} onClick={save}>{s.busy ? 'Saving…' : saved ? 'Saved' : 'Save'}</button>
         </div>
       )}
-      <SaveState busy={false} error={s.error} />
+      {problem && <p className="cine__savestate cine__savestate--err" role="alert">{problem.message}</p>}
+      <SaveState busy={s.busy} error={s.error} ok={saved} />
       {isNew && <p className="cine__note">Goes into the shared family calendar.</p>}
     </div>
   );
