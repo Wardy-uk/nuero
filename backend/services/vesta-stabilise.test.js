@@ -33,6 +33,9 @@ test('all-day family events are kept; work "free" placeholders are not', () => {
   const wed = week.find((d) => d.date === '2026-10-21');
   assert.ok(wed.events.some((e) => e.title === 'Test' && e.allDay), 'Wednesday has the all-day event');
   assert.ok(!week.find((d) => d.date === '2026-10-22').events.some((e) => e.title === 'Test'), 'not on Thursday');
+  // A birthday in two phone calendars shows once.
+  const twice = [1, 2].map((n) => ({ event_id: `apple:b${n}`, source: 'apple', subject: "Julie's birthday", start_time: '2026-10-25T00:00:00', end_time: '2026-10-25T23:59:59', is_all_day: 1, show_as: 'free' }));
+  assert.equal(vesta.redactWeek(twice, '2026-10-20', 7).find((d) => d.date === '2026-10-25').events.length, 1);
 });
 
 test('a health delivery is one transaction (pinned) and the per-row guard stays inside it', () => {

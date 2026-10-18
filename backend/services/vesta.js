@@ -198,7 +198,12 @@ function redactWeek(rows = [], startKey, n = 7, { isWorkingDay = null, offOn = n
     const e = raw.personal && !raw.allDay && DATE_TITLE.test(String(raw.title || ''))
       ? { ...raw, allDay: true, start: `${String(raw.start || '').slice(0, 10)}T00:00:00`, end: null }
       : raw;
-    for (const k of daysOf(e, keys)) byDay[k].push(e);
+    for (const k of daysOf(e, keys)) {
+      // The same all-day entry held by two phone calendars (a birthday in both
+      // Birthdays and a shared calendar) is shown once — same day, same words.
+      if (e.allDay && byDay[k].some((x) => x.allDay && String(x.title || '').trim().toLowerCase() === String(e.title || '').trim().toLowerCase())) continue;
+      byDay[k].push(e);
+    }
   }
   return keys.map((date) => {
     const family = byDay[date].filter((e) => e.personal);
