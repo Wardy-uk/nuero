@@ -221,6 +221,13 @@ function start() {
   // Hourly at :35 — judge whether yesterday's prompts made any difference, and
   // quieten anything that has earned it. Idempotent over pending deliveries, so
   // deliberately NOT a TRACKED_JOBS catch-up job: a missed hour self-corrects.
+  // Every 15 min: look up any newly logged food NAME as a drink (ABV, kcal per
+  // 100 ml) into drink_profiles. Ingest kicks it too; this is the backstop.
+  // Idempotent — a name already answered is never asked again.
+  cron.schedule('4,19,34,49 * * * *', () => {
+    require('./drink-profiles').lookupPending().catch((e) => console.warn('[Scheduler] drink lookup failed:', e.message));
+  });
+
   cron.schedule('35 * * * *', () => {
     try {
       const result = require('./attention-learning').sweep();

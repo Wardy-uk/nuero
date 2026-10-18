@@ -662,11 +662,47 @@ router.get('/nutrition', (req, res) => {
 });
 
 // GET /api/health/drinks — drinks and UK alcohol units, read by each drink's NAME
-// from a food app that names its items (Foodnoms), with the calories as a check.
-// Keywords: alcohol, units, drinks, wine, whisky, beer.
+// from a food app that names its items (Foodnoms); strength from the looked-up
+// drink database. Keywords: alcohol, units, drinks, wine, whisky, beer.
 router.get('/drinks', (req, res) => {
   try {
     res.json(require('../services/drinks').read({ days: 30 }));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/health/drinks/profiles — the drink database: every logged food name
+// looked up as a drink (ABV, kcal per 100 ml), and Nick's corrections.
+// Keywords: alcohol, abv, strength, drink database, drink profiles.
+router.get('/drinks/profiles', (req, res) => {
+  try {
+    const p = require('../services/drink-profiles');
+    res.json({ ok: true, profiles: p.list({ drinksOnly: req.query.all !== '1' }), pending: p.pendingNames(1000).length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/health/drinks/profiles — correct what a drink is: its ABV, kcal per
+// 100 ml, or that it is not a drink. Never overwritten by a later lookup.
+// Keywords: alcohol, abv, strength, correct drink, drink database.
+router.post('/drinks/profiles', (req, res) => {
+  const { name, isDrink, abv, kcalPer100ml, kind } = req.body || {};
+  try {
+    const profile = require('../services/drink-profiles').setByNick(name, { isDrink, abv, kcalPer100ml, kind });
+    res.json({ ok: true, profile });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/health/drinks/lookup — look up any logged food names not yet in the
+// drink database now, rather than waiting for the 15-minute pass.
+// Keywords: alcohol, abv, drink lookup, drink database.
+router.post('/drinks/lookup', async (req, res) => {
+  try {
+    res.json(await require('../services/drink-profiles').lookupPending());
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

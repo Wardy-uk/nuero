@@ -10,3 +10,7 @@
 .dr-ok { color: var(--success); }
 .dr-warn { color: var(--warning); }
 .dr-note { font-size: 11px; }
+.dr-fix { margin-left: 6px; font-size: 11px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.dr-form { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 6px; }
+.dr-form input { width: 64px; margin: 0 3px; }
+.dr-form button { font-size: 11px; padding: 1px 8px; }

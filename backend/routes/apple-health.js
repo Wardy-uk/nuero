@@ -159,7 +159,11 @@ router.post('/ingest', (req, res) => {
     };
     db.batchSaves(() => { ingestRows(); ingestFood(); });
     const skipped = parsed.samples.length - inserted;
-    if (nutritionNew) console.log(`[AppleHealth] ${nutritionNew} new food entr${nutritionNew === 1 ? 'y' : 'ies'}`);
+    if (nutritionNew) {
+      console.log(`[AppleHealth] ${nutritionNew} new food entr${nutritionNew === 1 ? 'y' : 'ies'}`);
+      // New names get looked up as drinks straight away; never holds up the ingest.
+      try { require('../services/drink-profiles').kick(); } catch { /* the 15-minute pass catches it */ }
+    }
 
     // Workouts are records rather than scalars and go to their own table. This
     // is what retires Strava — the section has been arriving all along and was

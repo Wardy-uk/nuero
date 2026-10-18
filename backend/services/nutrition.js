@@ -110,7 +110,7 @@ function localDay(recordedAt, tz = TZ()) {
  * windowDays is the last N days INCLUDING today (Nick logs a day in advance,
  * so today is as complete as any other).
  */
-function compose({ samples = [], entries = [], today, windowDays = 14, tz } = {}) {
+function compose({ samples = [], entries = [], today, windowDays = 14, tz, drinkProfiles = new Map() } = {}) {
   // `entries` are per-HealthKit-sample (nutrition_entries); `samples` are the
   // older health_samples rows, which fold entries sharing a minute. For any day
   // the entries cover, they are the whole truth and the folded rows are ignored.
@@ -127,11 +127,12 @@ function compose({ samples = [], entries = [], today, windowDays = 14, tz } = {}
     t[s.metric] = (t[s.metric] || 0) + Number(s.value);
   }
 
-  // Alcohol, by the drinks service's own rules (strength from the NAME). A day
+  // Alcohol, by the drinks service's own rules (what each NAME is, from the
+  // drink_profiles table — passed in so compose stays pure). A day
   // counts only if some entry that day carries a name: MyFitnessPal sends none,
   // so on a MyFitnessPal-only day a drink is invisible — "—", never 0. A drink
   // whose units are unknown makes its day unknown too.
-  const drinks = require('./drinks').fromEntries(entries, (s) => localDay(s, tz));
+  const drinks = require('./drinks').fromEntries(entries, (s) => localDay(s, tz), drinkProfiles);
   const namedDays = new Set(entries.filter((e) => e.food_type).map((e) => localDay(e.recorded_at, tz)).filter(Boolean));
   const alcoholFor = (day) => {
     if (!namedDays.has(day)) return { units: null, why: 'no-names' };
@@ -228,7 +229,9 @@ function read({ now = new Date(), days = 14 } = {}) {
     }
   }
   const entries = db.getNutritionEntriesSince(since);
-  return compose({ samples, entries, today: localDayKey(now), windowDays: days });
+  let drinkProfiles = new Map();
+  try { drinkProfiles = require('./drink-profiles').map(); } catch (e) { console.warn('[Nutrition] drink profiles unreadable:', e.message); }
+  return compose({ samples, entries, today: localDayKey(now), windowDays: days, drinkProfiles });
 }
 
 module.exports = { compose, read, localDay, NUTRIENTS, SODIUM_TO_SALT };

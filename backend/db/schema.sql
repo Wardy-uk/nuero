@@ -978,6 +978,21 @@ CREATE TABLE IF NOT EXISTS nutrition_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_nutrition_entries_time ON nutrition_entries(recorded_at);
 
+-- What each logged food NAME is, as a drink (18 Oct 2026, services/drink-profiles.js).
+-- Looked up once per new name off the sync; Nick's own row (source 'nick') is
+-- never overwritten by a lookup. abv null on a drink = strength unknown, never 0.
+CREATE TABLE IF NOT EXISTS drink_profiles (
+  name_key TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  is_drink INTEGER NOT NULL,
+  kind TEXT,
+  abv REAL,
+  kcal_per_100ml REAL,
+  source TEXT NOT NULL CHECK (source IN ('lookup', 'nick')),
+  model TEXT,
+  updated_at TEXT NOT NULL
+);
+
 -- Direct J2301 ring readings remain separate from Apple Health. In particular,
 -- its vendor blood-pressure figures are estimates, never cuff measurements.
 -- `recorded_at_local` is the ring's own displayed clock; retaining it avoids

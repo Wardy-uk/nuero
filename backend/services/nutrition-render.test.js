@@ -88,11 +88,11 @@ test('alcohol: a column per day and a summary line; an unreadable day shows — 
       { metric: 'dietary_energy_consumed', value: 825, recorded_at: '2026-10-11 19:14:13', food_type: 'Blended Scotch Whisky Aged 3 Years', food_item: 'W1' },
       { metric: 'dietary_energy_consumed', value: 1800, recorded_at: '2026-10-10 12:00:00', food_type: null, food_item: null },
     ],
-    today: TODAY, windowDays: 7,
+    today: TODAY, windowDays: 7, drinkProfiles: new Map([['blended scotch whisky aged 3 years', { isDrink: true, abv: 40, kcalPer100ml: 222, kind: 'whisky', source: 'lookup' }]]),
   });
   const html = render(data);
   assert.match(html, /Alcohol <span class="nut-unit">units/);
-  assert.match(html, />14\.7</);
-  assert.match(html, /data-testid="nut-alcohol"[^>]*>alcohol <b>14\.7<\/b> units \(1 drink\) over 1 day with drink names/);
+  assert.match(html, />14\.9</);
+  assert.match(html, /data-testid="nut-alcohol"[^>]*>alcohol <b>14\.9<\/b> units \(1 drink\) over 1 day with drink names/);
   assert.match(html, /No named entries this day[^>]*>—</);
 });
