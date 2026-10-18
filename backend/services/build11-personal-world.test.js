@@ -642,7 +642,13 @@ test('no calendar write to other people exists outside the governed executor', (
     .filter((f) => f.endsWith('.js') && !f.endsWith('.test.js'));
   assert.ok(files.length > 50, 'positive control: the scan sees the codebase');
   const writers = files.filter((f) => /createEvent\(|moveEvent\(|cancelEvent\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
-  assert.deepEqual(writers.sort(), ['services/action-calendar.js', 'services/action-executor.js']);
+  // 18 Oct 2026, a deliberate exception (Nick's call): the family wall writes
+  // ONE shared family Google calendar. It invites nobody — no attendee list and
+  // no update emails — which is what this guard exists to protect, and pinned below.
+  assert.deepEqual(writers.sort(), ['routes/vesta.js', 'services/action-calendar.js', 'services/action-executor.js', 'services/google-calendar.js']);
+  const gcal = fs.readFileSync(path.join(root, 'services/google-calendar.js'), 'utf8');
+  assert.doesNotMatch(gcal, /attendees|sendUpdates|sendNotifications/, 'the family calendar writer must never invite anyone');
+  assert.match(fs.readFileSync(path.join(root, 'routes/vesta.js'), 'utf8'), /require\('\.\.\/services\/google-calendar'\)\.createEvent\(/, 'the wall writes only through it');
   for (const f of ['services/one-to-one-booking.js']) {
     assert.doesNotMatch(fs.readFileSync(path.join(root, f), 'utf8'), /microsoft\.(createCalendarEvent|updateCalendarEvent)\(/, `${f} must prepare, not write`);
   }
