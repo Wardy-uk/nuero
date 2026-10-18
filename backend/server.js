@@ -53,7 +53,9 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+// maxAge: the family wall is cross-origin with a bearer token, so every
+// request needs a preflight; without this Safari re-asks every ~5 s (18 Oct 2026).
+app.use(cors({ maxAge: 600 }));
 // ⚠ /api/v is the PUBLIC mount (Tailscale Funnel), and since VESTA gained a
 // fridge photo it accepts uploads. It gets its own, much tighter parser
 // REGISTERED FIRST — body-parser skips a request whose body is already parsed,

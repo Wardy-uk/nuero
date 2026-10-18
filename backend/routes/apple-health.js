@@ -121,6 +121,14 @@ router.post('/ingest', (req, res) => {
     // The samples that were NEW, for the event spine (Build 2). A re-sent
     // sample is not stored and so is not news.
     const insertedSamples = [];
+    // ⚠ ONE TRANSACTION FOR THE DELIVERY (18 Oct 2026). Each row used to be its
+    // own write: ~7 ms a row on the Pi's USB disk, so a 5,000-reading chunk held
+    // the (single-threaded) backend for 16–39 s — the family wall, its photos
+    // and the phone's next chunk all waited, and iOS suspended the sync before
+    // it could finish, so it restarted from the top and re-sent what it had
+    // (89% "already had"). Per-row failures are still caught INSIDE, so one bad
+    // row still cannot lose the batch.
+    const ingestRows = () => {
     for (const s of parsed.samples) {
       try {
         if (db.insertHealthSampleWithUuid(s.metric, s.value, s.recordedAt, 'apple-health', s.sourceUuid)) {
@@ -133,12 +141,13 @@ router.post('/ingest', (req, res) => {
       }
     }
 
-    const skipped = parsed.samples.length - inserted;
+    };
 
     // Food goes to its own UUID-keyed table as well — regardless of whether
     // health_samples folded it, because folding is exactly what loses a meal
     // logged in the same minute as another.
     let nutritionNew = 0;
+    const ingestFood = () => {
     for (const s of parsed.samples) {
       if (!/^dietary_/.test(s.metric) || !s.sourceUuid) continue;
       try {
@@ -147,6 +156,9 @@ router.post('/ingest', (req, res) => {
         parsed.rejected.push({ metric: s.metric, reason: `nutrition entry: ${e.message}` });
       }
     }
+    };
+    db.batchSaves(() => { ingestRows(); ingestFood(); });
+    const skipped = parsed.samples.length - inserted;
     if (nutritionNew) console.log(`[AppleHealth] ${nutritionNew} new food entr${nutritionNew === 1 ? 'y' : 'ies'}`);
 
     // Workouts are records rather than scalars and go to their own table. This

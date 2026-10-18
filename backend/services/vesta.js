@@ -118,7 +118,11 @@ function domainOf(event = {}) {
  *  they are not commitments and padding her view with them helps nobody. */
 function redactDay(events = []) {
   return events
-    .filter(e => e && String(e.show_as || '').toLowerCase() !== 'free')
+    // ⚠ 'free' hides WORK placeholders only (18 Oct 2026). Every all-day phone
+    // and family-calendar entry is stored as 'free' (so a birthday does not
+    // block an afternoon), and filtering them all meant no all-day family event
+    // — hiking, a birthday, a day trip — had ever reached the wall.
+    .filter(e => e && (String(e.show_as || '').toLowerCase() !== 'free' || (domainOf(e) === 'personal' && !!(e.is_all_day || e.isAllDay))))
     .filter(e => !/cancelled/i.test(String(e.show_as || '')))
     .map(e => redactEvent(e, { domain: domainOf(e) }))
     .sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));

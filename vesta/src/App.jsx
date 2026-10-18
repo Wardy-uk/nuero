@@ -19,6 +19,9 @@ export default function App() {
 
   const signOut = useCallback(() => {
     api.clearToken();
+    // Nothing of the household stays on a device that has signed out.
+    api.clearWallCache();
+    api.clearPhotoCache();
     setSession(null);
   }, []);
 

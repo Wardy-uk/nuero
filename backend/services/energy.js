@@ -621,7 +621,20 @@ function _missing(rows) {
 // ── Other surfaces ───────────────────────────────────────────────────────────
 
 /** VESTA (`energy` scope): coarse, read-only, no half-hours, no tariff detail. */
-function householdView({ nowMs = Date.now() } = {}) {
+// ~300 ms of reads per call, asked on every family-wall poll; the meters
+// report half-hourly, so a one-minute memo costs nothing in freshness.
+let _hhMemo = null;
+function householdView(opts = {}) {
+  // Memoised only for the live call (no clock given); a caller with its own
+  // clock — every test — always gets a fresh read.
+  if (opts.nowMs != null || opts.fresh) return _householdView({ nowMs: opts.nowMs == null ? Date.now() : opts.nowMs });
+  const now = Date.now();
+  if (_hhMemo && now - _hhMemo.at < 60 * 1000) return _hhMemo.value;
+  const value = _householdView({ nowMs: now });
+  _hhMemo = { at: now, value };
+  return value;
+}
+function _householdView({ nowMs = Date.now() } = {}) {
   const r = read({ nowMs, days: 30 });
   const fuels = {};
   for (const fuel of FUELS) {

@@ -319,10 +319,16 @@ router.get('/wall', requireAccount, (req, res) => {
   // screen that keeps sleeping can be diagnosed from the Pi. Bounded and
   // filtered to a fixed character set; nothing about the device beyond that.
   const held = String((req.query && req.query.held) || '').replace(/[^\w .;=+-]/g, '').slice(0, 200);
+  // The device's own timings (18 Oct 2026): first draw, wall-read time, photo cache.
+  const perfIn = String((req.query && req.query.perf) || '').replace(/[^\w .;=@+-]/g, '').slice(0, 200);
   if (held) {
     try {
       const seen = JSON.parse(db.getState('vesta_wall_seen') || '{}') || {};
-      seen[req.account.username] = { at: out.at, held };
+      const prev = seen[req.account.username] || {};
+      // The last 40 timing reports, so before/after can be read from the Pi.
+      const perfLog = Array.isArray(prev.perfLog) ? prev.perfLog.slice(-39) : [];
+      if (perfIn) perfLog.push({ at: out.at, perf: perfIn });
+      seen[req.account.username] = { at: out.at, held, ...(perfIn ? { perf: perfIn } : {}), perfLog };
       db.setState('vesta_wall_seen', JSON.stringify(seen));
     } catch (e) { console.warn('[Vesta] Could not record the wall keep-awake report:', e.message); }
   }

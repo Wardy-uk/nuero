@@ -116,7 +116,7 @@ const DEFAULT_DEPS = {
     try { return require('./source-health').getSource('microsoft.calendar', { now: nowMs }).freshness; } catch { return 'unknown'; }
   },
   projection: () => {
-    const st = require('./event-bus').getStatus().consumers.find((x) => x.name === 'world-model');
+    const st = require('./event-bus').consumerStatus('world-model');
     return { lag: st ? st.lag : null, retrying: st ? st.retrying : null };
   },
   waitingSnoozedUntil: (sourceRef) => {

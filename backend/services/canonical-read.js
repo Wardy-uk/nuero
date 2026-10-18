@@ -763,7 +763,7 @@ function _peopleMap() {
 
 function _projection(consumer) {
   try {
-    const st = require('./event-bus').getStatus().consumers.find((c) => c.name === consumer);
+    const st = require('./event-bus').consumerStatus(consumer);
     return { consumer, current: !!st && st.lag === 0 && st.retrying === 0, lag: st ? st.lag : null, lastProcessedAt: st ? st.lastProcessedAt || null : null };
   } catch { return { consumer, current: null, lag: null, lastProcessedAt: null }; }
 }
@@ -961,7 +961,7 @@ function commitmentDetail(id, { now = Date.now() } = {}) {
 }
 
 /** Canonical sources: SourceHealth for the spine, declared sources included even if never heard from. */
-function sources({ now = Date.now() } = {}) {
+function sources({ now = Date.now(), runtime: withRuntime = true } = {}) {
   const sh = require('./source-health');
   const ns = require('./native-sources');
   const health = sh.getSourceHealth({ now });
@@ -976,7 +976,9 @@ function sources({ now = Date.now() } = {}) {
   const counts = {};
   for (const s of spine) counts[s.verdict] = (counts[s.verdict] || 0) + 1;
   let runtime = null;
-  try {
+  // Now reads only the spine; the per-job runtime picture is ~300 queries and
+  // is skipped there (18 Oct 2026 — profiled as a third of each Now block).
+  if (withRuntime) try {
     const st = require('./runtime-jobs').status({ now });
     runtime = {
       jobs: (st.jobs || st || []).map((j) => ({ name: j.name, lastSuccessAt: j.lastSuccessAt || null, lastFailureAt: j.lastFailureAt || null,
@@ -1245,7 +1247,7 @@ async function life({ now: nowMs = Date.now() } = {}) {
   const ctx = _classificationCtx();
   const commitmentItems = safe('commitments', () => commitments({ now: nowMs }).items, []);
   const taskItems = safe('tasks', () => tasks({ now: nowMs }).items, []);
-  const sourceItems = safe('sources', () => sources({ now: nowMs }).spine, []);
+  const sourceItems = safe('sources', () => sources({ now: nowMs, runtime: false }).spine, []);
   const goals = safe('goals', () => listGoals({ status: 'all' }), []);
   const active = goals.filter((g) => g.status === 'active');
   const containers = safe('classifications', () => ctx.sc.listContainers({ now: nowMs }), []);

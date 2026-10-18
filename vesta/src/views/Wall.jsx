@@ -657,8 +657,36 @@ function keepAwakeReport(how) {
   } catch { return how || 'none'; }
 }
 
+// What this device measured about its own start (18 Oct 2026), sent with the
+// check-in so the iPad's real timings can be read without the iPad.
+const perf = { first: null, apiMs: [], fails: 0, timeouts: 0 };
+const sinceStart = () => Math.round(typeof performance !== 'undefined' ? performance.now() : 0);
+function perfReport() {
+  const api2 = perf.apiMs.slice(-5);
+  const med = api2.length ? [...api2].sort((a, b) => a - b)[Math.floor(api2.length / 2)] : null;
+  const ps = api.photoStats;
+  const pm = ps.ms.length ? Math.round(ps.ms.reduce((a, b) => a + b, 0) / ps.ms.length) : null;
+  return [
+    perf.first ? `first=${perf.first.src}@${perf.first.ms}` : 'first=none',
+    `api=${med == null ? '-' : med}`,
+    `photo=h${ps.hit}m${ps.miss}${pm == null ? '' : `@${pm}`}`,
+    `fail=${perf.fails}`,
+  ].join(';');
+}
+
+const rangeKey = (r) => `${r.from}:${r.days}`;
+
 export default function Wall({ onExit, onSignedOut }) {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => {
+    // Draw at once from what this device last had; the network refreshes it.
+    try {
+      const t = new Date();
+      const k = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+      const c = api.readWallCache(rangeKey(calRange('today', 0, k)));
+      if (c && c.data) { if (!perf.first) perf.first = { src: 'cache', ms: sinceStart() }; return { ...c.data, _cachedAt: c.at }; }
+    } catch { /* no cache */ }
+    return null;
+  });
   const [error, setError] = useState(null);
   const [now, setNow] = useState(() => new Date());
   const [wakeUntil, setWakeUntil] = useState(0);
@@ -676,19 +704,40 @@ export default function Wall({ onExit, onSignedOut }) {
   const want = useRef(range);
   want.current = range;
 
+  const inFlight = useRef(false);
   const refresh = useCallback(async () => {
     const r = want.current;
+    // One wall read at a time: a slow answer is never piled on by the next poll.
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const t0 = sinceStart();
     try {
-      const next = await api.wall(api.getToken(), { from: r.from, days: r.days, held: heldRef.current });
+      // The cached view is shown meanwhile, so a read that never answers ends
+      // in "can't reach home", never a wall frozen on "Getting things…".
+      const next = await api.wall(api.getToken(), { from: r.from, days: r.days, held: heldRef.current, perf: perfReport(), timeoutMs: 20000 });
+      perf.apiMs.push(sinceStart() - t0);
+      if (!perf.first) perf.first = { src: 'net', ms: sinceStart() };
       // A slow answer for a range that has since been swiped away from is dropped.
       if (want.current.from !== r.from || want.current.days !== r.days) return;
       setData(next);
       setError(null);
+      api.writeWallCache(rangeKey(r), next);
     } catch (err) {
+      perf.fails++;
       if (err.expired) return onSignedOut();
       setError(err.message);
+    } finally {
+      inFlight.current = false;
     }
   }, [onSignedOut]);
+
+  // Coming back to the screen (iPad woken, app reopened) reads at once.
+  useEffect(() => {
+    const back = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('pageshow', back);
+    return () => { document.removeEventListener('visibilitychange', back); window.removeEventListener('pageshow', back); };
+  }, [refresh]);
 
   // A new range is fetched at once, not at the next minute's poll.
   useEffect(() => { refresh(); }, [range.from, range.days, refresh]);
@@ -749,7 +798,10 @@ export default function Wall({ onExit, onSignedOut }) {
            // Every tap re-arms the keep-awake video (it can only start from one).
            if (!awake) arm();
          }}>
-      <View data={data} now={now} error={error} onExit={onExit} act={act}
+      <View data={data} now={now} onExit={onExit} act={act}
+        error={error || (data && data._cachedAt && Date.now() - data._cachedAt > 5 * 60 * 1000
+          ? `Updating — showing what I had at ${new Date(data._cachedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`
+          : null)}
         cal={{
           view, offset, range,
           onStep: (n) => { lastTouch.current = Date.now(); setOffset((o) => o + n); },

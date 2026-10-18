@@ -615,6 +615,25 @@ function getFailures({ consumer = null, status = null, limit = 50 } = {}) {
  * The operational picture: is the spine taking events, and is every consumer
  * keeping up? Reads only — counts, never payloads.
  */
+/**
+ * ONE consumer's position and lag — what a read model needs to say whether its
+ * projection is current. (18 Oct 2026) `getStatus()` counts the WHOLE event log
+ * by type and every consumer's lag; canonical-read called it per section just
+ * to look one consumer up, ~1.8–4.6 s of blocked event loop per Now read on the
+ * Pi (profiled), which stalled every other request, the family wall included.
+ */
+function consumerStatus(name) {
+  const def = registry.get(name) || null;
+  const row = db.get('SELECT * FROM event_consumers WHERE name = ?', [name]) || null;
+  if (!def && !row) return null;
+  const position = row ? row.position : 0;
+  const retrying = db.get(`SELECT COUNT(*) AS n FROM event_failures WHERE consumer = ? AND status = 'retrying'`, [name]).n;
+  return {
+    name, registered: !!def, position, lag: _lag(def, position),
+    lastProcessedAt: row ? row.last_processed_at : null, retrying,
+  };
+}
+
 function getStatus() {
   const totals = db.get(`SELECT COUNT(*) AS n, MAX(seq) AS newestSeq, MAX(received_at) AS newestAt,
                          MIN(received_at) AS oldestAt FROM event_log`);
@@ -702,6 +721,7 @@ function stop() {
 }
 
 module.exports = {
+  consumerStatus,
   SCHEMA_VERSION,
   EventValidationError,
   buildEnvelope,

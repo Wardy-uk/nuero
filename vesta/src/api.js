@@ -87,14 +87,16 @@ export const login = (username, pin) =>
 export const home = (token) => call('/home', { token });
 
 /** The family wall: week, top tasks, who's in, station. Polled every minute. */
-export const wall = (token, { from = null, days = 7, held = '' } = {}) => {
+export const wall = (token, { from = null, days = 7, held = '', perf = '', timeoutMs = 0 } = {}) => {
   const q = new URLSearchParams();
   if (from) q.set('from', from);
   if (days !== 7) q.set('days', String(days));
   // What is keeping the screen on — recorded so it can be checked without the iPad.
   if (held) q.set('held', held);
+  // How fast this device is getting things (18 Oct 2026) — the same check-in.
+  if (perf) q.set('perf', perf);
   const qs = q.toString();
-  return call(`/wall${qs ? `?${qs}` : ''}`, { token });
+  return call(`/wall${qs ? `?${qs}` : ''}`, { token, timeoutMs });
 };
 
 /**
@@ -103,14 +105,68 @@ export const wall = (token, { from = null, days = 7, held = '' } = {}) => {
  * null when there is no photo or it could not be read — the card then shows
  * the initial instead.
  */
+// Photos are kept ON THE DEVICE (Cache Storage), keyed by person + version: a
+// face appears at once on every later start, and a new photo (new version)
+// replaces the old one. The bytes still come only through the authorised
+// route; nothing about access changes. (18 Oct 2026)
+const PHOTO_CACHE = 'vesta-photos-v1';
+export const photoStats = { hit: 0, miss: 0, ms: [] };
 export async function photoUrl(token, id, version) {
+  const key = `${API_BASE}/api/v/photo/${encodeURIComponent(id)}?v=${encodeURIComponent(version || '')}`;
+  const started = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  let store = null;
+  try { if (typeof caches !== 'undefined') store = await caches.open(PHOTO_CACHE); } catch { store = null; }
   try {
-    const res = await fetch(`${API_BASE}/api/v/photo/${encodeURIComponent(id)}?v=${encodeURIComponent(version || '')}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    if (store) {
+      const hit = await store.match(key);
+      if (hit) { photoStats.hit++; return URL.createObjectURL(await hit.blob()); }
+    }
+  } catch { /* a broken cache is a miss */ }
+  try {
+    const res = await fetch(key, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!res.ok) return null;
-    return URL.createObjectURL(await res.blob());
+    const blob = await res.blob();
+    photoStats.miss++;
+    photoStats.ms.push(Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started));
+    if (store) {
+      try {
+        // Older versions of this person's photo go.
+        for (const req of await store.keys()) {
+          if (req.url.includes(`/api/v/photo/${encodeURIComponent(id)}?`) && req.url !== new URL(key, location.href).href) await store.delete(req);
+        }
+        await store.put(key, new Response(blob, { headers: { 'Content-Type': blob.type || 'image/jpeg' } }));
+      } catch { /* not kept; it still shows */ }
+    }
+    return URL.createObjectURL(blob);
   } catch { return null; }
+}
+
+/** Forget every cached photo (sign-out). */
+export async function clearPhotoCache() {
+  try { if (typeof caches !== 'undefined') await caches.delete(PHOTO_CACHE); } catch { /* nothing kept */ }
+}
+
+// The last wall payload per range, so the wall draws AT ONCE on a start and
+// refreshes behind it (18 Oct 2026). Household data the wall already shows,
+// on the household's own device; cleared on sign-out.
+const WALL_CACHE = 'vesta_wall_cache_v1';
+export function readWallCache(rangeKey) {
+  try {
+    const all = JSON.parse(localStorage.getItem(WALL_CACHE) || '{}');
+    return all[rangeKey] || null;
+  } catch { return null; }
+}
+export function writeWallCache(rangeKey, data) {
+  try {
+    const all = JSON.parse(localStorage.getItem(WALL_CACHE) || '{}');
+    all[rangeKey] = { at: Date.now(), data };
+    // Keep the newest few ranges only.
+    const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 4);
+    localStorage.setItem(WALL_CACHE, JSON.stringify(Object.fromEntries(keep)));
+  } catch { /* full or private: just not cached */ }
+}
+export function clearWallCache() {
+  try { localStorage.removeItem(WALL_CACHE); } catch { /* nothing kept */ }
 }
 
 // The wall is a choice made ON THIS DEVICE — the kitchen iPad, not her phone.
