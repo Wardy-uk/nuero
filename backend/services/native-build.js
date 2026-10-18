@@ -226,7 +226,7 @@ const APPS = Object.freeze({ 'neuro-ios': 'NEURO iOS', 'saim-ios': 'SAiM iOS', '
 function status({ sources = null } = {}) {
   const builds = current();
   let spine = sources;
-  if (!spine) { try { spine = require('./canonical-read').sources({}).spine || []; } catch { spine = []; } }
+  if (!spine) { try { spine = require('./canonical-read').sources({ runtime: false }).spine || []; } catch { spine = []; } }
   const apps = ['neuro-ios', 'saim-ios'].map((client) => {
     const b = builds[client] || null;
     const mine = Object.keys(REQUIREMENTS).filter((id) => id.endsWith(`.${client}`));

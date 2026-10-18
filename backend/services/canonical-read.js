@@ -1329,7 +1329,7 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
   let taskItems = [];
   try { taskItems = tasks({ now: nowMs, system: 'eventkit-reminders' }).items; } catch (e) { gaps.push({ input: 'reminders', why: e.message }); }
   let sourceItems = [];
-  try { sourceItems = sources({ now: nowMs }).spine; } catch (e) { gaps.push({ input: 'sources', why: e.message }); }
+  try { sourceItems = sources({ now: nowMs, runtime: false }).spine; } catch (e) { gaps.push({ input: 'sources', why: e.message }); }
   let crowd = null;
   try {
     const known = (i) => i.domains.domains.length && i.domains.domains.every((d) => d.domain !== 'work')

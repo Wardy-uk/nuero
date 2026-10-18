@@ -360,7 +360,7 @@ async function snapshot() {
   s.apns = !!(process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID && process.env.APNS_KEY_PATH);
   try { s.approvalCode = !!_db().getState('approval_code'); } catch { s.approvalCode = false; }
   try { s.sendingEnabled = !!require('./feature-flags').isEnabled('governed_execution'); } catch { s.sendingEnabled = false; }
-  try { s.sources = require('./canonical-read').sources({}).spine || []; } catch { s.sources = []; }
+  try { s.sources = require('./canonical-read').sources({ runtime: false }).spine || []; } catch { s.sources = []; }
   try {
     const da = require('./desktop-activity');
     const caps = typeof da.capabilities === 'function' ? da.capabilities() : {};
