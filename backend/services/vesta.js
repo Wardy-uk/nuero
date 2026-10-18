@@ -82,6 +82,13 @@ function redactEvent(event = {}, { domain = 'work' } = {}) {
   // Location is a leak too — "Chancellors' Offices, Coalville" names a customer
   // as plainly as a subject line does. Personal only.
   if (isPersonal && event.location) out.location = String(event.location).slice(0, 80);
+  // The shared family calendar's events can be changed from the wall: say so,
+  // with the id Google knows it by. Never on anything else.
+  if (isPersonal && String(event.source || '') === 'google' && event.google_id) {
+    out.editable = true;
+    out.calendarId = String(event.google_id);
+    if (event.recurring) out.recurring = true;
+  }
 
   return out;
 }
@@ -101,7 +108,10 @@ function redactEvent(event = {}, { domain = 'work' } = {}) {
  */
 function domainOf(event = {}) {
   if (event.domain === 'personal' || event.domain === 'work') return event.domain;
-  return String(event.source || '').toLowerCase() === 'apple' ? 'personal' : 'work';
+  // `google` is the shared FAMILY Google calendar (18 Oct 2026) — family by
+  // definition; it is the only Google calendar NEURO reads.
+  const src = String(event.source || '').toLowerCase();
+  return src === 'apple' || src === 'google' ? 'personal' : 'work';
 }
 
 /** A whole day, redacted. PURE. Cancelled and free-marked events are dropped:

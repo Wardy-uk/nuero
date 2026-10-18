@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl, setPin as storePin } from '../api';
 import { BrightConnectCard } from './BrightConnectCard';
+import { GoogleCalendarCard } from './GoogleCalendarCard';
 import useCachedFetch from '../useCachedFetch';
 import './AdminPanel.css';
 // Mounted as a Settings section rather than a sidebar page (Nick, 3 Sep 2026):
@@ -1168,6 +1169,7 @@ export default function AdminPanel({ pushState = {} }) {
       <RescueTimeCard />
       <WeatherUndergroundCard />
       <BrightConnectCard />
+      <GoogleCalendarCard />
 
       <VestaAccounts />
 

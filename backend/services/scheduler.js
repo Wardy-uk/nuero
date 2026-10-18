@@ -1351,6 +1351,20 @@ function start() {
     require('./weather-jobs').register();
     // Home energy (Bright / Glowmarkt) — same reason: these reach the internet.
     require('./energy-jobs').register();
+    // The shared family Google calendar (18 Oct 2026): re-read every 5 min so a
+    // change made on a phone reaches the wall. Reaches Google, so here.
+    require('./runtime-jobs').defineJob({
+      name: 'google-calendar-sync',
+      cron: '*/5 * * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 10 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 2 * 60 * 1000,
+      lookbackMs: 24 * 3600 * 1000,
+      why: 'Re-read the shared family Google calendar for the family wall (skipped until signed in).',
+      run: async () => { const r = await require('./google-calendar').syncNow(); if (r.skipped) return { skipped: 'not connected' }; if (!r.ok) throw new Error(r.error); return r; },
+    });
     // Hike safety: the trail, the check-in prompts and the overdue alert. Every
     // minute, durable, never too late — an alert missed during a restart must
     // still go the moment the backend is back. Here (not registerDurableJobs)

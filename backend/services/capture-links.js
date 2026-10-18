@@ -78,7 +78,11 @@ const STATE_KEY = 'capture_links';
 // `energy` (17 Oct 2026) is the household's electricity and gas: yesterday,
 // this month, a 30-day chart and ESTIMATED cost. Read-only, no half-hours, no
 // tariff detail and nothing about Bright's login. Money, so not a default.
-const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy'];
+// `family-calendar` (18 Oct 2026) lets the account ADD, EDIT and DELETE events
+// in the shared family Google calendar (and only that calendar). It is a write
+// to a calendar other people read, so it is its own scope, not a default, and
+// `calendar` alone (reading the diary) never brings it.
+const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy', 'family-calendar'];
 const DEFAULT_SCOPES = ['tasks'];
 
 /** Normalise a requested scope list. Unknown scopes are DROPPED, never passed

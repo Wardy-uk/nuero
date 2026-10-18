@@ -152,3 +152,37 @@ test('the sheets render: a job with its full wording and a big tick, add, a pers
     void createRoot; void Boom;
   } finally { console.error = orig; }
 });
+
+test('the event sheet: editable family events get a form; phone events say where they live', async () => {
+  const React = require('react');
+  const { renderToString } = require('react-dom/server');
+  const esbuild = require('esbuild');
+  const out = await esbuild.build({
+    entryPoints: [path.join(__dirname, '..', '..', 'vesta', 'src', 'views', 'WallSheets.jsx')],
+    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
+    external: ['react', 'react-dom', 'nosleep.js/*'], loader: { '.css': 'empty' }, logLevel: 'silent',
+  });
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
+  const { EventSheet, eventForm, eventPatch, newWallEventId } = mod.exports;
+  const act = { event: { add: async () => ({ ok: true }), update: async () => ({ ok: true }), remove: async () => ({ ok: true }) } };
+  const fam = { id: 'google:neu1', calendarId: 'neu1abc', editable: true, title: 'Dentist', start: '2026-10-20T10:00:00', end: '2026-10-20T10:30:00', allDay: false, location: 'Coalville' };
+  const phone = { id: 'apple:x', title: 'Football', start: '2026-10-20T15:00:00', end: '2026-10-20T16:00:00', allDay: false };
+  const edit = renderToString(React.createElement(EventSheet, { event: fam, today: '2026-10-18', act, canEdit: true }));
+  assert.ok(edit.includes('value="Dentist"') && edit.includes('>Delete<') && edit.includes('value="10:00"') && edit.includes('value="Coalville"'));
+  assert.ok(/disabled=""[^>]*>Save</.test(edit), 'nothing changed yet: Save is off');
+  const ro = renderToString(React.createElement(EventSheet, { event: phone, today: '2026-10-18', act, canEdit: true }));
+  assert.ok(ro.includes('Football') && ro.includes('phone calendar') && !ro.includes('>Delete<'), 'a phone event is view-only');
+  const nope = renderToString(React.createElement(EventSheet, { event: fam, today: '2026-10-18', act, canEdit: false, why: 'The family calendar isn’t connected yet.' }));
+  assert.ok(nope.includes('isn’t connected yet') && !nope.includes('>Delete<'));
+  const add = renderToString(React.createElement(EventSheet, { date: '2026-10-21', today: '2026-10-18', act, canEdit: true }));
+  assert.ok(add.includes('What’s happening?') && add.includes('value="2026-10-21"') && add.includes('shared family calendar') && !add.includes('>Delete<'));
+  // Only what changed is sent; timing always as a whole.
+  const before = eventForm(fam, null);
+  assert.deepEqual(eventPatch(before, { ...before }), {});
+  assert.deepEqual(eventPatch(before, { ...before, title: 'Dentist (Isaac)' }), { title: 'Dentist (Isaac)' });
+  assert.deepEqual(eventPatch(before, { ...before, start: '11:00' }), { date: '2026-10-20', allDay: false, start: '11:00', end: '10:30' });
+  const allDay = eventForm({ ...fam, allDay: true, start: '2026-10-20T00:00:00', end: '2026-10-23T00:00:00' }, null);
+  assert.equal(allDay.endDate, '2026-10-22', 'Google’s exclusive end is shown as the last day');
+  assert.match(newWallEventId(), /^[a-v0-9]{5,}$/, 'an id Google accepts');
+});

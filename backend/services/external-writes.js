@@ -85,6 +85,16 @@ const WRITERS = Object.freeze({
     target: 'Weather Underground (our own station ICOALV59)', authority: 'A2', initiation: 'timer', ledger: false,
     effect: "upload the home station's newest reading", why: 'our own public weather station; WU folds a repeat dateutc; off unless WU_PUBLISH_ENABLED.', readback: 'external_weather_sync wu-upload row',
   },
+  'google.calendar.family': {
+    target: 'the shared family Google calendar', authority: 'A2', initiation: 'human-only', ledger: true,
+    // A create carries its own event id (Google answers 409 to a repeat), an edit
+    // re-applies the same fields and a delete of a gone event is a no-op, so an
+    // unknown outcome may be re-attempted by a person.
+    idempotentTarget: true,
+    effect: 'add / edit / delete ONE event in the shared family calendar, from the family wall',
+    why: "Nick, 18 Oct 2026: the household adds family events from the wall; a tap on Save is the approval, nothing outside the shared calendar is reachable and every change is undoable in Google.",
+    readback: 'Google re-read of the event: title and start must match (delete: 404 / cancelled)',
+  },
   'tally.transaction.categorise': {
     target: 'Tally (pi-dev)', authority: 'A2', initiation: 'human-only', ledger: true,
     // Setting the same category again is harmless, so an unknown outcome may be re-attempted by Nick.

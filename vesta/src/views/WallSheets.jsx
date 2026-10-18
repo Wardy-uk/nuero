@@ -303,3 +303,146 @@ export function EnergySheet({ energy }) {
     </div>
   );
 }
+
+// ── Family calendar events (18 Oct 2026) ─────────────────────────────────────
+//
+// Only events in the shared family Google calendar (`event.editable`) can be
+// changed; anything else shows its details and says where it lives. Every
+// change goes through `act.event`, which NEURO reads back from Google before it
+// answers ok.
+
+/** A Google event id the wall chooses up front (base32hex: 0–9, a–v). */
+export function newWallEventId() {
+  const alphabet = '0123456789abcdefghijklmnopqrstuv';
+  const bytes = new Uint8Array(26);
+  if (globalThis.crypto && globalThis.crypto.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return `neu${Array.from(bytes, (b) => alphabet[b % 32]).join('')}`;
+}
+
+const hm = (iso) => String(iso || '').slice(11, 16);
+const dateOf = (iso) => String(iso || '').slice(0, 10);
+
+/** The form's starting values from an event (or a blank for a day). PURE. */
+export function eventForm(event, date) {
+  if (!event) return { title: '', date, allDay: false, start: '', end: '', endDate: date, location: '' };
+  const allDay = !!event.allDay;
+  const first = dateOf(event.start);
+  let endDate = allDay && event.end ? addDays(dateOf(event.end), -1) : first;
+  if (!endDate || endDate < first) endDate = first;
+  return {
+    title: event.title || '', date: first, allDay,
+    start: allDay ? '' : hm(event.start), end: allDay ? '' : hm(event.end),
+    endDate, location: event.location || '',
+  };
+}
+
+/** What changed, as the server's draft. PURE. */
+export function eventPatch(before, after) {
+  const out = {};
+  if (after.title.trim() !== before.title) out.title = after.title.trim();
+  const timing = ['date', 'allDay', 'start', 'end', 'endDate'].some((k) => after[k] !== before[k]);
+  if (timing) Object.assign(out, { date: after.date, allDay: after.allDay, ...(after.allDay ? { endDate: after.endDate } : { start: after.start, end: after.end || null }) });
+  if (after.location.trim() !== before.location) out.location = after.location.trim();
+  return out;
+}
+
+const whenWords = (e) => {
+  const { dow, day, month } = dayOfKey(dateOf(e.start));
+  const d = `${DAYS_LONG[dow]} ${day} ${MONTHS_LONG[month]}`;
+  return e.allDay ? `${d} · all day` : `${d} · ${hm(e.start)}${e.end ? `–${hm(e.end)}` : ''}`;
+};
+
+export function EventSheet({ event = null, date, today, act, canEdit = false, why = null, onDone, setDirty }) {
+  const s = useSaver();
+  const idRef = useRef(null);
+  const [start] = useState(() => eventForm(event, date || today));
+  const [f, setF] = useState(start);
+  const [askDelete, setAskDelete] = useState(false);
+  const editable = !event || !!event.editable;
+  const isNew = !event;
+  const patch = isNew ? null : eventPatch(start, f);
+  const changed = isNew ? Boolean(f.title.trim()) : Object.keys(patch).length > 0;
+  useEffect(() => { if (setDirty) setDirty(changed); }, [changed]);
+  useEffect(() => () => { if (setDirty) setDirty(false); }, []);
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+  const setDay = (d) => setF((x) => ({ ...x, date: d, endDate: x.endDate < d ? d : x.endDate }));
+  // Moving the start keeps the length, so the end never lands before it.
+  const toMin = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+  const fromMin = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+  const moveStart = (t) => setF((x) => {
+    if (!t || !x.start || !x.end || !/^\d\d:\d\d$/.test(t)) return { ...x, start: t };
+    const len = toMin(x.end) - toMin(x.start);
+    if (len <= 0) return { ...x, start: t };
+    return { ...x, start: t, end: fromMin(Math.min(toMin(t) + len, 23 * 60 + 59)) };
+  });
+
+  if (event && (!editable || !canEdit)) {
+    return (
+      <div className="cine__form">
+        <p className="cine__big">{event.title}</p>
+        <p className="cine__sub">{whenWords(event)}</p>
+        {event.location && <p className="cine__sub">{event.location}</p>}
+        <p className="cine__note">{!editable
+          ? 'This is in a phone calendar, not the shared family one. Change it on that phone.'
+          : (why || 'This wall can’t change the family calendar.')}</p>
+      </div>
+    );
+  }
+
+  const valid = Boolean(f.title.trim() && f.date && (f.allDay ? f.endDate >= f.date : (f.start && (!f.end || f.end > f.start))));
+  const save = () => s.run(() => {
+    if (isNew) {
+      if (!idRef.current) idRef.current = newWallEventId();   // the same id on every retry
+      const body = { id: idRef.current, title: f.title.trim(), date: f.date, allDay: f.allDay, location: f.location.trim() };
+      if (f.allDay) body.endDate = f.endDate; else { body.start = f.start; body.end = f.end || null; }
+      return act.event.add(body);
+    }
+    return act.event.update(event.calendarId, patch);
+  }).then((r) => { if (r) { if (setDirty) setDirty(false); onDone(); } });
+  const remove = () => s.run(() => act.event.remove(event.calendarId)).then((r) => { if (r) { if (setDirty) setDirty(false); onDone(); } });
+
+  return (
+    <div className="cine__form">
+      <input className="cine__textin" value={f.title} maxLength={200} placeholder="What’s happening?" disabled={s.busy} autoFocus={isNew}
+             onChange={(e) => set('title')(e.target.value)} />
+      <p className="cine__formlabel">Day</p>
+      <div className="cine__chips" role="group" aria-label="Day">
+        {dueChoices(today).map((c) => (
+          <button key={c.label} className={`cine__chip2${f.date === c.date ? ' cine__chip2--on' : ''}`} disabled={s.busy} onClick={() => setDay(c.date)}>{c.label}</button>
+        ))}
+        <input type="date" className="cine__datein" value={f.date} disabled={s.busy} aria-label="Pick a day"
+               onChange={(e) => { if (e.target.value) setDay(e.target.value); }} />
+      </div>
+      <p className="cine__formlabel">Time</p>
+      <div className="cine__chips" role="group" aria-label="Time">
+        <button className={`cine__chip2${f.allDay ? ' cine__chip2--on' : ''}`} disabled={s.busy} aria-pressed={f.allDay} onClick={() => set('allDay')(!f.allDay)}>All day</button>
+        {f.allDay ? (
+          <label className="cine__timelabel">until <input type="date" className="cine__datein" value={f.endDate} min={f.date} disabled={s.busy} onChange={(e) => { if (e.target.value) set('endDate')(e.target.value); }} /></label>
+        ) : (
+          <>
+            <label className="cine__timelabel">from <input type="time" className="cine__timein" value={f.start} disabled={s.busy} onChange={(e) => moveStart(e.target.value)} /></label>
+            <label className="cine__timelabel">to <input type="time" className="cine__timein" value={f.end} disabled={s.busy} onChange={(e) => set('end')(e.target.value)} /></label>
+          </>
+        )}
+      </div>
+      <input className="cine__textin cine__textin--small" value={f.location} maxLength={200} placeholder="Where (optional)" disabled={s.busy}
+             onChange={(e) => set('location')(e.target.value)} />
+      {event && event.recurring && <p className="cine__note">This repeats. Changes apply to this one only.</p>}
+      {askDelete ? (
+        <div className="cine__confirm" role="alertdialog" aria-label="Delete this event?">
+          <span>{event && event.recurring ? 'Delete this one only?' : 'Delete this event?'}</span>
+          <button className="cine__sheetbtn" disabled={s.busy} onClick={() => setAskDelete(false)}>Keep it</button>
+          <button className="cine__sheetbtn cine__sheetbtn--danger" disabled={s.busy} onClick={remove}>{s.busy ? 'Deleting…' : 'Delete'}</button>
+        </div>
+      ) : (
+        <div className="cine__formfoot">
+          {!isNew && <button className="cine__sheetbtn cine__sheetbtn--danger" disabled={s.busy} onClick={() => setAskDelete(true)}>Delete</button>}
+          <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy || !valid || !changed} onClick={save}>{s.busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      )}
+      <SaveState busy={false} error={s.error} />
+      {isNew && <p className="cine__note">Goes into the shared family calendar.</p>}
+    </div>
+  );
+}

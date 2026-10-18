@@ -146,6 +146,7 @@ app.use('/api/environment', require('./routes/environment'));
 // its forecast overlay — routes/weather.js.
 app.use('/api/weather', require('./routes/weather'));
 app.use('/api/energy', require('./routes/energy'));
+app.use('/api/google-calendar', require('./routes/google-calendar'));
 app.use('/api/medical', require('./routes/medical'));
 // Recovery, exertion and the logger's reads — the Athlytic-style half of health.
 app.use('/api/performance', require('./routes/performance'));

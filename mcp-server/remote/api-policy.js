@@ -175,6 +175,11 @@ export const interactive = {
     'post_push_subscribe', 'post_push_unsubscribe', 'post_push_apns_register', 'delete_push_apns_register', 'delete_push_subscriptions',
     'post_rescuetime_key', 'delete_rescuetime_key', 'post_weather_wu_key', 'delete_weather_wu_key',
     'post_energy_credentials', 'delete_energy_credentials', 'post_energy_tariffs', 'post_energy_tariffs_by_id_remove',
+    // The family Google calendar (18 Oct 2026): the sign-in is a credential and
+    // the wall's own writes are a person's tap, never an agent's.
+    'post_google_calendar_client', 'post_google_calendar_connect', 'post_google_calendar_finish',
+    'post_google_calendar_disconnect', 'post_google_calendar_target',
+    'post_v_family_calendar_events', 'patch_v_family_calendar_events_by_id', 'delete_v_family_calendar_events_by_id',
     'post_energy_gas_calorific_value',
     'post_mail_accounts_by_key_credential', 'delete_mail_accounts_by_key_credential',
     'post_mail_accounts_by_key_check', 'post_mail_accounts_by_key_test_send',

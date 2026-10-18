@@ -407,6 +407,24 @@
     "stream": false
   },
   {
+    "id": "delete_v_family_calendar_events_by_id",
+    "method": "DELETE",
+    "route": "/api/v/family-calendar/events/:id",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 526,
+    "description": "DELETE /api/v/family-calendar/events/:id.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "delete_vault_delete",
     "method": "DELETE",
     "route": "/api/vault/delete",
@@ -2563,6 +2581,22 @@
     "source": "routes/friction.js",
     "line": 19,
     "description": "GET /api/friction.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_google_calendar",
+    "method": "GET",
+    "route": "/api/google-calendar",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 15,
+    "description": "GET /api/google-calendar. family Google calendar connection status (no secrets)",
     "params": [],
     "query": [],
     "body": [],
@@ -5502,7 +5536,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 266,
+    "line": 267,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5956,7 +5990,7 @@
     "route": "/api/v/calendar",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 242,
+    "line": 275,
     "description": "GET /api/v/calendar.",
     "params": [],
     "query": [
@@ -5974,7 +6008,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 409,
+    "line": 444,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -6006,7 +6040,7 @@
     "route": "/api/v/photo/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 388,
+    "line": 423,
     "description": "GET /api/v/photo/:id.",
     "params": [
       "id"
@@ -6024,7 +6058,7 @@
     "route": "/api/v/wall",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 270,
+    "line": 303,
     "description": "GET /api/v/wall.",
     "params": [],
     "query": [
@@ -6940,12 +6974,30 @@
     "stream": false
   },
   {
+    "id": "patch_v_family_calendar_events_by_id",
+    "method": "PATCH",
+    "route": "/api/v/family-calendar/events/:id",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 516,
+    "description": "PATCH /api/v/family-calendar/events/:id.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "patch_v_tasks_by_id",
     "method": "PATCH",
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 448,
+    "line": 483,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -9455,6 +9507,109 @@
     "body": [
       "id",
       "signature"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_google_calendar_client",
+    "method": "POST",
+    "route": "/api/google-calendar/client",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 20,
+    "description": "POST /api/google-calendar/client. save the Google OAuth client { clientId, clientSecret } (desktop app type); never returned",
+    "params": [],
+    "query": [],
+    "body": [
+      "clientId",
+      "clientSecret"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_google_calendar_connect",
+    "method": "POST",
+    "route": "/api/google-calendar/connect",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 34,
+    "description": "POST /api/google-calendar/connect. start Google sign-in: returns the address to open",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_google_calendar_disconnect",
+    "method": "POST",
+    "route": "/api/google-calendar/disconnect",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 51,
+    "description": "POST /api/google-calendar/disconnect. forget the Google sign-in (stored events are kept until the next sign-in)",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_google_calendar_finish",
+    "method": "POST",
+    "route": "/api/google-calendar/finish",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 40,
+    "description": "POST /api/google-calendar/finish. finish Google sign-in with the pasted http://127.0.0.1 address { pasted }",
+    "params": [],
+    "query": [],
+    "body": [
+      "pasted"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_google_calendar_sync",
+    "method": "POST",
+    "route": "/api/google-calendar/sync",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 56,
+    "description": "POST /api/google-calendar/sync. re-read the family Google calendar now",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_google_calendar_target",
+    "method": "POST",
+    "route": "/api/google-calendar/target",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 27,
+    "description": "POST /api/google-calendar/target. which Google calendar the family wall writes to { calendarId }",
+    "params": [],
+    "query": [],
+    "body": [
+      "calendarId"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -14058,7 +14213,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 487,
+    "line": 564,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -14079,7 +14234,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 521,
+    "line": 598,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -14100,7 +14255,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 497,
+    "line": 574,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -14110,6 +14265,22 @@
       "name",
       "section"
     ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_v_family_calendar_events",
+    "method": "POST",
+    "route": "/api/v/family-calendar/events",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 506,
+    "description": "POST /api/v/family-calendar/events.",
+    "params": [],
+    "query": [],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,
@@ -14140,7 +14311,7 @@
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 423,
+    "line": 458,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],

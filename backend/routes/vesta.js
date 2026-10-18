@@ -239,6 +239,39 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * ⚠ The date is validated against a strict pattern rather than fed to `new
  * Date()`, which happily accepts nonsense and answers for some other day.
  */
+/** Whether this account may change the shared family calendar, and whether it is connected. */
+function familyCalendarFor(account) {
+  try {
+    const st = require('../services/google-calendar').status();
+    const allowed = capture.hasScope(account, 'family-calendar');
+    return {
+      canEdit: allowed && st.connected,
+      connected: st.connected,
+      why: !allowed ? 'This account can’t change the family calendar.' : !st.connected ? 'The family calendar isn’t connected yet.' : null,
+    };
+  } catch { return { canEdit: false, connected: false, why: 'The family calendar isn’t connected yet.' }; }
+}
+
+/**
+ * The phone's diary plus the family Google calendar read directly. The phone
+ * also carries its own copy of that calendar, so a phone entry with the same
+ * start minute and title as a Google one is dropped — Google's is the one the
+ * wall can edit. If the Google copy is stale or unreadable, the phone's copy
+ * stands on its own (nothing disappears). Exported for tests.
+ */
+function withFamilyCalendar(rows, fromIso, toIso) {
+  let google = [];
+  try {
+    const gcal = require('../services/google-calendar');
+    if (gcal.status().connected && gcal.fresh()) google = gcal.rowsBetween(fromIso, toIso);
+  } catch (e) { console.warn('[Vesta] Family calendar not read:', e.message); }
+  if (!google.length) return rows;
+  const key = (r) => `${String(r.start_time || '').slice(0, 16)}|${String(r.subject || '').trim().toLowerCase()}`;
+  const have = new Set(google.map(key));
+  return [...rows.filter((r) => !(String(r.source) === 'apple' && have.has(key(r)))), ...google];
+}
+router._withFamilyCalendar = withFamilyCalendar;
+
 router.get('/calendar', requireAccount, (req, res) => {
   if (!capture.hasScope(req.account, 'calendar')) {
     return res.status(403).json({ ok: false, error: 'Not enabled for this account.' });
@@ -299,6 +332,7 @@ router.get('/wall', requireAccount, (req, res) => {
     out.tasks = vesta.topTasks(capture.submissions(req.account), today, 50);
     // Who a household job can be for (Nick + the household accounts), as /home gives it.
     out.people = capture.people();
+    out.familyCalendar = familyCalendarFor(req.account);
     // A short label for the wall beside each task's own wording (display only;
     // the record is untouched — see services/task-titles.js).
     try {
@@ -319,7 +353,8 @@ router.get('/wall', requireAccount, (req, res) => {
       const [y, m, d] = from.split('-').map(Number);
       const back = new Date(y, m - 1, d - 7);
       const lookback = `${back.getFullYear()}-${_pad(back.getMonth() + 1)}-${_pad(back.getDate())}`;
-      const rows = db.getCalendarEvents(`${lookback}T00:00:00`, `${keys[keys.length - 1]}T23:59:59`) || [];
+      const fromIso = `${lookback}T00:00:00`; const toIso = `${keys[keys.length - 1]}T23:59:59`;
+      const rows = withFamilyCalendar(db.getCalendarEvents(fromIso, toIso) || [], fromIso, toIso);
       // Whether he is at work comes from the WORKING-DAY rule and People HR
       // (via NOVA) — never from the diary alone (17 Oct 2026).
       const workingDays = require('../services/working-days');
@@ -453,6 +488,48 @@ router.patch('/tasks/:id', requireAccount, (req, res) => {
   } catch (e) {
     console.error('[Vesta] Task update failed:', e.message);
     res.status(500).json({ ok: false, error: 'Something went wrong.' });
+  }
+});
+
+// ── The shared family calendar (18 Oct 2026) ─────────────────────────────────
+// Add, edit and delete ONE event in the shared family Google calendar. Behind
+// the `family-calendar` scope; nothing here can reach any other calendar.
+// Every change is read back from Google before it answers ok.
+function familyCalendarGate(req, res, next) {
+  if (!capture.hasScope(req.account, 'family-calendar')) {
+    return res.status(403).json({ ok: false, error: 'This account can’t change the family calendar.' });
+  }
+  next();
+}
+const _by = (req) => `vesta:${(req.account && req.account.username) || 'unknown'}`;
+
+router.post('/family-calendar/events', requireAccount, familyCalendarGate, async (req, res) => {
+  try {
+    const r = await require('../services/google-calendar').createEvent(req.body || {}, { by: _by(req) });
+    res.status(r.ok ? 200 : (r.status || 400)).json(r);
+  } catch (e) {
+    console.error('[Vesta] Family calendar add failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong — it may not have saved.' });
+  }
+});
+
+router.patch('/family-calendar/events/:id', requireAccount, familyCalendarGate, async (req, res) => {
+  try {
+    const r = await require('../services/google-calendar').updateEvent(req.params.id, req.body || {}, { by: _by(req) });
+    res.status(r.ok ? 200 : (r.status || 400)).json(r);
+  } catch (e) {
+    console.error('[Vesta] Family calendar edit failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong — it may not have changed.' });
+  }
+});
+
+router.delete('/family-calendar/events/:id', requireAccount, familyCalendarGate, async (req, res) => {
+  try {
+    const r = await require('../services/google-calendar').deleteEvent(req.params.id, { by: _by(req) });
+    res.status(r.ok ? 200 : (r.status || 400)).json(r);
+  } catch (e) {
+    console.error('[Vesta] Family calendar delete failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong — it may not have been deleted.' });
   }
 });
 

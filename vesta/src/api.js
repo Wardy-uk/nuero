@@ -152,6 +152,18 @@ export const addTask = (token, text, assignees = [], dueDate = null) =>
 export const updateTask = (token, id, patch) =>
   call(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch, token });
 
+/**
+ * The shared family Google calendar (the only calendar the wall may change).
+ * `id` on an add is the wall's own event id, kept across retries so a repeat
+ * after a lost answer cannot make a second event.
+ */
+export const addFamilyEvent = (token, body) =>
+  call('/family-calendar/events', { method: 'POST', body, token });
+export const updateFamilyEvent = (token, id, body) =>
+  call(`/family-calendar/events/${encodeURIComponent(id)}`, { method: 'PATCH', body, token });
+export const deleteFamilyEvent = (token, id) =>
+  call(`/family-calendar/events/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+
 export const addItem = (token, slug, section, name) =>
   call(`/catalogue/${encodeURIComponent(slug)}/add`, {
     method: 'POST', body: { section, name }, token,

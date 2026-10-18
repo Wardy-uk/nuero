@@ -65,6 +65,7 @@ const CAPABILITIES = Object.freeze({
   'plaud.pull': { authority: 'A2', effect: 'pull recordings from PLAUD into the vault', machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'sync ledger', idempotent: 'canonical plaud_id' },
   'push.synthetic-p0': { authority: 'A2', effect: 'a synthetic P0 interrupt on the phone', machine: 'refuse', approval: 'click', registry: null, ledger: true, verification: 'attention_notifications', idempotent: true },
   'homeassistant.room': { authority: 'A2', effect: 'lights / radiator in the house, from an accepted room offer', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.room', ledger: false, verification: 'next house read', idempotent: true },
+  'calendar.family': { authority: 'A2', effect: 'add / edit / delete an event in the shared family Google calendar, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:google.calendar.family', ledger: true, verification: 'Google read-back', idempotent: 'event id chosen before the call' },
   'tally.categorise': { authority: 'A2', effect: "a transaction's category in Tally (and Tally's merchant rule on 'Always')", machine: 'refuse', approval: 'click', registry: 'external-writes:tally.transaction.categorise', ledger: true, verification: 'Tally read-back', idempotent: true },
 
   'microsoft.task.complete': {
@@ -190,6 +191,17 @@ const ROUTE_RULES = Object.freeze([
   R('DELETE', '/api/push/subscriptions', 'config.security'),
   R('*', '/api/rescuetime/key', 'config.security'),
   R('*', '/api/weather/wu/key', 'config.security'),
+  // The family Google calendar (18 Oct 2026): the OAuth client and the sign-in
+  // are credentials; a sync only reads.
+  R('*', '/api/google-calendar/client', 'config.security'),
+  R('*', '/api/google-calendar/connect', 'config.security'),
+  R('*', '/api/google-calendar/finish', 'config.security'),
+  R('*', '/api/google-calendar/disconnect', 'config.security'),
+  R('*', '/api/google-calendar/target', 'config.security'),
+  R('POST', '/api/google-calendar/sync', 'ingest'),
+  // The wall's own writes to it (account session, never a machine).
+  R('*', '/api/v/family-calendar/events', 'calendar.family'),
+  R('*', '/api/v/family-calendar/events/:id', 'calendar.family'),
   // Home energy: the Bright login is a credential; tariffs and the gas
   // calorific value decide what every cost says, so they are Nick's too.
   R('*', '/api/energy/credentials', 'config.security'),

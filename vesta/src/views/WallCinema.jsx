@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
 import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot, decodeImage, FALLBACK_SRC, backgroundReport, logBackground, imageBySrc } from '../backgrounds';
-import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary } from './WallSheets';
+import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary, EventSheet } from './WallSheets';
 import './WallCinema.css';
 
 /**
@@ -349,7 +349,7 @@ function Outside({ station, onOpen }) {
   );
 }
 
-function DayCard({ day, title, now, onOpen, emptyLine }) {
+function DayCard({ day, title, now, onOpen, emptyLine, onEvent }) {
   const head = (
     <button className="cine__phead" onClick={onOpen} aria-label={`Open the calendar from ${title}`}>
       <Icon name="cal" className={title === 'Today' ? 'cine__icon--amber' : 'cine__icon--rose'} />
@@ -371,12 +371,13 @@ function DayCard({ day, title, now, onOpen, emptyLine }) {
           </>
         ) : (
           <>
-            {allDay.map((e, i) => <p key={`${e.id || i}-a`} className="cine__chip">{e.title}</p>)}
+            {allDay.map((e, i) => <p key={`${e.id || i}-a`} className={`cine__chip${onEvent ? ' cine__evtap' : ''}`} onClick={onEvent ? () => onEvent(e, day.date) : undefined}>{e.title}</p>)}
             {day.off && <p className="cine__work cine__work--off">Nick off</p>}
             {day.work && <p className="cine__work">{day.work.allDay ? 'Nick at work' : `Nick at work · ${time(day.work.start)}–${time(day.work.end)}`}</p>}
             <ul className="cine__events">
               {rows.map(({ e, past, now: on }, i) => (
-                <li key={`${e.id || i}-t`} className={`cine__event${past ? ' cine__event--past' : ''}${on || (e.id || e.start) === nextId ? ' cine__event--next' : ''}`}>
+                <li key={`${e.id || i}-t`} className={`cine__event${past ? ' cine__event--past' : ''}${on || (e.id || e.start) === nextId ? ' cine__event--next' : ''}${onEvent ? ' cine__evtap' : ''}`}
+                    onClick={onEvent ? () => onEvent(e, day.date) : undefined}>
                   <span className="cine__etime">{time(e.start)}</span>
                   <span className="cine__ewhat">{e.title}</span>
                 </li>
@@ -547,6 +548,7 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
   const close = () => { if (dirty) { setConfirm(true); return; } onClose(); };
   const list = (data && data.tasks && data.tasks.tasks) || [];
   const people = (data && data.people) || [];
+  const fam = (data && data.familyCalendar) || { canEdit: false, why: null };
   let title = ''; let body = null; let top = false;
   if (sheet.kind === 'jobs') {
     title = `Household jobs \u00b7 ${list.length}`;
@@ -576,6 +578,11 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
   } else if (sheet.kind === 'energy') {
     title = 'Energy';
     body = <EnergySheet energy={data.energy} />;
+  } else if ((sheet.kind === 'event' || sheet.kind === 'addEvent') && act && act.event) {
+    title = sheet.kind === 'addEvent' ? 'New family event' : 'Event';
+    top = true;
+    body = <EventSheet event={sheet.kind === 'event' ? sheet.event : null} date={sheet.date} today={data.today} act={act}
+                       canEdit={fam.canEdit} why={fam.why} setDirty={setDirty} onDone={() => { setDirty(false); onClose(); }} />;
   } else if (sheet.kind === 'day') {
     const d = sheet.day; const { dow, day, month } = dayOfKey(d.date);
     title = `${DAYS_LONG[dow]} ${day} ${MONTHS_LONG[month]}`;
@@ -587,13 +594,16 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
         {events.length === 0 && !d.off && !d.work && <p className="cine__sub">Nothing in the diary</p>}
         <ul className="cine__events cine__events--full">
           {events.map((e, i) => (
-            <li key={`${e.id || i}`} className="cine__event cine__event--full">
+            <li key={`${e.id || i}`} className="cine__event cine__event--full cine__evtap" onClick={() => setSheet({ kind: 'event', event: e, date: d.date })}>
               <span className="cine__etime">{e.allDay ? 'All day' : `${time(e.start)}${e.end ? `–${time(e.end)}` : ''}`}</span>
               <span className="cine__ewhat cine__ewhat--full">{e.title}</span>
             </li>
           ))}
         </ul>
-        <button className="cine__sheetbtn" onClick={onOpenWeek}>Open the week</button>
+        <div className="cine__dayfoot">
+          <button className="cine__sheetbtn" onClick={onOpenWeek}>Open the week</button>
+          {fam.canEdit && <button className="cine__sheetbtn cine__sheetbtn--primary" onClick={() => setSheet({ kind: 'addEvent', date: d.date })}>+ Add event</button>}
+        </div>
       </div>
     );
   }
@@ -606,7 +616,7 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
         </header>
         {confirm && (
           <div className="cine__confirm" role="alertdialog" aria-label="Discard changes?">
-            <span>Discard this new job?</span>
+            <span>{sheet.kind === 'add' ? 'Discard this new job?' : 'Discard your changes?'}</span>
             <button className="cine__sheetbtn" onClick={() => setConfirm(false)}>Keep editing</button>
             <button className="cine__sheetbtn cine__sheetbtn--danger" onClick={() => { setDirty(false); onClose(); }}>Discard</button>
           </div>
@@ -660,8 +670,8 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
           {!data ? <p className="cine__loading">Getting things…</p> : (
             <>
               <div className={`cine__panels${can('energy') ? '' : ' cine__panels--three'}`}>
-                {can('calendar') && <DayCard day={week && week[0]} title="Today" now={now} onOpen={open} emptyLine="Nothing planned today" />}
-                {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" />}
+                {can('calendar') && <DayCard day={week && week[0]} title="Today" now={now} onOpen={open} emptyLine="Nothing planned today" onEvent={(e, date) => setSheet({ kind: 'event', event: e, date })} />}
+                {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" onEvent={(e, date) => setSheet({ kind: 'event', event: e, date })} />}
                 <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} onOpen={() => setSheet({ kind: 'jobs' })} onJob={(t) => setSheet({ kind: 'job', task: t })} />
                 {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} onOpen={() => setSheet({ kind: 'energy' })} />}
               </div>

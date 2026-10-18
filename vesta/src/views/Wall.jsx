@@ -728,6 +728,13 @@ export default function Wall({ onExit, onSignedOut }) {
       await refresh();
       return res;
     },
+    // The shared family Google calendar: the server reads every change back
+    // from Google before it answers ok; the wall is re-read after.
+    event: {
+      add: async (body) => { lastTouch.current = Date.now(); const res = await api.addFamilyEvent(api.getToken(), body); await refresh(); return res; },
+      update: async (id, body) => { lastTouch.current = Date.now(); const res = await api.updateFamilyEvent(api.getToken(), id, body); await refresh(); return res; },
+      remove: async (id) => { lastTouch.current = Date.now(); const res = await api.deleteFamilyEvent(api.getToken(), id); await refresh(); return res; },
+    },
   };
   return (
     <div className={`wall-shell${dim ? ' wall-shell--dim' : ''}`}
