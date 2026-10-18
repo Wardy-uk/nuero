@@ -722,9 +722,11 @@ export default function Wall({ onExit, onSignedOut }) {
       await refresh();
       return res;
     },
-    addTask: async ({ text, dueDate, assignees }) => {
+    addTask: async ({ text, dueDate, assignees, notes, priority }) => {
       lastTouch.current = Date.now();
-      const res = await api.addTask(api.getToken(), text, assignees, dueDate);
+      const res = await api.addTask(api.getToken(), text, assignees, dueDate, {
+        ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
+      });
       await refresh();
       return res;
     },

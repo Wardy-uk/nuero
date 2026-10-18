@@ -151,8 +151,8 @@ export const hike = (token) => call('/hike', { token });
 export const calendarDay = (token, date) =>
   call(`/calendar?date=${encodeURIComponent(date)}`, { token });
 
-export const addTask = (token, text, assignees = [], dueDate = null) =>
-  call('/tasks', { method: 'POST', body: { text, assignees, dueDate }, token });
+export const addTask = (token, text, assignees = [], dueDate = null, extra = {}) =>
+  call('/tasks', { method: 'POST', body: { text, assignees, dueDate, ...extra }, token, timeoutMs: 30000 });
 
 /**
  * Change a household task. Only the keys PRESENT are changed — `dueDate: null`
@@ -160,7 +160,7 @@ export const addTask = (token, text, assignees = [], dueDate = null) =>
  * distinction all the way to the column.
  */
 export const updateTask = (token, id, patch) =>
-  call(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch, token });
+  call(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch, token, timeoutMs: 30000 });
 
 /**
  * The shared family Google calendar (the only calendar the wall may change).

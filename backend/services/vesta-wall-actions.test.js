@@ -79,12 +79,53 @@ test('household jobs: complete, reopen, reschedule, reassign and add — each re
     assert.equal((await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { done: true } })).status, 200);
     assert.ok(!(await wallTasks(helen)).some((x) => x.id === id), 'done: gone from the wall');
     assert.equal(db.getTaskRow(id).status, 'done', 'and recorded as done in the task store');
+    // The finished job is in the wall's "done recently" list, so it can be reopened later.
+    assert.ok((await call('/wall', { token: helen })).json.doneTasks.some((x) => x.id === id), 'done: listed as recently finished');
     // Reopen.
     assert.equal((await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { done: false } })).status, 200);
+    assert.ok(!(await call('/wall', { token: helen })).json.doneTasks.some((x) => x.id === id));
     assert.ok((await wallTasks(helen)).some((x) => x.id === id), 'reopened: back on the wall');
 
     // The job's own wording is never touched by any of this.
     assert.equal(db.getTaskRow(id).text, 'Clean the gutters');
+
+    // Edit the wording, description and priority — read back from the record.
+    const ed = await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { text: 'Clean the gutters (front)', notes: 'Ladder is in the garage', priority: 'high' } });
+    assert.equal(ed.status, 200, JSON.stringify(ed.json));
+    assert.equal(ed.json.task.text, 'Clean the gutters (front)');
+    let row = db.getTaskRow(id);
+    assert.equal(row.text, 'Clean the gutters (front)'); assert.equal(row.notes, 'Ladder is in the garage'); assert.equal(row.priority, 3);
+    t = (await wallTasks(helen)).find((x) => x.id === id);
+    assert.equal(t.notes, 'Ladder is in the garage'); assert.equal(t.priority, 'high');
+    assert.equal((await call('/wall', { token: helen })).json.tasks.tasks.filter((x) => x.id === id).length, 1, 'same id, no copy');
+    // Clearing the description is distinct from leaving it alone.
+    await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { priority: 'low' } });
+    assert.equal(db.getTaskRow(id).notes, 'Ladder is in the garage');
+    await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { notes: '' } });
+    assert.equal(db.getTaskRow(id).notes, null);
+    // Refusals change nothing.
+    assert.equal((await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { text: '  ' } })).status, 400);
+    assert.equal((await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { priority: 'urgent' } })).status, 400);
+    assert.equal((await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { dueDate: 'next tuesday' } })).status, 400);
+    const other2 = await call('/tasks', { token: helen, body: { text: 'Bins out' } });
+    const clash = await call(`/tasks/${id}`, { token: helen, method: 'PATCH', body: { text: 'Bins out' } });
+    assert.equal(clash.status, 409, 'renaming onto another job’s wording is refused, not merged');
+    assert.equal(db.getTaskRow(id).text, 'Clean the gutters (front)');
+    assert.ok(other2.json.id);
+    // Create with a description and priority.
+    const add2 = await call('/tasks', { token: helen, body: { text: 'Book the boiler service', notes: 'British Gas, annual', priority: 'normal', dueDate: keyOffset(5) } });
+    assert.equal(add2.json.task.notes, 'British Gas, annual'); assert.equal(add2.json.task.priority, 'normal');
+    assert.equal((await call('/tasks', { token: helen, body: { text: 'X', priority: 'whenever' } })).status, 400);
+
+    // Nick's own (non-household) task: never on the wall, and typing its wording does not pull it in.
+    const taskStore = require('./task-store');
+    const priv = taskStore.createTask({ text: 'Prepare disciplinary notes', source: 'manual', notes: 'confidential', domain: 'personal' });
+    assert.ok(!JSON.stringify((await call('/wall', { token: helen })).json).includes('disciplinary'), 'a private task never reaches the wall');
+    const fold = await call('/tasks', { token: helen, body: { text: 'Prepare disciplinary notes' } });
+    assert.equal(fold.status, 409);
+    assert.ok(!JSON.stringify(fold.json).includes('confidential'));
+    assert.equal(db.getTaskRow(priv.id).household, 0, 'and it was not moved onto the household list');
+    assert.equal((await call(`/tasks/${priv.id}`, { token: helen, method: 'PATCH', body: { text: 'hijack' } })).status, 404);
 
     // Refusals.
     assert.equal((await call('/tasks', { token: helen, body: { text: '   ' } })).status, 400, 'an empty job is refused');
@@ -119,7 +160,7 @@ test('the sheets render: a job with its full wording and a big tick, add, a pers
   assert.ok(/aria-pressed="true"[^>]*>Nick</.test(job), 'who it is for is shown as chosen');
   const add = renderToString(React.createElement(AddJobSheet, { people, today: '2026-10-18', act, onSaved() {}, onCancel() {}, setDirty() {} }));
   assert.ok(add.includes('What needs doing?') && add.includes('Save') && add.includes('Cancel'));
-  assert.ok(/disabled=""[^>]*>Save</.test(add), 'Save is off until there is something to save');
+  assert.ok(!/disabled=""[^>]*>Save</.test(add), 'Save is never silently off — a tap says what is missing');
   const tasks = { total: 2, tasks: [task, { id: 8, text: 'Bins', who: ['Helen'], assignees: ['helen'] }] };
   const nick = renderToString(React.createElement(MemberSheet, { person: { name: 'Nick', state: 'out', role: 'person' }, tasks, today: '2026-10-18', onOpenJob() {}, onAddFor() {} }));
   assert.ok(nick.includes('Book my car in') && !nick.includes('>Bins<'), 'only jobs explicitly for him');
@@ -195,4 +236,33 @@ test('the event sheet: editable family events get a form; phone events say where
   assert.equal(eventProblem({ ...blank, title: 'Swim', start: '10:00', end: '09:00' }).field, 'end');
   assert.equal(eventProblem({ ...blank, title: 'Swim', start: '10:00' }), null);
   assert.equal(eventProblem(before, { isNew: false, changed: false }).message, 'Nothing has changed yet.');
+});
+
+test('job sheets: description, priority, edit, add-with-details, reopen — and Save is never silently off', async () => {
+  const React = require('react');
+  const { renderToString } = require('react-dom/server');
+  const esbuild = require('esbuild');
+  const out = await esbuild.build({
+    entryPoints: [path.join(__dirname, '..', '..', 'vesta', 'src', 'views', 'WallSheets.jsx')],
+    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
+    external: ['react', 'react-dom', 'nosleep.js/*'], loader: { '.css': 'empty' }, logLevel: 'silent',
+  });
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
+  const { JobSheet, AddJobSheet, AllJobsSheet, jobProblem } = mod.exports;
+  const act = { task: async () => ({ ok: true }), addTask: async () => ({ ok: true }) };
+  const people = [{ id: 'nick', label: 'Nick' }];
+  const task = { id: 9, text: 'Clear the shed', notes: 'Paint tins to the tip', priority: 'high', dueDate: null, who: [], assignees: [] };
+  const job = renderToString(React.createElement(JobSheet, { task, people, today: '2026-10-18', act, onDone() {} }));
+  assert.ok(job.includes('Paint tins to the tip') && job.includes('High priority') && job.includes('Edit name &amp; description'));
+  assert.ok(/aria-pressed="true"[^>]*>High</.test(job), 'the current priority is shown as chosen');
+  const add = renderToString(React.createElement(AddJobSheet, { people, today: '2026-10-18', act, onSaved() {}, onCancel() {}, setDirty() {} }));
+  assert.ok(add.includes('Description (optional)') && add.includes('Priority'), 'add takes a description and a priority');
+  assert.ok(!/disabled=""[^>]*>Save</.test(add), 'Save is tappable on an empty form — a tap says what is missing');
+  assert.equal(jobProblem({ text: '' }).message, 'Give the job a name.');
+  assert.equal(jobProblem({ text: 'x', notes: 'y'.repeat(2001) }).field, 'notes');
+  assert.equal(jobProblem({ text: 'x' }, { changed: false }).message, 'Nothing has changed yet.');
+  assert.equal(jobProblem({ text: 'x' }), null);
+  const all = renderToString(React.createElement(AllJobsSheet, { tasks: { tasks: [] }, done: [{ id: 3, text: 'Bins', doneAt: '2026-10-17 09:00:00', who: [] }], today: '2026-10-18', act, onOpenJob() {}, onAdd() {} }));
+  assert.ok(all.includes('Done in the last two weeks') && all.includes('Bins') && all.includes('>Reopen<'), 'a finished job can be found and reopened');
 });

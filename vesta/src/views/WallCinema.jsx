@@ -553,7 +553,7 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
   if (sheet.kind === 'jobs') {
     title = `Household jobs \u00b7 ${list.length}`;
     body = act
-      ? <AllJobsSheet tasks={data.tasks} today={data.today} act={act} onOpenJob={(t) => setSheet({ kind: 'job', task: t })} onAdd={() => setSheet({ kind: 'add' })} />
+      ? <AllJobsSheet tasks={data.tasks} done={data.doneTasks || []} today={data.today} act={act} onOpenJob={(t) => setSheet({ kind: 'job', task: t })} onAdd={() => setSheet({ kind: 'add' })} />
       : <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} full />)}</ul>;
   } else if (sheet.kind === 'job') {
     title = 'Household job';
@@ -562,7 +562,7 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
     if (found) lastJob.current = found;
     const live = found || (lastJob.current && lastJob.current.id === sheet.task.id ? lastJob.current : sheet.task);
     body = act
-      ? <JobSheet task={live} people={people} today={data.today} act={act} onDone={onClose} />
+      ? <JobSheet task={live} people={people} today={data.today} act={act} onDone={onClose} setDirty={setDirty} />
       : <ul className="cine__jobs cine__jobs--all"><JobItem t={live} today={data.today} full /></ul>;
   } else if (sheet.kind === 'add' && act) {
     title = 'New household job'; top = true;

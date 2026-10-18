@@ -532,9 +532,32 @@ function updateTask(account, taskId, patch = {}) {
   if (!visible) return missing;
 
   const fields = {};
+  // 18 Oct 2026 (Nick): the family wall edits a household job's wording,
+  // description and priority too. Refused, never repaired: an empty title, an
+  // over-long one, or a priority that is not high/normal/low answers 400 and
+  // changes nothing.
+  if ('text' in patch) {
+    const text = String(patch.text == null ? '' : patch.text).trim();
+    if (!text) return { ok: false, status: 400, error: 'Give the job a name.' };
+    if (text.length > MAX_TEXT) return { ok: false, status: 400, error: 'That name is too long.' };
+    fields.text = text;
+  }
+  if ('notes' in patch) {
+    const notes = String(patch.notes == null ? '' : patch.notes).trim();
+    if (notes.length > MAX_NOTES) return { ok: false, status: 400, error: 'That description is too long.' };
+    fields.notes = notes || null;
+  }
+  if ('priority' in patch) {
+    const pr = patch.priority == null || patch.priority === '' ? null : PRIORITY_IN[String(patch.priority).toLowerCase()];
+    if (pr === undefined) return { ok: false, status: 400, error: 'Priority is high, normal or low.' };
+    fields.priority = pr;
+  }
   // `null` is a real instruction here — "clear the due date" — and must stay
   // distinct from the key being absent, which means "leave it alone".
-  if ('dueDate' in patch) fields.due_date = normDueDate(patch.dueDate);
+  if ('dueDate' in patch) {
+    if (patch.dueDate != null && patch.dueDate !== '' && !normDueDate(patch.dueDate)) return { ok: false, status: 400, error: 'That isn’t a date.' };
+    fields.due_date = normDueDate(patch.dueDate);
+  }
   if ('assignees' in patch) fields.assignee = serialiseAssignees(resolveAssignees(patch.assignees));
   else if ('assignee' in patch) fields.assignee = serialiseAssignees(resolveAssignees(patch.assignee));
   if ('done' in patch) fields.status = patch.done ? 'done' : 'open';
@@ -543,18 +566,48 @@ function updateTask(account, taskId, patch = {}) {
 
   // Through task-store, so completion does whatever completion does elsewhere
   // (the outcome-note hold, the export) rather than a raw column write.
-  const updated = taskStore.updateTask(id, fields);
-  return { ok: true, id, held: (updated && updated.held) || false };
+  let updated;
+  try {
+    updated = taskStore.updateTask(id, fields);
+  } catch (e) {
+    // task-store refuses with a sentence (a wording another job already has,
+    // a ticket that closes elsewhere) — that sentence is the answer.
+    const msg = String(e.message || '');
+    if (/already has that text/i.test(msg)) return { ok: false, status: 409, error: 'Another job already says exactly that.' };
+    return { ok: false, status: 409, error: msg || 'That change was refused.' };
+  }
+  // Read the record back: the change is only reported once the row holds it.
+  const back = db.getTaskRow(id);
+  const check = {
+    text: (v) => back.text === v,
+    notes: (v) => (back.notes || null) === v,
+    priority: (v) => (back.priority == null ? null : Number(back.priority)) === v,
+    due_date: (v) => (back.due_date || null) === v,
+    assignee: (v) => (back.assignee || null) === (v || null),
+    status: (v) => (v === 'done' ? back.status === 'done' : back.status !== 'done' && back.status !== 'dropped'),
+  };
+  const wrong = Object.keys(fields).filter((k) => check[k] && !check[k](fields[k]));
+  if (wrong.length) return { ok: false, status: 500, error: 'NEURO didn’t keep that change — try again.' };
+  return { ok: true, id, held: (updated && updated.held) || false, task: shapeTask(back, account) };
 }
+
+const MAX_NOTES = 2000;
+// Priority words the wall uses, onto NEURO's 1–3 (3 = high, as task-store).
+const PRIORITY_IN = { high: 3, normal: 2, low: 1, 3: 3, 2: 2, 1: 1 };
+const PRIORITY_OUT = { 3: 'high', 2: 'normal', 1: 'low' };
 
 /** The task source that marks a row as belonging to one account. */
 function sourceFor(account) {
   return `capture:${account.label}`;
 }
 
-function submit(account, text, { now = new Date(), assignee = null, assignees = null, dueDate = null } = {}) {
+function submit(account, text, { now = new Date(), assignee = null, assignees = null, dueDate = null, notes = undefined, priority = undefined } = {}) {
   const clean = String(text || '').trim().slice(0, MAX_TEXT);
   if (!clean) return { ok: false, status: 400, error: 'nothing to add' };
+  const cleanNotes = notes == null ? null : String(notes).trim();
+  if (cleanNotes && cleanNotes.length > MAX_NOTES) return { ok: false, status: 400, error: 'That description is too long.' };
+  const pr = priority == null || priority === '' ? null : PRIORITY_IN[String(priority).toLowerCase()];
+  if (pr === undefined) return { ok: false, status: 400, error: 'Priority is high, normal or low.' };
 
   const gate = _noteUse(account.username, now);
   if (!gate.ok) return { ok: false, status: 429, error: gate.error };
@@ -574,9 +627,22 @@ function submit(account, text, { now = new Date(), assignee = null, assignees = 
     // IS the shared list. Nick's own tasks default to 0 and reach it only when
     // he says so.
     household: 1,
+    ...(cleanNotes ? { notes: cleanNotes } : {}),
+    ...(pr ? { priority: pr } : {}),
   });
 
-  return { ok: true, id, text: clean, created, assignees: resolveAssignees(assignees != null ? assignees : assignee) };
+  // Read back. A wording that already exists folds into that job (no duplicate);
+  // say so rather than calling it new.
+  const db = require('../db/database');
+  const back = db.getTaskRow(id);
+  if (!back) return { ok: false, status: 500, error: 'NEURO didn’t keep that job — try again.' };
+  // ⚠ The same wording as one of Nick's OWN tasks folds into it (one record,
+  // no duplicate) — but that row is not on the household list, and nothing of
+  // it may come back here.
+  if (!created && back.household !== 1) {
+    return { ok: false, status: 409, error: 'That wording matches something that isn’t on the household list — say it a little differently.' };
+  }
+  return { ok: true, id, text: back.text, created, assignees: resolveAssignees(assignees != null ? assignees : assignee), task: shapeTask(back, account) };
 }
 
 /**
@@ -619,8 +685,14 @@ function submissions(account, { limit = 50 } = {}) {
   // order for Nick's own triage screen and meaningless here — she wants the
   // thing she sent this morning at the top, not the one NEURO ranks highest.
   const newest = [...rows].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  return newest.slice(0, limit).map((r) => shapeTask(r, account));
+}
+
+/** One task as a household account may see it. */
+function shapeTask(r, account) {
+  const shared = hasScope(account, 'shared-tasks');
   const who = people();
-  return newest.slice(0, limit).map((r) => ({
+  return ({
     // Needed to edit it. An opaque row id, not a path or anything guessable —
     // and every write re-checks the row is in this account's pool anyway.
     id: r.id,
@@ -644,7 +716,13 @@ function submissions(account, { limit = 50 } = {}) {
       : 'to do',
     dueDate: r.due_date || null,
     addedAt: (r.created_at || '').split(' ')[0] || null,
-  }));
+    // 18 Oct 2026: a household job's description and priority (the family
+    // wall edits both). Household tasks only — this shape never carries
+    // anything from Nick's own list (see the pool above).
+    notes: r.notes || null,
+    priority: PRIORITY_OUT[r.priority] || null,
+    doneAt: r.status === 'done' ? (r.completed_at || r.updated_at || null) : null,
+  });
 }
 
 module.exports = {

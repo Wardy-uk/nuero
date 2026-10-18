@@ -100,11 +100,72 @@ function PeopleChips({ people, value, onToggle, disabled }) {
   );
 }
 
+const PRIORITIES = [{ id: 'high', label: 'High' }, { id: 'normal', label: 'Normal' }, { id: 'low', label: 'Low' }, { id: null, label: 'None' }];
+function PriorityChips({ value, onPick, disabled }) {
+  return (
+    <div className="cine__chips" role="group" aria-label="Priority">
+      {PRIORITIES.map((p) => (
+        <button key={p.label} className={`cine__chip2${(value || null) === p.id ? ' cine__chip2--on' : ''}`} aria-pressed={(value || null) === p.id}
+                disabled={disabled} onClick={() => onPick(p.id)}>{p.label}</button>
+      ))}
+    </div>
+  );
+}
+const priorityWords = (p) => (p === 'high' ? 'High priority' : p === 'low' ? 'Low priority' : p === 'normal' ? 'Normal priority' : null);
+
+/** What is wrong with a job's name/description, or null. PURE. A tap on Save says it — never a silently dead button. */
+export function jobProblem({ text = '', notes = '' } = {}, { changed = true } = {}) {
+  if (!String(text).trim()) return { field: 'text', message: 'Give the job a name.' };
+  if (String(text).trim().length > 500) return { field: 'text', message: 'That name is too long.' };
+  if (String(notes || '').trim().length > 2000) return { field: 'notes', message: 'That description is too long.' };
+  if (!changed) return { field: null, message: 'Nothing has changed yet.' };
+  return null;
+}
+
+/** Name and description of a job, edited together; saved only on Save. */
+function JobTextEditor({ task, act, onClose, setDirty }) {
+  const s = useSaver();
+  const [text, setText] = useState(task.text || '');
+  const [notes, setNotes] = useState(task.notes || '');
+  const [problem, setProblem] = useState(null);
+  const changed = text.trim() !== (task.text || '') || notes.trim() !== (task.notes || '');
+  useEffect(() => { if (setDirty) setDirty(changed); }, [changed]);
+  useEffect(() => () => { if (setDirty) setDirty(false); }, []);
+  useEffect(() => { setProblem(null); s.setError(null); }, [text, notes]);
+  const save = () => {
+    if (s.busy) return;
+    const p = jobProblem({ text, notes }, { changed });
+    if (p) { setProblem(p); return; }
+    const patch = {};
+    if (text.trim() !== (task.text || '')) patch.text = text.trim();
+    if (notes.trim() !== (task.notes || '')) patch.notes = notes.trim();
+    s.run(() => act.task(task.id, patch)).then((res) => { if (res) { if (setDirty) setDirty(false); onClose('Saved.'); } });
+  };
+  return (
+    <div className="cine__form">
+      <input className={`cine__textin${problem && problem.field === 'text' ? ' cine__invalid' : ''}`} value={text} maxLength={500} placeholder="What needs doing?"
+             disabled={s.busy} autoFocus onChange={(e) => setText(e.target.value)} />
+      <textarea className={`cine__textin cine__textarea${problem && problem.field === 'notes' ? ' cine__invalid' : ''}`} value={notes} maxLength={2000}
+                placeholder="Description (optional)" disabled={s.busy} onChange={(e) => setNotes(e.target.value)} />
+      <div className="cine__formfoot">
+        <button className="cine__sheetbtn" disabled={s.busy} onClick={() => { if (setDirty) setDirty(false); onClose(null); }}>Cancel</button>
+        <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy} onClick={save}>{s.busy ? 'Saving…' : 'Save'}</button>
+      </div>
+      {problem && <p className="cine__savestate cine__savestate--err" role="alert">{problem.message}</p>}
+      <SaveState busy={s.busy} error={s.error} />
+    </div>
+  );
+}
+
 /** One job: its full wording, done/undo, reschedule, reassign. */
-export function JobSheet({ task, people, today, act, onDone }) {
+export function JobSheet({ task, people, today, act, onDone, setDirty }) {
   const s = useSaver();
   const [ok, setOk] = useState(null);
   const [completed, setCompleted] = useState(false);
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return <JobTextEditor task={task} act={act} setDirty={setDirty} onClose={(msg) => { setEditing(false); if (msg) setOk(msg); }} />;
+  }
   const due = dueLabel(task, today);
   const patch = (fields, msg) => s.run(() => act.task(task.id, fields)).then((r) => { if (r) setOk(msg); return r; });
   const toggle = (id) => {
@@ -124,9 +185,11 @@ export function JobSheet({ task, people, today, act, onDone }) {
         </button>
         <div>
           <p className="cine__jobtext">{task.text}</p>
+          {task.notes && <p className="cine__jobnotes">{task.notes}</p>}
           <p className="cine__jobmeta">
             {task.overdue ? <span className="cine__late">Overdue</span> : task.dueToday ? <span className="cine__soon">Due today</span> : due ? <span>{`Due ${due}`}</span> : <span>No date</span>}
             {task.who && task.who.length > 0 && <span>{` · ${task.who.join(' & ')}`}</span>}
+            {priorityWords(task.priority) && <span>{` · ${priorityWords(task.priority)}`}</span>}
           </p>
         </div>
       </div>
@@ -141,6 +204,11 @@ export function JobSheet({ task, people, today, act, onDone }) {
           <DueChips todayKey={today} value={task.dueDate} disabled={s.busy} onPick={(d) => patch({ dueDate: d }, d ? `Moved to ${dateWords(d)}.` : 'Date cleared.')} />
           {people && people.length > 0 && <p className="cine__formlabel">Who it’s for</p>}
           <PeopleChips people={people} value={task.assignees} disabled={s.busy} onToggle={toggle} />
+          <p className="cine__formlabel">Priority</p>
+          <PriorityChips value={task.priority} disabled={s.busy} onPick={(pr) => patch({ priority: pr }, pr ? `${priorityWords(pr)}.` : 'Priority cleared.')} />
+          <div className="cine__formfoot">
+            <button className="cine__sheetbtn" disabled={s.busy} onClick={() => { setOk(null); setEditing(true); }}>Edit name &amp; description</button>
+          </div>
         </>
       )}
       <SaveState busy={s.busy} error={s.error} ok={ok} />
@@ -154,30 +222,51 @@ export function AddJobSheet({ people, today, act, onSaved, onCancel, setDirty, p
   const [text, setText] = useState(prefill);
   const [dueDate, setDue] = useState(null);
   const [who, setWho] = useState([]);
+  const [notes, setNotes] = useState('');
+  const [priority, setPriority] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [saved, setSaved] = useState(null);
   const box = useRef(null);
-  useEffect(() => { setDirty(Boolean(text.trim() && text.trim() !== prefill.trim()) || Boolean(dueDate) || who.length > 0); }, [text, dueDate, who]);
+  useEffect(() => { setDirty(Boolean(text.trim() && text.trim() !== prefill.trim()) || Boolean(dueDate) || who.length > 0 || Boolean(notes.trim()) || Boolean(priority)); }, [text, dueDate, who, notes, priority]);
   useEffect(() => () => setDirty(false), []);
   useEffect(() => { if (box.current) box.current.focus(); }, []);
-  const save = () => s.run(() => act.addTask({ text: text.trim(), dueDate, assignees: who })).then((r) => { if (r) { setDirty(false); onSaved(); } });
+  useEffect(() => { setProblem(null); s.setError(null); }, [text, notes]);
+  const save = () => {
+    if (s.busy || saved) return;
+    const p = jobProblem({ text, notes });
+    if (p) { setProblem(p); return; }
+    s.run(() => act.addTask({ text: text.trim(), dueDate, assignees: who, notes: notes.trim() || undefined, priority: priority || undefined }))
+      .then((res) => {
+        if (!res) return;
+        setDirty(false);
+        setSaved(res.created === false ? 'That job was already on the list — nothing duplicated.' : 'Saved — in NEURO.');
+        setTimeout(onSaved, 1100);
+      });
+  };
   return (
     <div className="cine__form">
-      <input ref={box} className="cine__textin" value={text} maxLength={200} placeholder="What needs doing?" disabled={s.busy}
-             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && text.trim()) save(); }} />
+      <input ref={box} className={`cine__textin${problem && problem.field === 'text' ? ' cine__invalid' : ''}`} value={text} maxLength={500} placeholder="What needs doing?" disabled={s.busy}
+             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+      <textarea className={`cine__textin cine__textarea${problem && problem.field === 'notes' ? ' cine__invalid' : ''}`} value={notes} maxLength={2000}
+                placeholder="Description (optional)" disabled={s.busy} onChange={(e) => setNotes(e.target.value)} />
       <p className="cine__formlabel">When</p>
       <DueChips todayKey={today} value={dueDate} disabled={s.busy} onPick={setDue} />
       {people && people.length > 0 && <p className="cine__formlabel">Who it’s for</p>}
       <PeopleChips people={people} value={who} disabled={s.busy} onToggle={(id) => setWho((w) => (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]))} />
+      <p className="cine__formlabel">Priority</p>
+      <PriorityChips value={priority} disabled={s.busy} onPick={setPriority} />
       <div className="cine__formfoot">
         <button className="cine__sheetbtn" disabled={s.busy} onClick={onCancel}>Cancel</button>
-        <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy || !text.trim()} onClick={save}>{s.busy ? 'Saving…' : 'Save'}</button>
+        <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy || !!saved} onClick={save}>{s.busy ? 'Saving…' : saved ? 'Saved' : 'Save'}</button>
       </div>
-      <SaveState busy={false} error={s.error} />
+      {problem && <p className="cine__savestate cine__savestate--err" role="alert">{problem.message}</p>}
+      <SaveState busy={s.busy} error={s.error} ok={saved} />
     </div>
   );
 }
 
 /** Every outstanding job, each with its own tick, and Add. */
-export function AllJobsSheet({ tasks, today, act, onOpenJob, onAdd }) {
+export function AllJobsSheet({ tasks, done = [], today, act, onOpenJob, onAdd }) {
   const s = useSaver();
   const [ok, setOk] = useState(null);
   const list = (tasks && tasks.tasks) || [];
@@ -202,6 +291,23 @@ export function AllJobsSheet({ tasks, today, act, onOpenJob, onAdd }) {
         <button className="cine__sheetbtn cine__sheetbtn--primary" onClick={onAdd}>+ Add a job</button>
       </div>
       <SaveState busy={s.busy} error={s.error} ok={ok} />
+      {done && done.length > 0 && (
+        <>
+          <p className="cine__formlabel">Done in the last two weeks</p>
+          <ul className="cine__alljobs">
+            {done.map((t) => (
+              <li key={t.id} className="cine__alljob cine__alljob--done">
+                <span className="cine__tick cine__tick--done" aria-hidden="true">✓</span>
+                <span className="cine__alljobbody cine__alljobbody--static">
+                  <span className="cine__jtext cine__jtext--full">{t.text}</span>
+                  <span className="cine__jmeta">{`Done ${dateWords(String(t.doneAt).slice(0, 10))}`}{t.who && t.who.length ? ` · ${t.who.join(' & ')}` : ''}</span>
+                </span>
+                <button className="cine__sheetbtn" disabled={s.busy} onClick={() => s.run(() => act.task(t.id, { done: false })).then((res) => { if (res) setOk(`Reopened: ${t.text}`); })}>Reopen</button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

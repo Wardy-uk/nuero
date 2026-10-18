@@ -329,7 +329,10 @@ router.get('/wall', requireAccount, (req, res) => {
 
   try {
     // The jobs card scrolls (Nick, 17 Oct 2026), so it carries the whole open list up to 50.
-    out.tasks = vesta.topTasks(capture.submissions(req.account), today, 50);
+    const allTasks = capture.submissions(req.account, { limit: 200 });
+    out.tasks = vesta.topTasks(allTasks, today, 50);
+    // Finished in the last fortnight, so a job ticked by mistake can be reopened.
+    out.doneTasks = vesta.recentlyDone(allTasks, today);
     // Who a household job can be for (Nick + the household accounts), as /home gives it.
     out.people = capture.people();
     out.familyCalendar = familyCalendarFor(req.account);
@@ -463,6 +466,8 @@ router.post('/tasks', requireAccount, (req, res) => {
       assignees: (req.body || {}).assignees,
       assignee: (req.body || {}).assignee,
       dueDate: (req.body || {}).dueDate,
+      notes: (req.body || {}).notes,
+      priority: (req.body || {}).priority,
     });
     if (!result.ok) return res.status(result.status || 400).json(result);
     res.json(result);

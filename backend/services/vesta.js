@@ -246,8 +246,22 @@ function topTasks(tasks = [], todayKey, limit = 8) {
       who: Array.isArray(t.assigneeLabels) ? t.assigneeLabels : [],
       // The ids behind `who`, so the wall can show and change who a job is for.
       assignees: Array.isArray(t.assignees) ? t.assignees : [],
+      notes: t.notes || null,
+      priority: t.priority || null,
     })),
   };
+}
+
+/** Household jobs finished in the last `days` days, newest first — so the wall can reopen one. PURE. */
+function recentlyDone(tasks = [], todayKey, days = 14, limit = 20) {
+  const [y, m, d] = String(todayKey).split('-').map(Number);
+  const from = new Date(y, m - 1, d - days);
+  const fromKey = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+  return (tasks || [])
+    .filter((t) => t && t.status === 'done' && t.doneAt && String(t.doneAt).slice(0, 10) >= fromKey)
+    .sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)))
+    .slice(0, limit)
+    .map((t) => ({ id: t.id, text: t.text, notes: t.notes || null, doneAt: t.doneAt, who: Array.isArray(t.assigneeLabels) ? t.assigneeLabels : [], assignees: t.assignees || [] }));
 }
 
 /**
@@ -406,6 +420,7 @@ module.exports = {
   dayKeys,
   daysOf,
   topTasks,
+  recentlyDone,
   whoIsIn,
   domainOf,
   suggestMeals,
