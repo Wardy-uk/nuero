@@ -345,7 +345,12 @@ async function _readNow(nowMs) { return require('./canonical-read').now({ now: n
  * (promise-shadow-net): any request it — or canonical Now under it — makes is
  * checked against the exact local read allowlist before it reaches the network.
  */
-function tick(opts) { return net.run(() => _tick(opts)); }
+function tick(opts) {
+  // Default-off first, before the network guard: with no log (the flag was never
+  // on) a pass does nothing at all — not even install the fetch guard.
+  if (!logExists()) return Promise.resolve({ disabled: true, logged: 0 });
+  return net.run(() => _tick(opts));
+}
 
 async function _tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR } = {}) {
   const nowMs = msOf(now);

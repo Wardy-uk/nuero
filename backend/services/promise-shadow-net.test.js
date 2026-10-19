@@ -284,6 +284,40 @@ test('the counters carry operation names and refusal categories only — no URL'
 
 // ── Default-off ──────────────────────────────────────────────────────────────
 
+test('default-off: tick() with no log installs no guard, wraps no fetch, reads and writes nothing (fresh process)', () => {
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-pnet-off-'));
+  const script = `
+    process.env.NEURO_DB_PATH = ${JSON.stringify(path.join(dir, 'off.db'))};
+    process.env.OBSIDIAN_VAULT_PATH = ${JSON.stringify(path.join(dir, 'vault'))};
+    process.env.HA_URL = 'http://localhost:8123'; process.env.HA_TOKEN = 'x';
+    delete process.env.PROMISE_SHADOW_ENABLED;
+    const calls = []; const mine = async (u) => { calls.push(String(u)); throw new Error('no'); };
+    globalThis.fetch = mine;
+    (async () => {
+      const db = require(${JSON.stringify(path.join(__dirname, '..', 'db', 'database'))}); await db.init();
+      const schema = () => JSON.stringify(db.all('SELECT type, name, sql FROM sqlite_master ORDER BY type, name'));
+      const s0 = schema(); const c0 = db.get('SELECT total_changes() AS n').n;
+      const shadow = require(${JSON.stringify(path.join(__dirname, 'promise-shadow'))});
+      const net = require(${JSON.stringify(path.join(__dirname, 'promise-shadow-net'))});
+      const reg = shadow.registerPromiseShadow(process.env, { schedule: () => { throw new Error('a timer was scheduled'); } });
+      const t = await shadow.tick({ now: Date.parse('2026-10-20T06:30:00Z') });
+      console.log(JSON.stringify({ reg, t, installed: net.installed(), fetchOriginal: globalThis.fetch === mine, calls: calls.length,
+        log: shadow.logExists(), schema: schema() === s0, changes: db.get('SELECT total_changes() AS n').n - c0 }));
+      process.exit(0);
+    })().catch((e) => { console.error(e); process.exit(1); });`;
+  const out = execFileSync(process.execPath, ['-e', script], { env: process.env, encoding: 'utf8' });
+  const r = JSON.parse(out.trim().split('\n').filter((l) => l.startsWith('{')).pop());
+  assert.deepEqual(r.reg, { enabled: false });
+  assert.deepEqual(r.t, { disabled: true, logged: 0 });
+  assert.equal(r.installed, false, 'no network guard installed');
+  assert.equal(r.fetchOriginal, true, 'global fetch untouched');
+  assert.equal(r.calls, 0, 'no network');
+  assert.equal(r.log, false, 'no table');
+  assert.equal(r.schema, true, 'schema unchanged');
+  assert.equal(r.changes, 0, 'no database write');
+});
+
 test('default-off: registering without the flag installs no guard', () => {
   const src = fs.readFileSync(path.join(__dirname, 'promise-shadow.js'), 'utf8');
   const reg = src.slice(src.indexOf('function registerPromiseShadow'));
