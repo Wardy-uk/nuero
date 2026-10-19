@@ -23,6 +23,7 @@ if (!(Number.isInteger(days) && days >= 1 && days <= 60)) { console.error('--day
   if (r.counters) {
     const c = r.counters;
     L.push(`Run counters (process since ${String(c.since || '?').slice(0, 16)}, as at ${c.at.slice(0, 16)}): ${c.ticks} ticks · ${c.skipped} skipped on clock + calendar alone · ${c.snapshots} ledger reads · ${c.nowReads} Now/presence reads (${c.nowReadsBundle} bundle, ${c.nowReadsMeeting} pre-meeting) · ${c.nowAvoided || 0} passes settled from history without one ·${c.meetingReinspections} changed-meeting re-reads · ${c.calendarErrors} calendar read errors.`);
+    if (c.net) L.push(`Network (local reads only): allowed ${JSON.stringify(c.net.allowed)} · refused before the network ${JSON.stringify(c.net.refused)}.`);
   }
   L.push('', '## Builds the rows ran under');
   for (const b of r.builds) L.push(`- ${b.runningSha ? b.runningSha.slice(0, 10) : 'unknown'} · code ${b.codeHash || '?'} · ${b.rows} rows · ${b.first.slice(0, 16)} → ${b.last.slice(0, 16)}${b.dirty ? ' · DIRTY' : ''}${b.stale ? ' · STALE (checkout moved, not restarted)' : ''}`);

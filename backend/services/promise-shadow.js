@@ -17,6 +17,10 @@
  *     or an uninspected pre-meeting window is due, and canonical Now (which
  *     reads room presence on localhost:3005) only when an unlogged moment
  *     remains — counted in stats() and on every heartbeat row.
+ *   • Network: every pass runs inside promise-shadow-net's contract — exact
+ *     local reads only (HA states, the weather entity, history, the template
+ *     render; SAiM room presence). Every other request, and every Home
+ *     Assistant service or event call, is refused before the network.
  *   • Each pass reads canonical Now with { readOnly: true }: attention.build
  *     filters deferrals by time without releasing them, reads lifecycle records
  *     with peek, and rooms does not save the visit — no production write.
@@ -36,6 +40,7 @@ const { execFileSync } = require('child_process');
 const db = require('../db/database');
 const policy = require('../../saim/policy/promises.cjs');
 const observe = require('./promise-observe');
+const net = require('./promise-shadow-net');
 
 const TABLE = 'promise_shadow_log';
 const SHADOW_DAYS = 14;
@@ -49,7 +54,7 @@ const HOUR = 3600000;
 const CODE_FILES = Object.freeze([
   './canonical-read', './attention', './attention-lifecycle', './rooms', './neuro-candidates',
   '../../saim/policy/attention-policy.cjs', '../../saim/policy/promises.cjs',
-  './promise-observe', './promise-ledger', './promise-shadow',
+  './promise-observe', './promise-ledger', './promise-shadow', './promise-shadow-net',
 ]);
 
 const LOG_DDL = `
@@ -288,7 +293,7 @@ const _counters = () => ({ ticks: 0, calendarChecks: 0, calendarErrors: 0, skipp
 let _stats = _counters();
 
 /** The run counters since this process started (or the last test reset). */
-function stats() { return { ..._stats }; }
+function stats() { return { ..._stats, net: net.counts() }; }
 
 /**
  * Is anything due? Clock first: an unlogged 07:30 / 12:30 / 17:30 bundle (or
@@ -334,8 +339,15 @@ function offeredHistory(nowMs) {
 
 async function _readNow(nowMs) { return require('./canonical-read').now({ now: nowMs, readOnly: true }); }
 
-/** One shadow pass. Writes only promise_shadow_log; does nothing if the log was never created. */
-async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR } = {}) {
+/**
+ * One shadow pass. Writes only promise_shadow_log; does nothing if the log was
+ * never created. The whole pass runs inside the network contract
+ * (promise-shadow-net): any request it — or canonical Now under it — makes is
+ * checked against the exact local read allowlist before it reaches the network.
+ */
+function tick(opts) { return net.run(() => _tick(opts)); }
+
+async function _tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR } = {}) {
   const nowMs = msOf(now);
   if (!logExists()) return { disabled: true, logged: 0 };
   const build = _build(nowMs, repoDir);
@@ -543,7 +555,7 @@ function report({ days = SHADOW_DAYS, now = Date.now() } = {}) {
 /** Test seam: forget the boot identity (a fresh process would). */
 function _resetIdentity() { _identity = null; _checkout = { sha: null, at: 0 }; }
 /** Test seam: forget inspected meetings and zero the counters (a fresh process would). */
-function _resetRuntime() { _inspected.clear(); _stats = _counters(); }
+function _resetRuntime() { _inspected.clear(); _stats = _counters(); net._resetCounts(); }
 
 module.exports = {
   TABLE, CRON, SHADOW_DAYS, LABELS, CODE_FILES,
