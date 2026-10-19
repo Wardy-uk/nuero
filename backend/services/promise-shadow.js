@@ -167,9 +167,9 @@ function _offsetMs(localYmdHm) {
  * The gate, evaluated over production's canonical decision. The shadow assumes
  * the goal is accepted (that is what it shadows) and has prompted nothing before.
  */
-function evaluate({ payload, promises, now, proposal = null }) {
+function evaluate({ payload, promises, now, proposal = null, prompted = [] }) {
   const ctx = payload ? observe.promiseFeedContext(payload, { now }) : null;
-  const feed = observe.feedFor({ ctx, promises, now, prompted: [], proposal, goalAccepted: true });
+  const feed = observe.feedFor({ ctx, promises, now, prompted, proposal, goalAccepted: true });
   const gate = policy.sponsorshipGate({ ...policy.gateInputs(payload && payload.saim, payload && payload.candidates), feed });
   return { ctx, feed, gate: { shown: gate.shown, reason: gate.reason, rule: gate.rule }, sponsorship: gate.sponsorship };
 }
@@ -249,7 +249,7 @@ function dueMeetings(nowMs) {
 // at most one extra ledger read per meeting.
 const _inspected = new Map(); // `${key}#${marker}` -> start (local minute)
 const _counters = () => ({ ticks: 0, calendarChecks: 0, calendarErrors: 0, skipped: 0, snapshots: 0,
-  nowReads: 0, nowReadsBundle: 0, nowReadsMeeting: 0, meetingReinspections: 0, meetingsWithoutIdentity: 0, since: null });
+  nowReads: 0, nowReadsBundle: 0, nowReadsMeeting: 0, meetingReinspections: 0, meetingsWithoutIdentity: 0, alreadyOffered: 0, since: null });
 let _stats = _counters();
 
 /** The run counters since this process started (or the last test reset). */
@@ -281,6 +281,18 @@ function _remember(meetings, nowMs) {
   for (const [k, start] of _inspected) if (start <= now) _inspected.delete(k); // started: never due again
   for (const m of meetings) if (m.key) _inspected.set(`${m.key}#${m.marker}`, m.start);
   while (_inspected.size > 500) _inspected.delete(_inspected.keys().next().value);
+}
+
+/**
+ * What the shadow has OFFERED, read back from its own append-only log — never
+ * held in memory, so a restart loses nothing. Each would-prompt row becomes
+ * `{ key, at, meetingKey }` in the policy's history shape, `at` as the London
+ * wall clock (the policy dates history by the London calendar day). Only the
+ * last two days are read: the policy looks at today and nothing older.
+ */
+function offeredHistory(nowMs) {
+  return db.all(`SELECT at, moment, promise_key FROM ${TABLE} WHERE kind = 'prompt' AND decision = 'would-prompt' AND at >= ? ORDER BY id`, [iso(nowMs - 2 * 86400000)])
+    .map((r) => ({ key: r.promise_key, at: _localMinute(Date.parse(r.at)), meetingKey: r.moment.startsWith('meeting:') ? r.moment.slice('meeting:'.length) : null }));
 }
 
 // ── The pass ─────────────────────────────────────────────────────────────────
@@ -340,14 +352,18 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
       } });
   }
 
+  // The day's offers so far, from the log (survives a restart), extended as this pass offers more.
+  const offered = offeredHistory(nowMs);
+  const offeredToday = (key) => offered.find((x) => x.key === key && policy.localDateOf(x.at) === t.date) || null;
+
   for (const m of moments) {
     if (m.type === 'discovery') {
-      const ev0 = evaluate({ payload, promises: snap.promises, now: nowMs });
+      const ev0 = evaluate({ payload, promises: snap.promises, now: nowMs, prompted: offered });
       if (!ev0.ctx) { log({ moment: m.key, kind: 'suppression', decision: 'suppressed', reason: `discovery: context unknown — staying quiet (${ev0.gate.reason})`, payload: common(ev0) }); continue; }
       const history = db.all(`SELECT at FROM ${TABLE} WHERE kind = 'proposal' AND decision = 'would-raise' ORDER BY id`)
         .map((r) => ({ status: 'open', raisedAt: r.at, fingerprint: policy.PROPOSAL_FINGERPRINT }));
       const r = discoverShadow({ now: nowMs, ctx: ev0.ctx, ledger: snap.ledger, history });
-      const ev = evaluate({ payload, promises: snap.promises, now: nowMs,
+      const ev = evaluate({ payload, promises: snap.promises, now: nowMs, prompted: offered,
         proposal: r.would ? { id: 'shadow', status: 'open', title: r.proposal.title, whyNow: r.proposal.whyNow } : null });
       log({ moment: m.key, kind: 'proposal', decision: r.would ? 'would-raise' : 'suppressed', reason: r.why,
         payload: { ...common(ev), verdicts: r.verdicts, occurrences: r.occurrences,
@@ -355,7 +371,16 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
             examples: r.proposal.examples, evidenceHash: r.proposal.evidenceHash } : null } });
       continue;
     }
-    const ev = evaluate({ payload, promises: snap.promises, now: nowMs });
+    const ev = evaluate({ payload, promises: snap.promises, now: nowMs, prompted: offered });
+    // A meeting moment (incl. one that moved or was renamed) whose promise was
+    // offered earlier today is evaluated and logged — and suppressed, saying so.
+    const before = m.type === 'meeting' ? offeredToday(m.promiseKey) : null;
+    if (before) {
+      _stats.alreadyOffered += 1;
+      log({ moment: m.key, kind: 'suppression', decision: 'suppressed', promiseKey: m.promiseKey, reason: policy.ALREADY_OFFERED,
+        payload: { ...common(ev), offeredAt: before.at, offeredAtMoment: before.meetingKey ? `meeting:${before.meetingKey}` : 'bundle' } });
+      continue;
+    }
     const sp = ev.sponsorship && ev.sponsorship.promise;
     const fits = sp && (m.type !== 'meeting' || ev.feed.meetingKey);
     if (!ev.gate.shown || !fits) {
@@ -366,6 +391,7 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
     log({ moment: m.key, kind: 'prompt', decision: 'would-prompt', promiseKey: sp.key, reason: ev.gate.reason,
       payload: { ...common(ev), say: sp.say, state: ev.feed.promise.state, date: ev.feed.promise.date, owedTo: ev.feed.promise.owedTo,
         text: ev.feed.promise.text, moves: ev.feed.promise.moves, moment: m.type } });
+    offered.push({ key: sp.key, at: _localMinute(nowMs), meetingKey: ev.feed.meetingKey || null });
   }
   return { idle: false, logged, moments: moments.map((m) => m.key), read: readError ? 'failed' : 'ok' };
 }
@@ -463,5 +489,5 @@ function _resetRuntime() { _inspected.clear(); _stats = _counters(); }
 module.exports = {
   TABLE, CRON, SHADOW_DAYS, LABELS, CODE_FILES,
   registerPromiseShadow, logExists, ensureLog, captureIdentity,
-  momentsAt, evaluate, discoverShadow, dueCheck, dueMeetings, stats, tick, label, missed, report, _resetIdentity, _resetRuntime,
+  momentsAt, evaluate, discoverShadow, dueCheck, dueMeetings, offeredHistory, stats, tick, label, missed, report, _resetIdentity, _resetRuntime,
 };

@@ -206,8 +206,13 @@ function mayPromptPromise({ now, tz = 'Europe/London', ctx = {}, promise, prompt
   const nowMs = typeof now === 'number' ? now : Date.parse(now);
   const v = vetoed(ctx); if (v) return { ok: false, why: v };
   const t = localParts(nowMs, tz);
-  const today = prompted.filter((x) => String(x.at).slice(0, 10) === t.date);
+  const today = prompted.filter((x) => localDateOf(x.at, tz) === t.date);
   if (today.length >= MAX_PROMISE_PROMPTS_PER_DAY) return { ok: false, why: `${MAX_PROMISE_PROMPTS_PER_DAY} promise prompts already today` };
+  // ONCE per promise per London day, whatever moment it was offered at — a
+  // bundle, a pre-meeting window, or a meeting that has since moved or been
+  // renamed. Checked BEFORE the meeting branch: a meeting is a reason to offer
+  // a promise, never a licence to offer it twice in a day.
+  if (promise && today.some((x) => x.key === promise.key)) return { ok: false, why: ALREADY_OFFERED, alreadyOffered: true };
   const meet = promise && promise.nextMeeting;
   if (meet) {
     const startMs = Date.parse(`${meet.start}:00${offsetFor(meet.start, tz)}`);
@@ -220,8 +225,21 @@ function mayPromptPromise({ now, tz = 'Europe/London', ctx = {}, promise, prompt
   }
   const inWindow = WINDOWS.some((w) => Math.abs(t.minutes - hhmm(w)) <= WINDOW_MINUTES);
   if (!inWindow) return { ok: false, why: 'outside the 07:30 / 12:30 / 17:30 moments' };
-  if (prompted.some((x) => x.key === (promise && promise.key) && String(x.at).slice(0, 10) === t.date)) return { ok: false, why: 'already raised today' };
   return { ok: true, why: 'a bundled moment' };
+}
+
+const ALREADY_OFFERED = 'already offered earlier today';
+
+/**
+ * PURE. The London calendar date a prompt-history stamp belongs to. An instant
+ * (a trailing Z or offset) is converted — 00:30 BST is the NEXT day, though its
+ * UTC stamp still reads the day before; a wall-clock stamp with no zone is
+ * already local and is read as written.
+ */
+function localDateOf(at, tz = 'Europe/London') {
+  const s = String(at || '');
+  if (/(?:Z|[+-]\d\d:?\d\d)$/.test(s)) { const ms = Date.parse(s); return Number.isFinite(ms) ? localParts(ms, tz).date : null; }
+  return /^\d{4}-\d\d-\d\d/.test(s) ? s.slice(0, 10) : null;
 }
 
 /** PURE. Which bundled moment (0, 1, 2) `now` falls in, or null. */
@@ -302,6 +320,6 @@ function _sponsorship(feed) {
 
 module.exports = {
   POLICY_VERSION, PROPOSAL_FINGERPRINT, PROPOSAL_CLASS, MIN_OCCURRENCES, MIN_SPAN_DAYS, RECENT_DAYS,
-  WINDOWS, BEFORE_MEETING_MINUTES, MAX_PROMISE_PROMPTS_PER_DAY, ROUTING_TEXT,
+  WINDOWS, BEFORE_MEETING_MINUTES, MAX_PROMISE_PROMPTS_PER_DAY, ROUTING_TEXT, ALREADY_OFFERED, localDateOf,
   slipped, discover, materiallyNew, judge, mayRaiseProposal, mayPromptPromise, isoWeek, sponsorshipGate, gateInputs, NO_SPONSORSHIP, windowIndex,
 };

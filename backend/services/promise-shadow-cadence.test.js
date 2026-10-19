@@ -152,7 +152,9 @@ test('a meeting with a promise owed: ONE extra read, in its pre-meeting window; 
   assert.equal(r.nowReads, 4); assert.equal(r.meeting, 1); assert.equal(r.presence, 4);
   assert.equal(r.snapshots, 4, 'the meeting is inspected once — the next five ticks of its window are skipped');
   const m = rows('moment LIKE ?', [`meeting:%@${day(2)}T14:00`]);
-  assert.equal(m.length, 1); assert.equal(m[0].kind, 'prompt');
+  assert.equal(m.length, 1);
+  // Alex's promise was offered at the 07:10 bundle, so the meeting is evaluated and suppressed — once a day.
+  assert.equal(m[0].kind, 'suppression'); assert.equal(m[0].reason, 'already offered earlier today');
 });
 
 test('a meeting with NO promise owed: one ledger read, no Now read', async () => {

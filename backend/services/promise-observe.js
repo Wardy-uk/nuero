@@ -83,8 +83,12 @@ function promiseFeedContext(payload, { now = Date.now() } = {}) {
 
 /**
  * PURE. Which promise (if any) is prompted now. A meeting with its person in
- * the next 30 minutes first; otherwise ONE per bundled moment, rotating, so each
- * promise is offered at most once a day and at most three a day.
+ * the next 30 minutes first; otherwise the first eligible promise. `prompted`
+ * is the day's history — the policy refuses a promise already offered today
+ * (any moment) and caps the day at three, so each bundle takes the next one
+ * not yet offered. (Until 19 Oct the bundle ROTATED by window index to fake
+ * that without history; with history the rotation skipped promises nobody had
+ * seen — A at 07:30, C at 12:30, nothing at 17:30.)
  */
 function selectPrompt({ promises, ctx, now, prompted = [] }) {
   const candidates = promises
@@ -96,14 +100,10 @@ function selectPrompt({ promises, ctx, now, prompted = [] }) {
     const gate = policy.mayPromptPromise({ now, ctx, promise: p, prompted });
     if (gate.ok) passing.push({ p, gate }); else if (!why) why = gate.why;
   }
-  const meeting = passing.find((x) => x.gate.meetingKey);
-  const w = policy.windowIndex(now);
-  const pick = meeting || (w !== null && passing.filter((x) => !x.gate.meetingKey)[w]) || null;
-  const rotatedOut = !pick && w !== null && passing.length > 0;
+  const pick = passing.find((x) => x.gate.meetingKey) || passing[0] || null;
   return {
     pick,
-    why: pick ? null : rotatedOut ? `each promise once a day — ${passing.length} eligible, already offered at an earlier moment today`
-      : why || (candidates.length ? 'nothing passes the budget now' : 'no promise needs a prompt'),
+    why: pick ? null : why || (candidates.length ? 'nothing passes the budget now' : 'no promise needs a prompt'),
     candidates: candidates.length,
   };
 }
