@@ -96,7 +96,7 @@ async function tickParity(d, hm) {
   const res = await shadow.tick({ now: nowMs, readNow: STEADY });
   const added = rows('id > ?', [id0]).filter((r) => r.kind !== 'heartbeat');
   const shown = added.filter((r) => r.kind === 'prompt').map((r) => r.promise_key);
-  if (res.read === 'ok') assert.deepEqual(shown, expected ? [expected] : [], `${d} ${hm}: the shadow showed ${JSON.stringify(shown)}, production would show ${expected}`);
+  if (res.read !== 'failed') assert.deepEqual(shown, expected ? [expected] : [], `${d} ${hm}: the shadow showed ${JSON.stringify(shown)}, production would show ${expected}`);
   return { added, shown, expected, nowRead: shadow.stats().nowReads - s0.nowReads };
 }
 
@@ -147,7 +147,8 @@ test('bundle → pre-meeting, and two distinct promises: Alex at 07:30, Sam at 1
   const b2 = await tickParity(d, '12:30');
   assert.deepEqual(b2.shown, [P.sam], 'a different promise may still be shown the same day');
   const m = await tickParity(d, '13:30');
-  assert.equal(m.nowRead, 1, 'the meeting was evaluated');
+  assert.equal(m.nowRead, 0, 'settled from history — no context could make it offerable');
+  assert.equal(JSON.parse(m.added[0].payload_json).canonicalNow, 'not_called');
   assert.equal(m.added.length, 1); assert.equal(m.added[0].kind, 'suppression');
   assert.equal(m.added[0].reason, 'already offered earlier today');
   assert.equal(m.added[0].promise_key, P.alex);
@@ -157,7 +158,7 @@ test('bundle → pre-meeting, and two distinct promises: Alex at 07:30, Sam at 1
   assert.match(b3.added.find((r) => r.moment.startsWith('window:')).reason, /already offered earlier today/);
 });
 
-test('next London day: Alex is eligible again — here at a pre-meeting moment; then the MOVED meeting is evaluated and suppressed; a rename adds nothing', async () => {
+test('next London day: Alex is eligible again — here at a pre-meeting moment; then the MOVED meeting is logged and suppressed; a rename adds nothing', async () => {
   const d = day(2);
   cal('evt-a2', '1-2-1 Nick / Alex Reed', d, '10:00');
   const m1 = await tickParity(d, '09:30');
@@ -165,7 +166,7 @@ test('next London day: Alex is eligible again — here at a pre-meeting moment; 
   assert.equal(m1.added.find((r) => r.kind === 'prompt').moment, `meeting:Alex Reed@${d}T10:00`);
   db.run("UPDATE calendar_cache SET start_time = ?, end_time = ? WHERE event_id = 'evt-a2'", [`${d}T10:30:00`, `${d}T10:59:00`]);
   const m2 = await tickParity(d, '10:00');
-  assert.equal(m2.nowRead, 1, 'the moved meeting is a new moment and is evaluated');
+  assert.equal(m2.nowRead, 0, 'the moved meeting is a new moment, settled from history');
   assert.equal(m2.added.length, 1);
   assert.equal(m2.added[0].moment, `meeting:Alex Reed@${d}T10:30`);
   assert.equal(m2.added[0].kind, 'suppression'); assert.equal(m2.added[0].reason, 'already offered earlier today');
@@ -214,6 +215,7 @@ test('the employment matter is routed (task ids + rule only) once a day and neve
 test('no moment is logged twice, and the counters record each suppression for an earlier offer', () => {
   const dup = db.all("SELECT moment, COUNT(*) n FROM promise_shadow_log WHERE kind IN ('prompt','suppression','proposal') GROUP BY moment HAVING n > 1");
   assert.deepEqual(dup, []);
-  assert.equal(rows("reason = 'already offered earlier today'").length, 4);
+  // Four meeting moments, plus day 1's 17:30 bundle — settled from history, so it carries the policy's own words.
+  assert.equal(rows("reason = 'already offered earlier today'").length, 5);
   assert.equal(shadow.stats().alreadyOffered >= 1, true, 'counted (this process: since the simulated restart)');
 });

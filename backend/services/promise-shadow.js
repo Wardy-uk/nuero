@@ -148,14 +148,49 @@ function momentsAt(nowMs, promises) {
   const out = [];
   if (t.weekday === 1 && w === 0) out.push({ type: 'discovery', key: `discovery:${policy.isoWeek(t.date)}` });
   if (w !== null) out.push({ type: 'window', key: `window:${t.date}:${w}` });
+  // One moment per person per meeting, carrying EVERY ordinary promise owed to
+  // them there (`promiseKeys`) — one offered earlier today must not silence another.
+  const meetings = new Map();
   for (const p of promises) {
     const m = p.nextMeeting;
     if (p.sensitive || !m || !m.start || p.closed) continue;
     const startMs = Date.parse(`${m.start}:00Z`) - _offsetMs(m.start);
     const mins = (startMs - nowMs) / 60000;
-    if (mins > 0 && mins <= policy.BEFORE_MEETING_MINUTES) out.push({ type: 'meeting', key: `meeting:${p.owedTo.resolved || p.key}@${m.start}`, promiseKey: p.key });
+    if (!(mins > 0 && mins <= policy.BEFORE_MEETING_MINUTES)) continue;
+    const key = `meeting:${p.owedTo.resolved || p.key}@${m.start}`;
+    if (meetings.has(key)) meetings.get(key).promiseKeys.push(p.key);
+    else meetings.set(key, { type: 'meeting', key, promiseKey: p.key, promiseKeys: [p.key] });
   }
-  return [...new Map(out.map((m) => [m.key, m])).values()];
+  return [...new Map([...out, ...meetings.values()].map((m) => [m.key, m])).values()];
+}
+
+const CANDIDATE_STATES = Object.freeze(['late', 'slipped', 'ticked-no-evidence']);
+
+/**
+ * PURE. Can this moment's outcome be settled WITHOUT canonical Now? Context can
+ * only ever take an offer away (every vetoed() rule refuses), so if no ordinary
+ * promise passes the policy with NO context against the day's real history and
+ * the 3-a-day cap, Now cannot change the answer. Returns null when Now is
+ * needed (discovery always; any offerable promise), else the settled outcome.
+ * Employment matters are never candidates here — they are routing-only.
+ */
+function settledWithoutNow(m, { promises, now, offered, date }) {
+  if (m.type === 'discovery') return null;
+  const today = (key) => offered.find((x) => x.key === key && policy.localDateOf(x.at) === date) || null;
+  if (m.type === 'meeting') {
+    const firsts = m.promiseKeys.map(today);
+    if (firsts.every(Boolean)) {
+      const b = firsts[0];
+      return { reason: policy.ALREADY_OFFERED, alreadyOffered: true, offeredAt: b.at, offeredAtMoment: b.meetingKey ? `meeting:${b.meetingKey}` : 'bundle' };
+    }
+    const ps = promises.filter((p) => m.promiseKeys.includes(p.key) && !p.sensitive && CANDIDATE_STATES.includes(p.judgement.state));
+    if (!ps.length) return { reason: 'no promise needs a prompt' };
+    const gates = ps.map((p) => policy.mayPromptPromise({ now, ctx: {}, promise: p, prompted: offered }));
+    if (gates.some((g) => g.ok && g.meetingKey)) return null;
+    return { reason: (gates.find((g) => !g.ok) || {}).why || 'no promise needs a prompt' };
+  }
+  const sel = observe.selectPrompt({ promises, ctx: {}, now, prompted: offered });
+  return sel.pick ? null : { reason: sel.why };
 }
 function _offsetMs(localYmdHm) {
   const guess = Date.parse(`${localYmdHm}:00Z`);
@@ -249,7 +284,7 @@ function dueMeetings(nowMs) {
 // at most one extra ledger read per meeting.
 const _inspected = new Map(); // `${key}#${marker}` -> start (local minute)
 const _counters = () => ({ ticks: 0, calendarChecks: 0, calendarErrors: 0, skipped: 0, snapshots: 0,
-  nowReads: 0, nowReadsBundle: 0, nowReadsMeeting: 0, meetingReinspections: 0, meetingsWithoutIdentity: 0, alreadyOffered: 0, since: null });
+  nowReads: 0, nowReadsBundle: 0, nowReadsMeeting: 0, meetingReinspections: 0, meetingsWithoutIdentity: 0, alreadyOffered: 0, nowAvoided: 0, since: null });
 let _stats = _counters();
 
 /** The run counters since this process started (or the last test reset). */
@@ -325,36 +360,39 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
   const moments = momentsAt(nowMs, snap.promises).filter((m) => !_seen(m.key));
   if (!moments.length) return { idle: true, logged };
 
+  // The day's offers so far, from the log (survives a restart), extended as this pass offers more.
+  const offered = offeredHistory(nowMs);
+  const offeredToday = (key) => offered.find((x) => x.key === key && policy.localDateOf(x.at) === t.date) || null;
+
+  // Settle what the history alone decides. Canonical Now — and room presence
+  // with it — is read ONLY if some moment still has an offerable ordinary
+  // promise (or is discovery). Otherwise no context could change the answer.
+  const settled = new Map(moments.map((m) => [m.key, settledWithoutNow(m, { promises: snap.promises, now: nowMs, offered, date: t.date })]));
+  const needsNow = moments.some((m) => settled.get(m.key) === null);
+
+  _logDay(snap, t, log);
+
+  if (!needsNow) {
+    _stats.nowAvoided += 1;
+    for (const m of moments) {
+      const s = settled.get(m.key);
+      if (s.alreadyOffered) _stats.alreadyOffered += 1;
+      log({ moment: m.key, kind: 'suppression', decision: 'suppressed', promiseKey: m.promiseKey || null, reason: s.reason,
+        payload: { canonicalNow: 'not_called', decidedBy: 'history', promiseKeys: m.promiseKeys || null,
+          ...(s.alreadyOffered ? { offeredAt: s.offeredAt, offeredAtMoment: s.offeredAtMoment } : {}) } });
+    }
+    return { idle: false, logged, moments: moments.map((m) => m.key), read: 'not_called' };
+  }
+
   let payload = null; let readError = null;
   _stats.nowReads += 1;
   if (moments.some((m) => m.type !== 'meeting')) _stats.nowReadsBundle += 1; else _stats.nowReadsMeeting += 1;
   try { payload = await readNow(nowMs); } catch (e) { readError = String(e && e.message || e).slice(0, 200); }
   const common = (ev) => ({
-    gate: ev.gate, ctx: ev.ctx, contextUnknown: !ev.ctx, feedWhy: ev.feed.why,
+    canonicalNow: 'called', gate: ev.gate, ctx: ev.ctx, contextUnknown: !ev.ctx, feedWhy: ev.feed.why,
     read: readError ? { ok: false, error: readError } : { ok: Boolean(payload), rule: payload && payload.saim && payload.saim.lead ? payload.saim.lead.rule : null },
     assumedAccepted: true,
   });
-
-  // Once a day: the routing-only list (task ids + rule category ONLY) and the evidence judged on.
-  const dayKey = `day:${t.date}`;
-  if (!_seen(dayKey)) {
-    for (const p of snap.promises.filter((x) => x.sensitive)) {
-      log({ moment: dayKey, kind: 'routing', decision: 'routed', promiseKey: p.key, reason: 'employment matter — routing note only',
-        payload: { taskIds: p.taskIds, rule: p.sensitiveRule } });
-    }
-    log({ moment: dayKey, kind: 'snapshot', decision: 'observed', reason: `${snap.promises.length} promises read`,
-      payload: {
-        readAt: snap.readAt, gaps: snap.gaps,
-        counts: snap.promises.reduce((o, p) => { o[p.judgement.state] = (o[p.judgement.state] || 0) + 1; return o; }, {}),
-        routingOnly: snap.promises.filter((p) => p.sensitive).length,
-        candidates: snap.promises.filter((p) => !p.sensitive && ['late', 'slipped', 'ticked-no-evidence'].includes(p.judgement.state))
-          .map((p) => ({ key: p.key, state: p.judgement.state, date: p.judgement.date || null, dueMoves: p.slips.dueMoves, lapsedBlocks: p.slips.lapsedBlocks })),
-      } });
-  }
-
-  // The day's offers so far, from the log (survives a restart), extended as this pass offers more.
-  const offered = offeredHistory(nowMs);
-  const offeredToday = (key) => offered.find((x) => x.key === key && policy.localDateOf(x.at) === t.date) || null;
 
   for (const m of moments) {
     if (m.type === 'discovery') {
@@ -372,19 +410,21 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
       continue;
     }
     const ev = evaluate({ payload, promises: snap.promises, now: nowMs, prompted: offered });
-    // A meeting moment (incl. one that moved or was renamed) whose promise was
-    // offered earlier today is evaluated and logged — and suppressed, saying so.
-    const before = m.type === 'meeting' ? offeredToday(m.promiseKey) : null;
-    if (before) {
+    // A meeting moment (incl. one that moved or was renamed) whose every promise
+    // was offered earlier today is evaluated and logged — and suppressed, saying so.
+    const firsts = m.type === 'meeting' ? m.promiseKeys.map(offeredToday) : [];
+    if (firsts.length && firsts.every(Boolean)) {
+      const before = firsts[0];
       _stats.alreadyOffered += 1;
       log({ moment: m.key, kind: 'suppression', decision: 'suppressed', promiseKey: m.promiseKey, reason: policy.ALREADY_OFFERED,
-        payload: { ...common(ev), offeredAt: before.at, offeredAtMoment: before.meetingKey ? `meeting:${before.meetingKey}` : 'bundle' } });
+        payload: { ...common(ev), promiseKeys: m.promiseKeys, offeredAt: before.at, offeredAtMoment: before.meetingKey ? `meeting:${before.meetingKey}` : 'bundle' } });
       continue;
     }
     const sp = ev.sponsorship && ev.sponsorship.promise;
-    const fits = sp && (m.type !== 'meeting' || ev.feed.meetingKey);
+    const fits = sp && (m.type !== 'meeting' || (ev.feed.meetingKey && m.promiseKeys.includes(sp.key)));
     if (!ev.gate.shown || !fits) {
-      const reason = !ev.gate.shown ? ev.gate.reason : 'the prompt at this moment belongs to the bundled window, not this meeting';
+      const reason = !ev.gate.shown ? ev.gate.reason
+        : (ev.feed.meetingKey ? 'one promise per moment — this one went to another promise owed at this time' : 'the prompt at this moment belongs to the bundled window, not this meeting');
       log({ moment: m.key, kind: 'suppression', decision: 'suppressed', promiseKey: m.promiseKey || null, reason, payload: common(ev) });
       continue;
     }
@@ -394,6 +434,25 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
     offered.push({ key: sp.key, at: _localMinute(nowMs), meetingKey: ev.feed.meetingKey || null });
   }
   return { idle: false, logged, moments: moments.map((m) => m.key), read: readError ? 'failed' : 'ok' };
+}
+
+/** Once a day: the routing-only list (task ids + rule category ONLY) and the evidence judged on. Needs no context. */
+function _logDay(snap, t, log) {
+  const dayKey = `day:${t.date}`;
+  if (!_seen(dayKey)) {
+    for (const p of snap.promises.filter((x) => x.sensitive)) {
+      log({ moment: dayKey, kind: 'routing', decision: 'routed', promiseKey: p.key, reason: 'employment matter — routing note only',
+        payload: { taskIds: p.taskIds, rule: p.sensitiveRule } });
+    }
+    log({ moment: dayKey, kind: 'snapshot', decision: 'observed', reason: `${snap.promises.length} promises read`,
+      payload: {
+        readAt: snap.readAt, gaps: snap.gaps,
+        counts: snap.promises.reduce((o, p) => { o[p.judgement.state] = (o[p.judgement.state] || 0) + 1; return o; }, {}),
+        routingOnly: snap.promises.filter((p) => p.sensitive).length,
+        candidates: snap.promises.filter((p) => !p.sensitive && ['late', 'slipped', 'ticked-no-evidence'].includes(p.judgement.state))
+          .map((p) => ({ key: p.key, state: p.judgement.state, date: p.judgement.date || null, dueMoves: p.slips.dueMoves, lapsedBlocks: p.slips.lapsedBlocks })),
+      } });
+  }
 }
 
 // ── Enablement: the ONLY way the table or the timer comes into being ────────
@@ -489,5 +548,5 @@ function _resetRuntime() { _inspected.clear(); _stats = _counters(); }
 module.exports = {
   TABLE, CRON, SHADOW_DAYS, LABELS, CODE_FILES,
   registerPromiseShadow, logExists, ensureLog, captureIdentity,
-  momentsAt, evaluate, discoverShadow, dueCheck, dueMeetings, offeredHistory, stats, tick, label, missed, report, _resetIdentity, _resetRuntime,
+  momentsAt, settledWithoutNow, evaluate, discoverShadow, dueCheck, dueMeetings, offeredHistory, stats, tick, label, missed, report, _resetIdentity, _resetRuntime,
 };

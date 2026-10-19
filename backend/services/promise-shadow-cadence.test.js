@@ -38,7 +38,13 @@ const V = process.env.OBSIDIAN_VAULT_PATH;
 const put = (rel, text) => { const f = path.join(V, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
 put('People/Alex Reed.md', '---\nemail: alex.reed@nurtur.tech\n---\n');
 put('People/Robin Lee.md', '---\nemail: robin.lee@nurtur.tech\n---\n');
-put('Meetings/2026/09/2026-09-14 - Ops sync.md', '- Nick to send Alex Reed the list of ticket types blocked by skill gaps\n');
+put('People/Sam Patel.md', '---\nemail: sam.patel@nurtur.tech\n---\n');
+put('People/Casey Moore.md', '---\nemail: casey.moore@nurtur.tech\n---\n');
+put('Meetings/2026/09/2026-09-14 - Ops sync.md', [
+  '- Nick to send Alex Reed the list of ticket types blocked by skill gaps',
+  '- Nick to write the onboarding guide for Sam Patel',
+  '- Nick to share the QA rubric with Casey Moore', '',
+].join('\n'));
 
 // Every network call is counted; only room presence is expected.
 const calls = { presence: 0, other: [] };
@@ -114,11 +120,14 @@ const cal = (eventId, subject, d, hm, extra = {}) => db.run(
 let before;
 test.before(async () => {
   await db.init();
-  const r = taskStore.createTask({ text: 'Nick to send Alex Reed the list of ticket types blocked by skill gaps', source: 'meeting-promotion',
-    origin_path: 'Meetings/2026/09/2026-09-14 - Ops sync.md', due_date: ymd(Date.now() + 3 * DAY) });
-  const id = (r.task || r).id;
-  db.run('UPDATE tasks SET created_at = ? WHERE id = ?', [new Date(Date.now() - 34 * DAY).toISOString().replace('T', ' ').slice(0, 19), id]);
-  for (let i = 1; i <= 2; i += 1) taskStore.updateTask(id, { due_date: ymd(Date.now() + (3 + i) * DAY) });
+  // Three ordinary promises, so every bundle of a day has something left to offer (oldest first).
+  for (const [text, daysAgo] of [['Nick to send Alex Reed the list of ticket types blocked by skill gaps', 34],
+    ['Nick to write the onboarding guide for Sam Patel', 32], ['Nick to share the QA rubric with Casey Moore', 30]]) {
+    const r = taskStore.createTask({ text, source: 'meeting-promotion', origin_path: 'Meetings/2026/09/2026-09-14 - Ops sync.md', due_date: ymd(Date.now() + 3 * DAY) });
+    const id = (r.task || r).id;
+    db.run('UPDATE tasks SET created_at = ? WHERE id = ?', [new Date(Date.now() - daysAgo * DAY).toISOString().replace('T', ' ').slice(0, 19), id]);
+    for (let i = 1; i <= 2; i += 1) taskStore.updateTask(id, { due_date: ymd(Date.now() + (3 + i) * DAY) });
+  }
   shadow.registerPromiseShadow({ PROMISE_SHADOW_ENABLED: 'true' }, { schedule: () => ({ stop() {} }) });
   shadow._resetRuntime();
   before = fingerprint({ except: ['promise_shadow_log'] });
@@ -145,16 +154,17 @@ test('plain weekday: exactly 3 Now/presence reads, one per bundle', async () => 
   assert.equal(r.nowReads, 3); assert.equal(r.presence, 3); assert.equal(r.snapshots, 3); assert.equal(r.skipped, 141);
 });
 
-test('a meeting with a promise owed: ONE extra read, in its pre-meeting window; the moment is logged once', async () => {
-  cal('evt-alex', '1-2-1 Nick / Alex Reed', day(2), '14:00');
+test('a meeting with a promise still offerable: one read in its window — and the 17:30 bundle after the third offer needs none', async () => {
+  cal('evt-casey', '1-2-1 Nick / Casey Moore', day(2), '14:00');
   const r = await runDay(day(2));
-  assert.deepEqual(r.readAt, ['07:10', '12:10', '13:30', '17:10']);
-  assert.equal(r.nowReads, 4); assert.equal(r.meeting, 1); assert.equal(r.presence, 4);
+  assert.deepEqual(r.readAt, ['07:10', '12:10', '13:30'], 'Alex at 07:10, Sam at 12:10, Casey before her meeting; 17:10 is settled from history');
+  assert.equal(r.nowReads, 3); assert.equal(r.meeting, 1); assert.equal(r.presence, 3);
   assert.equal(r.snapshots, 4, 'the meeting is inspected once — the next five ticks of its window are skipped');
   const m = rows('moment LIKE ?', [`meeting:%@${day(2)}T14:00`]);
-  assert.equal(m.length, 1);
-  // Alex's promise was offered at the 07:10 bundle, so the meeting is evaluated and suppressed — once a day.
-  assert.equal(m[0].kind, 'suppression'); assert.equal(m[0].reason, 'already offered earlier today');
+  assert.equal(m.length, 1); assert.equal(m[0].kind, 'prompt');
+  const w = rows('moment = ?', [`window:${day(2)}:2`])[0];
+  assert.equal(w.reason, '3 promise prompts already today');
+  assert.equal(JSON.parse(w.payload_json).canonicalNow, 'not_called');
 });
 
 test('a meeting with NO promise owed: one ledger read, no Now read', async () => {
@@ -189,16 +199,18 @@ test('a CHANGED meeting is re-read once and safely: no duplicate moment, no Now 
   assert.equal(r.reinspect, 1, 'the change was recognised as a change to an inspected meeting');
 });
 
-test('a MOVED meeting is a new moment: one read and one row for the new time, none for the old', async () => {
+test('a MOVED meeting is a new moment: logged, and settled from history without a Now read', async () => {
   const d = day(8);
   cal('evt-move', '1-2-1 Nick / Alex Reed', d, '10:00');
   const r = await runDay(d, { from: '09:25', to: '09:55', before: {
     '09:40': () => db.run("UPDATE calendar_cache SET start_time = ?, end_time = ? WHERE event_id = 'evt-move'", [`${d}T10:20:00`, `${d}T10:45:00`]),
   } });
-  assert.deepEqual(r.readAt, ['09:30', '09:50'], 'the new time’s window opens at 09:50');
-  assert.equal(r.presence, 2);
+  assert.deepEqual(r.readAt, ['09:30'], 'the new time is settled from history — Alex was offered at 09:30');
+  assert.equal(r.presence, 1);
   assert.equal(rows('moment LIKE ?', [`meeting:%@${d}T10:00`]).length, 1);
-  assert.equal(rows('moment LIKE ?', [`meeting:%@${d}T10:20`]).length, 1);
+  const moved = rows('moment LIKE ?', [`meeting:%@${d}T10:20`]);
+  assert.equal(moved.length, 1); assert.equal(moved[0].reason, 'already offered earlier today');
+  assert.equal(JSON.parse(moved[0].payload_json).canonicalNow, 'not_called');
 });
 
 test('an event with no source id is never remembered — inspected while due, still no duplicate moment or extra Now read', async () => {
