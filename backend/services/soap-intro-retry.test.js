@@ -44,3 +44,16 @@ test('a source that times out once is retried; a non-timeout failure is not', as
   assert.ok(!r.gaps.some((g) => /leading/.test(g.source)));
   assert.strictEqual(planCalls, 1);
 });
+
+test('an excluded section leaves the report whole — heading and body — and its blockers go with it', () => {
+  const r = report({ verdicts: { success: [{ key: 's', text: 'FRT met' }], star: null, ambers: [{ key: 'a', text: 'CSAT slipping' }], reds: [{ key: 'r', text: 'Tier 2 SLA' }] } });
+  const m = soap.setManual('2026-10-12', { excluded: ['amber', 'red'] });
+  const md = soap.render(r, m);
+  assert.ok(md.includes('## ✅ Success') && md.includes('FRT met'), 'the kept section is still there');
+  assert.ok(!md.includes('Turning amber') && !md.includes('CSAT slipping'));
+  assert.ok(!md.includes('## 🔴 Red') && !md.includes('Tier 2 SLA'));
+  assert.deepStrictEqual(soap.blockers(r, m), [], 'an excluded red needs no action written');
+  assert.strictEqual(soap.blockers(r, soap.setManual('2026-10-12', { excluded: [] })).length, 1);
+  assert.throws(() => soap.setManual('2026-10-12', { excluded: ['nonsense'] }), /unknown section/);
+  assert.deepStrictEqual(soap.setManual('2026-10-12', { notes: 'x' }).excluded, [], 'omitted leaves it alone');
+});

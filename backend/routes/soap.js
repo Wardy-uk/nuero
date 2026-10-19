@@ -73,14 +73,14 @@ router.get('/:weekFrom/:kind', (req, res) => {
   res.json({ ok: true, view: v, send: _sendFor(weekFrom) });
 });
 
-// POST /api/soap/:weekFrom/manual — save Nick's words on a SOAP report: what he will do about each red, why a carried red is still red and its consequences, commentary on the weakest agent, notes, and an intro line that opens the email. Omitted fields are left alone.
+// POST /api/soap/:weekFrom/manual — save Nick's words on a SOAP report: what he will do about each red, why a carried red is still red and its consequences, commentary on the weakest agent, notes, an intro line that opens the email, and excluded (section keys left out of the sent report). Omitted fields are left alone.
 router.post('/:weekFrom/manual', (req, res) => {
   const { weekFrom } = req.params;
   if (!WEEK_RE.test(weekFrom)) return bad(res, 'weekFrom must be YYYY-MM-DD');
-  const { reds, carried, weakest, notes, intro } = req.body || {};
+  const { reds, carried, weakest, notes, intro, excluded } = req.body || {};
   if (soap.isLocked(weekFrom)) return res.status(409).json({ ok: false, error: 'that week was sent and is frozen — reopen it to change it' });
   try {
-    const manual = soap.setManual(weekFrom, { reds, carried, weakest, notes, intro });
+    const manual = soap.setManual(weekFrom, { reds, carried, weakest, notes, intro, excluded });
     res.json({ ok: true, manual });
   } catch (e) {
     res.status(e.status || 500).json({ ok: false, error: e.message });

@@ -28,6 +28,26 @@ const LIGHT = { green: '🟢', amber: '🟠', red: '🔴' };
 const pct = (x) => (x && x.pct != null ? `${x.pct}%` : '—');
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
+// A section of the report with an "Exclude" box: ticked, it is left out of
+// the email and the vault note (the server drops it; this only says so).
+function Sec({ k, title, className, draft, setDraft, locked, children }) {
+  const off = (draft.excluded || []).includes(k);
+  const toggle = (e) => setDraft((d) => {
+    const cur = new Set(d.excluded || []);
+    if (e.target.checked) cur.add(k); else cur.delete(k);
+    return { ...d, excluded: [...cur] };
+  });
+  return (
+    <section className={`soap-section${className ? ` ${className}` : ''}${off ? ' soap-section--excluded' : ''}`}>
+      <div className="soap-sec-head">
+        <h3>{title}</h3>
+        <label className="soap-exclude"><input type="checkbox" checked={off} disabled={locked} onChange={toggle} /> Exclude</label>
+      </div>
+      {off ? <p className="soap-meta">Left out of the report.</p> : children}
+    </section>
+  );
+}
+
 function Gap({ text }) {
   return <p className="soap-gap">Not available — {text}</p>;
 }
@@ -52,6 +72,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
   const names = data.recipients.map((x) => x.name.split(' ')[0]).join(', ') || 'them';
   const g = r.gapsBySection || {};
   const setRed = (key, action) => setDraft((d) => ({ ...d, reds: { ...d.reds, [key]: { action } } }));
+  const secProps = { draft, setDraft, locked };
   const setCarried = (key, field, val) => setDraft((d) => ({ ...d, carried: { ...d.carried, [key]: { ...(d.carried[key] || {}), [field]: val } } }));
 
   return (
@@ -81,24 +102,20 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         <textarea rows={2} disabled={locked} value={draft.intro || ''} onChange={(e) => setDraft((d) => ({ ...d, intro: e.target.value }))} />
       </section>
 
-      <section className="soap-section">
-        <h3>✅ Success</h3>
+      <Sec k="success" title="✅ Success" {...secProps}>
         {vd.success.length ? <ul>{vd.success.map((s) => <li key={s.key}>{s.text}</li>)}</ul> : <p className="soap-meta">Nothing met its mark this week.</p>}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>⭐ Star of the week</h3>
+      <Sec k="star" title="⭐ Star of the week" {...secProps}>
         {vd.star ? <p><strong>{vd.star.name}</strong>{vd.star.team ? ` — ${vd.star.team}` : ''}{vd.star.solved != null ? ` · ${vd.star.solved} solved` : ''}{vd.star.slaCompliancePct != null ? ` · SLA ${vd.star.slaCompliancePct}%` : ''}{vd.star.qaOverall != null ? ` · QA ${vd.star.qaOverall}` : ''}</p>
           : g.leaderboard ? <Gap text={g.leaderboard} /> : <p className="soap-meta">No agent ranked.</p>}
-      </section>
+      </Sec>
 
-      <section className="soap-section soap-section--amber">
-        <h3>🟠 Turning amber</h3>
+      <Sec k="amber" title="🟠 Turning amber" className="soap-section--amber" {...secProps}>
         {vd.ambers.length ? <ul>{vd.ambers.map((a) => <li key={a.key}>{a.text}</li>)}</ul> : <p className="soap-meta">Nothing turning amber.</p>}
-      </section>
+      </Sec>
 
-      <section className="soap-section soap-section--red">
-        <h3>🔴 Red — and what you will do</h3>
+      <Sec k="red" title="🔴 Red — and what you will do" className="soap-section--red" {...secProps}>
         {vd.reds.length ? vd.reds.map((x) => (
           <div key={x.key} className="soap-red">
             <p><strong>{x.text}</strong>{x.detail ? <span className="soap-meta"> — {x.detail}</span> : null}</p>
@@ -107,11 +124,10 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             </label>
           </div>
         )) : <p className="soap-meta">Nothing red.</p>}
-      </section>
+      </Sec>
 
       {(r.carried || []).length > 0 && (
-        <section className="soap-section">
-          <h3>Last week’s reds</h3>
+        <Sec k="carried" title="Last week’s reds" {...secProps}>
           {r.carried.map((c) => (
             <div key={c.key} className="soap-red">
               <p>{c.green ? '🟢 Delivered green: ' : '🔴 Still red: '}<strong>{c.text}</strong></p>
@@ -127,11 +143,10 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
               )}
             </div>
           ))}
-        </section>
+        </Sec>
       )}
 
-      <section className="soap-section">
-        <h3>SLA compliance by queue</h3>
+      <Sec k="perQueue" title="SLA compliance by queue" {...secProps}>
         {r.perQueue && r.perQueue.length ? (
           <>
             <table className="soap-table">
@@ -148,20 +163,18 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             <p className="soap-meta">“no data” means the queue solved nothing that week.</p>
           </>
         ) : <Gap text={g.perQueue || 'NOVA did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>SLA adherence, day on day (CC + T2 + Production)</h3>
+      <Sec k="slaDaily" title="SLA adherence, day on day (CC + T2 + Production)" {...secProps}>
         {r.slaDaily && r.slaDaily.length ? (
           <table className="soap-table">
             <thead><tr><th>Day</th><th>FRT</th><th>Resolution</th></tr></thead>
             <tbody>{r.slaDaily.map((d) => <tr key={d.day}><td>{d.label}</td><td>{pct(d.frt)}</td><td>{pct(d.res)}</td></tr>)}</tbody>
           </table>
         ) : <Gap text={g.sla || 'no daily SLA figures'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Ageing vs target (oldest actionable ticket per queue)</h3>
+      <Sec k="ageing" title="Ageing vs target (oldest actionable ticket per queue)" {...secProps}>
         {r.ageing && r.ageing.length ? (
           <>
             <table className="soap-table">
@@ -173,10 +186,9 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             <p className="soap-meta">NOVA advises confirming extreme figures are genuine backlog, not a due-date configuration artefact.</p>
           </>
         ) : r.ageing ? <p className="soap-meta">No queue is carrying tickets past its target age.</p> : <Gap text={g.kpi || 'NOVA did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Volumes and backlog</h3>
+      <Sec k="volumes" title="Volumes and backlog" {...secProps}>
         {r.volumes && r.volumes.length ? (
           <table className="soap-table">
             <thead><tr><th></th><th>This week</th><th>Last week</th></tr></thead>
@@ -185,10 +197,9 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             ))}</tbody>
           </table>
         ) : <Gap text={g.sla || 'NOVA did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>CSAT and sentiment</h3>
+      <Sec k="csat" title="CSAT and sentiment" {...secProps}>
         {r.csat && r.csat.length ? <ul>{r.csat.map((c) => <li key={c.key || c.label}>{c.label}: {c.now} (last week {c.was}) {c.delta}</li>)}</ul> : <Gap text={g.kpi || 'NOVA did not answer'} />}
         {r.sentiment ? (
           <ul>
@@ -198,10 +209,9 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             {r.sentiment.unavailable.length > 0 && <li className="soap-gap">Not read: {r.sentiment.unavailable.join(', ')}</li>}
           </ul>
         ) : <Gap text={g.sentiment || 'NOVA did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Agents</h3>
+      <Sec k="agents" title="Agents" {...secProps}>
         {r.leaderboard && r.leaderboard.top ? (
           <>
             <p>Top: <strong>{r.leaderboard.top.agentName}</strong></p>
@@ -218,10 +228,9 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             )}
           </>
         ) : <Gap text={g.leaderboard || 'no ranked agents'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Worst 5 customers</h3>
+      <Sec k="customers" title="Worst 5 customers" {...secProps}>
         {r.customers && r.customers.rows && r.customers.rows.length ? (
           <>
             <p className="soap-meta">As at {when(r.customers.generatedAt)}, in NOVA’s order{r.customers.stale ? ' — NOVA says this list is stale' : ''}.</p>
@@ -230,19 +239,17 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         ) : r.customers && (r.customers.status === 'none_qualify' || r.customers.status === 'stale')
           ? <p className="soap-meta">No customer has 2 or more unhappy current tickets (Frustrated or worse){r.customers.stale ? ' (NOVA says this list is stale)' : ''}.</p>
           : <Gap text={g.customers || 'NOVA did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Customers winning after support</h3>
+      <Sec k="winning" title="Customers winning after support" {...secProps}>
         {r.winning && r.winning.rows && r.winning.rows.length
           ? <ol>{r.winning.rows.map((c) => <li key={c.bcAccountNumber || c.name}><strong>{c.name}</strong> — {c.why}</li>)}</ol>
           : r.winning && r.winning.status === 'none_qualify'
             ? <p className="soap-meta">No customer had 2 or more tickets resolved this week ending better than they started.</p>
             : <Gap text={g.winning || 'NOVA did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Improvement initiatives</h3>
+      <Sec k="plan" title="Improvement initiatives" {...secProps}>
         {r.plan && r.plan.known ? (
           <ul>
             {r.plan.rag && <li><strong>Plan status: {LIGHT[r.plan.rag.rag]} {String(r.plan.rag.rag).toUpperCase()}</strong> — {r.plan.overdue.length} of {r.plan.open.length} open actions past due</li>}
@@ -251,33 +258,30 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
             {r.plan.overdue.slice(0, 5).map((o) => <li key={`o${o.id}`}>Past due ({o.dueText}): {o.id} — {o.action}{o.percent != null ? ` (${o.percent}%)` : ''}</li>)}
           </ul>
         ) : <Gap text={g.plan || 'VANTAGE did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Open findings</h3>
+      <Sec k="findings" title="Open findings" {...secProps}>
         {r.findings && r.findings.length ? (
           <ul>
             {r.findings.map((f) => <li key={f.id}>{f.severity ? <strong>{f.severity} — </strong> : null}{f.title}{f.foundOn ? <span className="soap-meta"> (since {f.foundOn})</span> : null}</li>)}
             {r.findingsOpen > r.findings.length && <li className="soap-meta">…and {r.findingsOpen - r.findings.length} more open in VANTAGE</li>}
           </ul>
         ) : r.findings ? <p className="soap-meta">No open findings.</p> : <Gap text={g.findings || 'VANTAGE did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Leading indicators</h3>
+      <Sec k="leading" title="Leading indicators" {...secProps}>
         {r.leading && r.leading.available ? (
           r.leading.fired.length
             ? <ul>{r.leading.fired.map((i, k) => <li key={k}><strong>{i.title}</strong>{i.change ? ` — ${i.change}` : ''}{i.horizonDays ? <span className="soap-meta"> (useful for ~{i.horizonDays} days, confidence {i.confidence})</span> : null}</li>)}</ul>
             : <p className="soap-meta">No early warning this week ({r.leading.quiet} checks running, all quiet).</p>
         ) : <Gap text={g.leading || 'VANTAGE did not answer'} />}
-      </section>
+      </Sec>
 
-      <section className="soap-section">
-        <h3>Friday Support Leadership Meeting{r.slm && (r.slm.date || (/^\d{4}-\d{2}-\d{2}/.exec(r.slm.note || '') || [])[0]) ? ` — ${r.slm.date || r.slm.note.slice(0, 10)}` : ''}</h3>
+      <Sec k="slm" title={`Friday Support Leadership Meeting${r.slm && (r.slm.date || (/^\d{4}-\d{2}-\d{2}/.exec(r.slm.note || '') || [])[0]) ? ` — ${r.slm.date || r.slm.note.slice(0, 10)}` : ''}`} {...secProps}>
         {r.slm ? [['Highlights', r.slm.highlights], ['Lowlights', r.slm.lowlights], ['Blockers', r.slm.blockers]].map(([h, list]) => (
           <div key={h}><p><strong>{h}</strong></p>{list && list.length ? <ul>{list.map((x, k) => <li key={k}>{x}</li>)}</ul> : <p className="soap-meta">None.</p>}</div>
         )) : <Gap text={g.slm || 'no meeting note found'} />}
-      </section>
+      </Sec>
 
       <section className="soap-section">
         <h3>Notes</h3>
@@ -376,7 +380,7 @@ function Distribution({ onChanged }) {
   );
 }
 
-const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '', intro: m?.intro || '' });
+const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '', intro: m?.intro || '', excluded: [...(m?.excluded || [])] });
 
 export default function SoapReportPanel() {
   const [data, setData] = useState(null);

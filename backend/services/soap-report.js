@@ -335,7 +335,12 @@ function carriedForward(previousReds, reds) {
 
 // ── Manual (Nick's words) ────────────────────────────────────────────────────
 
-function emptyManual() { return { intro: '', reds: {}, carried: {}, weakest: '', notes: '' }; }
+// Sections Nick may leave out of the sent report. One key per screen section;
+// 'csat' covers CSAT and sentiment, which the screen shows as one card.
+const SECTION_KEYS = ['success', 'star', 'amber', 'red', 'carried', 'perQueue', 'slaDaily', 'ageing', 'volumes',
+  'csat', 'agents', 'customers', 'winning', 'plan', 'findings', 'leading', 'slm'];
+
+function emptyManual() { return { intro: '', reds: {}, carried: {}, weakest: '', notes: '', excluded: [] }; }
 
 function getManual(weekFrom) {
   try { return { ...emptyManual(), ...JSON.parse(db.getState(`${MANUAL_PREFIX}${weekFrom}`) || '{}') }; } catch { return emptyManual(); }
@@ -356,6 +361,12 @@ function setManual(weekFrom, patch = {}) {
   if (patch.weakest !== undefined) cur.weakest = clean(patch.weakest);
   if (patch.notes !== undefined) cur.notes = clean(patch.notes);
   if (patch.intro !== undefined) cur.intro = clean(patch.intro);
+  if (patch.excluded !== undefined) {
+    if (!Array.isArray(patch.excluded)) throw Object.assign(new Error('excluded must be a list of section keys'), { status: 400 });
+    const bad = patch.excluded.filter((k) => !SECTION_KEYS.includes(k));
+    if (bad.length) throw Object.assign(new Error(`unknown section(s): ${bad.join(', ')}`), { status: 400 });
+    cur.excluded = [...new Set(patch.excluded)];
+  }
   db.setState(`${MANUAL_PREFIX}${weekFrom}`, JSON.stringify(cur));
   return cur;
 }
@@ -364,10 +375,11 @@ function setManual(weekFrom, patch = {}) {
 function blockers(report, manual) {
   const out = [];
   const m = manual || emptyManual();
-  for (const r of report.verdicts.reds) {
+  const ex = new Set(m.excluded || []);
+  if (!ex.has('red')) for (const r of report.verdicts.reds) {
     if (!(m.reds[r.key] && m.reds[r.key].action)) out.push(`Red needs what you will do to make it green by next Monday: ${r.text}`);
   }
-  for (const c of report.carried || []) {
+  if (!ex.has('carried')) for (const c of report.carried || []) {
     if (c.green) continue;
     const e = m.carried[c.key] || {};
     if (!e.why || !e.consequences) out.push(`Last week's red is still red — say why and what it costs the people around you: ${c.text}`);
@@ -382,7 +394,10 @@ const fmtPct = (x) => (x && x.pct !== null && x.pct !== undefined ? `${x.pct}%` 
 function render(report, manual, { forEmail = false } = {}) {
   const m = manual || emptyManual();
   const v = report.verdicts;
-  const L = [];
+  // Each line is tagged with the section it belongs to, so a section Nick
+  // excluded is dropped whole at the end (heading, body and blank line).
+  const L = { rows: [], cur: null, push(...xs) { for (const x of xs) this.rows.push([this.cur, x]); } };
+  const excluded = new Set(m.excluded || []);
   const title = report.kind === 'provisional'
     ? `SOAP — week of ${shortDate(report.from)}–${shortDate(report.to)} (provisional, data to ${shortDate(report.upTo)})`
     : `SOAP — week of ${shortDate(report.from)}–${shortDate(report.to)}`;
@@ -393,11 +408,13 @@ function render(report, manual, { forEmail = false } = {}) {
   // Nick's own opening line ("As I'm on annual leave today…") — his words, first.
   if (m.intro) L.push(m.intro, '');
 
+  L.cur = 'success';
   L.push('## ✅ Success', '');
   if (v.success.length) for (const s of v.success) L.push(`- ${s.text}`);
   else L.push('- Nothing met its mark this week.');
   L.push('');
 
+  L.cur = 'star';
   L.push('## ⭐ Star of the week', '');
   if (v.star) {
     const bits = [v.star.team, v.star.solved !== null ? `${v.star.solved} solved` : null,
@@ -407,11 +424,13 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(report.gapsBySection.leaderboard ? `- Not available — ${report.gapsBySection.leaderboard}` : '- No agent ranked this week.');
   L.push('');
 
+  L.cur = 'amber';
   L.push('## 🟠 Turning amber', '');
   if (v.ambers.length) for (const a of v.ambers) L.push(`- ${a.text}`);
   else L.push('- Nothing turning amber.');
   L.push('');
 
+  L.cur = 'red';
   L.push('## 🔴 Red — and what I will do', '');
   if (v.reds.length) {
     for (const r of v.reds) {
@@ -422,6 +441,7 @@ function render(report, manual, { forEmail = false } = {}) {
   L.push('');
 
   if ((report.carried || []).length) {
+    L.cur = 'carried';
     L.push("## Last week's reds", '');
     for (const c of report.carried) {
       if (c.green) { L.push(`- 🟢 Delivered green: ${c.text}`); continue; }
@@ -435,6 +455,7 @@ function render(report, manual, { forEmail = false } = {}) {
   const pctOr = (x) => (x === null || x === undefined ? 'no data' : `${x}%`);
   const light = (r) => (r === 'green' ? '🟢' : r === 'amber' ? '🟠' : r === 'red' ? '🔴' : '');
 
+  L.cur = 'perQueue';
   L.push('## SLA compliance by queue (this week vs last)', '');
   if (report.perQueue && report.perQueue.length) {
     L.push('| Queue | This week | Last week | Target |', '|---|---|---|---|');
@@ -443,6 +464,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(na('perQueue', 'NOVA did not answer'));
   L.push('');
 
+  L.cur = 'slaDaily';
   L.push('## SLA adherence, day on day (Support: CC + T2 + Production)', '');
   if (report.slaDaily && report.slaDaily.length) {
     L.push('| Day | FRT | Resolution |', '|---|---|---|');
@@ -450,6 +472,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(`- Not available — ${report.gapsBySection.sla || 'no daily SLA figures were returned'}`);
   L.push('');
 
+  L.cur = 'ageing';
   L.push('## Ageing vs target (oldest actionable ticket per queue)', '');
   if (report.ageing && report.ageing.length) {
     L.push('| Queue | Days | Target | Over by |', '|---|---|---|---|');
@@ -459,6 +482,7 @@ function render(report, manual, { forEmail = false } = {}) {
   else L.push(na('kpi', 'NOVA did not answer'));
   L.push('');
 
+  L.cur = 'volumes';
   L.push('## Volumes and backlog', '');
   if (report.volumes && report.volumes.length) {
     L.push('| | This week | Last week |', '|---|---|---|');
@@ -466,6 +490,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(na('sla', 'NOVA did not answer'));
   L.push('');
 
+  L.cur = 'csat';
   L.push('## CSAT', '');
   if (report.csat && report.csat.length) {
     for (const r of report.csat) L.push(`- ${r.label}: ${r.now} (last week ${r.was}) ${r.delta}`);
@@ -482,6 +507,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(na('sentiment', 'NOVA did not answer'));
   L.push('');
 
+  L.cur = 'agents';
   L.push('## Agents', '');
   const lb = report.leaderboard;
   if (lb && lb.top) {
@@ -498,6 +524,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(`- Not available — ${report.gapsBySection.leaderboard || 'no ranked agents'}`);
   L.push('');
 
+  L.cur = 'customers';
   L.push(`## Worst ${WORST_CUSTOMERS} customers`, '');
   const wc = report.customers;
   if (wc && wc.rows && wc.rows.length) {
@@ -507,6 +534,7 @@ function render(report, manual, { forEmail = false } = {}) {
   else L.push(`- Not available — ${report.gapsBySection.customers || 'NOVA did not answer'}`);
   L.push('');
 
+  L.cur = 'winning';
   L.push(`## Customers winning after support`, '');
   const wn = report.winning;
   if (wn && wn.rows && wn.rows.length) {
@@ -515,6 +543,7 @@ function render(report, manual, { forEmail = false } = {}) {
   else L.push(na('winning', 'NOVA did not answer'));
   L.push('');
 
+  L.cur = 'plan';
   L.push('## Improvement initiatives', '');
   const p = report.plan;
   if (p && p.known) {
@@ -526,6 +555,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(`- Not available — ${report.gapsBySection.plan || 'VANTAGE did not answer'}`);
   L.push('');
 
+  L.cur = 'findings';
   L.push('## Open findings', '');
   if (report.findings && report.findings.length) {
     for (const f of report.findings) L.push(`- ${f.severity ? `**${f.severity}** — ` : ''}${f.title}${f.foundOn ? ` (since ${shortDate(f.foundOn)})` : ''}`);
@@ -534,6 +564,7 @@ function render(report, manual, { forEmail = false } = {}) {
   else L.push(na('findings', 'VANTAGE did not answer'));
   L.push('');
 
+  L.cur = 'leading';
   L.push('## Leading indicators', '');
   const ld = report.leading;
   if (ld && ld.available) {
@@ -543,6 +574,7 @@ function render(report, manual, { forEmail = false } = {}) {
   L.push('');
 
   const sl = report.slm;
+  L.cur = 'slm';
   L.push(`## Friday Support Leadership Meeting${slmDate(sl) ? ` (${slmDate(sl)})` : ''}`, '');
   if (sl) {
     for (const [h, list] of [['Highlights', sl.highlights], ['Lowlights', sl.lowlights], ['Blockers', sl.blockers]]) {
@@ -553,6 +585,7 @@ function render(report, manual, { forEmail = false } = {}) {
   } else L.push(na('slm', 'no meeting note found'));
   L.push('');
 
+  L.cur = null;
   if (m.notes) L.push('## Notes', '', m.notes, '');
 
   if (report.gaps.length) {
@@ -560,7 +593,7 @@ function render(report, manual, { forEmail = false } = {}) {
     for (const g of report.gaps) L.push(`- ${g.source}: ${g.why}`);
     L.push('');
   }
-  return L.join('\n');
+  return L.rows.filter(([k]) => !k || !excluded.has(k)).map(([, x]) => x).join('\n');
 }
 
 // ── Gather (I/O) ─────────────────────────────────────────────────────────────
@@ -999,5 +1032,5 @@ module.exports = {
   weekFor, sendAtFor, slaDaily, parseDue, initiatives, findingKey, slaLight, verdicts, verdictHash, verdictDiff,
   carriedForward, blockers, render, emptyManual, getManual, setManual, gather, build, get, finalFor, latest, list, view,
   recipientNames, setRecipientNames, resolveRecipients, queueSend, publish, publishedAt, testSend, sentRecord, isLocked, markSent, markSentByHand, reopen, sentSummary, fridayFreeze, mondayFinal, mondayOutcome,
-  EXCLUDED_KINDS, AMBER_BAND, WORST_CUSTOMERS, DEFAULT_RECIPIENTS,
+  EXCLUDED_KINDS, SECTION_KEYS, AMBER_BAND, WORST_CUSTOMERS, DEFAULT_RECIPIENTS,
 };
