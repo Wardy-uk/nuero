@@ -307,6 +307,12 @@ function getMailAccessStatus() {
 // a test without asking Microsoft for a code nobody will type in.
 let deviceCodePending = false;
 let deviceCodeInfo = null;
+// How the most recent device-code sign-in ENDED. The Settings card used to treat
+// "an account exists in the token cache" as "you have signed in" — true of an
+// expired sign-in too, so it hid the code within 3 seconds of showing it (19 Oct
+// 2026). The card now waits for THIS: a completion or failure stamped after the
+// code it is showing was issued.
+let lastSignIn = null; // { at, ok, account?, error? }
 
 // Microsoft's default is 15 minutes. Treated as a FLOOR, not a guess: the
 // response carries its own `expiresIn` and we prefer it when present, because a
@@ -329,6 +335,23 @@ function isDeviceCodeUsable(info, now = Date.now()) {
   if (!info || !info.userCode || !info.issuedAt) return false;
   const ttl = Number(info.expiresInMs) > 0 ? Number(info.expiresInMs) : DEVICE_CODE_DEFAULT_TTL_MS;
   return (now - info.issuedAt) < (ttl - DEVICE_CODE_EXPIRY_MARGIN_MS);
+}
+
+/**
+ * The sign-in as the Settings card needs it: the code still waiting (if it is
+ * still usable) and how the last attempt ended. PURE over its inputs so the
+ * card's states pin without asking Microsoft for a code.
+ */
+function signInState({ pending = deviceCodePending, info = deviceCodeInfo, last = lastSignIn, now = Date.now() } = {}) {
+  const usable = pending && isDeviceCodeUsable(info, now);
+  return {
+    pending: Boolean(usable),
+    userCode: usable ? info.userCode : null,
+    verificationUri: usable ? info.verificationUri : null,
+    issuedAt: usable ? new Date(info.issuedAt).toISOString() : null,
+    expiresAt: usable ? info.expiresAt : null,
+    last: last ? { at: new Date(last.at).toISOString(), ok: last.ok, error: last.ok ? null : last.error } : null,
+  };
 }
 
 async function startDeviceCodeFlow() {
@@ -372,10 +395,13 @@ async function startDeviceCodeFlow() {
       };
       deviceCodePending = false;
       deviceCodeInfo = null;
+      lastSignIn = { at: Date.now(), ok: true };
       console.log('[Microsoft] Device code auth complete for', result.account.username);
     }).catch(err => {
       deviceCodePending = false;
       deviceCodeInfo = null;
+      // The message, never a token; Microsoft's AADSTS text is what Nick needs to see.
+      lastSignIn = { at: Date.now(), ok: false, error: String(err && err.message || err).split(/Trace ID:/)[0].trim().slice(0, 300) };
       console.error('[Microsoft] Device code auth failed:', err.message);
     });
   });
@@ -1920,6 +1946,7 @@ module.exports = {
   getScopedToken,
   startDeviceCodeFlow,
   isDeviceCodeUsable,
+  signInState,
   fetchCalendarEvents,
   createCalendarEvent,
   deleteCalendarEvent,

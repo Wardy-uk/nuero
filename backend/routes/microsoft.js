@@ -15,7 +15,10 @@ router.get('/status', async (req, res) => {
       bridgeConnected = result !== null;
     } catch { bridgeConnected = false; }
   }
-  res.json({ configured, authenticated, bridgeConfigured, bridgeConnected });
+  // `signIn`: the device-code sign-in in progress and how the last one ended.
+  // `authenticated` only means an account is in the cache — an EXPIRED one
+  // counts — so it must never be read as "the sign-in finished".
+  res.json({ configured, authenticated, bridgeConfigured, bridgeConnected, signIn: microsoft.signInState() });
 });
 
 // GET /api/microsoft/teams-send-status — is the Teams DM path live, or what is

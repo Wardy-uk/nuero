@@ -199,6 +199,13 @@
   animation: pulse 2s ease-in-out infinite;
 }
 
+.admin-device-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }

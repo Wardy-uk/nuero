@@ -10,6 +10,7 @@ import './AdminPanel.css';
 import NotionSyncPanel from './NotionSyncPanel';
 import VestaAccounts from './VestaAccounts';
 import PersonalMailCard from './PersonalMailCard';
+import { signInOutcome, DeviceCodePanel } from './MicrosoftSignIn';
 
 
 /**
@@ -929,25 +930,45 @@ export default function AdminPanel({ pushState = {} }) {
   const { supported: pushSupported, subscribed: pushSubscribed, error: pushError, manualSubscribe } = pushState;
   const { data: status, refresh: fetchStatus } = useCachedFetch('/api/status');
   const [deviceCode, setDeviceCode] = useState(null);
+  const [signIn, setSignIn] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [connecting, setConnecting] = useState(false);
 
-  // Poll for auth completion when device code is active
+  // ⚠ The code NEVER disappears on its own (19 Oct 2026). This used to clear it
+  // as soon as /status said `authenticated` — which only means an account is in
+  // the token cache, true of an EXPIRED sign-in too — so the code vanished within
+  // 3 seconds, before Nick could type it. Now only Close clears it, and the line
+  // under it says what actually happened, from the server's own record of how
+  // THIS sign-in ended.
+  const outcome = signInOutcome(deviceCode, signIn);
   useEffect(() => {
-    if (!deviceCode) return;
-    const interval = setInterval(async () => {
+    if (!deviceCode || outcome === 'signed-in') return;
+    const poll = async () => {
       try {
         const res = await fetch(apiUrl('/api/microsoft/status'));
         const data = await res.json();
-        if (data.authenticated) {
-          setDeviceCode(null);
-          setConnecting(false);
-          fetchStatus();
-        }
-      } catch (e) { /* ignore */ }
-    }, 3000);
+        setSignIn(data.signIn || null);
+        if (signInOutcome(deviceCode, data.signIn) === 'signed-in') { setConnecting(false); fetchStatus(); }
+      } catch (e) { /* keep showing the code; the next poll tries again */ }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
     return () => clearInterval(interval);
-  }, [deviceCode, fetchStatus]);
+  }, [deviceCode, outcome, fetchStatus]);
+
+  // A reload (or a deploy) while a sign-in is waiting brings the same code back.
+  useEffect(() => {
+    let alive = true;
+    fetch(apiUrl('/api/microsoft/status')).then((r) => r.json()).then((data) => {
+      if (alive && data.signIn && data.signIn.pending && data.signIn.userCode) {
+        setDeviceCode({ userCode: data.signIn.userCode, verificationUri: data.signIn.verificationUri, issuedAt: data.signIn.issuedAt, expiresAt: data.signIn.expiresAt });
+        setSignIn(data.signIn);
+      }
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const closeSignIn = () => { setDeviceCode(null); setSignIn(null); setConnecting(false); fetchStatus(); };
 
   const startAuth = async () => {
     setConnecting(true);
@@ -959,6 +980,7 @@ export default function AdminPanel({ pushState = {} }) {
         setAuthError(data.error);
         setConnecting(false);
       } else {
+        setSignIn(null);
         setDeviceCode(data);
       }
     } catch (e) {
@@ -1096,7 +1118,9 @@ export default function AdminPanel({ pushState = {} }) {
 
       <CollapsibleSection title="Microsoft 365 Authentication" hint={status.microsoft?.authenticated ? 'connected' : 'not connected'}>
         <div className="admin-ms-section">
-          {status.microsoft?.authenticated && !deviceCode ? (
+          {deviceCode ? (
+            <DeviceCodePanel deviceCode={deviceCode} signIn={signIn} outcome={outcome} onNewCode={startAuth} onClose={closeSignIn} connecting={connecting} />
+          ) : status.microsoft?.authenticated ? (
             <>
               <div className="admin-ms-connected">
                 <span className="admin-ms-connected-dot" />
@@ -1113,7 +1137,7 @@ export default function AdminPanel({ pushState = {} }) {
                 {connecting ? 'Starting...' : 'Re-authenticate'}
               </button>
             </>
-          ) : status.microsoft?.bridge && !deviceCode ? (
+          ) : status.microsoft?.bridge ? (
             <>
               <div className="admin-ms-connected">
                 <span className="admin-ms-connected-dot" style={{ background: '#f59e0b' }} />
@@ -1130,17 +1154,6 @@ export default function AdminPanel({ pushState = {} }) {
                 {connecting ? 'Starting...' : 'Sign in with Microsoft'}
               </button>
             </>
-          ) : deviceCode ? (
-            <div className="admin-device-code">
-              <div className="admin-device-code-label">Enter this code at Microsoft</div>
-              <div className="admin-device-code-value">{deviceCode.userCode}</div>
-              <div className="admin-device-code-link">
-                <a href="https://microsoft.com/devicelogin" target="_blank" rel="noopener noreferrer">
-                  microsoft.com/devicelogin
-                </a>
-              </div>
-              <div className="admin-device-code-waiting">Waiting for you to sign in...</div>
-            </div>
           ) : (
             <>
               <div className="admin-ms-desc">
