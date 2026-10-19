@@ -121,6 +121,26 @@ const WRITERS = Object.freeze({
     why: 'Nick chose that sender on the screen; the URL is the sender\'s own. A machine client cannot press it.',
     readback: 'the HTTP status the sender returned; anything not 2xx/3xx hands Nick the link instead',
   },
+  // SAiM's prepared move (19 Oct 2026): the TWO writes one confirmed move may make.
+  // Each step is its own ledger row, so a partial outcome is recorded rather than
+  // undone, and a retry repeats only the missing step. Both targets are found by a
+  // marker / exact path before any create, so repeating an unknown outcome is safe.
+  // Reached only from POST /api/prepared-moves/confirm, behind the default-off
+  // switch saim_prepared_move_execution, checked inside prepared-move-exec.
+  'saim.move.calendar-block': {
+    target: "Nick's own calendar (one solo block, no attendees)", authority: 'A2', initiation: 'human-only', ledger: true,
+    idempotentTarget: true,
+    effect: 'one solo calendar block for a prepared move, carrying the move\'s marker',
+    why: 'Nick confirmed the exact block on the screen (a one-use intent grant bound to the payload hash); nobody is invited.',
+    readback: 'the event re-read by id: title, start, end and zero attendees must match',
+  },
+  'saim.move.vault-note': {
+    target: "Nick's vault (one named note, never an overwrite)", authority: 'A2', initiation: 'human-only', ledger: true,
+    idempotentTarget: true,
+    effect: 'one new note at the exact path the move named; an existing different note is never overwritten',
+    why: 'Nick confirmed the exact path and content on the screen; it is his own vault.',
+    readback: 'the note re-read: its SHA-256 must equal what was written',
+  },
   'email.self': {
     target: 'Nick\'s own mailbox', authority: 'A2', initiation: 'timer', ledger: false,
     effect: 'briefing / [TEST] copy to Nick only (refuses any other recipient)', why: 'nobody else is told.', readback: 'none',

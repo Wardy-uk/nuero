@@ -131,6 +131,38 @@ function mint({ actionId, version, payloadHash, surface, sessionId, caller = {},
 }
 
 /**
+ * Mint a grant for ONE STORED prepared move (19 Oct 2026) — and nothing else.
+ *
+ * ⚠ This replaced a generic `mintDirect(capability, actionId, payloadHash)`,
+ * which would mint for any click-approved capability, any id and any hash a
+ * caller supplied — a door around human confirmation. Now the capability is
+ * FIXED, and the grant is bound to a record that must already exist in
+ * prepared_moves, be the newest version of its move, have offered this option,
+ * and have stored exactly this write hash for it. Same refusals as mint()
+ * (machine callers, surface, session), same table, same 60 seconds.
+ */
+const PREPARED_MOVE_CAPABILITY = 'saim.prepared-move';
+function mintForPreparedMove({ recordId, version, option, writeHash, surface, sessionId, caller = {}, now = Date.now() } = {}) {
+  if (caller.machine) return refuse(403, 'Only Nick, in NEURO, can confirm this — a machine client cannot.', 'machine');
+  if (!SURFACES.includes(surface)) return refuse(400, `surface must be one of ${SURFACES.join(', ')}`, 'surface');
+  if ((surface === 'saim-kiosk') !== (caller.attended === 'kiosk')) return refuse(403, 'that surface cannot confirm actions from here', 'surface');
+  if (typeof sessionId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(sessionId)) return refuse(400, 'sessionId is required', 'session');
+  const store = require('./prepared-move-store');
+  const rec = typeof recordId === 'string' ? store.get(recordId) : null;
+  if (!rec) return refuse(404, 'no such prepared move', 'missing');
+  if (Number(version) !== rec.version || !store.isLatest(rec)) return refuse(409, 'This move has changed since it was shown — it needs confirming again.', 'changed');
+  const opt = rec.options[option];
+  if (!opt) return refuse(403, 'that is not one of the times this move offered', 'option');
+  if (typeof writeHash !== 'string' || writeHash !== opt.writeHash) return refuse(409, 'that is not the exact set of writes this move offered', 'scope');
+  const nowMs = msOf(now);
+  const id = `ig_${crypto.randomBytes(16).toString('hex')}`;
+  db.run(`INSERT INTO human_action_intents (id, user_id, action_capability, action_id, action_version, payload_hash, session_id, surface,
+            initiated_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [id, USER, PREPARED_MOVE_CAPABILITY, rec.id, rec.version, opt.writeHash, sessionId, surface, 'human_assisted', iso(nowMs), iso(nowMs + TTL_MS)]);
+  return { ok: true, grantId: id, expiresAt: iso(nowMs + TTL_MS), recordId: rec.id, version: rec.version, option, writeHash: opt.writeHash };
+}
+
+/**
  * Spend a grant. BURNED before anything is checked, so a double click or a
  * replay gets exactly one try. Must run inside the approval's transaction.
  */
@@ -155,4 +187,4 @@ function consume({ grantId, actionId, version, payloadHash, now = Date.now() } =
 function get(grantId) { return db.get('SELECT * FROM human_action_intents WHERE id = ?', [grantId]) || null; }
 function forAction(actionId) { return db.all('SELECT * FROM human_action_intents WHERE action_id = ? ORDER BY created_at', [actionId]); }
 
-module.exports = { TTL_MS, SURFACES, MECHANISM, HUMAN_ORIGINS, PROOFS, initiatedByFor, callerOf, mint, consume, get, forAction };
+module.exports = { TTL_MS, SURFACES, MECHANISM, HUMAN_ORIGINS, PROOFS, initiatedByFor, callerOf, mint, mintForPreparedMove, PREPARED_MOVE_CAPABILITY, consume, get, forAction };

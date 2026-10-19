@@ -60,6 +60,9 @@ const CAPABILITIES = Object.freeze({
   'weather.wu-publish': { authority: 'A2', effect: "upload our own weather station's readings to Weather Underground (ICOALV59)", machine: 'execute', approval: 'none', registry: 'external-writes:wunderground.publish', ledger: false, verification: 'WU answers "success"', idempotent: 'WU folds a repeat dateutc' },
   'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
   'gmail.unsubscribe': { authority: 'A3', effect: "POST a mailing list's own one-click unsubscribe, on Nick's press", machine: 'refuse', approval: 'click', registry: 'external-writes:gmail.unsubscribe', ledger: true, verification: 'http status', idempotent: true },
+  'saim.prepared-move': { authority: 'A2', effect: "confirm ONE prepared move: exactly the writes it lists (one solo block, one new note) and nothing else", machine: 'refuse', approval: 'click (intent grant)', registry: null, ledger: true, verification: 'per-step read-back', idempotent: 'per step' },
+  'saim.move.calendar-block': { authority: 'A2', effect: "one solo block in Nick's calendar for a prepared move he confirmed", machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.calendar-block', ledger: true, verification: 'event read-back', idempotent: 'one per move (ledger key + marker)' },
+  'saim.move.vault-note': { authority: 'A2', effect: 'one new named vault note for a prepared move he confirmed (never an overwrite)', machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.vault-note', ledger: true, verification: 'content hash read-back', idempotent: 'one per move (ledger key + exact path)' },
   'email.self': { authority: 'A2', effect: 'a [TEST] copy to Nick only (refuses any other recipient)', machine: 'execute', approval: 'none', registry: 'external-writes:email.self', ledger: false, verification: null, idempotent: false },
   'desktop.launch': { authority: 'A2', effect: "open an ALLOWLISTED app on Nick's laptop (no arguments)", machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'agent outcome', idempotent: 'queue de-dupes' },
   'plaud.pull': { authority: 'A2', effect: 'pull recordings from PLAUD into the vault', machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'sync ledger', idempotent: 'canonical plaud_id' },
@@ -113,6 +116,11 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/microsoft/todo/tasks/:taskId', 'microsoft.bridge.passthrough'),
   R('*', '/api/microsoft/planner/tasks/:taskId', 'microsoft.bridge.passthrough'),
   R('*', '/api/microsoft/auth', 'config.security'),
+
+  // 19 Oct 2026: SAiM's prepared move — asking to confirm and confirming are
+  // both Nick's. Machine clients are refused; the gateway marks both interactive.
+  R('POST', '/api/prepared-moves/request', 'saim.prepared-move'),
+  R('POST', '/api/prepared-moves/confirm', 'saim.prepared-move'),
 
   // Approval is Nick's.
   R('POST', '/api/prepared-actions/:id/approve', 'approval.decide'),

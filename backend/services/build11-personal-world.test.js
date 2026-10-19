@@ -645,7 +645,14 @@ test('no calendar write to other people exists outside the governed executor', (
   // 18 Oct 2026, a deliberate exception (Nick's call): the family wall writes
   // ONE shared family Google calendar. It invites nobody — no attendee list and
   // no update emails — which is what this guard exists to protect, and pinned below.
-  assert.deepEqual(writers.sort(), ['routes/vesta.js', 'services/action-calendar.js', 'services/action-executor.js', 'services/google-calendar.js']);
+  // 19 Oct 2026, a second deliberate exception: SAiM's prepared move creates ONE
+  // solo block through action-calendar — never an attendee, never a move or a
+  // cancel — behind a default-off switch and a one-use confirmation. Pinned below.
+  assert.deepEqual(writers.sort(), ['routes/vesta.js', 'services/action-calendar.js', 'services/action-executor.js', 'services/google-calendar.js', 'services/prepared-move-exec.js']);
+  const pmx = fs.readFileSync(path.join(root, 'services/prepared-move-exec.js'), 'utf8');
+  assert.doesNotMatch(pmx, /moveEvent\(|cancelEvent\(/, 'a prepared move never moves or cancels an event');
+  assert.equal((pmx.match(/createEvent\(/g) || []).length, 1, 'one create call site');
+  assert.match(pmx, /createEvent\(\{ subject: ev\.title, .*?, to: \[\], body: ev\.body \}/, 'and it invites nobody');
   const gcal = fs.readFileSync(path.join(root, 'services/google-calendar.js'), 'utf8');
   assert.doesNotMatch(gcal, /attendees|sendUpdates|sendNotifications/, 'the family calendar writer must never invite anyone');
   assert.match(fs.readFileSync(path.join(root, 'routes/vesta.js'), 'utf8'), /require\('\.\.\/services\/google-calendar'\)\.createEvent\(/, 'the wall writes only through it');

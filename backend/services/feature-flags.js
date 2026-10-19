@@ -179,6 +179,20 @@ const FLAGS = [
     description: 'Blocks writes through the D&D vault API. Notion is the source for that '
       + 'tree, so the mirror should not be edited from here.',
   },
+  {
+    // 19 Oct 2026: checked INSIDE prepared-move-exec before any real adapter is
+    // built or a confirmation spent — a hidden button is not the gate. Default
+    // FALSE. While off, POST /api/prepared-moves/request still shows what a yes
+    // would do; /confirm refuses before anything is read or written.
+    key: 'saim_prepared_move_execution',
+    env: 'SAIM_PREPARED_MOVE_EXECUTION',
+    default: false,
+    label: 'Let SAiM carry out a prepared move you confirm',
+    description: 'When you confirm a prepared move, SAiM adds ONE solo block to your calendar (nobody invited) '
+      + 'and saves ONE new note in a project folder, then reads both back. It never overwrites a note, '
+      + 'contacts anyone, changes a shared board or answers an invite. While off, nothing is written.',
+    impact: 'writes one solo calendar block and one new vault note, only after you confirm',
+  },
 ];
 
 const BY_KEY = new Map(FLAGS.map((f) => [f.key, f]));

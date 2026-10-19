@@ -229,6 +229,9 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/setup', require('./routes/setup'));
 // Build 5E: drafts NEURO prepared for approval. Approval is RECORDED ONLY.
 app.use('/api/prepared-actions', require('./routes/prepared-actions'));
+// SAiM's prepared move: request + confirm, human only. Writes nothing unless
+// saim_prepared_move_execution is on (checked inside prepared-move-exec).
+app.use('/api/prepared-moves', require('./routes/prepared-moves'));
 app.use('/api/greeting', require('./routes/greeting'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/catalogues', require('./routes/catalogue'));
