@@ -1,0 +1,26 @@
+/* SAiM's one prepared decision. Uses the situation's own ink, so it reads as
+   her speaking, not a card dropped on top. No polish pass — hierarchy only. */
+.pm { margin: 1.25rem 0 0.5rem; max-width: 46rem; color: var(--sit-ink); }
+.pm__headline { font-size: 1.15rem; line-height: 1.4; margin: 0 0 0.35rem; }
+.pm__open, .pm__detail, .pm__why { margin: 0 0 0.6rem; color: var(--sit-soft); line-height: 1.45; }
+.pm__label { margin: 0.9rem 0 0.3rem; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sit-quiet); }
+.pm__open ul, .pm__writes, .pm__receipt, .pm__evidence { margin: 0; padding-left: 1.1rem; line-height: 1.45; }
+.pm__sub { color: var(--sit-quiet); font-size: 0.9rem; }
+.pm__act { margin: 1rem 0; padding: 0.9rem 1rem; border-left: 2px solid rgba(var(--saim-rgb, 120, 160, 255), 0.6); background: rgba(255, 255, 255, 0.03); }
+.pm__act--stopped, .pm__act--partial { border-left-color: #f0d6a6; } /* GAP: notice this, nothing is broken */
+.pm__act--done { border-left-color: #5ad18f; } /* done / landed */
+.pm__ask { margin: 0 0 0.5rem; font-weight: 600; }
+.pm__options { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.2rem 0 0.4rem; }
+.pm__option { display: inline-flex; align-items: center; gap: 0.35rem; }
+.pm__locked { margin: 0.7rem 0 0; color: #f0d6a6; } /* GAP: ready for review, nothing is broken */
+.pm__buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+.pm__btn { font: inherit; padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); background: transparent; color: inherit; cursor: pointer; }
+.pm__btn--yes { border-color: rgba(var(--saim-rgb, 120, 160, 255), 0.8); }
+.pm__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pm__more { margin: 0.4rem 0; }
+.pm__more summary { cursor: pointer; color: var(--sit-soft); }
+.pm__draft { white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; max-height: 24rem; overflow: auto; padding: 0.6rem; background: rgba(0, 0, 0, 0.25); }
+.pm__ok strong { color: #5ad18f; }
+.pm__notok strong { color: #f0d6a6; }
+@media (max-width: 600px) { .pm { margin-top: 1rem; } .pm__headline { font-size: 1.05rem; } }
+.pm__dev { font: 0.75rem/1.4 ui-monospace, monospace; color: var(--sit-quiet); white-space: pre-wrap; margin: 0.5rem 0; }

@@ -36,6 +36,8 @@ const fs = require('fs');
 const path = require('path');
 
 const CONTRACT = 'prepared-move-v1';
+/** What SAiM says about a move she prepared while he is off duty or on leave. */
+const HELD_SAY = 'I’ve prepared this for your next working morning.';
 const DAY = 86400000;
 
 /** How old each source may be before a claim built on it is withheld. */
@@ -50,7 +52,14 @@ const MAX_AGE_HOURS = Object.freeze({
 const EVIDENCE_EXCLUDE = [/^People\//, /^Personal\//, /^Archive\//, /\/Archive\//, /^Plaud\//, /1-2-1/i, /\bPIP\b/, /^Daily\//, /^Tasks\//, /^Documents\/System\//];
 
 const STOP = new Set('a an and the to of for in on with by every each from what is are be that this it as at or not stating'.split(' '));
-const stem = (w) => w.replace(/(ations?|ation|ions?|ing|ed|es|s)$/, '');
+// A word's stem never changes, so it is remembered per word — a pure function
+// memo (no vault content, nothing that can go stale), bounded in size.
+const _stems = new Map();
+const stem = (w) => {
+  let s = _stems.get(w);
+  if (s === undefined) { s = w.replace(/(ations?|ation|ions?|ing|ed|es|s)$/, ''); if (_stems.size < 200000) _stems.set(w, s); }
+  return s;
+};
 const tokens = (t) => [...new Set(String(t || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)).map(stem))];
 const ymdLondon = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10);
 const hoursOld = (iso, nowMs) => { const t = Date.parse(iso); return Number.isFinite(t) ? Math.round(((nowMs - t) / 3600000) * 10) / 10 : null; };
@@ -73,6 +82,28 @@ const hm = (s) => String(s || '').slice(11, 16);
  *   kind    — the item is a PIP deliverable (Nick's own performance plan).
  * Returns categories only — never the matched words, names or lines.
  */
+/**
+ * The ledger's topic patterns as two combined expressions — the case-insensitive
+ * ones and the case-sensitive ones, kept apart so each keeps its own flags.
+ * Same answer as `patterns.some((re) => re.test(line))`, one pass instead of 59.
+ */
+let _ctx = null;
+function _contextTest(patterns) {
+  if (_ctx && _ctx.src === patterns) return _ctx.test;
+  // Any flag other than `i` (g, y, m, s, u…) could change the answer when joined — keep them separate.
+  if (patterns.some((re) => re.flags.replace('i', '') !== '')) { const t = (s) => patterns.some((re) => re.test(s)); _ctx = { src: patterns, test: t }; return t; }
+  const join = (list, flags) => (list.length ? new RegExp(list.map((re) => `(?:${re.source})`).join('|'), flags) : null);
+  const ci = join(patterns.filter((re) => re.flags.includes('i')), 'i');
+  const cs = join(patterns.filter((re) => !re.flags.includes('i')), '');
+  const test = (s) => Boolean((ci && ci.test(s)) || (cs && cs.test(s)));
+  // With no ^/$ anchors, a line that matches means the WHOLE note matches, so a
+  // note that does not match anywhere has no line to check — same verdict.
+  const bare = (src) => src.replace(/\\./g, '').replace(/\[[^\]]*\]/g, '');
+  test.wholeTextSafe = !patterns.some((re) => /[\^$]/.test(bare(re.source)));
+  _ctx = { src: patterns, test };
+  return test;
+}
+
 function employmentScreen({ wording = '', sourceTitle = '', sourceText = '', roster = null, kind = null } = {}) {
   const ledger = require('./promise-ledger');
   const categories = [];
@@ -80,11 +111,18 @@ function employmentScreen({ wording = '', sourceTitle = '', sourceText = '', ros
   if (ledger.hrSensitivity(wording, sourceTitle).sensitive) categories.push('hr-wording');
   if (sourceText && roster && roster.full && roster.full.length) {
     let personLines = 0;
-    for (const raw of String(sourceText).replace(/\r\n/g, '\n').split('\n')) {
+    const ctx = _contextTest(ledger.CONTEXT_PATTERNS);
+    const lines = ctx.wholeTextSafe && !ctx(String(sourceText)) ? [] : String(sourceText).replace(/\r\n/g, '\n').split('\n');
+    for (const raw of lines) {
       if (!raw.trim()) continue;
+      // Both conditions are needed; the cheap topic test runs FIRST, so the
+      // per-name scan only runs on the rare line about sickness, absence… (19 Oct
+      // 2026: name-first made a single prepare take ~25 s over the vault).
+      if (!_contextTest(ledger.CONTEXT_PATTERNS)(raw)) continue;
       const named = ledger.namesIn(raw, roster);
       if (!named.people.length && !named.ambiguous.length) continue;
-      if (ledger.CONTEXT_PATTERNS.some((re) => re.test(raw))) personLines += 1;
+      personLines += 1;
+      if (personLines >= 2) break; // the verdict cannot change after the second line
     }
     if (personLines >= 2) categories.push('employee-cases-note');
   }
@@ -176,28 +214,129 @@ function findRegisterRow(msId) {
  * a line counts when it shares 3+ of the action's distinctive words. Ranked by
  * overlap, at most 2 a file, never from excluded or employment-sensitive notes.
  */
-function findEvidenceLines(actionText, { roster, excludePath = null, limit = 30, perFileMax = 6, min = 3, patterns = null, stats = null } = {}) {
+/** Thrown when a preparation runs past its deadline — the caller offers nothing. */
+class BudgetExceeded extends Error {}
+const _overBudget = (deadline) => { if (deadline && Date.now() > deadline) throw new BudgetExceeded('preparation ran past its time budget'); };
+
+/**
+ * One preparation's view of the evidence notes: walked once, each note read,
+ * screened and tokenised at most once. Lives for ONE call only — nothing is
+ * stored, so nothing can go stale between calls.
+ */
+/**
+ * Derived facts about each evidence note — its text, token set, cleaned lines
+ * and employment verdict — remembered IN MEMORY, keyed on the note's path,
+ * size and modification time (and, for the verdict, on the roster). Every call
+ * re-stats every note, so an edited note is always re-read: nothing derived
+ * from an old version of a note is ever used. Never written anywhere.
+ */
+const _noteIndex = new Map();
+const _rosterSig = (roster) => (roster && roster.full ? roster.full.join('|') : '');
+function _noteEntry(rel) {
+  let st = null;
+  try { st = fs.statSync(path.join(vaultRoot(), rel)); } catch { _noteIndex.delete(rel); return null; }
+  const id = `${st.size}:${st.mtimeMs}`;
+  let e = _noteIndex.get(rel);
+  if (!e || e.id !== id) {
+    e = { id, text: _read(rel), mtimeIso: st.mtime.toISOString(), toks: null, lines: null, screen: null };
+    _noteIndex.set(rel, e);
+  }
+  return e;
+}
+
+function makeCorpus({ deadline = null } = {}) {
+  let files = null;
+  const seen = new Map(); // one stat per note per call
+  const entry = (rel) => { if (!seen.has(rel)) seen.set(rel, _noteEntry(rel)); return seen.get(rel); };
+  return {
+    deadline,
+    files() {
+      if (!files) {
+        files = [..._walk('Projects'), ..._walk('Meetings/2026/10'), ..._walk('Meetings/2026/09')];
+        // Forget notes that are no longer in the scanned folders (moved, deleted).
+        const live = new Set(files);
+        for (const rel of _noteIndex.keys()) if (!live.has(rel)) _noteIndex.delete(rel);
+      }
+      return files;
+    },
+    read(rel) { const e = entry(rel); return e ? e.text : null; },
+    mtime(rel) { const e = entry(rel); return e ? e.mtimeIso : null; },
+    sensitive(rel, roster) {
+      const e = entry(rel); const sig = _rosterSig(roster);
+      if (!e.screen || e.screen.sig !== sig) e.screen = { sig, verdict: employmentScreen({ sourceText: e.text, roster, sourceTitle: path.basename(rel, '.md') }).sensitive };
+      return e.screen.verdict;
+    },
+    fileTokens(rel) { const e = entry(rel); if (!e.toks) e.toks = tokens(e.text); return e.toks; },
+    lines(rel) {
+      const e = entry(rel);
+      if (!e.lines) {
+        e.lines = e.text.replace(/\r\n/g, '\n').split('\n').map((l, i) => {
+          const clean = l.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+          const usable = !(clean.length < 25 || clean.length > 1200 || /^\|?\s*[-:]+\s*\|/.test(clean));
+          return { i, clean, usable, toks: null };
+        });
+      }
+      return e.lines;
+    },
+  };
+}
+
+/**
+ * Warm the in-memory note index after startup, so the first Surface read is
+ * not the one that pays for reading every evidence note (19 Oct 2026).
+ * READ-ONLY: it reads notes and the roster, writes nothing, mints nothing and
+ * makes no network call. It yields to the event loop every `yieldEvery` notes,
+ * so it never holds up a request, and a second call joins the first.
+ */
+let _warming = null;
+function warmEvidenceIndex({ yieldEvery = 20, roster = null } = {}) {
+  if (_warming) return _warming;
+  _warming = require('./read-only-scope').run(async () => {
+    const t0 = Date.now();
+    let r = roster;
+    if (!r) { try { r = require('./entities').getRoster(); } catch { r = null; } }
+    const c = makeCorpus();
+    let notes = 0;
+    for (const rel of c.files()) {
+      if (EVIDENCE_EXCLUDE.some((re) => re.test(rel))) continue;
+      if (!c.read(rel)) continue;
+      c.fileTokens(rel); c.lines(rel);
+      if (r && r.full && r.full.length) c.sensitive(rel, r);
+      notes += 1;
+      if (notes % yieldEvery === 0) await new Promise((res) => setImmediate(res));
+    }
+    return { notes, ms: Date.now() - t0 };
+  }).then((p) => ({ ...p.result, writesRefused: p.writesRefused, refused: p.refused })).finally(() => { _warming = null; });
+  return _warming;
+}
+
+function findEvidenceLines(actionText, { roster, excludePath = null, limit = 30, perFileMax = 6, min = 3, patterns = null, stats = null, corpus = makeCorpus() } = {}) {
   const want = new Set(tokens(actionText));
   const found = [];
-  for (const rel of [..._walk('Projects'), ..._walk('Meetings/2026/10'), ..._walk('Meetings/2026/09')]) {
+  for (const rel of corpus.files()) {
+    _overBudget(corpus.deadline);
     if (rel === excludePath || EVIDENCE_EXCLUDE.some((re) => re.test(rel))) continue;
-    const text = _read(rel); if (!text) continue;
+    const text = corpus.read(rel); if (!text) continue;
     if (patterns && !patterns.some((re) => re.test(text))) continue;
-    if (employmentScreen({ sourceText: text, roster, sourceTitle: path.basename(rel, '.md') }).sensitive) {
-      if (stats) { stats.sensitive = stats.sensitive || new Set(); if (patterns || tokens(text).filter((w) => want.has(w)).length >= min) stats.sensitive.add(rel); }
+    // The screen is asked only of a note that could contribute: same outcome,
+    // because a note with nothing to offer is skipped either way — but the
+    // count of notes left out still covers every note that WOULD have counted.
+    const couldCount = patterns || corpus.fileTokens(rel).filter((w) => want.has(w)).length >= min;
+    if (!couldCount) continue;
+    if (corpus.sensitive(rel, roster)) {
+      if (stats) { stats.sensitive = stats.sensitive || new Set(); stats.sensitive.add(rel); }
       continue;
     }
-    const lines = text.replace(/\r\n/g, '\n').split('\n');
     const perFile = [];
-    lines.forEach((l, i) => {
-      const clean = l.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-      if (clean.length < 25 || clean.length > 1200 || /^\|?\s*[-:]+\s*\|/.test(clean)) return;
-      if (patterns) { if (patterns.some((re) => re.test(clean))) perFile.push({ path: rel, line: i + 1, text: clean, shared: [], score: 99 }); return; }
-      const shared = tokens(clean).filter((w) => want.has(w));
-      if (shared.length >= min) perFile.push({ path: rel, line: i + 1, text: clean, shared, score: shared.length });
-    });
+    for (const ln of corpus.lines(rel)) {
+      if (!ln.usable) continue;
+      if (patterns) { if (patterns.some((re) => re.test(ln.clean))) perFile.push({ path: rel, line: ln.i + 1, text: ln.clean, shared: [], score: 99 }); continue; }
+      if (!ln.toks) ln.toks = tokens(ln.clean);
+      const shared = ln.toks.filter((w) => want.has(w));
+      if (shared.length >= min) perFile.push({ path: rel, line: ln.i + 1, text: ln.clean, shared, score: shared.length });
+    }
     perFile.sort((a, b) => b.score - a.score);
-    found.push(...perFile.slice(0, perFileMax).map((x) => ({ ...x, observedAt: _mtime(rel) })));
+    found.push(...perFile.slice(0, perFileMax).map((x) => ({ ...x, observedAt: corpus.mtime(rel) })));
   }
   return found.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path)).slice(0, limit);
 }
@@ -464,9 +603,44 @@ async function readDecision(nowMs) {
   return { nowView, pool, gaps };
 }
 
-async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) {
+/**
+ * PURE. May a work move be put in front of Nick now? Leave beats everything;
+ * otherwise life-state's own decision (`life.showWork`). An unreadable life read
+ * FAILS CLOSED — preparing is fine, asking him to commit work is not, and "I
+ * couldn't tell whether you're working" must not become "you are".
+ */
+function dutyFor({ life, leave } = {}) {
+  if (leave) return { onDuty: false, why: 'leave' };
+  if (!life || typeof life.showWork !== 'boolean') return { onDuty: false, why: 'unknown' };
+  if (life.showWork === false) return { onDuty: false, why: 'off-duty' };
+  return { onDuty: true, why: 'working' };
+}
+
+/** The same rule, read now (confirm-time gate). Read-only. */
+async function readDuty(nowMs = Date.now()) {
+  const pass = await require('./read-only-scope').run(async () => {
+    let life = null;
+    try { life = await require('./life-state').read(new Date(nowMs)); } catch { life = null; }
+    let leave = null;
+    try {
+      const ta = require('./team-availability');
+      const off = ta.selfAbsenceOn(ymdLondon(nowMs), ta.snapshot(new Date(nowMs)));
+      if (off.off) leave = off;
+    } catch { /* unknown leave does not make him on leave; life decides */ }
+    return dutyFor({ life, leave });
+  });
+  return pass.result;
+}
+
+async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetBy = null } = {}) {
   const nowMs = typeof now === 'number' ? now : Date.parse(now);
-  const read = await (deps.readDecision || readDecision)(nowMs);
+  // One corpus per call: each evidence note is read and screened at most once.
+  const corpus = makeCorpus({ deadline: budgetBy });
+  // The decision is READ, never refreshed: no row written, nothing sent off this
+  // machine (services/read-only-scope) — for /current and /request alike.
+  const pass = await require('./read-only-scope').run(() => (deps.readDecision || readDecision)(nowMs));
+  const read = pass.result;
+  _overBudget(budgetBy);
   const { nowView, pool } = read;
   const gaps = [...(read.gaps || [])];
   const saim = nowView.saim || {};
@@ -481,6 +655,9 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) 
   const leaveToday = ta.selfAbsenceOn(today, snap);
   const leave = leaveToday.off ? { ...leaveToday, fetchedAt: snap.fetchedAt } : null;
 
+  // Off duty or on leave a work move may be PREPARED but not put in front of him.
+  const duty = dutyFor({ life: nowView.life, leave });
+
   const findings = [];
   if (leave && decision.workingWindow && decision.workingWindow.todayIsWorking) findings.push(`Production treats today as a working day (workingWindow.todayIsWorking = true), but People HR has you on ${leave.detail || 'leave'}.`);
 
@@ -494,6 +671,7 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) 
     try { const rec = (deps.getRecord || ((x) => _db().getAttentionRecord(x)))(id); if (rec && rec.dedupe_key) recordKeys[id] = rec.dedupe_key; } catch { /* unresolved — withheld below */ }
   }
   for (const c of productionOrder(saim, pool, recordKeys)) {
+    _overBudget(budgetBy);
     const item = c.item;
     if (c.role === 'lead' && c.kind === 'meeting') {
       withheld.push({ ref: c.ref, title: c.title, reason: 'not-a-commitment', why: 'The lead is a calendar entry, not something owed.' });
@@ -558,15 +736,15 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) 
     // rejection must say). Notes about named people's employment are left out of all three.
     const stats = {};
     const evidence = [
-      ...findEvidenceLines(reg.action, { roster, excludePath: register.path, stats }),
-      ...findEvidenceLines('escalation rejection reason free text dropdown', { roster, limit: 6, min: 4, stats }),
-      ...findEvidenceLines('', { roster, limit: 6, stats, patterns: [/\bevery escalation must (show|carry|include)\b/i, /\bwithout stating exactly what is missing\b/i] }),
+      ...findEvidenceLines(reg.action, { roster, excludePath: register.path, stats, corpus }),
+      ...findEvidenceLines('escalation rejection reason free text dropdown', { roster, limit: 6, min: 4, stats, corpus }),
+      ...findEvidenceLines('', { roster, limit: 6, stats, corpus, patterns: [/\bevery escalation must (show|carry|include)\b/i, /\bwithout stating exactly what is missing\b/i] }),
     ].filter((l, i, a) => a.findIndex((x) => x.path === l.path && x.line === l.line) === i);
     // The latest decision in the notes that changes who the "teams" are.
     const consolidation = (() => {
       // A DECISION line (it starts with the verb) in a dated meeting note that names a receiving team.
       const teamWords = /\b(TPJ|Tier [123]|Development|Customer Care|Finance|Customer Success)\b/;
-      const hits = findEvidenceLines('consolidate into main NT Jira project escalation SLA', { roster, limit: 40 })
+      const hits = findEvidenceLines('consolidate into main NT Jira project escalation SLA', { roster, limit: 40, corpus })
         .filter((l) => /^Meetings\/\d{4}\/\d\d\/\d{4}-\d\d-\d\d/.test(l.path) && /^[-*>\s]*\**consolidate\b/i.test(l.text) && teamWords.test(l.text))
         .sort((a, b) => b.path.localeCompare(a.path));
       const l = hits[0];
@@ -627,7 +805,10 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) 
     }, nowMs);
     selected = {
       ref: c.ref, title: item.title, record: { system: 'planner', msId: record.msId, plan: record.plan },
-      presentAt: leave ? 'your next working morning' : 'now',
+      // The register row as data, so a surface can say what the work IS in plain
+      // words without parsing prose — and keep the row id for traceability only.
+      subject: { id: reg.id, action: reg.action, project: reg.project },
+      presentAt: duty.onDuty ? 'now' : 'your next working morning',
       freshness: fresh.rows,
       screens: { employment, freshnessOk: fresh.ok, recordUnique: true },
       ...packet,
@@ -638,6 +819,7 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) 
     contract: CONTRACT,
     generatedAt: new Date(nowMs).toISOString(),
     decision: { rule: decision.rule, lead: decision.lead && decision.lead.title, decidedAt, policyVersion: decision.policyVersion },
+    duty,
     selected,
     withheld,
     findings,
@@ -646,4 +828,4 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {} } = {}) 
   };
 }
 
-module.exports = { CONTRACT, MAX_AGE_HOURS, blockTitleFor, notePathFor, resolveTodoCard, employmentScreen, freshnessScreen, composePacket, draftFromEvidence, productionOrder, resolveOwner, tokens, prepare };
+module.exports = { CONTRACT, MAX_AGE_HOURS, blockTitleFor, notePathFor, resolveTodoCard, employmentScreen, freshnessScreen, composePacket, draftFromEvidence, productionOrder, resolveOwner, tokens, prepare, dutyFor, readDuty, HELD_SAY, BudgetExceeded, warmEvidenceIndex, _test: { makeCorpus, noteIndex: _noteIndex } };

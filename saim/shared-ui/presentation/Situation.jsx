@@ -200,6 +200,8 @@ export default function Situation({
   // What must come straight after the situation: the passing question and her
   // answer, what an act just did, or why he arrived from a notification.
   lead = null,
+  // SAiM's one prepared decision, drawn right under the situation (19 Oct 2026).
+  prepared = null,
 }) {
   const plan = composeForSurface(presentation, profile);
   if (!presentation) return null;
@@ -213,6 +215,7 @@ export default function Situation({
   // Diagnostics attach to the read they explain (12.1H): drawn under the
   // context group when there is one, on their own only when there is not.
   const hasContext = plan.blocks.some((b) => b.type === 'context');
+  const hasNeedsYou = plan.blocks.some((b) => b.type === 'needsYou');
   // The foot (escape hatch, laptop row) belongs after the content and before
   // the dock — not stranded below the composer (12.1I).
   const hasAsk = Boolean(ask) && plan.blocks.some((b) => b.type === 'ask');
@@ -249,16 +252,19 @@ export default function Situation({
         {plan.blocks.map((blk, i) => {
           switch (blk.type) {
             case 'situation':
-              return (
+              return [
                 <header key={i} className={`sit__situation sit__situation--${blk.variant}`} aria-live="polite">
                   <h2 className="sit__headline">{s.headline}</h2>
                   {showSummary && <p className="sit__summary">{s.summary}</p>}
                   {ambient && aboutItem && aboutItem.summary && <p className="sit__handoff">{aboutItem.summary}</p>}
                   {lead && <div className="sit__lead">{lead}</div>}
-                </header>
-              );
+                </header>,
+                // Outside the live region: a whole prepared move must not be re-announced on every poll.
+                // ⚠ After Needs you when there is one — P0 outranks a prepared move.
+                prepared && !hasNeedsYou ? <div key={`${i}-prepared`} className="sit__prepared">{prepared}</div> : null,
+              ];
             case 'needsYou':
-              return (
+              return [
                 <div key={i} className="sit__objects" role="list" aria-label="Needs you">
                   {blk.items.map((it) => (
                     <article key={it.id} role="listitem" className="sit__object sit__object--p0">
@@ -268,8 +274,9 @@ export default function Situation({
                     </article>
                   ))}
                   {blk.overflow > 0 && <p className="sit__more">and {blk.overflow} more</p>}
-                </div>
-              );
+                </div>,
+                prepared ? <div key={`${i}-prepared`} className="sit__prepared">{prepared}</div> : null,
+              ];
             case 'primary': {
               const it = blk.items[0];
               return (

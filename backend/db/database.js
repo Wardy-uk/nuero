@@ -836,7 +836,14 @@ function norm(params) {
 
 function all(sql, params) { return stmt(sql).all(norm(params)); }
 function get(sql, params) { return stmt(sql).get(norm(params)) || null; }
-function run(sql, params) { return stmt(sql).run(norm(params)); }
+// Inside a read-only pass (services/read-only-scope) a write is refused, not made.
+// Outside one this is unchanged.
+let _readOnlyScope = null;
+function run(sql, params) {
+  if (!_readOnlyScope) _readOnlyScope = require('../services/read-only-scope');
+  _readOnlyScope.refuseWrite(sql);
+  return stmt(sql).run(norm(params));
+}
 
 // Run a SYNCHRONOUS fn as one atomic unit. Previously this collapsed many
 // full-database flushes into one; now it is a real transaction, which keeps

@@ -400,6 +400,7 @@ const deps = {
   prepare: (opts) => require('./prepared-move').prepare(opts),
   liveAdapters: () => liveAdapters(),
   defaultChecks: (opts) => defaultChecks(opts),
+  readDuty: (now) => require('./prepared-move').readDuty(now),
 };
 function _setDeps(over = {}) { const was = { ...deps }; Object.assign(deps, over); return () => Object.assign(deps, was); }
 
@@ -413,6 +414,7 @@ function readOnlyVault() {
 }
 
 const executionEnabled = () => require('./feature-flags').isEnabled(FLAG);
+const HELD = 'I’ve prepared this for your next working morning.';
 const MACHINE = 'Only Nick, in NEURO, can confirm a prepared move — a machine client cannot.';
 
 /**
@@ -432,7 +434,13 @@ async function requestForMove({ option = 'approve', surface = 'neuro-web', sessi
     const why = (packet && (packet.noneBecause || (packet.withheld || []).map((x) => `${x.title}: ${x.reason}`).join('; '))) || 'nothing could be prepared';
     return refuse(`There is no prepared move to confirm right now — ${why}`, { code: 409 });
   }
-  const st = require('./prepared-move-store').store(packet, { now });
+  // Off duty or on leave: the move stays held. Nothing stored, nothing minted.
+  // A packet that does not say is treated as off duty (fail closed).
+  // (An out-of-scope or employment move is refused as THAT first — never as held.)
+  const w0 = writesFor(packet, option);
+  if (!w0.ok) return { ...w0, code: 409 };
+  if (!packet.duty || packet.duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
+  const st =require('./prepared-move-store').store(packet, { now });
   if (!st.ok) return refuse(st.why, { code: 409 });
   const record = st.record;
   const w = writesFor(record.packet, option);
@@ -466,6 +474,9 @@ async function requestForMove({ option = 'approve', surface = 'neuro-web', sessi
 async function confirmMove({ recordId, version, option, grantId, caller = {}, now = Date.now() } = {}) {
   if (caller.machine) return refuse(MACHINE, { code: 403 });
   if (!executionEnabled()) return refuse(`Carrying out prepared moves is switched off (${FLAG}) — nothing was written and your confirmation was not used.`, { code: 409, disabled: true });
+  // Re-read now: a confirmation minted in working hours is not used off duty.
+  const duty = await deps.readDuty(now);
+  if (!duty || duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
   const store = require('./prepared-move-store');
   const record = store.get(recordId);
   if (!record) return refuse('no such prepared move', { code: 404 });

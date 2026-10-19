@@ -223,3 +223,15 @@ test('the shell foot (laptop launch, escape hatch) never reaches the wall; it do
   assert.doesNotMatch(render('live-sunday', 'kiosk', { foot }), /foot-probe/);
   assert.match(render('live-sunday', 'phone', { foot }), /foot-probe/);
 });
+
+test('a prepared move sits after Needs you when there is one, else straight after the situation — and never inside the live region', () => {
+  const slot = React.createElement('p', { className: 'pm-probe' }, 'PREPARED-PROBE');
+  const withP0 = render('approval', 'phone', { prepared: slot });
+  assert.ok(withP0.indexOf('aria-label="Needs you"') < withP0.indexOf('PREPARED-PROBE'), 'P0 outranks a prepared move');
+  assert.equal(count(withP0, 'PREPARED-PROBE'), 1, 'drawn once');
+  const calm = render('working-busy', 'phone', { prepared: slot });
+  assert.ok(calm.indexOf('sit__situation') < calm.indexOf('PREPARED-PROBE'));
+  const header = calm.slice(calm.indexOf('<header'), calm.indexOf('</header>'));
+  assert.ok(!header.includes('PREPARED-PROBE'), 'outside the aria-live header');
+  assert.equal(count(render('working-busy', 'phone'), 'sit__prepared'), 0, 'no slot, nothing drawn');
+});

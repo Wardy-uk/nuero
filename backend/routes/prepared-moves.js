@@ -1,10 +1,12 @@
 'use strict';
 
 /**
- * SAiM's prepared move — the human half (19 Oct 2026). TWO routes, both
+ * SAiM's prepared move — the human half (19 Oct 2026). THREE routes, all
  * human-only and interactive (authority-matrix: saim.prepared-move, machine:
  * refuse; MCP gateway: interactive):
  *
+ *   GET  /current — what SAiM has prepared, read only: stores nothing and
+ *                   mints nothing (prepared-move-view).
  *   POST /request — prepare the move from live data, store it as an immutable
  *                   version, re-check it, and mint a one-use 60-second
  *                   confirmation. Shows exactly what a yes would write.
@@ -22,6 +24,7 @@ const express = require('express');
 const router = express.Router();
 
 const exec = () => require('../services/prepared-move-exec');
+const view = () => require('../services/prepared-move-view');
 const HUMAN_ONLY = 'Only Nick, in NEURO, can confirm a prepared move — a machine client cannot.';
 const OPTION_RE = /^(approve|slot-[1-9])$/;
 const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
@@ -38,6 +41,16 @@ const send = (res, r) => {
   const { code, ...rest } = r;
   return res.status(code || 409).json({ ...rest, error: (r.reasons || [r.error]).filter(Boolean).join(' ') });
 };
+
+// GET /api/prepared-moves/current — prepared move, read only (human only, interactive): what SAiM has prepared right now — what she drafted, why it matters, what is unresolved, the exact two writes and only the times that pass the fresh diary/leave checks. Stores nothing and mints no confirmation; `move: null` when nothing trustworthy is prepared. Refuses machine clients.
+router.get('/current', async (req, res) => {
+  if (req.apiClient || caller(req).machine) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
+  try {
+    res.json(await view().currentView());
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 // POST /api/prepared-moves/request — prepared move, step 1 (human only, interactive): show exactly what confirming SAiM's prepared move would write (one solo calendar block, one new project note) and mint a one-use 60-second confirmation for that stored version. Refuses machine clients. Body: { option, surface, sessionId }
 router.post('/request', async (req, res) => {

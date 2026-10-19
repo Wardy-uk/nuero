@@ -168,6 +168,9 @@ export default function AttentionSurface({
   crownExtra = null,
   beforeSay = null,
   sayOverride = null,
+  // SAiM's one prepared decision (19 Oct 2026), straight after her situation.
+  // Only the phone passes it; a shell that does not renders exactly as before.
+  prepared = null,
   footAside = null,
   footExtra = null,
   // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
@@ -574,6 +577,7 @@ export default function AttentionSurface({
           // service behind it, so capability alone offers a control that fails.
           ask={prof === 'kiosk' && !(typeof window !== 'undefined' && /[?&]mic=1/.test(window.location.search || '')) ? null : deviceSlot}
           note={footAside}
+          prepared={prepared}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />
       </div>
@@ -660,6 +664,7 @@ export default function AttentionSurface({
 
         {askLife && <LifeAsk ask={data.life.ask} onAnswer={onLifeAnswer} busy={lifeBusy} />}
         {beforeSay}
+        {prepared}
 
         {/* ⚠ `--stacked` WHEN THE TRANSITION IS ALSO HERE. The cap below was
             sized for ONE sentence and its buttons; a transition adds a second

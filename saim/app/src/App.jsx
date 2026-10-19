@@ -28,6 +28,9 @@ import DeploymentGuard from './components/DeploymentGuard';
 import UpdateChip from '../../shared-ui/UpdateChip';
 import { readRuntime } from './runtime';
 import './App.css';
+import { isDebugView } from './debugView.mjs';
+
+const DEBUG_VIEW = isDebugView();
 
 // SAiM mobile app shell.
 //
@@ -312,15 +315,18 @@ export default function App() {
       <header className="app__header">
         <span className="app__brand">SAiM</span>
         <Whereabouts fetchJson={fetchWhereabouts} />
-        <span className="app__sub">mobile</span>
-        {runtime.buildLabel && <span className="app__build">{runtime.buildLabel}</span>}
+        {/* Implementation words ("mobile", the build id) are for a developer, not
+            for Nick: shown only with ?debug=1, where "which bundle is this?" is
+            still answerable. */}
+        {DEBUG_VIEW && <span className="app__sub">mobile</span>}
+        {DEBUG_VIEW && runtime.buildLabel && <span className="app__build">{runtime.buildLabel}</span>}
         <UpdateChip onReload={refreshApp} />
         <button
           className="app__refresh"
           type="button"
           onClick={refreshApp}
-          aria-label="Refresh SAiM mobile"
-          title="Refresh SAiM mobile"
+          aria-label="Refresh SAiM"
+          title="Refresh SAiM"
           disabled={refreshing}
         >{refreshing ? '…' : '↻'}</button>
         {wakeLock.supported && (

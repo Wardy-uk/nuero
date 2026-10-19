@@ -53,6 +53,7 @@ function fixture(edit = () => {}) {
   const p = {
     contract: 'prepared-move-v1',
     decision: { decidedAt: new Date(NOW - 5 * 60000).toISOString() },
+    duty: { onDuty: true, why: 'working' },
     selected: {
       title: 'Written criteria for what each team accepts',
       record: { system: 'planner', msId: 'PLANNER-ID-1', plan: 'Support Improvement Plan' },
@@ -78,6 +79,7 @@ const S = { packet: () => fixture(), over: {}, realDiary: false, adapterBuilds: 
 const okReaders = { diary: async () => ({ known: true, clashes: [] }), availability: async () => ({ known: true, off: false, working: true }), candidate: async () => ({ ok: true }) };
 exec._setDeps({
   prepare: async () => S.packet(),
+  readDuty: async () => S.duty || { onDuty: true, why: 'working' },
   liveAdapters: () => { S.adapterBuilds += 1; return exec.liveAdapters(); },
   defaultChecks: (opts) => {
     S.checkBuilds += 1;
@@ -391,13 +393,141 @@ test('partial: the calendar refuses, the note lands — the note stays and a ret
 
 // ── Nothing else is reachable ────────────────────────────────────────────────
 
-test('source: the routes reach only requestForMove and confirmMove; the executor holds no other writer', () => {
+test('source: the routes reach only currentView (read), requestForMove and confirmMove; the executor holds no other writer', () => {
   const routes = fs.readFileSync(path.join(__dirname, 'prepared-moves.js'), 'utf8');
-  assert.deepEqual([...routes.matchAll(/router\.(\w+)\('([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['post /request', 'post /confirm']);
+  assert.deepEqual([...routes.matchAll(/router\.(\w+)\('([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['get /current', 'post /request', 'post /confirm']);
   assert.deepEqual([...routes.matchAll(/exec\(\)\.(\w+)\(/g)].map((m) => m[1]), ['requestForMove', 'confirmMove']);
+  assert.deepEqual([...routes.matchAll(/view\(\)\.(\w+)\(/g)].map((m) => m[1]), ['currentView']);
+  const viewSrc = fs.readFileSync(path.join(__dirname, '..', 'services', 'prepared-move-view.js'), 'utf8');
+  assert.doesNotMatch(viewSrc, /\.store\(|mintForPreparedMove|requestConfirmation|\.execute\(|liveAdapters|writeNew|createEvent|setState|db\.run/, 'the view stores, mints and writes nothing');
   const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'prepared-move-exec.js'), 'utf8');
   assert.doesNotMatch(src, /sendMail|sendToAll|webpush|createTask|updateTask|moveEvent\(|cancelEvent\(|unlink|rmSync|renameSync|setInterval|cron|schedule\(/, 'no mail, push, task, move/cancel, delete, timer');
   assert.equal((src.match(/writeFileSync\(/g) || []).length, 1, 'one vault write call site');
   assert.match(src, /fs\.writeFileSync\(p, content, \{ flag: 'wx' \}\)/, 'and it never overwrites');
   assert.equal((src.match(/createEvent\(/g) || []).length, 1, 'one calendar create call site');
+});
+
+// ── Off duty / on leave: prepared, HELD, never offered to commit ─────────────
+
+const HELD_SAY = 'I’ve prepared this for your next working morning.';
+const view = require('../services/prepared-move-view');
+const pmRows = () => { try { return db.get('SELECT COUNT(*) n FROM prepared_moves').n; } catch { return 0; } };
+const grantRows = () => db.get('SELECT COUNT(*) n FROM human_action_intents').n;
+const ledgerRows = () => db.get(`SELECT COUNT(*) n FROM external_write_ledger WHERE idempotency_key LIKE 'saim-move:%'`).n;
+const okChecks = () => ({ diary: async () => ({ known: true, clashes: [] }), availability: async () => ({ known: true, off: false, working: true }), candidate: async () => ({ ok: true }), noteState: async () => ({ known: true, exists: false }) });
+const noChecks = () => { throw new Error('a held move must not run fresh checks'); };
+const HOUR = 3600000;
+// Words that commit work or speak of execution — none may appear while held.
+const COMMIT_WORDS = /Reserve|minutes on|Ask to confirm|confirm|Changes aren|enabled|calendar block|Save note/i;
+
+async function assertHeld(name, duty) {
+  resetWorld();
+  freshMove((x) => { x.duty = duty; x.selected.observed = [{ id: 'planner', fact: 'It is a card on the Planner board, open, due 16 Oct.', source: { kind: 'planner-mirror', observedAt: new Date(NOW).toISOString() } }]; });
+  const before ={ pm: pmRows(), grants: grantRows(), ledger: ledgerRows(), vault: listVault() };
+  // The Surface read: held, one sentence, the draft and evidence folded behind it.
+  const v = await view.currentView({ deps: { prepare: async () => S.packet(), checks: noChecks } });
+  assert.equal(v.held && v.held.say, HELD_SAY, `${name}: held sentence`);
+  assert.equal(v.held.reason, duty ? duty.why : 'unknown', `${name}: reason`);
+  assert.equal(v.move.prepared.headline, HELD_SAY);
+  assert.deepEqual(v.move.options, [], `${name}: no time choices`);
+  for (const k of ['contacts', 'nothingElse', 'notOffered', 'evidenceExpiresAt', 'forum']) assert.equal(k in v.move, false, `${name}: no ${k}`);
+  assert.doesNotMatch(JSON.stringify({ held: v.held, prepared: v.move.prepared, options: v.move.options }), COMMIT_WORDS, `${name}: no commitment or execution language`);
+  assert.match(v.move.draft.markdown, /Triage and escalation acceptance criteria/, `${name}: the draft can be seen`);
+  assert.ok(v.move.evidence.length > 0, `${name}: the evidence can be seen`);
+  assert.equal(v.readOnlyPass.writesRefused, 0);
+  // An explicit later request can inspect, never confirm.
+  const r = await request();
+  assert.equal(r.status, 409, name); assert.equal(r.json.held, true, name);
+  assert.equal(r.json.error, HELD_SAY, `${name}: the refusal is the held sentence, no confirmation wording`);
+  assert.equal(r.json.grantId, undefined);
+  assert.deepEqual({ pm: pmRows(), grants: grantRows(), ledger: ledgerRows(), vault: listVault() }, before, `${name}: nothing stored, minted, ledgered or written`);
+  assert.equal(G.calls.length, 0, `${name}: Graph never called`);
+}
+
+test('off duty (evening / weekend — life says not working): prepared but HELD; nothing to commit, nothing minted', async () => {
+  await assertHeld('evening', { onDuty: false, why: 'off-duty' });
+});
+
+test('on leave: HELD, whatever the time of day', async () => {
+  await assertHeld('leave', { onDuty: false, why: 'leave' });
+});
+
+test('unknown (no life read, or a packet that does not say): HELD — fails closed', async () => {
+  await assertHeld('no duty on packet', undefined);
+  await assertHeld('unknown', { onDuty: false, why: 'unknown' });
+});
+
+test('dutyFor: leave beats everything; only a positive "working" read is on duty', () => {
+  const { dutyFor } = require('../services/prepared-move');
+  assert.deepEqual(dutyFor({ life: { showWork: true }, leave: { off: true } }), { onDuty: false, why: 'leave' });
+  assert.deepEqual(dutyFor({ life: { showWork: false } }), { onDuty: false, why: 'off-duty' });
+  assert.deepEqual(dutyFor({ life: null }), { onDuty: false, why: 'unknown' });
+  assert.deepEqual(dutyFor({ life: { showWork: 'yes' } }), { onDuty: false, why: 'unknown' });
+  assert.deepEqual(dutyFor({ life: { showWork: true } }), { onDuty: true, why: 'working' });
+});
+
+test('a confirmation minted in working hours cannot be used once he is off duty — refused before any record, check or write', async () => {
+  resetWorld();
+  const r = await request();
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  await withSwitch(async () => {
+    S.duty = { onDuty: false, why: 'off-duty' };
+    try {
+      const checks = S.checkBuilds;
+      const c = await confirm(r.json);
+      assert.equal(c.status, 409); assert.equal(c.json.held, true); assert.equal(c.json.error, HELD_SAY);
+      assert.equal(S.adapterBuilds, 0, 'no live adapter built');
+      assert.equal(S.checkBuilds, checks, 'no fresh check run');
+      assert.equal(ig.get(r.json.grantId).consumed_at, null, 'the confirmation was not spent');
+      assert.equal(graphWrites().length, 0); assert.equal(fs.existsSync(NOTE_ABS), false);
+      assert.equal(ledgerRows(), 0);
+    } finally { S.duty = null; }
+  });
+});
+
+test('the next working morning: the same move is prepared afresh, re-checked, and only then offered', async () => {
+  resetWorld();
+  // Evening: held.
+  freshMove((x) => { x.duty = { onDuty: false, why: 'off-duty' }; });
+  const evening = await view.currentView({ deps: { prepare: async () => S.packet(), checks: noChecks } });
+  assert.equal(evening.held.say, HELD_SAY);
+  // Morning: a fresh preparation (fresh decision time, on duty) and fresh checks.
+  let checked = 0;
+  freshMove();
+  const morning = await view.currentView({ deps: { prepare: async () => S.packet(), checks: () => { checked += 1; return okChecks(); } } });
+  assert.equal(checked, 1, 'fresh checks ran before anything was offered');
+  assert.equal(morning.held, undefined);
+  assert.ok(morning.move.options.length > 0);
+  assert.match(morning.move.options[0].question, /^Reserve 30 minutes on /);
+  assert.match(morning.move.prepared.headline, /^I’ve drafted /);
+  const r = await request();
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.ok(r.json.grantId, 'actionable now');
+});
+
+test('stale evidence across the boundary: an evening preparation is not offered in the morning — nothing minted', async () => {
+  resetWorld();
+  // On duty in the morning, but the packet was decided the evening before (13 h).
+  freshMove((x) => { x.decision.decidedAt = new Date(NOW - 13 * HOUR).toISOString(); });
+  const v = await view.currentView({ deps: { prepare: async () => S.packet(), checks: okChecks } });
+  assert.deepEqual(v.move.options, [], 'no time is offered on old evidence');
+  assert.ok(v.move.notOffered.length > 0);
+  for (const n of v.move.notOffered) assert.match(n.why, /expired/);
+  const grants = grantRows();
+  const r = await request();
+  assert.equal(r.status, 409); assert.match(r.json.error, /expired/);
+  assert.equal(grantRows(), grants, 'nothing minted');
+});
+
+test('an employment-sensitive move is never shown — not even as held — and is refused as itself', async () => {
+  resetWorld();
+  freshMove((x) => { x.duty = { onDuty: false, why: 'off-duty' }; x.selected.screens.employment = { sensitive: true, categories: ['hr-wording'] }; });
+  const v = await view.currentView({ deps: { prepare: async () => S.packet(), checks: noChecks } });
+  assert.equal(v.move, null); assert.equal(v.held, undefined);
+  assert.equal(v.unavailable.reason, 'nothing-prepared');
+  const grants = grantRows();
+  const r = await request();
+  assert.equal(r.status, 409); assert.match(r.json.error, /employment matter/);
+  assert.notEqual(r.json.held, true);
+  assert.equal(grantRows(), grants);
 });

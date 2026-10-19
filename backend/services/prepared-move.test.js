@@ -208,3 +208,84 @@ test('nothing trustworthy: a meeting lead and nothing held is said plainly, neve
   assert.equal(out.withheld[0].reason, 'not-a-commitment');
   assert.ok(out.findings.some((f) => /personal phone-calendar entry/.test(f)));
 });
+
+test('the faster employment screen gives the SAME verdict as the original name-first rule', () => {
+  const ledger = require('./promise-ledger');
+  const pm = require('./prepared-move');
+  const roster = { full: ['Hope Goodall', 'Melanie Ellis', 'Abdi Musa'], firstNames: new Map([['hope', 'Hope Goodall'], ['melanie', 'Melanie Ellis'], ['abdi', 'Abdi Musa']]) };
+  // The rule as it was: names first, then the topic test, count every line.
+  const naive = (text) => {
+    let n = 0;
+    for (const raw of String(text).split('\n')) {
+      if (!raw.trim()) continue;
+      const named = ledger.namesIn(raw, roster);
+      if (!named.people.length && !named.ambiguous.length) continue;
+      if (ledger.CONTEXT_PATTERNS.some((re) => re.test(raw))) n += 1;
+    }
+    return n >= 2;
+  };
+  const lines = ['Hope Goodall is off sick this week', 'Melanie Ellis returns from maternity leave', 'Abdi Musa owns the T1 criteria', 'the team agreed the escalation fields',
+    'Hope Goodall has a fit note until Friday', 'flexible working request from Melanie Ellis', 'Absence review with Abdi Musa', 'SLA breach on Tier 2', 'Hope Goodall', '',
+    // The two case-SENSITIVE patterns: "HR" and "RTW" count, "hr" and "rtw" do not.
+    'HR call with Hope Goodall', 'an hr chat with Melanie Ellis', 'RTW meeting for Abdi Musa', 'rtw notes on Abdi Musa'];
+  // Every pair and triple of lines, in order — sensitive and not.
+  let checked = 0; let sensitive = 0;
+  for (let a = 0; a < lines.length; a++) for (let b = 0; b < lines.length; b++) for (let c = 0; c < lines.length; c += 3) {
+    const text = [lines[a], lines[b], lines[c]].join('\n');
+    const got = pm.employmentScreen({ sourceText: text, roster }).categories.includes('employee-cases-note');
+    assert.equal(got, naive(text), text);
+    checked += 1; if (got) sensitive += 1;
+  }
+  assert.ok(sensitive > 0 && sensitive < checked, `both verdicts exercised (${sensitive}/${checked})`);
+});
+
+test('the in-memory note index never serves an old version of a note — any edit is re-read', () => {
+  const pm = require('./prepared-move');
+  const rel = 'Projects/Index Probe/probe.md';
+  const abs = path.join(process.env.OBSIDIAN_VAULT_PATH, ...rel.split('/'));
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, 'first version of the note');
+  assert.equal(pm._test.makeCorpus().read(rel), 'first version of the note');
+  fs.writeFileSync(abs, 'second, longer version of the note');
+  assert.equal(pm._test.makeCorpus().read(rel), 'second, longer version of the note', 'a size change is re-read');
+  fs.writeFileSync(abs, 'third, longer version of the note'); // same size
+  const t = new Date(Date.now() + 5000); fs.utimesSync(abs, t, t);
+  assert.equal(pm._test.makeCorpus().read(rel), 'third, longer version of the note', 'a same-size edit is re-read by its time');
+  fs.rmSync(path.dirname(abs), { recursive: true });
+  const c = pm._test.makeCorpus(); c.files();
+  assert.equal(pm._test.noteIndex.has(rel), false, 'a deleted note is forgotten');
+  assert.equal(c.read(rel), null);
+});
+
+test('the startup warm-up fills the in-memory note index and writes nothing', async () => {
+  const pm = require('./prepared-move');
+  const dir = path.join(process.env.OBSIDIAN_VAULT_PATH, 'Projects', 'Warm Probe');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'a.md'), 'escalation criteria for every team');
+  const dbRows = () => JSON.stringify(db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").map((t) => [t.name, db.get(`SELECT COUNT(*) n FROM "${t.name}"`).n]));
+  const before = dbRows();
+  const vaultBefore = fs.readdirSync(dir).map((f) => [f, fs.statSync(path.join(dir, f)).mtimeMs]);
+  const [r1, r2] = await Promise.all([pm.warmEvidenceIndex({ roster: { full: [] } }), pm.warmEvidenceIndex({ roster: { full: [] } })]);
+  assert.equal(r1, r2, 'a second call joins the first');
+  assert.ok(r1.notes >= 1);
+  assert.ok(pm._test.noteIndex.has('Projects/Warm Probe/a.md'), 'the note is indexed');
+  assert.ok(pm._test.noteIndex.get('Projects/Warm Probe/a.md').toks, 'and tokenised ahead of the first read');
+  assert.equal(dbRows(), before, 'no database row changed');
+  assert.deepEqual(fs.readdirSync(dir).map((f) => [f, fs.statSync(path.join(dir, f)).mtimeMs]), vaultBefore, 'no vault file changed');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('the packet carries whether he is on duty, from the life read — off duty or unread holds it for the next working morning', async () => {
+  seedDb();
+  const lead = { ref: 'item:todo-overdue-summary', kind: 'attention-item', rule: 'S7 top item' };
+  const withLife = (life) => async (ms) => { const d = await decisionOf(lead, [], [TODO])(ms); d.nowView.life = life; return d; };
+  const off = await pm.prepare({ now: NOW, deps: { readDecision: withLife({ showWork: false, doing: 'relaxing' }) } });
+  assert.ok(off.selected, 'it is still prepared');
+  assert.deepEqual(off.duty, { onDuty: false, why: 'off-duty' });
+  assert.equal(off.selected.presentAt, 'your next working morning');
+  const on = await pm.prepare({ now: NOW, deps: { readDecision: withLife({ showWork: true, doing: 'working' }) } });
+  assert.deepEqual(on.duty, { onDuty: true, why: 'working' });
+  assert.equal(on.selected.presentAt, 'now');
+  const unread = await pm.prepare({ now: NOW, deps: { readDecision: decisionOf(lead, [], [TODO]) } });
+  assert.deepEqual(unread.duty, { onDuty: false, why: 'unknown' }, 'no life read fails closed');
+});

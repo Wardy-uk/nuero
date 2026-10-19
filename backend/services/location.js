@@ -277,6 +277,16 @@ async function getCachedDwells() {
   const cacheKey = `location_dwells_${todayKey}`;
   const cacheTime = `location_dwells_time_${todayKey}`;
 
+  // A READ-ONLY pass (services/read-only-scope) answers from what is held,
+  // however old, and never refreshes: a refresh writes this cache and sends his
+  // position to Nominatim. Outside a pass, unchanged.
+  if (require('./read-only-scope').active()) {
+    try {
+      const parsed = JSON.parse(db.getState(cacheKey) || 'null');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+
   // Use cache if less than 30 minutes old.
   //
   // ⚠ An EMPTY result is never cached and a cached empty is never trusted. The

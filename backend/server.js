@@ -442,6 +442,14 @@ async function start() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] NUERO running on 0.0.0.0:${PORT}`);
+    // SAiM's prepared move: warm the in-memory evidence index AFTER the server is
+    // listening, so the first Surface read can answer inside its budget. Read-only
+    // (no write, mint or network), yields between notes, never fails startup.
+    setTimeout(() => {
+      require('./services/prepared-move').warmEvidenceIndex()
+        .then((r) => console.log(`[PreparedMove] evidence index warm: ${r.notes} notes in ${r.ms}ms`))
+        .catch((e) => console.warn('[PreparedMove] warm-up skipped:', e.message));
+    }, 2000).unref();
   });
 
   // ── Keep-alive: a thinking pause is not an idle connection ──────────────────
