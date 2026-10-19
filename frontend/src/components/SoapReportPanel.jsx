@@ -52,7 +52,7 @@ function Gap({ text }) {
   return <p className="soap-gap">Not available — {text}</p>;
 }
 
-export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onBuild, onQueue, onPublish, onTest, onMarkSent, onReopen, preview, onPreview }) {
+export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onBuild, onQueue, onPublish, onTest, onMarkSent, onReopen, preview, onPreview, note }) {
   const v = data.current;
   const send = data.send;
   if (!v) {
@@ -309,6 +309,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         {!locked && <button className="soap-btn" disabled={busy || dirty} onClick={onMarkSent}>I sent it myself</button>}
         {locked && <button className="soap-btn soap-btn--right" disabled={busy} onClick={onReopen}>Reopen this week</button>}
       </div>
+      {note && <p className="soap-note" role="status">{note}</p>}
       {v.published && <p className="soap-meta">Published {new Date(v.published.publishedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} to {v.published.path}.</p>}
       {preview !== null && <pre className="soap-preview">{preview}</pre>}
       {!locked && v.blockers.length > 0 && (
@@ -432,6 +433,7 @@ export default function SoapReportPanel() {
       }).then((r) => r.json());
       if (!j.ok) throw new Error(j.error || 'not saved');
       await load();
+      setNote(`Saved at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`);
     } catch (e) { setNote(`Not saved — ${e.message}. Your words are still in the boxes.`); }
     setBusy(false);
   };
@@ -471,7 +473,7 @@ export default function SoapReportPanel() {
       {note && <p className="soap-note" role="status">{note}</p>}
       <Distribution onChanged={load} />
       {data && <SoapReportView data={data} draft={draft} setDraft={setDraft} dirty={dirty} busy={busy} onSave={save} onBuild={build} onQueue={queue}
-        onPublish={publish} onTest={testSend} onMarkSent={markSent} onReopen={reopen} preview={preview} onPreview={togglePreview} />}
+        onPublish={publish} onTest={testSend} onMarkSent={markSent} onReopen={reopen} preview={preview} onPreview={togglePreview} note={note} />}
     </div>
   );
 }
