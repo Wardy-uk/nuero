@@ -90,7 +90,17 @@ function createPerson({ name, frontmatter = {}, force = false }) {
   }
 
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, buildInitialNote({ name, frontmatter }), 'utf-8');
+  // A new People note is born joined to its hub, or it is an orphan from the
+  // day it exists (15 Oct 2026: the people-gap stubs were). hubFor() reads only
+  // what the note states, so a note it cannot place gets no link, never a guess.
+  let text = buildInitialNote({ name, frontmatter });
+  const vh = require('./vault-hygiene');
+  const hub = vh.hubFor(rel(file), text);
+  if (hub) {
+    text = text.replace(/\n*$/, '\n') + vh.hubLinkBlock(hub);
+    if (hub === vh.HOUSEHOLD_MOC) vh.ensureHouseholdMoc(vault);
+  }
+  fs.writeFileSync(file, text, 'utf-8');
   return { status: 'created', path: rel(file), changes: [`Created ${rel(file)}`] };
 }
 

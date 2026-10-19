@@ -409,7 +409,14 @@ async function createPerson({ name, rosterName = null, relationshipType, relatio
   const nowMs = now instanceof Date ? now.getTime() : now;
   lines.push(`created: ${new Date(nowMs).toISOString().slice(0, 10)}`, 'created-via: NEURO Life → People', '---', '', `# ${n.name}`, '');
   fs.mkdirSync(path.join(root, 'People'), { recursive: true });
-  fs.writeFileSync(file, lines.join('\n'), { flag: 'wx' });
+  let body = lines.join('\n');
+  const vh = require('./vault-hygiene');
+  const hub = vh.hubFor(`People/${n.name}.md`, body);
+  if (hub) {
+    body = body.replace(/\n*$/, '\n') + vh.hubLinkBlock(hub);
+    if (hub === vh.HOUSEHOLD_MOC) vh.ensureHouseholdMoc(root);
+  }
+  fs.writeFileSync(file, body, { flag: 'wx' });
   const personId = require('./world-sources').personPayload(n.name, `People/${n.name}.md`, {}).personId;
   _log('person-created', personId, { name: n.name, rosterName: rosterName || null, fields }, nowMs);
   await _republish({ now: nowMs });

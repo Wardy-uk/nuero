@@ -1824,9 +1824,13 @@ function generateWeeklyReview() {
 
   // Orphaned notes
   try {
-    const orphans = findOrphanedNotes(8);
+    // ⚠ One definition of an orphan — vault-hygiene's, which matches Obsidian's
+    // graph. findOrphanedNotes walked into Archive and listed _about files, so
+    // these reviews' only links pointed at notes the graph hides, and every
+    // review was itself an orphan (15 Oct 2026: W39–W41).
+    const orphans = require('./vault-hygiene').lint(vaultPath, { write: false }).orphans.slice(0, 8);
     if (orphans.length > 0) {
-      sections.push(`## Disconnected Notes (no links)\n*These notes have no connections — worth linking or archiving:*\n${orphans.map(o => `- [[${o.path}|${o.name}]]`).join('\n')}`);
+      sections.push(`## Disconnected Notes (no links)\n*These notes have no connections — worth linking or archiving:*\n${orphans.map(o => `- [[${o.replace(/\.md$/, '')}|${path.basename(o, '.md')}]]`).join('\n')}`);
     }
   } catch {}
 
@@ -1841,6 +1845,18 @@ function generateWeeklyReview() {
   // Energy / reflection (always manual)
   sections.push(`## Energy & Wellbeing\n*(How were your energy levels this week? Any patterns?)*`);
   sections.push(`## Looking Ahead — Next Week\n*(Top 3 priorities for next week)*\n1. \n2. \n3. `);
+
+  // Chain to the previous review so the series is navigable and no review is an orphan.
+  try {
+    const prev = fs.readdirSync(path.join(vaultPath, 'Reflections'))
+      .map((f) => /^W(\d{1,2})-(\d{4})-review\.md$/.exec(f))
+      .filter(Boolean)
+      .map((m) => ({ name: m[0].replace(/\.md$/, ''), key: m[2] + '-' + m[1].padStart(2, '0') }))
+      .filter((x) => x.name !== `${weekStr}-review`)
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .pop();
+    if (prev) sections.push(`_← [[${prev.name}]]_`);
+  } catch {}
 
   const content = sections.join('\n\n');
   const reviewDir = path.join(vaultPath, 'Reflections');

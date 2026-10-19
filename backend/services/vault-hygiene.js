@@ -360,7 +360,7 @@ function proposeContextualLinks(raw, people, nameCount, projects) {
  */
 function lint(root, { write = true } = {}) {
   const config = loadConfig(root);
-  const expectedOrphanDirs = config.expectedOrphanDirs || [];
+  const expectedOrphanDirs = config.expectedOrphanDirs || DEFAULT_EXPECTED_ORPHAN_DIRS;
   const staleDays = config.staleDays || STALE_DAYS;
 
   const files = walk(root);
@@ -392,6 +392,7 @@ function lint(root, { write = true } = {}) {
     for (const target of n.outgoing) {
       const hit = resolveIndex.get(target.toLowerCase());
       if (hit) {
+        if (hit !== file) n.outResolved = (n.outResolved || 0) + 1;
         if (hit !== file && !seen.has(hit)) { notes.get(hit).inCount += 1; seen.add(hit); }
         continue;
       }
@@ -412,10 +413,15 @@ function lint(root, { write = true } = {}) {
   const now = Date.now();
   for (const [file, n] of notes) {
     const r = rel(root, file);
-    const hasOut = n.outgoing.length > 0;
+    // ⚠ An orphan is a note with no RESOLVED link to or from another active note —
+    // the same rule as Obsidian's graph. Counting any outgoing link (broken, or
+    // into Archive, which the graph hides) reported 1 orphan while the graph
+    // showed 19 (15 Oct 2026): 13 notes whose only link was the retired 90 Day
+    // Plan, and weekly reviews whose only links pointed into Archive.
+    const hasOut = (n.outResolved || 0) > 0;
     const hasIn = n.inCount > 0;
     if (!hasOut && !hasIn && !expectedOrphanDirs.some((d) => r.startsWith(d + '/'))) orphans.push(r);
-    if (r.startsWith('People/') && !hasOut) underlinkedPeople.push(r);
+    if (r.startsWith('People/') && n.outgoing.length === 0) underlinkedPeople.push(r);
     const ageDays = (now - n.mtime.getTime()) / 86400000;
     if (ageDays > staleDays) stale.push({ path: r, days: Math.round(ageDays) });
   }
@@ -607,6 +613,13 @@ const norm = (s) => s.toLowerCase()
   .replace(/[^a-z0-9]+/g, ' ').trim();
 
 function bigrams(s) { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; }
+// Every YYYY-MM-DD in a name, as a sorted key. A name with no date is unconstrained.
+function sameDates(a, b) {
+  const d = (x) => (String(x).match(/\d{4}-\d{2}-\d{2}/g) || []).sort().join(',');
+  const da = d(a), db = d(b);
+  return !da || !db || da === db;
+}
+
 function dice(a, b) {
   if (a === b) return 1;
   const A = bigrams(a), B = bigrams(b);
@@ -636,7 +649,7 @@ function fixKey(fromRel, oldTarget) {
 function buildFixModel(root) {
   const config = loadConfig(root);
   const cfg = {
-    expectedOrphanDirs: config.expectedOrphanDirs || ['Daily', 'Documents/System/SAiM Import Reports'],
+    expectedOrphanDirs: config.expectedOrphanDirs || DEFAULT_EXPECTED_ORPHAN_DIRS,
     fuzzyModerate: config.fuzzyModerate || 0.85,
     fuzzyAggressive: config.fuzzyAggressive || 0.70,
   };
@@ -702,6 +715,10 @@ function fixPlan(root, { write = true } = {}) {
         if (s > bestSim) { bestSim = s; best = nb; ties = 1; }
         else if (s === bestSim) ties++;
       }
+      // ⚠ Fuzzy similarity cannot tell two dates apart: `2026-06-21` scores 0.875
+      // against `2026-06-29`, so a link to a deleted daily report was planned as
+      // a "moderate" repair to a different day. A dated name only matches the SAME date.
+      if (best && !sameDates(t, path.basename(normBaseToPaths.get(best)[0], '.md'))) best = null;
       if (best && ties === 1 && bestSim >= cfg.fuzzyAggressive) {
         const cand = normBaseToPaths.get(best);
         if (cand && cand.length === 1) {
@@ -782,18 +799,29 @@ function writeFixPlanReport(root, p) {
   return rel(root, outPath);
 }
 
+// ⚠ extractLinks() reduces a link to its BASENAME, so oldTarget is a basename —
+// but most links in this vault are PATH-FORM (`[[Meetings/2026/03/X|alias]]`).
+// Matching only `[[X` left every path-form link untouched while the changelog
+// listed it as repointed (15 Oct 2026: 20 planned, 1 written). The folder prefix
+// and a trailing .md are now part of the match; the alias / heading / escaped
+// table pipe after the target is left exactly as it was. Returns a count PER
+// EDIT so the caller reports what actually changed, not what was asked for.
 function repointInFile(root, absFile, edits, backupDir) {
-  const bk = path.join(backupDir, rel(root, absFile));
-  ensureDir(path.dirname(bk));
-  fs.copyFileSync(absFile, bk);
   let text = fs.readFileSync(absFile, 'utf8');
-  let changed = 0;
+  const counts = [];
   for (const { oldTarget, newBase } of edits) {
-    const re = new RegExp('\\[\\[' + escapeRe(oldTarget) + '(?=[\\]|#])', 'g');
-    text = text.replace(re, () => { changed++; return '[[' + newBase; });
+    const re = new RegExp('\\[\\[(?:[^\\]|#\\n]*/)?' + escapeRe(oldTarget) + '(?:\\.md)?(?=\\\\?[\\]|#])', 'gi');
+    let n = 0;
+    text = text.replace(re, () => { n++; return '[[' + newBase; });
+    counts.push(n);
   }
-  fs.writeFileSync(absFile, text, 'utf8');
-  return changed;
+  if (counts.some((n) => n > 0)) {
+    const bk = path.join(backupDir, rel(root, absFile));
+    ensureDir(path.dirname(bk));
+    fs.copyFileSync(absFile, bk);
+    fs.writeFileSync(absFile, text, 'utf8');
+  }
+  return counts;
 }
 
 /**
@@ -839,9 +867,20 @@ function fixApply(root, flags = {}) {
       if (!byFile.has(abs)) byFile.set(abs, []);
       byFile.get(abs).push(x);
     }
-    for (const [abs, edits] of byFile) { result.repointed += repointInFile(root, abs, edits, backupDir); touched.push(rel(root, abs)); }
-    log.push(`## Repointed links (tier ${flags.links || 'skip'}${only ? ` + ${picked.size} picked` : ''}): ${result.repointed} across ${byFile.size} files`);
-    for (const x of chosen) log.push(`- \`${x.from}\`: \`[[${x.oldTarget}]]\` → \`[[${x.newBase}]]\` (sim ${x.sim})`);
+    const done = [], notFound = [];
+    for (const [abs, edits] of byFile) {
+      const counts = repointInFile(root, abs, edits, backupDir);
+      edits.forEach((x, i) => (counts[i] > 0 ? done : notFound).push(x));
+      if (counts.some((n) => n > 0)) touched.push(rel(root, abs));
+      result.repointed += counts.reduce((a, b) => a + b, 0);
+    }
+    result.notFound = notFound.map((x) => ({ from: x.from, oldTarget: x.oldTarget }));
+    log.push(`## Repointed links (tier ${flags.links || 'skip'}${only ? ` + ${picked.size} picked` : ''}): ${result.repointed} links across ${touched.length} files`);
+    for (const x of done) log.push(`- \`${x.from}\`: \`[[${x.oldTarget}]]\` → \`[[${x.newBase}]]\` (sim ${x.sim})`);
+    if (notFound.length) {
+      log.push('', `## Planned but NOT changed — link text not found in the file (${notFound.length})`);
+      for (const x of notFound) log.push(`- \`${x.from}\`: \`[[${x.oldTarget}]]\``);
+    }
     log.push('');
   }
 
@@ -998,6 +1037,79 @@ function writeAliasReport(root, suggestions) {
 // ── Capability: connect orphans (append-only fallback) ──────────────────────
 
 const HUB_MARKER = '<!-- hub-link -->';
+
+// Folders whose notes are orphans BY CONSTRUCTION. `Notion/` is the pull-only
+// mirror notion-sync writes (15 Oct 2026: 12 of 45 orphans) — those pages link
+// to each other in Notion, not in the vault, and any link added here would be
+// overwritten by the next pull.
+const DEFAULT_EXPECTED_ORPHAN_DIRS = Object.freeze(['Daily', 'Documents/System/SAiM Import Reports', 'Notion']);
+
+const HOUSEHOLD_MOC = 'MOC – Household';
+const PEOPLE_MOC = 'MOC – People & HR';
+const PERSONAL_RELATIONSHIPS = new Set(['spouse_partner', 'child', 'parent', 'sibling', 'extended_family', 'friend', 'household_member',
+  'spouse', 'partner', 'wife', 'husband', 'son', 'daughter', 'mother', 'father', 'mum', 'dad', 'brother', 'sister', 'household']);
+const WORK_RELATIONSHIPS = new Set(['colleague', 'manager', 'direct_report', 'direct-report', 'professional_contact']);
+
+function _fmValue(text, key) {
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!fm) return null;
+  const m = new RegExp('^' + key + ':[ \\t]*(.*)$', 'mi').exec(fm[1]);
+  return m ? m[1].trim().replace(/^["']|["']$/g, '').toLowerCase() : null;
+}
+
+/**
+ * Which hub a NOTE belongs under, from what the note itself STATES — or null.
+ * PURE. Used by connectOrphans (existing orphans) and by every writer that
+ * creates a People note, so a new note is born linked rather than left orphaned.
+ *   People/*    household:true or a personal relationship → MOC – Household;
+ *               a work relationship, a direct-report:true, or a nurtur.tech
+ *               address → MOC – People & HR; otherwise null (never guessed).
+ *   Companions/* → MOC – Household.
+ *   Projects/<F>/… → [[<F>]] when that folder's hub note exists (NOVA keeps MOC - NOVA).
+ */
+function hubFor(relPath, text, { hubExists = () => false } = {}) {
+  const r = String(relPath).split(path.sep).join('/');
+  if (r.startsWith('Companions/')) return HOUSEHOLD_MOC;
+  if (r.startsWith('People/')) {
+    const rel = _fmValue(text, 'relationship');
+    const household = _fmValue(text, 'household');
+    if (household === 'true' || (rel && PERSONAL_RELATIONSHIPS.has(rel))) return HOUSEHOLD_MOC;
+    const email = _fmValue(text, 'email') || '';
+    if ((rel && WORK_RELATIONSHIPS.has(rel)) || _fmValue(text, 'direct-report') === 'true' || /@nurtur\.tech$/.test(email)) return PEOPLE_MOC;
+    return null;
+  }
+  const m = /^Projects\/([^/]+)\/(.+)\.md$/.exec(r);
+  if (m && m[1] !== 'NOVA' && m[2] !== m[1] && hubExists(m[1])) return m[1];
+  return null;
+}
+
+// The line appended to a note to join it to its hub. One shape everywhere.
+function hubLinkBlock(hub) {
+  return `\n${HUB_MARKER}\n_Part of [[${hub}]]_\n`;
+}
+
+// MOC – Household is created on first use. It lists nothing itself: each member
+// links TO it, so Obsidian's backlinks are the list and it can never go stale.
+// Top-level folders whose stray notes get a folder MOC as a last resort.
+const FOLDER_MOC_DIRS = Object.freeze(['Reflections', 'Ideas', 'Decision Log', 'Focus Sessions']);
+
+function ensureFolderMoc(root, folder) {
+  const f = path.join(root, 'MOCs', 'MOC – ' + folder + '.md');
+  if (fs.existsSync(f)) return false;
+  ensureDir(path.dirname(f));
+  fs.writeFileSync(f, ['---', 'type: moc', 'area: ' + folder.toLowerCase(), 'author: NEURO vault-hygiene', '---', '',
+    '# ' + folder, '', 'Notes in ' + folder + '/ that link nowhere else link here — see the backlinks for the list.', ''].join('\n'), 'utf8');
+  return true;
+}
+
+function ensureHouseholdMoc(root) {
+  const f = path.join(root, 'MOCs', HOUSEHOLD_MOC + '.md');
+  if (fs.existsSync(f)) return false;
+  ensureDir(path.dirname(f));
+  fs.writeFileSync(f, ['---', 'type: moc', 'area: household', 'author: NEURO vault-hygiene', '---', '',
+    '# Household', '', 'Family, friends and companions. Every member note links here — see the backlinks for the list.', ''].join('\n'), 'utf8');
+  return true;
+}
 const DAILY_NAV_MARKER = '<!-- daily-nav -->';
 
 /**
@@ -1007,7 +1119,7 @@ const DAILY_NAV_MARKER = '<!-- daily-nav -->';
  *   B) Daily notes   → append a prev/next nav chain
  * Append-only, backs up each touched file, idempotent (marker-guarded).
  */
-function connectOrphans(root, { nova = true, daily = true, dryRun = false } = {}) {
+function connectOrphans(root, { nova = true, daily = true, hubs = true, dryRun = false } = {}) {
   const files = walk(root);
   const notes = new Map(), idx = new Map();
   for (const f of files) {
@@ -1017,9 +1129,10 @@ function connectOrphans(root, { nova = true, daily = true, dryRun = false } = {}
   }
   for (const [f, n] of notes) {
     const seen = new Set();
-    for (const l of n.out) { const h = idx.get(norm(l)); if (h && h !== f && !seen.has(h)) { notes.get(h).in++; seen.add(h); } }
+    for (const l of n.out) { const h = idx.get(norm(l)); if (h && h !== f) n.outResolved = (n.outResolved || 0) + 1; if (h && h !== f && !seen.has(h)) { notes.get(h).in++; seen.add(h); } }
   }
-  const isOrphan = (f) => { const n = notes.get(f); return n.out.length === 0 && n.in === 0; };
+  // Same rule as lint and Obsidian's graph: only links that resolve to an active note count.
+  const isOrphan = (f) => { const n = notes.get(f); return !(n.outResolved > 0) && n.in === 0; };
 
   const stamp = tsStamp();
   const backupDir = path.join(root, ...BACKUP_REL, stamp);
@@ -1038,7 +1151,7 @@ function connectOrphans(root, { nova = true, daily = true, dryRun = false } = {}
   };
 
   const log = [`# Connect Orphans Changelog — ${todayStr()}`, ''];
-  let novaCount = 0, chainCount = 0;
+  let novaCount = 0, chainCount = 0, hubCount = 0;
   const touched = [];
 
   if (nova) {
@@ -1049,6 +1162,61 @@ function connectOrphans(root, { nova = true, daily = true, dryRun = false } = {}
       append(f, `\n${HUB_MARKER}\n_Part of [[MOC - NOVA]]_\n`, 'nova', 'MOC - NOVA');
       novaCount++; touched.push(rel(root, f));
       log.push(`- NOVA link: \`${rel(root, f)}\``);
+    }
+  }
+
+  if (hubs) {
+    const hubExists = (folder) => fs.existsSync(path.join(root, 'Projects', folder, folder + '.md'));
+    let householdNeeded = false;
+    for (const f of files) {
+      if (!isOrphan(f)) continue;
+      const text = notes.get(f).text;
+      if (text.includes(HUB_MARKER)) continue;
+      const hub = hubFor(rel(root, f), text, { hubExists });
+      if (!hub) continue;
+      if (hub === HOUSEHOLD_MOC) householdNeeded = true;
+      append(f, hubLinkBlock(hub), 'hub', hub);
+      hubCount++; touched.push(rel(root, f));
+      log.push(`- Hub link: \`${rel(root, f)}\` → [[${hub}]]`);
+    }
+    if (householdNeeded && !dryRun && ensureHouseholdMoc(root)) log.push(`- Created \`MOCs/${HOUSEHOLD_MOC}.md\``);
+  }
+
+  if (hubs) {
+    // Still orphaned after the hub rules: a dated note joins that day's Daily
+    // note; a weekly review joins the previous and next review; anything else in
+    // a top-level content folder joins that folder's MOC (created on first use,
+    // listing nothing itself — its backlinks are the list).
+    const reviewKey = (b) => { let m = /^W(\d{1,2})-(\d{4})-review$/.exec(b); if (m) return m[2] + '-' + m[1].padStart(2, '0');
+      m = /^(\d{4})-W(\d{1,2})$/.exec(b); return m ? m[1] + '-' + m[2].padStart(2, '0') : null; };
+    const reviews = files.filter((f) => rel(root, f).startsWith('Reflections/') && reviewKey(path.basename(f, '.md')))
+      .sort((a, b) => reviewKey(path.basename(a, '.md')).localeCompare(reviewKey(path.basename(b, '.md'))));
+    const createdMocs = new Set();
+    for (const f of files) {
+      if (!isOrphan(f) || touched.includes(rel(root, f))) continue;
+      const text = notes.get(f).text;
+      if (text.includes(HUB_MARKER)) continue;
+      const r = rel(root, f);
+      const base = path.basename(f, '.md');
+      const date = (/^(\d{4}-\d{2}-\d{2})/.exec(base) || [])[1];
+      let hub = null;
+      if (date && !r.startsWith('Daily/') && fs.existsSync(path.join(root, 'Daily', date + '.md'))) hub = date;
+      else if (reviews.includes(f)) {
+        const i = reviews.indexOf(f);
+        const prev = i > 0 ? path.basename(reviews[i - 1], '.md') : null;
+        if (prev) hub = prev;
+      }
+      if (!hub) {
+        const top = r.split('/')[0];
+        if (FOLDER_MOC_DIRS.includes(top) && r.includes('/')) {
+          hub = 'MOC – ' + top;
+          if (!dryRun && !createdMocs.has(hub) && ensureFolderMoc(root, top)) { createdMocs.add(hub); log.push(`- Created \`MOCs/${hub}.md\``); }
+        }
+      }
+      if (!hub) continue;
+      append(f, hubLinkBlock(hub), 'hub', hub);
+      hubCount++; touched.push(r);
+      log.push(`- Hub link: \`${r}\` → [[${hub}]]`);
     }
   }
 
@@ -1072,13 +1240,13 @@ function connectOrphans(root, { nova = true, daily = true, dryRun = false } = {}
     }
   }
 
-  if (dryRun) return { dryRun: true, nova: novaCount, daily: chainCount, planned, touched: [] };
+  if (dryRun) return { dryRun: true, nova: novaCount, hubs: hubCount, daily: chainCount, planned, touched: [] };
 
-  log.push('', `## Linked ${novaCount} NOVA orphans to [[MOC - NOVA]]`, `## Chained ${chainCount} Daily notes (prev/next)`, '', `_Backups: \`${rel(root, backupDir)}\`. Appends only; no note overwritten or deleted._`);
+  log.push('', `## Linked ${novaCount} NOVA orphans to [[MOC - NOVA]]`, `## Linked ${hubCount} People / Companions / project notes to their hub`, `## Chained ${chainCount} Daily notes (prev/next)`, '', `_Backups: \`${rel(root, backupDir)}\`. Appends only; no note overwritten or deleted._`);
   ensureDir(path.join(root, ...REPORT_REL));
   const changelogPath = path.join(root, ...REPORT_REL, `Connect Changelog ${todayStr()}.md`);
   fs.writeFileSync(changelogPath, log.join('\n'), 'utf8');
-  return { nova: novaCount, daily: chainCount, planned, touched, backupDir: rel(root, backupDir), changelogPath: rel(root, changelogPath) };
+  return { nova: novaCount, hubs: hubCount, daily: chainCount, planned, touched, backupDir: rel(root, backupDir), changelogPath: rel(root, changelogPath) };
 }
 
 // ── Capability: graph config (.obsidian/graph.json) ─────────────────────────
@@ -1530,6 +1698,7 @@ function writePlaudRenameReport(root, result, backupDir) {
 }
 
 module.exports = {
+  hubFor, hubLinkBlock, ensureHouseholdMoc, HOUSEHOLD_MOC, PEOPLE_MOC, DEFAULT_EXPECTED_ORPHAN_DIRS,
   lint,
   planPlaudSummaryRenames,
   renamePlaudSummaryNotes,
