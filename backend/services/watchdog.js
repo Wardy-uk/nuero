@@ -451,6 +451,113 @@ function checkRuntimeJobs() {
   }
 }
 
+// ── Microsoft sign-in expiry (19 Oct 2026) ───────────────────────────────────
+//
+// ⚠ On 19 Oct the Microsoft sign-in hit the tenant's 7-day limit at 12:00 and
+// calendar, Tasks and work email stopped. Nick heard ONE vague push ("Microsoft
+// Tasks sync has stopped") at 13:00 and nothing about the calendar: a failing
+// durable job is only a `warn` and a dead calendar SENSE waits 12 hours.
+//
+// This slice covers ONE case on purpose: NEURO's own Microsoft sign-in has
+// expired. It is the case with a single cause and a single human action. A
+// generic "job X has failed" push is NOT here — those stay the non-notifying
+// `runtime:failed:*` warnings from checkRuntimeJobs (health evidence only).
+//   • detected from the real error path: microsoft.getMailAccessStatus()'s
+//     lastTokenError, set when a token acquisition fails and cleared on success;
+//   • ONE alert per connection — the calendar sense, the Tasks staleness check
+//     and the two Microsoft jobs' failure warnings are folded into it;
+//   • fixed words only — no token, account, trace id, event or provider error;
+//   • held through quiet hours, and DISCARDED if the sign-in recovers before it
+//     was delivered (stale bad news is worse than none);
+//   • "working again" only after a DELIVERED alert AND a Microsoft sync that
+//     genuinely succeeded after it — a cleared token error is not proof.
+// ⚠ NOVA's Microsoft connection is NOT observed here and is never reported:
+// NEURO cannot see NOVA's token, only whether its own bridge calls work.
+
+// Microsoft's "sign in again" family: expired/revoked refresh token (70043,
+// 700082), conditional access / MFA (50076, 50079, 50173, 50078), consent
+// (65001), interaction needed. A plain network blip is NOT one of these.
+const SIGN_IN_ERROR = /invalid_grant|interaction_required|AADSTS(70043|700082|50173|50076|50078|50079|65001)\b|refresh token has expired/i;
+const MICROSOFT_SIGNIN_KEY = 'integration:microsoft-signin:neuro';
+const MICROSOFT_JOBS = Object.freeze(['calendar-sync', 'ms-tasks-sync']);
+const SIGNIN_TITLE = 'Microsoft sign-in has expired';
+const SIGNIN_DETAIL = 'Calendar, Tasks and work email are paused. Sign in again in Settings → Microsoft 365 Authentication.';
+
+/** PURE. Has NEURO's own Microsoft sign-in expired (as opposed to a blip)? Fixed words only. */
+function microsoftSignInIssue(status) {
+  if (!status || !status.lastTokenError || !SIGN_IN_ERROR.test(String(status.lastTokenError))) return null;
+  return { key: MICROSOFT_SIGNIN_KEY, level: 'critical', notify: 'integration', title: SIGNIN_TITLE, detail: SIGNIN_DETAIL };
+}
+
+/**
+ * PURE. The moment by which EVERY Microsoft sync job had genuinely succeeded —
+ * the OLDEST of their latest successes — or null if any of them has none. Keyed
+ * on all of them, not the newest: calendar syncs every 5 minutes and Tasks less
+ * often, and declaring "working again" on the calendar alone would release the
+ * Tasks staleness check to push a second alarm straight after it.
+ */
+function microsoftSyncedAt(jobs) {
+  let oldest = null;
+  let seen = 0;
+  for (const j of jobs || []) {
+    if (!j || !MICROSOFT_JOBS.includes(j.name)) continue;
+    seen += 1;
+    const t = j.lastSuccessAt ? Date.parse(j.lastSuccessAt) : NaN;
+    if (Number.isNaN(t)) return null;
+    if (oldest == null || t < oldest) oldest = t;
+  }
+  return seen && oldest != null ? new Date(oldest).toISOString() : null;
+}
+
+/** PURE. The integration issues (sign-in only) and when Microsoft last synced. Job failures never become issues here. */
+function integrationIssues({ status, jobs } = {}) {
+  const signIn = microsoftSignInIssue(status);
+  return { issues: signIn ? [signIn] : [], syncedAt: microsoftSyncedAt(jobs) };
+}
+
+function checkIntegrations() {
+  let status = null;
+  let jobs = [];
+  try { status = require('./microsoft').getMailAccessStatus(); } catch { status = null; }
+  try { const st = require('./runtime-jobs').status(); if (st && st.started) jobs = st.jobs; } catch { jobs = []; }
+  return integrationIssues({ status, jobs });
+}
+
+/** PURE. The downstream checks an expired sign-in speaks for — one alarm per cause. */
+function foldedBy(integration) {
+  if (!(integration || []).some((i) => i.key === MICROSOFT_SIGNIN_KEY)) return new Set();
+  return new Set(['ms-sync:stale', 'sense:calendar', ...MICROSOFT_JOBS.map((n) => `runtime:failed:${n}`)]);
+}
+
+/**
+ * PURE. Which alerts to send now, which "working again" notes, and the state to
+ * carry. An alert is owed until DELIVERED (`notifiedAt`) and held during quiet
+ * hours; an undelivered alert whose condition has gone is dropped; a delivered
+ * one is only announced as recovered once a Microsoft sync succeeded after it.
+ */
+function integrationNotifications(current, previous, { quiet = false, now = new Date(), syncedAt = null } = {}) {
+  const isInt = (x) => x && x.notify === 'integration';
+  const send = [];
+  const next = {};
+  for (const [key, issue] of Object.entries(current)) {
+    if (!isInt(issue)) { next[key] = issue; continue; }
+    const was = previous[key] && previous[key].notifiedAt;
+    if (was) { next[key] = { ...issue, notifiedAt: was }; continue; }
+    if (quiet) { next[key] = { ...issue, notifiedAt: null }; continue; }
+    send.push(issue);
+    next[key] = { ...issue, notifiedAt: now.toISOString() };
+  }
+  const recovered = [];
+  for (const p of Object.values(previous)) {
+    if (!isInt(p) || current[p.key]) continue;
+    if (!p.notifiedAt) continue;                                       // never delivered: discard silently
+    const synced = syncedAt && Date.parse(syncedAt) > Date.parse(p.notifiedAt);
+    if (synced) recovered.push(p);
+    else next[p.key] = { ...p, awaitingSync: true };                   // token back, no sync yet: say nothing
+  }
+  return { send, recovered, next };
+}
+
 // ── Runner ──────────────────────────────────────────────────────────────────
 
 /**
@@ -509,20 +616,45 @@ async function run({ notify = true } = {}) {
     ...(await checkAi()),
     ...(await checkHost()),
   ];
+  // Microsoft sign-in: decided first, because while its alert is live (held,
+  // delivered, or delivered and waiting for a real sync) it speaks for the
+  // calendar sense, the Tasks staleness check and the Microsoft job warnings —
+  // one alarm per cause, including the window between sign-in and first sync.
+  const previous = _readActive();
+  const integration = checkIntegrations();
+  const quiet = (() => { try { return webpush._isQuietNow(new Date()); } catch { return false; } })();
+  const ints = integrationNotifications(Object.fromEntries(integration.issues.map((i) => [i.key, i])), previous,
+    { quiet: quiet || !notify || !webpush.isConfigured(), syncedAt: integration.syncedAt });
+  const folded = foldedBy(Object.values(ints.next));
+  for (let k = issues.length - 1; k >= 0; k--) if (folded.has(issues[k].key)) issues.splice(k, 1);
+  issues.push(...integration.issues);
 
   const current = Object.fromEntries(issues.map(i => [i.key, i]));
-  const previous = _readActive();
+  Object.assign(current, ints.next);
+  // A folded issue that was already active is carried forward silently — it has
+  // not RESOLVED just because the sign-in alert now speaks for it.
+  for (const k of folded) if (previous[k] && !current[k]) current[k] = previous[k];
 
   // "New" includes an issue whose LEVEL rose: a sense dead for an hour is a
   // warning, and the push is owed the moment it crosses into critical.
-  const isNew = issues.filter(i => !previous[i.key] || (i.level === 'critical' && previous[i.key].level !== 'critical'));
-  const resolved = Object.values(previous).filter(p => !current[p.key]);
+  // Integration alerts have their own delivery (below), so they are left out here.
+  const isInt = (x) => x && x.notify === 'integration';
+  const isNew = issues.filter(i => !isInt(i) && (!previous[i.key] || (i.level === 'critical' && previous[i.key].level !== 'critical')));
+  const resolved = Object.values(previous).filter(p => !isInt(p) && !current[p.key]);
 
   // Only criticals are pushed. Warnings are real but not worth waking anyone —
   // they belong in the daily briefing, which already lands every morning.
   const toAlert = isNew.filter(i => i.level === 'critical');
 
   if (notify && webpush.isConfigured()) {
+    // `system_alert` (ALWAYS_DELIVER) because the quiet-hours decision was made
+    // above — this send must not then be dropped by the governor.
+    for (const i of ints.send) {
+      await webpush.sendToAll(`⚠ ${i.title}`, i.detail || '', { type: 'system_alert', key: i.key });
+    }
+    for (const r of ints.recovered) {
+      await webpush.sendToAll('✅ Microsoft is working again', 'Calendar, Tasks and work email are syncing again.', { type: 'system_alert', key: `${r.key}:resolved` });
+    }
     const isSense = (x) => String(x.key).startsWith('sense:');
     for (const i of toAlert.filter((x) => !isSense(x))) {
       // 'system_alert' is in webpush ALWAYS_DELIVER, so it survives quiet hours
@@ -550,12 +682,15 @@ async function run({ notify = true } = {}) {
     ok: true,
     checkedAt: new Date().toISOString(),
     counts: { total: issues.length, critical: issues.filter(i => i.level === 'critical').length },
-    alerted: toAlert.map(i => i.title),
-    resolved: resolved.map(r => r.title),
+    alerted: [...toAlert, ...ints.send].map(i => i.title),
+    resolved: [...resolved, ...ints.recovered].map(r => r.title),
+    held: Object.values(ints.next).filter((i) => isInt(i) && !i.notifiedAt).map((i) => i.title),
     issues,
   };
 }
 
 module.exports = {
   checkSenses, run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue,
-  checkEventSpine, checkRuntimeJobs };
+  checkEventSpine, checkRuntimeJobs,
+  checkIntegrations, integrationIssues, microsoftSignInIssue, microsoftSyncedAt, integrationNotifications, foldedBy,
+  MICROSOFT_SIGNIN_KEY };
