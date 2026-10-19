@@ -596,6 +596,25 @@ function reconcile(cards, { now = new Date(), confidence = null, held = [] } = {
   return records;
 }
 
+/**
+ * READ-ONLY twin of reconcile: the open record each card already has (by its
+ * key, or the pre-13-Oct key), and nothing else — no insert, no touch, no
+ * surfaced stamp, no key adoption. A card never seen before has no record here.
+ * Used by attention.build({ readOnly }) for the meeting-promises shadow, which
+ * must judge the same moment as the briefing while writing nothing but its log.
+ */
+function peek(cards) {
+  const out = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!card || card.kind === 'context') continue;
+    const key = dedupeKeyFor(card);
+    let row = key ? db.getOpenAttentionRecord(key) : null;
+    if (!row) { const legacy = legacyKeyFor(card); row = legacy ? db.getOpenAttentionRecord(legacy) : null; if (row) row = { ...row, dedupe_key: key }; }
+    if (row) out.push(row);
+  }
+  return out;
+}
+
 /** A deferred record whose window has passed returns to active on its own. */
 function releaseDeferrals(now = new Date()) {
   const at = now.toISOString();
@@ -977,6 +996,7 @@ module.exports = {
   // stateful
   upsert,
   reconcile,
+  peek,
   releaseDeferrals,
   deferredKeys,
   legacyKeyFor,

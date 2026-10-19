@@ -87,7 +87,7 @@ async function _readHouse(now) {
   return house;
 }
 
-function _advanceEpisode(presence, now) {
+function _advanceEpisode(presence, now, { persist = true } = {}) {
   let prev = null;
   try {
     const raw = db.getState(EPISODE_KEY);
@@ -96,6 +96,7 @@ function _advanceEpisode(presence, now) {
     prev = null;
   }
   const r = episode.advance(prev, presence, now);
+  if (!persist) return r; // read-only callers (the promises shadow) judge the same visit without moving it on
   try {
     db.setState(EPISODE_KEY, JSON.stringify(r.state));
   } catch (e) {
@@ -109,11 +110,11 @@ function _advanceEpisode(presence, now) {
  *
  * @returns {{ known, room, episode, offers, decided, gaps, considered }}
  */
-async function snapshot({ now = new Date() } = {}) {
+async function snapshot({ now = new Date(), readOnly = false } = {}) {
   const house = await _readHouse(now);
   const gaps = [...(house.gaps || [])];
 
-  const visit = _advanceEpisode(house.presence, now);
+  const visit = _advanceEpisode(house.presence, now, { persist: !readOnly });
 
   if (!house.known) {
     return { known: false, room: null, episode: null, offers: [], decided: [], notes: [], heating: roomHeat.active(), household: house.household || null, gaps, considered: [] };
