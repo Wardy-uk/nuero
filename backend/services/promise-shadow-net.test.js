@@ -22,6 +22,9 @@
  * calls Now only makes after a successful read). People are pseudonyms.
  */
 
+// Pins the wall clock to each pass's simulated instant (see the helper).
+const clock = require('./fixtures/promise-shadow/clock');
+clock.install();
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -111,6 +114,7 @@ const allRows = () => db.all('SELECT * FROM promise_shadow_log ORDER BY id');
 
 test.before(async () => {
   await db.init();
+  clock.reportsSent([london(DAYKEY, '12:30')]); // the simulated week's report to Chris, recorded as sent (see the clock helper)
   task('Nick to send Alex Reed the list of ticket types blocked by skill gaps', 34);
   task('Nick to write the onboarding guide for Sam Patel', 30);
   shadow.registerPromiseShadow({ PROMISE_SHADOW_ENABLED: 'true' }, { schedule: () => ({ stop() {} }) });
@@ -234,7 +238,8 @@ let pass = null;
 test('a real pass: only allowed requests reach the network; no HA service, no HA state change', async () => {
   const before = JSON.stringify(haState);
   const n = reached.length;
-  const res = await shadow.tick({ now: london(DAYKEY, '07:30') });
+  const at730 = london(DAYKEY, '07:30');
+  const res = await clock.at(at730, () => shadow.tick({ now: at730 }));
   pass = { res, sent: reached.slice(n), stats: shadow.stats() };
   assert.equal(res.read, 'ok', 'canonical Now was read');
   assert.ok(pass.sent.length > 0, 'positive control: the pass did use the network');

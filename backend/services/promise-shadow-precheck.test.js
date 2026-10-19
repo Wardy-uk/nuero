@@ -17,6 +17,9 @@
  * People are pseudonyms.
  */
 
+// Pins the wall clock to each pass's simulated instant (see the helper).
+const clock = require('./fixtures/promise-shadow/clock');
+clock.install();
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -91,7 +94,8 @@ const offer = (key, d, hm) => db.run(`INSERT INTO promise_shadow_log (at, moment
 async function tick(d, hm) {
   const id0 = (db.get('SELECT COALESCE(MAX(id), 0) AS m FROM promise_shadow_log') || {}).m || 0;
   const s0 = shadow.stats(); const p0 = calls.presence;
-  const res = await shadow.tick({ now: london(d, hm) });
+  const t = london(d, hm);
+  const res = await clock.at(t, () => shadow.tick({ now: t }));
   const s1 = shadow.stats();
   return { res, added: rows("id > ? AND kind NOT IN ('heartbeat')", [id0]), nowReads: s1.nowReads - s0.nowReads, avoided: s1.nowAvoided - s0.nowAvoided,
     snapshots: s1.snapshots - s0.snapshots, presence: calls.presence - p0 };
@@ -100,6 +104,7 @@ const payloadOf = (r) => JSON.parse(r.payload_json || '{}');
 
 test.before(async () => {
   await db.init();
+  clock.reportsSent([london(day(1), '12:30'), london(day(8), '12:30')]); // both simulated weeks' report to Chris, recorded as sent (see the clock helper)
   P.alex = task('Nick to send Alex Reed the list of ticket types blocked by skill gaps', 34);
   P.sam = task('Nick to write the onboarding guide for Sam Patel', 30);
   P.hr = task('Nick to agree the outcome of Jordan Kay\'s flexible working request', 26, 'Meetings/2026/09/2026-09-22 - Jordan Kay 1-2-1.md');

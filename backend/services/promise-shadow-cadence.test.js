@@ -21,6 +21,9 @@
  * People are pseudonyms.
  */
 
+// Pins the wall clock to each pass's simulated instant (see the helper).
+const clock = require('./fixtures/promise-shadow/clock');
+clock.install();
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -106,7 +109,8 @@ async function runDay(d, { from = '07:00', to = '18:55', before = {} } = {}) {
     if (hm < from || hm > to) continue;
     if (before[hm]) before[hm]();
     const s0 = shadow.stats();
-    await shadow.tick({ now: london(d, hm) });
+    const t = london(d, hm);
+    await clock.at(t, () => shadow.tick({ now: t }));
     const s1 = shadow.stats();
     for (const [k, c] of Object.entries(KEYS)) sum[k] += s1[c] - s0[c];
     if (s1.nowReads > s0.nowReads) readAt.push(hm);
@@ -120,6 +124,8 @@ const cal = (eventId, subject, d, hm, extra = {}) => db.run(
 let before;
 test.before(async () => {
   await db.init();
+  // Before the write baseline: both simulated weeks' report to Chris recorded as sent (see the clock helper).
+  clock.reportsSent([london(day(0), '12:30'), london(day(7), '12:30')]);
   // Three ordinary promises, so every bundle of a day has something left to offer (oldest first).
   for (const [text, daysAgo] of [['Nick to send Alex Reed the list of ticket types blocked by skill gaps', 34],
     ['Nick to write the onboarding guide for Sam Patel', 32], ['Nick to share the QA rubric with Casey Moore', 30]]) {
