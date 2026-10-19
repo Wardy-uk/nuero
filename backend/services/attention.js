@@ -979,7 +979,11 @@ async function gather(now = new Date()) {
 /**
  * Build the attention feed. This is what both SAiM surfaces render.
  */
-async function build({ now = new Date(), view = null, ask = null } = {}) {
+// `readOnly` (18 Oct 2026, the meeting-promises shadow): the SAME decision with no
+// lifecycle writes — deferrals are filtered by time (deferredKeys already checks
+// it) without being released, records are read (lifecycle.peek) never created,
+// and nothing is swept. A card never seen before is presented unstamped.
+async function build({ now = new Date(), view = null, ask = null, readOnly = false } = {}) {
   const { inputs, gaps } = await gather(now);
   const context = resolveContext(inputs, now);
 
@@ -1013,7 +1017,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   const snoozed = [];
   try {
     const lifecycle = require('./attention-lifecycle');
-    lifecycle.releaseDeferrals(now);
+    if (!readOnly) lifecycle.releaseDeferrals(now);
     const held = lifecycle.deferredKeys(now);
     if (held.size > 0) {
       visible = items.filter((item) => {
@@ -1132,7 +1136,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   //   the scale of a room being walked into.
   let rooms = null;
   try {
-    rooms = await require('./rooms').snapshot({ now });
+    rooms = await require('./rooms').snapshot({ now, readOnly });
   } catch (e) {
     gaps.push({ input: 'rooms', why: e.message });
   }
@@ -1343,19 +1347,21 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   let attentionBlock = { version: 'v1', available: false, why: 'not reconciled', records: [] };
   try {
     const lifecycle = require('./attention-lifecycle');
-    lifecycle.releaseDeferrals(now);
+    if (!readOnly) lifecycle.releaseDeferrals(now);
 
     const surfacedIds = new Set(
       [gated.primary, ...gated.secondary].filter((c) => c && c.kind === 'item').map((c) => c.id)
     );
     const held = items.filter((i) => !surfacedIds.has(i.id)).map((i) => itemCard(i, now));
 
-    const records = lifecycle.reconcile([gated.primary, ...gated.secondary], {
-      now,
-      confidence: context.confidence || null,
-      held,
-    });
-    lifecycle.sweep({ now, poolAvailable: poolError === null });
+    const records = readOnly
+      ? lifecycle.peek([gated.primary, ...gated.secondary])
+      : lifecycle.reconcile([gated.primary, ...gated.secondary], {
+        now,
+        confidence: context.confidence || null,
+        held,
+      });
+    if (!readOnly) lifecycle.sweep({ now, poolAvailable: poolError === null });
 
     // The record id is stamped onto the card the surfaces already render, so a
     // client can act on what it is looking at without a second lookup — and so
