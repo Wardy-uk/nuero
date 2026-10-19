@@ -12,6 +12,11 @@
  *   • Enabling creates promise_shadow_log (ensureLog) — the ONLY thing it ever
  *     writes — and schedules a plain cron (cron-once; no runtime-jobs, which
  *     would write runtime_job_runs and event_log).
+ *   • A five-minute tick first reads only the clock, the shadow log and the two
+ *     calendar tables (dueCheck). The promise ledger is read only when a bundle
+ *     or an uninspected pre-meeting window is due, and canonical Now (which
+ *     reads room presence on localhost:3005) only when an unlogged moment
+ *     remains — counted in stats() and on every heartbeat row.
  *   • Each pass reads canonical Now with { readOnly: true }: attention.build
  *     filters deferrals by time without releasing them, reads lifecycle records
  *     with peek, and rooms does not save the visit — no production write.
@@ -183,6 +188,101 @@ function discoverShadow({ now, ctx, ledger, history }) {
   return { ...base, would: true, why: 'would be raised' };
 }
 
+// ── The cheap pre-check: clock + one calendar read, nothing else ─────────────
+//
+// Every five-minute tick runs this. Only when it says something is due does
+// the pass read the promise ledger (tasks, world model, vault notes), and only
+// when that leaves an unlogged moment does it call canonical Now — which is
+// what reads room presence on localhost:3005.
+
+const _localMinute = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: TZ }).replace(' ', 'T').slice(0, 16);
+const _hash = (parts) => crypto.createHash('sha1').update(JSON.stringify(parts)).digest('hex').slice(0, 12);
+
+/**
+ * Meetings starting in (now, now + BEFORE_MEETING_MINUTES], from the same two
+ * sources the ledger's next-meeting lookup uses, with NO person matching (so
+ * it can only ever be wider than that lookup, never narrower). Each meeting is
+ * identified by its SOURCE EVENT ID plus its start, and carries a change
+ * marker (world model: fingerprint + updated_at + participant hash; calendar
+ * cache: hash of every field that can change, incl. the other-attendees flag).
+ * A meeting with no event id has no identity (`key: null`) and is never
+ * remembered — it is inspected every time it is due.
+ */
+function dueMeetings(nowMs) {
+  const from = _localMinute(nowMs);
+  const until = _localMinute(nowMs + policy.BEFORE_MEETING_MINUTES * 60000);
+  const out = []; const errors = [];
+  try {
+    const rows = db.all(`SELECT meeting_id, provider, provider_event_id, start_local, fingerprint, updated_at FROM wm_meetings
+      WHERE status = 'scheduled' AND start_local > ? AND start_local <= ?`, [from, until]);
+    const parts = new Map();
+    if (rows.length) {
+      for (const p of db.all(`SELECT meeting_id, email, person_id, response FROM wm_meeting_participants WHERE meeting_id IN (${rows.map(() => '?').join(',')})
+        ORDER BY meeting_id, email, person_id`, rows.map((r) => r.meeting_id))) {
+        if (!parts.has(p.meeting_id)) parts.set(p.meeting_id, []);
+        parts.get(p.meeting_id).push([p.email, p.person_id, p.response]);
+      }
+    }
+    for (const r of rows) {
+      const ev = r.provider_event_id || r.meeting_id;
+      out.push({ source: 'world-model', start: r.start_local,
+        key: ev ? `wm:${r.provider || '?'}:${ev}@${r.start_local}` : null,
+        marker: `fp=${r.fingerprint || ''};u=${r.updated_at || ''};att=${_hash(parts.get(r.meeting_id) || [])}` });
+    }
+  } catch (e) { errors.push(`world model: ${e.message}`); }
+  try {
+    const rows = db.all(`SELECT event_id, source, subject, start_time, end_time, show_as, attendees_other, is_organizer, location FROM calendar_cache
+      WHERE attendees_other = 1 AND COALESCE(is_all_day, 0) = 0 AND substr(start_time, 1, 16) > ? AND substr(start_time, 1, 16) <= ?`, [from, until]);
+    for (const r of rows) {
+      const start = String(r.start_time).slice(0, 16);
+      out.push({ source: 'calendar', start,
+        key: r.event_id ? `cc:${r.source || 'graph'}:${r.event_id}@${start}` : null,
+        marker: _hash([r.subject, r.end_time, r.show_as, r.attendees_other, r.is_organizer, r.location]) });
+    }
+  } catch (e) { errors.push(`calendar: ${e.message}`); }
+  return { meetings: out, errors };
+}
+
+// Meetings already inspected by this process, keyed by identity + change
+// marker: an unchanged meeting is read once; a changed one (moved attendees,
+// new fingerprint, edited fields) is read again. Lost on restart, which costs
+// at most one extra ledger read per meeting.
+const _inspected = new Map(); // `${key}#${marker}` -> start (local minute)
+const _counters = () => ({ ticks: 0, calendarChecks: 0, calendarErrors: 0, skipped: 0, snapshots: 0,
+  nowReads: 0, nowReadsBundle: 0, nowReadsMeeting: 0, meetingReinspections: 0, meetingsWithoutIdentity: 0, since: null });
+let _stats = _counters();
+
+/** The run counters since this process started (or the last test reset). */
+function stats() { return { ..._stats }; }
+
+/**
+ * Is anything due? Clock first: an unlogged 07:30 / 12:30 / 17:30 bundle (or
+ * Monday's discovery). Then the calendar: a meeting in the next 30 minutes
+ * this process has not inspected in its current form. Reads the clock, the
+ * shadow log and the two calendar tables — nothing else.
+ */
+function dueCheck(nowMs) {
+  const t = local(nowMs);
+  const w = policy.windowIndex(nowMs);
+  const bundleKeys = [];
+  if (w !== null) bundleKeys.push(`window:${t.date}:${w}`);
+  if (w === 0 && t.weekday === 1) bundleKeys.push(`discovery:${policy.isoWeek(t.date)}`);
+  const bundle = bundleKeys.some((k) => !_seen(k));
+  _stats.calendarChecks += 1;
+  const cal = dueMeetings(nowMs);
+  if (cal.errors.length) _stats.calendarErrors += 1;
+  const fresh = cal.meetings.filter((m) => !m.key || !_inspected.has(`${m.key}#${m.marker}`));
+  const changed = fresh.filter((m) => m.key && [..._inspected.keys()].some((k) => k.startsWith(`${m.key}#`)));
+  return { due: bundle || fresh.length > 0, bundle, fresh, changed, errors: cal.errors };
+}
+
+function _remember(meetings, nowMs) {
+  const now = _localMinute(nowMs);
+  for (const [k, start] of _inspected) if (start <= now) _inspected.delete(k); // started: never due again
+  for (const m of meetings) if (m.key) _inspected.set(`${m.key}#${m.marker}`, m.start);
+  while (_inspected.size > 500) _inspected.delete(_inspected.keys().next().value);
+}
+
 // ── The pass ─────────────────────────────────────────────────────────────────
 
 async function _readNow(nowMs) { return require('./canonical-read').now({ now: nowMs, readOnly: true }); }
@@ -195,16 +295,27 @@ async function tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR }
   const at = iso(nowMs);
   let logged = 0;
   const log = (row) => { _log({ at, ...row }, build); logged += 1; };
+  _stats.ticks += 1;
+  if (!_stats.since) _stats.since = at;
 
   const t = local(nowMs);
   const hb = `heartbeat:${t.date}T${t.hour}`;
-  if (!_seen(hb)) log({ moment: hb, kind: 'heartbeat', decision: 'alive', reason: build.stale ? 'checkout has moved since boot — rows attributed to the running commit' : 'alive' });
+  if (!_seen(hb)) log({ moment: hb, kind: 'heartbeat', decision: 'alive', reason: build.stale ? 'checkout has moved since boot — rows attributed to the running commit' : 'alive', payload: { counters: stats() } });
+
+  const due = dueCheck(nowMs);
+  if (!due.due) { _stats.skipped += 1; return { idle: true, skipped: true, logged }; }
+  _stats.meetingReinspections += due.changed.length;
+  _stats.meetingsWithoutIdentity += due.fresh.filter((m) => !m.key).length;
 
   const snap = observe.snapshot({ now: nowMs }); // reads only
+  _stats.snapshots += 1;
+  _remember(due.fresh, nowMs);
   const moments = momentsAt(nowMs, snap.promises).filter((m) => !_seen(m.key));
   if (!moments.length) return { idle: true, logged };
 
   let payload = null; let readError = null;
+  _stats.nowReads += 1;
+  if (moments.some((m) => m.type !== 'meeting')) _stats.nowReadsBundle += 1; else _stats.nowReadsMeeting += 1;
   try { payload = await readNow(nowMs); } catch (e) { readError = String(e && e.message || e).slice(0, 200); }
   const common = (ev) => ({
     gate: ev.gate, ctx: ev.ctx, contextUnknown: !ev.ctx, feedWhy: ev.feed.why,
@@ -331,6 +442,7 @@ function report({ days = SHADOW_DAYS, now = Date.now() } = {}) {
     ok: true,
     window: { from, to: iso(nowMs), days },
     heartbeats: of('heartbeat').length,
+    counters: (() => { const h = of('heartbeat').filter((r) => r.payload && r.payload.counters); return h.length ? { at: h[h.length - 1].at, ...h[h.length - 1].payload.counters } : null; })(),
     builds: Object.values(builds),
     proposals: { ...labelled(of('proposal').filter((r) => r.decision === 'would-raise')), suppressed: of('proposal').filter((r) => r.decision !== 'would-raise').map((r) => ({ id: r.id, at: r.at, why: r.reason })) },
     prompts: { ...labelled(prompts), byMoment: prompts.reduce((o, r) => { const m = r.payload && r.payload.moment; o[m] = (o[m] || 0) + 1; return o; }, {}) },
@@ -345,9 +457,11 @@ function report({ days = SHADOW_DAYS, now = Date.now() } = {}) {
 
 /** Test seam: forget the boot identity (a fresh process would). */
 function _resetIdentity() { _identity = null; _checkout = { sha: null, at: 0 }; }
+/** Test seam: forget inspected meetings and zero the counters (a fresh process would). */
+function _resetRuntime() { _inspected.clear(); _stats = _counters(); }
 
 module.exports = {
   TABLE, CRON, SHADOW_DAYS, LABELS, CODE_FILES,
   registerPromiseShadow, logExists, ensureLog, captureIdentity,
-  momentsAt, evaluate, discoverShadow, tick, label, missed, report, _resetIdentity,
+  momentsAt, evaluate, discoverShadow, dueCheck, dueMeetings, stats, tick, label, missed, report, _resetIdentity, _resetRuntime,
 };

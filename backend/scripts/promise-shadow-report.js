@@ -19,7 +19,12 @@ if (!(Number.isInteger(days) && days >= 1 && days <= 60)) { console.error('--day
   const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '—');
   L.push(`# Meeting promises — shadow review (${r.window.from.slice(0, 10)} → ${r.window.to.slice(0, 10)})`, '');
   L.push('Nothing below was shown or sent. Each line is what SAiM WOULD have done.', '');
-  L.push(`Uptime: ${r.heartbeats} hourly heartbeats.`, '', '## Builds the rows ran under');
+  L.push(`Uptime: ${r.heartbeats} hourly heartbeats.`);
+  if (r.counters) {
+    const c = r.counters;
+    L.push(`Run counters (process since ${String(c.since || '?').slice(0, 16)}, as at ${c.at.slice(0, 16)}): ${c.ticks} ticks · ${c.skipped} skipped on clock + calendar alone · ${c.snapshots} ledger reads · ${c.nowReads} Now/presence reads (${c.nowReadsBundle} bundle, ${c.nowReadsMeeting} pre-meeting) · ${c.meetingReinspections} changed-meeting re-reads · ${c.calendarErrors} calendar read errors.`);
+  }
+  L.push('', '## Builds the rows ran under');
   for (const b of r.builds) L.push(`- ${b.runningSha ? b.runningSha.slice(0, 10) : 'unknown'} · code ${b.codeHash || '?'} · ${b.rows} rows · ${b.first.slice(0, 16)} → ${b.last.slice(0, 16)}${b.dirty ? ' · DIRTY' : ''}${b.stale ? ' · STALE (checkout moved, not restarted)' : ''}`);
   L.push('');
   L.push('## Proposals', `Would have raised: ${r.proposals.total} (tp ${r.proposals.tp}, fp ${r.proposals.fp}, unlabelled ${r.proposals.unlabelled})`);
