@@ -1302,11 +1302,13 @@ let _radarMemo = null;
 let _homeMemo = null;
 let _outdoorMemo = null;
 let _leisureMemo = null;
-async function now({ now: nowMs = Date.now(), decision = null, workOnly = false, surface = null } = {}) {
+// `readOnly` (the meeting-promises shadow): passed to attention.build, which then
+// writes no lifecycle record and saves no room visit. Default false = unchanged.
+async function now({ now: nowMs = Date.now(), decision = null, workOnly = false, surface = null, readOnly = false } = {}) {
   const gaps = [];
   let dec = decision;
   if (!dec) {
-    try { dec = await require('./attention').build({ now: new Date(nowMs) }); } catch (e) { dec = { poolAvailable: false, gaps: [{ input: 'attention', why: e.message }] }; }
+    try { dec = await require('./attention').build({ now: new Date(nowMs), readOnly }); } catch (e) { dec = { poolAvailable: false, gaps: [{ input: 'attention', why: e.message }] }; }
   }
   const people = _peopleMap();
   const ctx = _classificationCtx();

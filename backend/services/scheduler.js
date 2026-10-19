@@ -1350,6 +1350,16 @@ function start() {
   // also serving Focus and chat.
   runCatchUp();
 
+  // Meeting promises SHADOW (18 Oct 2026): OFF unless PROMISE_SHADOW_ENABLED is
+  // exactly 'true'. Off = no table, no timer, no read. On = it creates its own
+  // log table and runs a plain cron that writes ONLY that table. Deliberately
+  // not a durable runtime job (those write runtime_job_runs and event_log).
+  try {
+    require('./promise-shadow').registerPromiseShadow(process.env);
+  } catch (e) {
+    console.warn('[PromiseShadow] could not start (backend unaffected):', e.message);
+  }
+
   // The durable runtime (Build 3A). Never allowed to stop startup.
   try {
     registerDurableJobs();

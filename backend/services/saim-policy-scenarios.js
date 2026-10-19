@@ -69,7 +69,9 @@ function build(o) {
   };
   const candidates = NC.compose(payload, live, facts, { now });
   const decision = POL.decide(candidates, { surface: o.surface, now });
-  return { candidates, decision };
+  // `payload` is returned too: the promise-shadow tests feed the very payload the
+  // decision was made from.
+  return { candidates, decision, payload };
 }
 
 const BLOCK = { id: 130, start: '14:00', end: '15:30', taskId: 600, task: 'Customer Care training plan and refreshers' };
