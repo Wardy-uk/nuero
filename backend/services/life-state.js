@@ -403,8 +403,8 @@ function meetingNow(rows, now) {
 
 const TV_ENTITY = process.env.LIFE_TV_ENTITY || 'switch.living_room_extension_socket_1';
 // Room → plug. `switch.bedroom_socket_1` is the bedroom TV's plug (friendly name
-// "Bedroom TV"); `switch.bedroom_tv_socket` has been unavailable since 27 Sep and
-// `media_player.main_bedroom` reads `on` permanently, so neither is used.
+// "Bedroom TV"); `media_player.main_bedroom` reads `on` permanently, so it is not used.
+// (The old `switch.bedroom_tv_socket` is now `switch.ipad_socket`, the kitchen wall iPad's charger.)
 const TV_ENTITIES = parseTvEntities(process.env.LIFE_TV_ENTITIES
   || `${TV_ROOM}=${TV_ENTITY},bedroom=switch.bedroom_socket_1`);
 const HOUSEHOLD_ENTITY = process.env.HA_HOUSEHOLD_SENSOR || 'binary_sensor.household_others_home';
