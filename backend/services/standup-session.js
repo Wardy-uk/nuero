@@ -466,6 +466,14 @@ function _renderContext(ctx) {
   if (ctx.musts?.length) {
     parts.push(`\nMUST-DO TASKS: ${ctx.musts.map(m => `#${m.id} ${m.text}${m.overdue ? ' (OVERDUE)' : ''}`).join(' | ')}`);
   }
+  // ⚠ The MUSTs are a SLICE of the list, not the list. 16 Oct 2026: 2 of 38
+  // open tasks were MUST, and asked "what are the top things?" SAiM said she had
+  // no backlog view — true of the context, false of NEURO.
+  parts.push('(Only tasks rated MUST are listed above. The whole ranked list is one list_tasks call away; urgent email is get_urgent_emails.)');
+  // ⚠ The MUSTs are a SLICE of the list, not the list. 16 Oct 2026: 2 of 38
+  // open tasks were MUST, and asked "what are the top things?" SAiM said she had
+  // no backlog view — true of the context, false of NEURO.
+  parts.push('(Only tasks rated MUST are listed above. The whole ranked list is one list_tasks call away; urgent email is get_urgent_emails.)');
   if (ctx.plan) {
     parts.push(`\n90-DAY PLAN: day ${ctx.plan.day}, ${ctx.plan.done}/${ctx.plan.total} done.`);
   }
@@ -509,6 +517,7 @@ Run it roughly like this, adapting to his answers:
 - A carried line marked [task #N] or [likely task #N] IS that task, not a new one. Pass its task_id to resolve_commitment, and name the task in passing ("that's #30, the Krista one") so he can say if it is not. If he says it is not, resolve it without task_id. Never call create_task for work that is already a task.
 - When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. When he names a time, book it — do NOT judge clashes yourself; block_time and check_diary decide that, and an event that ENDS at a time does not occupy it (Lunch 12:00-13:00 leaves 13:00 free). Only push back if block_time refuses. If he names no start time, call check_diary for that day and offer him a real gap ("tomorrow 09:30-11:00 is free — want it there?"); book it only once he agrees.
 - You can see his calendar for the next fortnight through check_diary. Never say you don't have a day's calendar without calling it first.
+- You can see his whole task list, ranked the way his Focus screen ranks it, through list_tasks, and email waiting on him through get_urgent_emails. When he asks what's on, what's next or what the top things are, call them and answer from what comes back — never say you don't have a backlog view, and never ask him to recite his list to you.
 - When he wants a meeting WITH someone, get the title, time, length and who, then call create_meeting. It prepares the invite for him to approve in Actions with his approval code — say exactly that ("it's in Actions for you to approve"). Never say it is booked or sent, and never tell him you can't create invites. If a name does not resolve, ask him which person or for their address.
 - Never say something is booked, blocked or in the diary unless block_time came back ok. If it refused, tell him why in plain words.
 - Do not write the daily note yourself. When the focus is agreed, call set_focus; the system writes the note.
@@ -579,6 +588,8 @@ there is nothing.
 - If he wants something put in tomorrow's diary, call check_diary for that day,
   offer him a real free gap, and book it with block_time once he agrees. You can
   see a fortnight of his calendar — never say you can't without checking.
+- If he asks what is still open or what tomorrow should start with, list_tasks
+  has the whole ranked list. Never say you can't see it.
 - A meeting with someone else goes through create_meeting: it prepares the invite
   for him to approve in Actions, it does not send it. Say that, never "booked".
 - Never end without acknowledging something that went right, even on a bad day.
@@ -632,6 +643,38 @@ const SESSION_TOOLS = [
       },
       required: ['title', 'start', 'attendees'],
     },
+  },
+  {
+    name: 'list_tasks',
+    description: 'Read his open tasks, ranked exactly as his Focus screen ranks them (most pressing first). Use whenever he asks what is on, what is next or what the top things are. Reads only. A task with id null is a Microsoft or daily-note item: it can be discussed but not blocked or completed here.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filter: { type: 'string', enum: ['all', 'overdue', 'today'], description: 'all = every open task (default); overdue = past due; today = due today.' },
+        limit: { type: 'integer', description: 'How many from the top (default 10, max 30).' },
+      },
+    },
+  },
+  {
+    name: 'get_urgent_emails',
+    description: 'Read the emails triage says need an action or a reply from him, with sender and why. Reads only — nothing is sent.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_tasks',
+    description: 'Read his open tasks, ranked exactly as his Focus screen ranks them (most pressing first). Use whenever he asks what is on, what is next or what the top things are. Reads only. A task with id null is a Microsoft or daily-note item: it can be discussed but not blocked or completed here.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filter: { type: 'string', enum: ['all', 'overdue', 'today'], description: 'all = every open task (default); overdue = past due; today = due today.' },
+        limit: { type: 'integer', description: 'How many from the top (default 10, max 30).' },
+      },
+    },
+  },
+  {
+    name: 'get_urgent_emails',
+    description: 'Read the emails triage says need an action or a reply from him, with sender and why. Reads only — nothing is sent.',
+    input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'block_time',
@@ -774,6 +817,14 @@ function _describeToolResult(name, input = {}, result = {}) {
       return `create_meeting: PREPARED (not sent — awaiting approval in Actions) "${input.title}" ${input.start}${result.already ? ' (already prepared)' : ''}`;
     case 'check_diary':
       return `check_diary ${result.date}: free ${(result.freeGaps || []).join(', ') || 'none'}`;
+    case 'list_tasks':
+      return `list_tasks (${result.filter}): read ${(result.tasks || []).length} of ${result.total}`;
+    case 'get_urgent_emails':
+      return `get_urgent_emails: read ${(result.emails || []).length}`;
+    case 'list_tasks':
+      return `list_tasks (${result.filter}): read ${(result.tasks || []).length} of ${result.total}`;
+    case 'get_urgent_emails':
+      return `get_urgent_emails: read ${(result.emails || []).length}`;
     case 'create_task':
       return `create_task: CREATED #${result.task_id ?? '?'} "${result.text || input.text || ''}"`;
     case 'set_weekly_target':
@@ -910,6 +961,82 @@ async function _executeTool(session, name, input = {}) {
           : 'No free gap of 15+ minutes in the working day. Say so and offer another day.',
       };
     }
+
+    case 'list_tasks': {
+      const filter = input.filter == null ? 'all' : String(input.filter);
+      const { rankedTodos, FILTERS } = require('./focus-ranking');
+      if (!FILTERS.includes(filter)) return { ok: false, error: `filter must be one of ${FILTERS.join(', ')}.` };
+      const limit = Math.min(Math.max(Number(input.limit) || 10, 1), 30);
+      let ranked;
+      try {
+        ranked = rankedTodos(filter);
+      } catch (e) {
+        // Could not look is not "nothing open" — say which.
+        return { ok: false, error: `Could not read the task list (${e.message}). Say so — do not tell him the list is empty.` };
+      }
+      const today = new Date().toISOString().split('T')[0];
+      return {
+        ok: true,
+        filter,
+        total: ranked.length,
+        tasks: ranked.slice(0, limit).map((t, i) => ({
+          rank: i + 1,
+          // Only a NEURO task id can be blocked or completed — a mirror line
+          // gets null rather than its list index, which is not an id at all.
+          id: t.task_id || null,
+          text: t.text,
+          // His rating, kept apart from what the classifier reads it as.
+          moscow: t.moscowSet || null,
+          readsAs: t.moscow || null,
+          due: t.due_date ? t.due_date.split('T')[0] : null,
+          overdue: Boolean(t.due_date && t.due_date.split('T')[0] < today && !t.myPartDone),
+          where: t.msPlan || t.source || null,
+          why: t._scoreReason || null,
+        })),
+        note: ranked.length > limit ? `Top ${limit} of ${ranked.length}. Ask for more only if he wants them.` : undefined,
+      };
+    }
+
+    case 'get_urgent_emails':
+      return chatTools.execute(name, {});
+
+    case 'list_tasks': {
+      const filter = input.filter == null ? 'all' : String(input.filter);
+      const { rankedTodos, FILTERS } = require('./focus-ranking');
+      if (!FILTERS.includes(filter)) return { ok: false, error: `filter must be one of ${FILTERS.join(', ')}.` };
+      const limit = Math.min(Math.max(Number(input.limit) || 10, 1), 30);
+      let ranked;
+      try {
+        ranked = rankedTodos(filter);
+      } catch (e) {
+        // Could not look is not "nothing open" — say which.
+        return { ok: false, error: `Could not read the task list (${e.message}). Say so — do not tell him the list is empty.` };
+      }
+      const today = new Date().toISOString().split('T')[0];
+      return {
+        ok: true,
+        filter,
+        total: ranked.length,
+        tasks: ranked.slice(0, limit).map((t, i) => ({
+          rank: i + 1,
+          // Only a NEURO task id can be blocked or completed — a mirror line
+          // gets null rather than its list index, which is not an id at all.
+          id: t.task_id || null,
+          text: t.text,
+          // His rating, kept apart from what the classifier reads it as.
+          moscow: t.moscowSet || null,
+          readsAs: t.moscow || null,
+          due: t.due_date ? t.due_date.split('T')[0] : null,
+          overdue: Boolean(t.due_date && t.due_date.split('T')[0] < today && !t.myPartDone),
+          where: t.msPlan || t.source || null,
+          why: t._scoreReason || null,
+        })),
+        note: ranked.length > limit ? `Top ${limit} of ${ranked.length}. Ask for more only if he wants them.` : undefined,
+      };
+    }
+
+    case 'get_urgent_emails':
+      return chatTools.execute(name, {});
 
     case 'block_time': {
       const ids = [...new Set((input.task_ids || []).map(Number).filter(Number.isInteger))];
