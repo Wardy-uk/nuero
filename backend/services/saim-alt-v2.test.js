@@ -93,7 +93,9 @@ test('rendered: the bottom bar is the six from the model, with the active one ma
   const labels = [...out.matchAll(/v2__tablabel">([^<]+)</g)].map((m) => m[1]);
   assert.deepEqual(labels, ['SAiM', 'Now', 'Briefing', 'Review', 'Capture', 'Controls']);
   assert.match(out, /aria-current="page"[^>]*>(?:(?!<\/button>).)*Now/);
-  assert.match(out, /SAiM Alt/, 'the treatment is marked');
+  // 20 Oct 2026 (Nick): the treatment badge is debug-only; the selected tab is identity enough.
+  assert.doesNotMatch(out, /SAiM Alt/, 'no badge in normal view');
+  assert.match(html(h(UI.Shell, { active: 'now', drive: M.driveFrom(null), onGo: () => {}, debug: true }, h('p', null, 'page'))), /SAiM Alt/, 'debug keeps the treatment marked');
   assert.match(out, /Not read yet/, 'no read is said, not shown as a time');
 });
 
