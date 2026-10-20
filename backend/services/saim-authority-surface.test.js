@@ -114,4 +114,7 @@ test('it is its own screen in the shared tab list, and the flow speaks only to /
   assert.match(src, /const BASE = '\/api\/saim-authority';/);
   assert.doesNotMatch(src + fs.readFileSync(path.join(APP, 'views', 'Authority.jsx'), 'utf8'), /feature-flags|SAIM_PREPARED_MOVE_EXECUTION|localStorage/, 'nothing here can touch the device lock or keep authority on the device');
   assert.equal(typeof flow.stopAll, 'function');
+  // The always-on kiosk never offers it (its proxy has no door for it).
+  const kiosk = fs.readFileSync(path.join(APP, '..', '..', 'frontend', 'src', 'App.jsx'), 'utf8');
+  assert.match(kiosk, /const canShowTab = \(t\) => t\.id !== 'authority' && /);
 });

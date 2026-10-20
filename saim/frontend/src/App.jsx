@@ -7,7 +7,9 @@ import { speechRecognitionCtor } from '../../app/src/speechRecognition';
 // dictation (the Pi, the laptop's Electron window) it was a tab that did nothing.
 // Hidden from the menu only — the id stays valid, so a notification routed to it
 // still lands on Capture rather than falling through.
-const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
+// May do (authority) is changed from Nick's own phone or desk, never the wall: the
+// kiosk proxy deliberately has no door for it, so the tab would only say it cannot read.
+const canShowTab = (t) => t.id !== 'authority' && (t.id !== 'voice' || Boolean(speechRecognitionCtor()));
 import Field from '../../shared-ui/Field';
 import { FieldCover } from '../../shared-ui/FieldCover';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
