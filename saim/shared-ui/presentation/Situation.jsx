@@ -241,9 +241,14 @@ export default function Situation({
   const calmState = !hasNeedsYou && !hasPrimary && CALM_MODES.has(plan.mode);
   const actionable = Boolean(preparedMoment && preparedMoment.kind === 'actionable' && preparedMoment.headline);
   const momentLeads = actionable && calmState;
-  // Where the move goes when it does not lead: after Needs you, else after the
-  // primary, else after the situation header — and folded behind its entry.
-  const anchor = hasNeedsYou ? 'needsYou' : hasPrimary ? 'primary' : 'situation';
+  // Where the move goes when it does not lead: after the LAST lead block — a
+  // Needs-you list AND a P0 primary can both be on screen, and the move must
+  // follow both (live, 20 Oct 2026: it sat between the Weekly Risk report and
+  // a started 1-2-1). With no lead block, after the situation header.
+  const isLeadBlock = (b) => b.type === 'needsYou' || (b.type === 'primary' && (b.items || []).some((it) => it.priority === 'P0' || it.urgency === 'critical' || it.urgency === 'high'));
+  const lastLead = plan.blocks.reduce((at, b, idx) => (isLeadBlock(b) ? idx : at), -1);
+  const situationAt = plan.blocks.findIndex((b) => b.type === 'situation');
+  const anchorAt = lastLead >= 0 ? lastLead : situationAt;
   // A held move (off duty / leave) has no action; it folds only under a real lead.
   const realLead = hasNeedsYou || hasPrimary || LEAD_MODES.has(plan.mode);
   const fold = Boolean(preparedMoment) && (actionable ? !momentLeads : realLead);
@@ -303,7 +308,7 @@ export default function Situation({
                   {lead && <div className="sit__lead">{lead}</div>}
                 </header>,
                 // Outside the live region: a whole prepared move must not be re-announced on every poll.
-                anchor === 'situation' && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
+                i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
               ];
             case 'needsYou':
               return [
@@ -317,7 +322,7 @@ export default function Situation({
                   ))}
                   {blk.overflow > 0 && <p className="sit__more">and {blk.overflow} more</p>}
                 </div>,
-                anchor === 'needsYou' && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
+                i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
               ];
             case 'primary': {
               const it = blk.items[0];
@@ -331,7 +336,7 @@ export default function Situation({
                     </article>
                   )}
                 </div>
-              ), anchor === 'primary' && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null];
+              ), i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null];
             }
             case 'focal':
               return <Focal key={i} item={blk.items[0]} onOpen={onOpen} actions={plan.actions} />;

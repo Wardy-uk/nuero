@@ -89,6 +89,8 @@ const SCENARIOS = {
   meeting: () => { const p = calmPayload(); p.context.activity = 'in-meeting'; p.context.label = 'In a meeting'; p.context.summary = 'You’re in “Team sync”.'; return p; },
   block: () => { const p = calmPayload(); p.context.activity = 'in-focus-session'; p.context.label = 'Focus'; p.context.summary = 'Protected time: “Write the plan”.'; return p; },
   degraded: () => clone(FIXTURES.find((f) => f.id === 'degraded').payload),
+  // Live, 20 Oct 2026: a Needs-you item AND a P0 primary on screen at once.
+  twoLeads: () => { const p = calmPayload(); p.primary = clone(RISK); p.approvals = { known: true, needsApproval: 1, needsReview: 0, where: 'Actions, in NEURO on the desktop', say: '1 email waiting for your approval' }; return p; },
 };
 
 let Situation; let PM;
@@ -117,6 +119,7 @@ test('the scenarios really are what they say (positive control)', () => {
   assert.equal(presentations.meeting.mode, 'in-meeting');
   assert.equal(presentations.block.mode, 'focus');
   assert.equal(presentations.degraded.mode, 'degraded');
+  assert.ok(presentations.twoLeads.needsYou.length >= 1 && presentations.twoLeads.primary.priority === 'P0', 'two leads: a Needs-you item and a P0 primary');
 });
 
 test('calm, nothing leading: the prepared move leads — its own headline, its action visible', () => {
@@ -197,5 +200,17 @@ test('the wrapper is ONE stable element before and after the moment loads — a 
       const at = (h) => h.slice(0, h.search(/<\w+ class="sit__prepared[ "]/)).split('class="sit__').length;
       assert.equal(at(before.replace(/<!-- -->/g, '')) > 0, true);
     }
+  }
+});
+
+test('two leads at once (a Needs-you item AND a P0 primary): the move follows BOTH, never between them', () => {
+  for (const profile of ['phone', 'desktop']) {
+    const h = render('twoLeads', profile);
+    const needsYou = h.indexOf('sit__object--p0');
+    const risk = h.indexOf('Weekly Risk report for Chris is late');
+    const entry = h.indexOf(ENTRY);
+    assert.ok(needsYou >= 0 && risk >= 0 && entry >= 0, `${profile}: all three drawn`);
+    assert.ok(entry > risk, `${profile}: the entry follows the primary`);
+    assert.ok(entry > h.lastIndexOf('Needs you', entry) && h.indexOf('Needs you', entry) < 0, `${profile}: no lead is drawn after the entry`);
   }
 });
