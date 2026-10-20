@@ -86,7 +86,6 @@ const CataloguesPanel = lazyLoad(() => import('./components/CataloguesPanel'));
 const ProfilePanel = lazyLoad(() => import('./components/ProfilePanel'));
 const HealthPanel = lazyLoad(() => import('./components/HealthPanel'));
 const MyHealthPanel = lazyLoad(() => import('./components/MyHealthPanel'));
-const JCRingPanel = lazyLoad(() => import('./components/JCRingPanel'));
 const MeetingPrep = lazyLoad(() => import('./components/MeetingPrep'));
 const ItemLink = lazyLoad(() => import('./components/ItemLink'));
 // Build 10: the first screens that read the canonical world model.
@@ -442,7 +441,6 @@ function AuthenticatedApp() {
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'my-health': return <MyHealthPanel onNavigate={handleNavigate} />;
       case 'health': return <HealthPanel />;
-      case 'jc-ring': return <JCRingPanel />;
       case 'pi-health': return <PiHealthPanel />;
       case 'screen-usage': return <ScreenUsagePanel />;
       case 'notion-sync': return <NotionSyncPanel />;

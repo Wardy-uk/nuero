@@ -134,10 +134,12 @@ test('no medical records is a gap that says what to add', () => {
 });
 
 test('a source that stopped reporting is a gap naming what depends on it', () => {
-  const pic = hp.compose(base({ sources: { watchMs: NOW - 60000, hiloMs: NOW - 3600000, ringMs: NOW - 5 * 86400000 } }));
-  const ring = pic.sources.find((s) => s.name === 'JC Ring');
-  assert.equal(ring.state, 'stale');
-  assert.match(find(pic, 'source-JC Ring').title, /5 days/);
+  const pic = hp.compose(base({ sources: { watchMs: NOW - 60000, hiloMs: NOW - 5 * 86400000 } }));
+  const hilo = pic.sources.find((s) => s.name === 'HiLo bracelet');
+  assert.equal(hilo.state, 'stale');
+  assert.match(find(pic, 'source-HiLo bracelet').title, /5 days/);
+  // The JC Ring was removed on 20 Oct 2026: it must not come back as a source row.
+  assert.ok(!pic.sources.some((s) => /ring/i.test(s.name)));
   assert.equal(pic.sources.find((s) => s.name === 'Apple Watch').state, 'live');
 });
 

@@ -630,6 +630,20 @@ async function init() {
     console.error('[DB] Build 27 migration failed:', e.message);
   }
 
+  // The JC Ring (J2301) integration was removed on 20 Oct 2026 (Nick: the
+  // design was wrong; a Hume band is being evaluated instead). Its two tables
+  // and two capture keys go with it. The data was exported to
+  // /mnt/data/backups/jc-ring/ on pi5 before the first deploy.
+  try {
+    for (const t of ['jc_ring_samples', 'jc_ring_ppg_runs']) {
+      const n = db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ?").get(t).n;
+      if (n) { db.exec(`DROP TABLE ${t}`); console.log(`[DB] JC Ring removed: dropped ${t}`); }
+    }
+    db.exec("DELETE FROM agent_state WHERE key IN ('jc_ring_diagnostic', 'jc_ring_sync_timeline')");
+  } catch (e) {
+    console.error('[DB] JC Ring removal failed:', e.message);
+  }
+
   // Migration: Build 6 — prepared_actions becomes approval-gated EXECUTABLE for
   // one registered type. Rebuilds an old-shape table (copying every row) and
   // replaces the Build 5 "never executed" triggers with the Build 6 ones. See
@@ -1785,63 +1799,6 @@ function getLatestHealthSample(metric) {
     `SELECT value, recorded_at FROM health_samples
      WHERE metric = ? ORDER BY recorded_at DESC LIMIT 1`,
     [metric]
-  );
-}
-
-// Direct JC Ring measurements are intentionally NOT health_samples: their
-// timestamps are the ring's local clock and its BP values are vendor estimates.
-// This key makes repeated history pulls idempotent without blending sources.
-function insertJCRingSample(metric, value, recordedAtLocal, sampleIndex, receivedAt) {
-  const r = run(
-    `INSERT OR IGNORE INTO jc_ring_samples
-      (metric, value, recorded_at_local, sample_index, received_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [metric, value, recordedAtLocal, sampleIndex || 0, receivedAt]
-  );
-  return r.changes > 0;
-}
-
-function getLatestJCRingSample(metric) {
-  return get(
-    `SELECT metric, value, recorded_at_local, sample_index, received_at
-       FROM jc_ring_samples WHERE metric = ?
-       ORDER BY recorded_at_local DESC, sample_index DESC LIMIT 1`,
-    [metric]
-  );
-}
-
-// Seven-day source-labelled monitoring for the direct JC Ring feed. This is
-// deliberately an aggregate rather than a raw dump: the phone can show
-// whether a stream is alive and how it moved without an unbounded payload.
-function getJCRingDailySummary(sinceLocal) {
-  return all(
-    `SELECT metric,
-            substr(recorded_at_local, 1, 10) AS day,
-            COUNT(*) AS samples,
-            MIN(value) AS minimum,
-            MAX(value) AS maximum,
-            AVG(value) AS average,
-            MIN(recorded_at_local) AS first_at,
-            MAX(recorded_at_local) AS last_at
-       FROM jc_ring_samples
-      WHERE recorded_at_local >= ?
-      GROUP BY metric, substr(recorded_at_local, 1, 10)
-      ORDER BY day ASC, metric ASC`,
-    [sinceLocal]
-  );
-}
-
-// Raw, source-labelled history for the Ring monitor. A bounded per-metric
-// limit keeps a long-running automatic HR stream from making the PWA payload
-// unbounded, while still leaving each measurement inspectable by timestamp.
-function getJCRingMetricHistory(metric, sinceLocal, limit = 500) {
-  return all(
-    `SELECT value, recorded_at_local, sample_index, received_at
-       FROM jc_ring_samples
-      WHERE metric = ? AND recorded_at_local >= ?
-      ORDER BY recorded_at_local DESC, sample_index DESC
-      LIMIT ?`,
-    [metric, sinceLocal, limit]
   );
 }
 
@@ -3185,10 +3142,6 @@ module.exports = {
   getHealthSamples,
   getSleepSamples,
   getLatestHealthSample,
-  insertJCRingSample,
-  getLatestJCRingSample,
-  getJCRingDailySummary,
-  getJCRingMetricHistory,
   // Location visits
   saveLocationVisit,
   insertHostMetrics,

@@ -14,6 +14,7 @@
  *                     Apple Health. Strava's API is a dead end.
  *  kpi-tracker      → departmental; lives in VANTAGE. Lands on a hand-off.
  *  plan             → retired in Build 9 (the 90-day plan ended).
+ *  jc-ring          → the JC Ring integration was removed (20 Oct 2026).
  */
 export const RETIRED_VIEWS = Object.freeze({
   briefing: 'today',
@@ -21,6 +22,7 @@ export const RETIRED_VIEWS = Object.freeze({
   qa: 'today',
   strava: 'today',
   plan: 'today',
+  'jc-ring': 'my-health',
   'kpi-tracker': 'moved-vantage',
 });
 

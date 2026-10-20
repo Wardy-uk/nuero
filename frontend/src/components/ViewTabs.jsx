@@ -12,7 +12,6 @@ export const VIEW_GROUPS = Object.freeze({
   health: [
     { id: 'my-health', label: 'My Health' },
     { id: 'health', label: 'Apple Health' },
-    { id: 'jc-ring', label: 'JC Ring' },
     { id: 'medical', label: 'Medical' },
   ],
   home: [

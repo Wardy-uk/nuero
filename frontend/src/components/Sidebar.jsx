@@ -29,8 +29,7 @@ const PRIMARY_ITEMS = [
 const GROUPS = [
   // The Life overhaul (13 Oct 2026): Life is an overview; each part of life
   // has a page. An entry with `group` is the first tab of a ViewTabs group and
-  // stays lit for every tab in it (Health: My Health / Apple Health / JC Ring /
-  // Medical; Home: Home / Catalogues; Outdoor: Outdoor / Hike safety /
+  // stays lit for every tab in it (Health: My Health / Apple Health / Medical; Home: Home / Catalogues; Outdoor: Outdoor / Hike safety /
   // Weather). Those tab ids are still views of their own — deep links work.
   { id: 'life', label: 'LIFE', items: [
     { id: 'life',       label: 'Life',       icon: '◍' },

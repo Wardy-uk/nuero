@@ -6,9 +6,8 @@ import './MyHealthPanel.css';
 
 /**
  * My Health — the whole picture across every health source NEURO holds: the
- * Watch and the HiLo bracelet (both via Apple Health), the JC Ring, medical
- * records and the exertion model. The per-source pages (Apple Health, JC Ring,
- * Medical) stay where they are; this is the page that puts them side by side.
+ * Watch and the HiLo bracelet (both via Apple Health), medical records and the
+ * exertion model. The per-source pages (Apple Health, Medical) stay where they are; this is the page that puts them side by side.
  *
  * ⚠ It renders /api/health/picture VERBATIM. Ranking, wording and thresholds are
  * the server's (services/health-picture.js), so this page and any other surface
@@ -17,7 +16,7 @@ import './MyHealthPanel.css';
 
 const LEVEL_LABEL = { act: 'Act on this', watch: 'Worth watching', gap: 'Can’t see', good: 'Holding up' };
 const STATUS_LABEL = { act: 'Act', watch: 'Watch', good: 'Good', unknown: 'Unknown' };
-const VIEW_LABEL = { health: 'Apple Health', 'jc-ring': 'JC Ring', medical: 'Medical' };
+const VIEW_LABEL = { health: 'Apple Health', medical: 'Medical' };
 const GOAL_STATE = {
   met: 'At target', 'on-track': 'On track', behind: 'Behind', 'not-moving': 'Not moving',
   'moving-away': 'Going the wrong way', unknown: 'Can’t tell yet', paused: 'Paused',

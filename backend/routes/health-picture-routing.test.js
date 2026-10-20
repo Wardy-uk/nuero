@@ -55,8 +55,8 @@ test('the picture route answers with the contract and the BP act item', async ()
   assert.ok(body.sources.some((s) => s.name === 'HiLo bracelet' && s.state !== 'none'));
 });
 
-test('an empty ring and empty medical store read as gaps, not as zeros', async () => {
+test('an empty medical store reads as a gap, not a zero, and the removed ring is gone', async () => {
   const body = await (await fetch(`${base}/api/health/picture`)).json();
-  assert.equal(body.sources.find((s) => s.name === 'JC Ring').state, 'none');
+  assert.ok(!body.sources.some((s) => /ring/i.test(s.name)));
   assert.ok(body.insights.some((i) => i.id === 'medical-none'));
 });

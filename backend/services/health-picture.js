@@ -4,8 +4,8 @@
  * My Health — the whole picture, across every health source NEURO holds.
  *
  * Apple Health (the Watch, plus the HiLo bracelet's blood pressure, which reaches
- * NEURO through Apple Health), the JC Ring's own table, medical records and the
- * exertion model are each rendered on a page of their own. Nothing put them side
+ * NEURO through Apple Health), medical records and the exertion model are each
+ * rendered on a page of their own. Nothing put them side
  * by side, so the facts that only mean something together — blood pressure beside
  * weight, VO2 max (which is PER KILOGRAM) beside weight, today's recovery beside
  * yesterday's load — were never said anywhere.
@@ -39,7 +39,6 @@ const WEIGHT_GAIN_KG = 3;          // over the comparison window, to be worth sa
 const WEIGHT_STALE_DAYS = 21;
 const VO2_FALL_1Y = 2;
 const RHR_RISE_BPM = 3;
-const RING_STALE_HOURS = 48;
 const WATCH_STALE_HOURS = 6;
 const HILO_STALE_HOURS = 48;
 
@@ -350,28 +349,26 @@ function recovery({ perf }) {
   return { system: { ...systemOut, status: 'good' }, insight: null };
 }
 
-function oxygen({ days, today, ring }) {
+function oxygen({ days, today }) {
   const recent = window(days, 'spo2', { today, fromDaysAgo: 14, toDaysAgo: 0 });
   const earlier = window(days, 'spo2', { today, fromDaysAgo: 365, toDaysAgo: 120 });
   const resp = window(days, 'respiratoryRate', { today, fromDaysAgo: 14, toDaysAgo: 0 });
-  const system = { id: 'oxygen', label: 'Blood oxygen', sources: ['Apple Watch', 'JC Ring'], view: 'health' };
+  const system = { id: 'oxygen', label: 'Blood oxygen', sources: ['Apple Watch'], view: 'health' };
   if (recent.length < 7) return { system: { ...system, status: 'unknown', value: null, sub: 'Not enough readings' }, insight: null };
   const med = round(median(recent), 1);
   const was = earlier.length >= 30 ? round(median(earlier), 1) : null;
-  const ringO2 = ring?.spo2 && Number.isFinite(ring.spo2.value) && ring.spo2.ageHours != null && ring.spo2.ageHours <= 24 * 7 ? ring.spo2 : null;
-  const sub = [`14-day median${was != null ? ` · ${was}% 4–12 months ago` : ''}`, ringO2 ? `ring ${ringO2.value}%` : null].filter(Boolean).join(' · ');
+  const sub = `14-day median${was != null ? ` · ${was}% 4–12 months ago` : ''}`;
   const systemOut = { ...system, value: String(med), unit: '%', sub };
   if (med >= SPO2_TYPICAL_FLOOR) return { system: { ...systemOut, status: 'good' }, insight: null };
   const evidence = [{ source: 'Apple Watch', text: `${med}% median over ${recent.length} days` }];
   if (was != null) evidence.push({ source: 'Apple Watch', text: `${was}% median 4–12 months ago` });
-  if (ringO2) evidence.push({ source: 'JC Ring', text: `${ringO2.value}% latest reading` });
   if (resp.length) evidence.push({ source: 'Apple Watch', text: `respiratory rate ${round(median(resp), 1)}/min while asleep` });
   return {
     system: { ...systemOut, status: 'watch' },
     insight: {
       id: 'spo2-low', domain: 'oxygen', level: 'watch', view: 'health',
       title: `Watch blood oxygen is reading ${med}%`,
-      finding: `The Watch's 14-day median is under the usual ${SPO2_TYPICAL_FLOOR}%${was != null && was > med ? `, and it was ${was}% earlier in the year` : ''}.${ringO2 ? ` The ring's latest is ${ringO2.value}%, so the two devices disagree.` : ''}`,
+      finding: `The Watch's 14-day median is under the usual ${SPO2_TYPICAL_FLOOR}%${was != null && was > med ? `, and it was ${was}% earlier in the year` : ''}.`,
       action: 'Wrist oximeters often read low, so do not act on this alone. If you snore, wake unrefreshed or feel sleepy in the day, mention this to your GP alongside your blood pressure.',
       basis: `Healthy resting SpO2 is usually ${SPO2_TYPICAL_FLOOR}–100%.`,
       evidence,
@@ -554,8 +551,6 @@ function sourceRows({ sources, nowMs }) {
   return [
     row('Apple Watch', 'Heart rate, HRV, sleep, activity, SpO2, VO2 max', sources.watchMs, WATCH_STALE_HOURS),
     row('HiLo bracelet', 'Blood pressure, via Apple Health', sources.hiloMs, HILO_STALE_HOURS),
-    row('JC Ring', 'Heart rate, HRV, SpO2, skin temperature, vendor BP estimate', sources.ringMs, RING_STALE_HOURS,
-      Number.isFinite(sources.ringBattery) ? `battery ${sources.ringBattery}%` : null, 'jc-ring'),
     { name: 'Medical records', role: 'Test results, diagnoses, prescriptions', lastAt: sources.medicalLatest || null, ageHours: null,
       state: sources.medicalCount ? 'live' : 'none', extra: `${sources.medicalCount || 0} record${sources.medicalCount === 1 ? '' : 's'}`, view: 'medical' },
   ];
@@ -566,7 +561,7 @@ function sourceRows({ sources, nowMs }) {
  * a rule whose input is unread does not run and its system says so.
  */
 function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exertionRows = [], medical = null,
-  ring = null, nutrition: nutritionData = null, signals = [], sources = {}, unread = [] } = {}) {
+  nutrition: nutritionData = null, signals = [], sources = {}, unread = [] } = {}) {
   const insights = [];
   const systems = [];
   unread = unread.filter((u, i) => unread.findIndex((x) => x.input === u.input) === i);
@@ -594,7 +589,7 @@ function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exe
   run(['fitness', 'days'], { id: 'fitness', label: 'Cardio fitness' }, () => fitness({ fitnessData, days, exertionRows, today }));
   run(['days'], { id: 'activity', label: 'Activity' }, () => activity({ days, today }));
   run(['days'], { id: 'heart', label: 'Resting heart' }, () => heart({ days, today }));
-  run(['days'], { id: 'oxygen', label: 'Blood oxygen' }, () => oxygen({ days, today, ring }));
+  run(['days'], { id: 'oxygen', label: 'Blood oxygen' }, () => oxygen({ days, today }));
   run(['days'], { id: 'sleep', label: 'Sleep' }, () => sleep({ days, today }));
   run(['days'], { id: 'daylight', label: 'Daylight' }, () => daylight({ days, today }));
   if (!blocked.has('medical')) { const m = medicalGap({ medical }); if (m) insights.push(m); }
@@ -605,7 +600,7 @@ function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exe
       insights.push({ id: `source-${s.name}`, domain: 'sources', level: 'gap', view: s.view,
         title: `${s.name} has not reported for ${s.ageHours < 48 ? `${round(s.ageHours, 0)} hours` : `${round(s.ageHours / 24, 0)} days`}`,
         finding: `It provides ${s.role.toLowerCase()}. Anything above that relies on it is older than it looks.`,
-        action: s.name === 'JC Ring' ? 'Open NEURO on the phone near the ring to sync it.' : `Check ${s.name} is worn and syncing.`,
+        action: `Check ${s.name} is worn and syncing.`,
         basis: null, evidence: [] });
     }
   }
@@ -640,7 +635,7 @@ function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exe
     systems,
     sources: sourceList,
     complete: unread.length === 0,
-    note: 'Pulled from Apple Health (Watch, HiLo and your food log), the JC Ring, medical records and the exertion model. It shows measurements and trends, and is not a diagnosis.',
+    note: 'Pulled from Apple Health (Watch, HiLo and your food log), medical records and the exertion model. It shows measurements and trends, and is not a diagnosis.',
   };
 }
 
@@ -661,7 +656,6 @@ function read({ now = new Date() } = {}) {
   const attempt = (input, fn, fallback) => {
     try { return fn(); } catch (e) { unread.push({ input, why: e.message }); return fallback; }
   };
-  const db = require('../db/database');
   const days = attempt('days', () => require('./health-daily').recentDays(400), []);
   const perf = attempt('performance', () => require('./exertion').summary(now), null);
   const exertionRows = attempt('performance', () => require('./exertion').recent(35), []);
@@ -681,24 +675,15 @@ function read({ now = new Date() } = {}) {
   const sources = attempt('sources', () => {
     const latest = require('./health-samples').latest({ now });
     const bp = require('./health-samples').latestBloodPressure({ now });
-    const ringHr = db.getLatestJCRingSample('heart_rate');
-    const ringBattery = db.getLatestJCRingSample('battery_level_percent');
     return {
       watchMs: toMs(latest?.latest?.heartRateMedian?.at),
       hiloMs: bp && bp.known ? toMs(bp.at) : null,
-      ringMs: toMs(ringHr?.received_at || ringBattery?.received_at),
-      ringBattery: ringBattery ? ringBattery.value : null,
       medicalCount: medical ? medical.total : 0,
       medicalLatest: medical ? medical.latest : null,
     };
   }, {});
-  const ring = attempt('ring', () => {
-    const o2 = db.getLatestJCRingSample('blood_oxygen_saturation');
-    const ms = o2 ? toMs(o2.received_at) : null;
-    return { spo2: o2 ? { value: o2.value, ageHours: ms ? (nowMs - ms) / 3600000 : null } : null };
-  }, null);
 
-  return compose({ today: localDayKey(now), nowMs, days, perf, fitnessData, exertionRows, medical, ring,
+  return compose({ today: localDayKey(now), nowMs, days, perf, fitnessData, exertionRows, medical,
     nutrition: nutritionData, signals, sources, unread });
 }
 
