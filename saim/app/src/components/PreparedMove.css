@@ -1,26 +1,136 @@
-/* SAiM's one prepared decision. Uses the situation's own ink, so it reads as
-   her speaking, not a card dropped on top. No polish pass — hierarchy only. */
-.pm { margin: 1.25rem 0 0.5rem; max-width: 46rem; color: var(--sit-ink); }
-.pm__headline { font-size: 1.15rem; line-height: 1.4; margin: 0 0 0.35rem; }
-.pm__open, .pm__detail, .pm__why { margin: 0 0 0.6rem; color: var(--sit-soft); line-height: 1.45; }
-.pm__label { margin: 0.9rem 0 0.3rem; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sit-quiet); }
-.pm__open ul, .pm__writes, .pm__receipt, .pm__evidence { margin: 0; padding-left: 1.1rem; line-height: 1.45; }
-.pm__sub { color: var(--sit-quiet); font-size: 0.9rem; }
-.pm__act { margin: 1rem 0; padding: 0.9rem 1rem; border-left: 2px solid rgba(var(--saim-rgb, 120, 160, 255), 0.6); background: rgba(255, 255, 255, 0.03); }
-.pm__act--stopped, .pm__act--partial { border-left-color: #f0d6a6; } /* GAP: notice this, nothing is broken */
-.pm__act--done { border-left-color: #5ad18f; } /* done / landed */
-.pm__ask { margin: 0 0 0.5rem; font-weight: 600; }
-.pm__options { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.2rem 0 0.4rem; }
-.pm__option { display: inline-flex; align-items: center; gap: 0.35rem; }
-.pm__locked { margin: 0.7rem 0 0; color: #f0d6a6; } /* GAP: ready for review, nothing is broken */
-.pm__buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
-.pm__btn { font: inherit; padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); background: transparent; color: inherit; cursor: pointer; }
-.pm__btn--yes { border-color: rgba(var(--saim-rgb, 120, 160, 255), 0.8); }
-.pm__btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.pm__more { margin: 0.4rem 0; }
-.pm__more summary { cursor: pointer; color: var(--sit-soft); }
-.pm__draft { white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; max-height: 24rem; overflow: auto; padding: 0.6rem; background: rgba(0, 0, 0, 0.25); }
-.pm__ok strong { color: #5ad18f; }
-.pm__notok strong { color: #f0d6a6; }
-@media (max-width: 600px) { .pm { margin-top: 1rem; } .pm__headline { font-size: 1.05rem; } }
+/* SAiM's prepared moment. One relationship, read in one look:
+     the page she made → the time she would protect → the meeting it serves
+     → one choice.
+   The page is the object; her light is the only thing joining it to the time
+   and the meeting. No card, no glass, no dashboard. */
+
+.pmo { width: 100%; max-width: 54rem; margin: 1.4rem 0 0.75rem; color: var(--sit-ink, #e6edf3); }
+.pmo__say { margin: 0 0 0.9rem; font-size: 1.12rem; line-height: 1.45; max-width: 44rem; }
+.pmo__sub { color: var(--sit-quiet, #8b98a8); font-size: 0.9rem; }
+
+/* ── The stage: page, then (beside it on a wide screen) the path and the choice */
+.pmo__stage { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.pmo__stage--held { max-width: 36rem; }
+@media (min-width: 820px) {
+  .pmo__stage:not(.pmo__stage--held) { grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem); }
+}
+
+/* The page: paper-toned, real text, a quiet shadow. A FRAGMENT until asked. */
+.pmo__page {
+  position: relative;
+  background: #f2eee5; color: #1f2328;
+  border-radius: 3px; padding: 1rem 1.15rem 0.9rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 34px rgba(0, 0, 0, 0.45);
+  font-size: 0.9rem; line-height: 1.45;
+}
+.pmo__pagetag { margin: 0 0 0.3rem; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6f5c; }
+.pmo__pagetitle { margin: 0 0 0.6rem; font: 600 1.16rem/1.3 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif; }
+.pmo__sec { margin: 0 0 0.7rem; }
+.pmo__sechead { margin: 0 0 0.2rem; font-weight: 600; font-size: 0.86rem; display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+.pmo__cite { font-weight: 400; font-size: 0.7rem; color: #7a6f5c; border-bottom: 1px dotted #dcd5c7; }
+.pmo__sec ul, .pmo__cont { margin: 0; padding-left: 1.05rem; }
+.pmo__cont { margin-bottom: 0.7rem; }
+.pmo__gapline { color: #8a5a12; font-style: italic; }
+
+/* "Read the full draft": the page fades into it rather than stopping dead. */
+.pmo__full { margin: -1.5rem 0 0; position: relative; }
+.pmo__full:not([open]) { padding-top: 1.5rem; background: linear-gradient(rgba(242, 238, 229, 0), #f2eee5 1.4rem); }
+.pmo__full[open] { margin-top: 0.2rem; }
+.pmo__full summary { cursor: pointer; font-size: 0.82rem; color: #7a6f5c; list-style: none; padding: 0.15rem 0 0.45rem; }
+.pmo__full summary::-webkit-details-marker { display: none; }
+.pmo__full summary::after { content: ' ↓'; }
+.pmo__full[open] summary::after { content: ' ↑'; }
+
+.pmo__decisions table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.pmo__decisions th, .pmo__decisions td { text-align: left; padding: 0.22rem 0.4rem 0.22rem 0; border-bottom: 1px solid #dcd5c7; vertical-align: top; }
+.pmo__decisions thead th { font-weight: 600; font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; color: #7a6f5c; }
+.pmo__decisions tbody th { font-weight: 600; white-space: nowrap; }
+
+/* Still human: written on the page itself, as what the draft cannot settle. */
+.pmo__open { display: inline-block; padding: 0 0.45rem; border: 1px dashed #b7791f; border-radius: 3px; color: #8a5a12; font-size: 0.74rem; line-height: 1.6; background: rgba(240, 214, 166, 0.25); }
+.pmo__human { margin: 0.2rem 0 0; padding-top: 0.6rem; border-top: 1px solid #dcd5c7; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.pmo__humanlabel { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6f5c; }
+.pmo__human .pmo__open { font-size: 0.86rem; font-weight: 600; padding: 0.05rem 0.55rem; }
+
+/* ── The path: her light, out of the page, through the time, to the meeting. */
+.pmo__aside { position: relative; padding: 1.5rem 0 0; }
+.pmo__aside::before {
+  content: ''; position: absolute; left: 4px; top: 0; width: 1px; height: calc(1.5rem + 0.95rem);
+  background: linear-gradient(rgba(var(--saim-rgb, 120, 160, 255), 0.15), rgba(var(--saim-rgb, 120, 160, 255), 0.85));
+}
+.pmo__path { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.9rem; }
+.pmo__node { position: relative; padding-left: 1.05rem; display: flex; flex-direction: column; min-width: 0; }
+.pmo__node::before {
+  content: ''; position: absolute; left: 0; top: 0.85rem; width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid rgba(var(--saim-rgb, 120, 160, 255), 0.9); background: #141b24;
+}
+.pmo__node--slot::before { background: rgba(var(--saim-rgb, 120, 160, 255), 0.95); box-shadow: 0 0 10px rgba(var(--saim-rgb, 120, 160, 255), 0.8); }
+.pmo__node--placed::before { background: #5ad18f; border-color: #5ad18f; box-shadow: 0 0 8px rgba(90, 209, 143, 0.6); }
+/* The line from one point to the next (sideways on a phone). */
+.pmo__node:not(:last-child)::after {
+  content: ''; position: absolute; top: calc(0.85rem + 4px); left: 13px; right: calc(-0.9rem - 4px); height: 1px;
+  background: linear-gradient(90deg, rgba(var(--saim-rgb, 120, 160, 255), 0.85), rgba(var(--saim-rgb, 120, 160, 255), 0.25));
+}
+.pmo__nodekick { font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--sit-quiet, #8b98a8); line-height: 1.3; }
+.pmo__nodewhen { margin-top: 0.25rem; font-size: 1rem; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.pmo__node--slot .pmo__nodewhen { font-weight: 600; }
+.pmo__nodewhat { font-size: 0.86rem; color: var(--sit-soft, #b7c2d0); line-height: 1.35; }
+.pmo__nodemark { margin-top: 0.25rem; font-size: 0.76rem; color: #5ad18f; }
+
+@media (min-width: 820px) {
+  .pmo__aside { padding: 2.1rem 0 0 2.4rem; }
+  .pmo__aside::before {
+    left: 0; top: calc(2.1rem + 0.85rem + 4px); width: calc(2.4rem + 1px); height: 1px;
+    background: linear-gradient(90deg, rgba(var(--saim-rgb, 120, 160, 255), 0.15), rgba(var(--saim-rgb, 120, 160, 255), 0.85));
+  }
+  .pmo__path { grid-template-columns: 1fr; gap: 1.5rem 0; }
+  .pmo__node:not(:last-child)::after {
+    top: calc(0.85rem + 10px); left: 4px; right: auto; bottom: calc(-1.5rem - 0.85rem); width: 1px; height: auto;
+    background: linear-gradient(rgba(var(--saim-rgb, 120, 160, 255), 0.85), rgba(var(--saim-rgb, 120, 160, 255), 0.25));
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pmo__node--slot:not(.pmo__node--placed)::before { animation: pmo-breathe 5.5s ease-in-out infinite; }
+  @keyframes pmo-breathe { 50% { box-shadow: 0 0 16px rgba(var(--saim-rgb, 120, 160, 255), 0.95); } }
+}
+
+/* ── The one choice, directly under where the work goes. */
+.pmo__choice { margin: 1.1rem 0 0; }
+.pmo__act { margin: 0; }
+.pmo__act--confirm, .pmo__act--done, .pmo__act--partial, .pmo__act--stopped { padding: 0.85rem 1rem; border-left: 2px solid rgba(var(--saim-rgb, 120, 160, 255), 0.7); background: rgba(255, 255, 255, 0.03); }
+.pmo__act--stopped, .pmo__act--partial { border-left-color: #f0d6a6; }
+.pmo__act--done { border-left-color: #5ad18f; }
+.pmo__actlead { margin: 0 0 0.3rem; font-weight: 600; }
+.pmo__act p { line-height: 1.45; }
+.pmo__ask { margin: 0 0 0.55rem; font-weight: 600; line-height: 1.4; }
+.pmo__writes, .pmo__receipt, .pmo__evidence { margin: 0 0 0.5rem; padding-left: 1.1rem; line-height: 1.45; }
+.pmo__buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.pmo__btn { font: inherit; padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); background: transparent; color: inherit; cursor: pointer; }
+.pmo__btn--yes { border-color: rgba(var(--saim-rgb, 120, 160, 255), 0.9); background: rgba(var(--saim-rgb, 120, 160, 255), 0.16); font-weight: 600; }
+.pmo__act--ready .pmo__btn--yes { padding: 0.7rem 1.1rem; }
+@media (max-width: 819px) { .pmo__act--ready .pmo__btn--yes { width: 100%; } }
+.pmo__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pmo__other summary, .pmo__proof summary { cursor: pointer; color: var(--sit-soft, #b7c2d0); }
+.pmo__options { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.4rem 0; }
+.pmo__option { display: inline-flex; gap: 0.35rem; align-items: center; }
+.pmo__locked { margin: 0.55rem 0 0; color: #f0d6a6; font-size: 0.88rem; }
+.pmo__ok strong { color: #5ad18f; }
+.pmo__notok strong { color: #f0d6a6; }
+
+/* ── Proof ───────────────────────────────────────────────────────────────── */
+.pmo__proof { margin: 1.1rem 0 0; max-width: 44rem; }
+.pmo__proof p, .pmo__proof ul { line-height: 1.45; }
+.pmo__prooflabel { margin: 0.8rem 0 0.25rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sit-quiet, #8b98a8); }
+.pmo__draft { white-space: pre-wrap; word-break: break-word; font-size: 0.82rem; max-height: 22rem; overflow: auto; padding: 0.6rem; background: rgba(0, 0, 0, 0.3); }
+
+@media (max-width: 600px) {
+  .pmo { margin-top: 1rem; }
+  .pmo__say { font-size: 1.04rem; }
+  .pmo__page { padding: 0.9rem 0.95rem 0.8rem; }
+}
+
 .pm__dev { font: 0.75rem/1.4 ui-monospace, monospace; color: var(--sit-quiet); white-space: pre-wrap; margin: 0.5rem 0; }
+
+/* Directly under the state it leads with (the situation headline), no extra gap. */
+.sit--moment-leads .pmo { margin-top: 0.4rem; }
+@media (max-width: 600px) { .sit--moment-leads .pmo__say { font-size: 0.98rem; margin-bottom: 0.7rem; } }

@@ -126,6 +126,21 @@ function readLaunchIntent() {
   };
 }
 
+/** Is this a wide (desktop) window? The same breakpoint App.css uses for the one bar. */
+const WIDE_QUERY = '(min-width: 900px)';
+function useWide() {
+  const read = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(WIDE_QUERY).matches : false);
+  const [wide, setWide] = useState(read);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia(WIDE_QUERY);
+    const on = () => setWide(mq.matches);
+    mq.addEventListener ? mq.addEventListener('change', on) : mq.addListener(on);
+    return () => (mq.removeEventListener ? mq.removeEventListener('change', on) : mq.removeListener(on));
+  }, []);
+  return wide;
+}
+
 function clearLaunchIntentFromUrl() {
   if (typeof window === 'undefined') return;
   const next = new URL(window.location.href);
@@ -150,9 +165,14 @@ export default function App() {
   // the thing that pinged him, not on the home screen. This is only the default
   // when he opened the app himself.
   const [active, setActive] = useState(() => readLaunchIntent()?.tab || DEFAULT_TAB);
-  // The strip is revealed on request, and stays revealed while Nick is off the
-  // Surface — otherwise the one screen with no menu is also the only way back.
+  // The strip is revealed on request. On a WIDE screen it stays revealed while
+  // Nick is off the Surface, as part of the one bar; on a PHONE a secondary
+  // screen is a pushed view with its own Back, so the strip is only ever a
+  // transient menu — never a second persistent bar above Capture/Now/Review.
   const [navOpen, setNavOpen] = useState(false);
+  const wide = useWide();
+  // Where Back goes from a pushed secondary screen on the phone.
+  const [backTo, setBackTo] = useState(null);
   // What SAiM said when she pinged him, carried onto the Surface so tapping a
   // notification lands somewhere that acknowledges WHY he is there. Without it
   // the push and the screen are two unconnected events.
@@ -216,14 +236,30 @@ export default function App() {
 
   // Any navigation that did not come from a notification drops the remembered
   // kind — a 5pm EOD nudge must not still be steering the Ritual tab tomorrow.
-  function goTab(tab) {
+  function goTab(tab, { fromHistory = false } = {}) {
+    // Entering a secondary screen remembers where Back returns to.
+    if (revealsSecondary(tab) && !revealsSecondary(active)) setBackTo(active);
     setActive(tab);
     setIntentKind(null);
     setArrivedFrom(null);
-    // Landing on a primary mode puts the extra row away again; it is meant to be
-    // an escape hatch, not a thing that creeps back into being the navigation.
-    if (PRIMARY.some((t) => t.id === tab)) setNavOpen(false);
+    // Choosing ANY screen puts the menu away: it is a menu, not a second bar.
+    // (On a wide screen the row stays visible while on a secondary screen —
+    // that is `wide && isSecondary` below, not this flag.)
+    setNavOpen(false);
+    // The phone's own back gesture / browser Back returns through the same path.
+    if (!fromHistory && tab !== active) { try { window.history.pushState({ saimTab: tab }, ''); } catch { /* no history */ } }
   }
+
+  useEffect(() => {
+    try { window.history.replaceState({ ...(window.history.state || {}), saimTab: active }, ''); } catch { /* no history */ }
+    function onPop(e) {
+      const t = e.state && e.state.saimTab;
+      goTab(VALID_TABS.has(t) ? t : DEFAULT_TAB, { fromHistory: true });
+    }
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function refreshApp() {
     if (refreshing) return;
@@ -276,7 +312,11 @@ export default function App() {
   }, [active]);
 
   const isSecondary = revealsSecondary(active);
-  const moreVisible = navOpen || isSecondary;
+  // Wide: one bar, the row part of it while off the Surface. Phone: the row is
+  // a transient menu only; a secondary screen carries its own Back instead.
+  const moreVisible = navOpen || (wide && isSecondary);
+  const pushed = !wide && isSecondary;
+  const labelOf = (id) => (TABS.find((t) => t.id === id) || {}).label || 'SAiM';
 
   if (runtime.deploymentIssue) return <DeploymentGuard />;
 
@@ -351,6 +391,15 @@ export default function App() {
       </header>
 
       <main className="app__view">
+        {pushed && (
+          // A pushed secondary screen: its name, and the way back to where he was.
+          <div className="app__back">
+            <button type="button" className="app__backbtn" onClick={() => goTab(backTo || DEFAULT_TAB)} aria-label={`Back to ${labelOf(backTo || DEFAULT_TAB)}`}>
+              <span aria-hidden="true">‹</span> Back
+            </button>
+            <span className="app__backtitle">{labelOf(active)}</span>
+          </div>
+        )}
         {actionIntent && (
           <NotificationActionCard
             intent={actionIntent}
@@ -377,7 +426,13 @@ export default function App() {
       {/* ⚠ `.app__nav[hidden]{display:none}` is load-bearing — the rule above it
           is display:flex, which beats the bare `hidden` attribute. Without it
           the secondary row renders permanently open. */}
-      <nav className="app__nav app__nav--more" aria-label="Everything else" hidden={!moreVisible}>
+      <nav
+        id="saim-more"
+        className={`app__nav app__nav--more${wide ? '' : ' app__nav--menu'}`}
+        aria-label="Everything else"
+        hidden={!moreVisible}
+        onKeyDown={(e) => { if (e.key === 'Escape' && navOpen) setNavOpen(false); }}
+      >
         {SECONDARY.filter(canShowTab).map((t) => (
           <button
             key={t.id}
@@ -407,8 +462,10 @@ export default function App() {
         ))}
         <button
           type="button"
-          className={`navbtn${moreVisible ? ' navbtn--on' : ''}`}
+          className={`navbtn${moreVisible || pushed ? ' navbtn--on' : ''}`}
           aria-expanded={moreVisible}
+          aria-controls="saim-more"
+          aria-label={pushed ? `More — now on ${labelOf(active)}` : 'More'}
           onClick={() => setNavOpen((open) => !open)}
         >
           <span className="navbtn__icon" aria-hidden="true">⋯</span>

@@ -157,9 +157,17 @@ function resetWorld() {
   S.over = {}; S.realDiary = false; S.adapterBuilds = 0; S.checkBuilds = 0;
   fs.rmSync(NOTE_ABS, { force: true });
   db.run(`DELETE FROM external_write_ledger WHERE idempotency_key LIKE 'saim-move:%'`);
+  budget._test.reset(); // every allowance back to zero
   freshMove();
 }
-const withSwitch = async (fn) => { flags.setEnabled('saim_prepared_move_execution', true); try { return await fn(); } finally { flags.setEnabled('saim_prepared_move_execution', false); } };
+const budget = require('../services/authority-budget');
+// "Switched on" means BOTH gates: the device lock open AND an allowance for today.
+// (The allowance persists across a retry inside one test; resetWorld clears it.)
+const withSwitch = async (fn) => {
+  flags.setEnabled('saim_prepared_move_execution', true);
+  if (!budget.status().grant) budget._test.grantToday();
+  try { return await fn(); } finally { flags.setEnabled('saim_prepared_move_execution', false); }
+};
 
 // ── Default off ──────────────────────────────────────────────────────────────
 

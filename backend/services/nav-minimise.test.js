@@ -62,7 +62,29 @@ test('⚠ the way back is still there — the strip is hidden, never deleted', (
   for (const [name, file] of Object.entries(shells)) {
     const src = fs.readFileSync(file, 'utf8');
     assert.match(src, /onShowAll=\{\(\) => setNavOpen\(true\)\}/, `${name}: the escape hatch is gone`);
-    assert.match(src, /const moreVisible = navOpen \|\| isSecondary;/,
-                 `${name}: the strip no longer stays up while he is off the Surface`);
   }
+  // The kiosk (a wall, one viewport) keeps the strip up while off the Surface.
+  assert.match(fs.readFileSync(shells.kiosk, 'utf8'), /const moreVisible = navOpen \|\| isSecondary;/,
+               'kiosk: the strip no longer stays up while he is off the Surface');
+});
+
+test('⚠ ONE persistent navigation per viewport on the phone shell (20 Oct 2026) — and the way back survives', () => {
+  // On a phone the strip is a transient MENU; a secondary screen is PUSHED with
+  // its own Back. On a wide screen the strip is part of the one bar while he is
+  // off the Surface. Either way he can always get back.
+  const src = fs.readFileSync(shells.phone, 'utf8');
+  assert.match(src, /const moreVisible = navOpen \|\| \(wide && isSecondary\);/, 'phone: the strip must not persist as a second bar on a phone');
+  assert.match(src, /const pushed = !wide && isSecondary;/);
+  assert.match(src, /\{pushed && \(/, 'a pushed screen draws its own way back');
+  assert.match(src, /className="app__backbtn" onClick=\{\(\) => goTab\(backTo \|\| DEFAULT_TAB\)\} aria-label=\{`Back to \$\{labelOf\(backTo \|\| DEFAULT_TAB\)\}`\}/, 'Back is a real, labelled button');
+  assert.match(src, /aria-controls="saim-more"/, 'More says what it controls');
+  assert.match(src, /id="saim-more"/);
+  assert.match(src, /e\.key === 'Escape' && navOpen\) setNavOpen\(false\)/, 'Escape closes the menu');
+  assert.match(src, /window\.history\.pushState\(\{ saimTab: tab \}/, 'the phone’s own Back gesture returns through the same path');
+  assert.match(src, /addEventListener\('popstate'/);
+  // Choosing any screen puts the menu away (it is a menu, not a bar).
+  assert.match(src, /function goTab\(tab[^)]*\) \{[\s\S]*?setNavOpen\(false\);/);
+  // The wide breakpoint is the one App.css uses for the one bar.
+  assert.match(src, /const WIDE_QUERY = '\(min-width: 900px\)';/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'app', 'src', 'App.css'), 'utf8'), /@media \(min-width: 900px\)[\s\S]*ONE NAVIGATION BAR ON A WIDE SCREEN/);
 });

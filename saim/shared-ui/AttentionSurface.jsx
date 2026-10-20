@@ -171,6 +171,9 @@ export default function AttentionSurface({
   // SAiM's one prepared decision (19 Oct 2026), straight after her situation.
   // Only the phone passes it; a shell that does not renders exactly as before.
   prepared = null,
+  // What kind of prepared moment is showing (PreparedMove.momentOf) — so the
+  // situation never calls the day quiet over an actionable move.
+  preparedMoment = null,
   footAside = null,
   footExtra = null,
   // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
@@ -578,6 +581,7 @@ export default function AttentionSurface({
           ask={prof === 'kiosk' && !(typeof window !== 'undefined' && /[?&]mic=1/.test(window.location.search || '')) ? null : deviceSlot}
           note={footAside}
           prepared={prepared}
+          preparedMoment={preparedMoment}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />
       </div>

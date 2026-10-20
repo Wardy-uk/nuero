@@ -25,6 +25,14 @@ export const interactive = {
   get_prepared_moves_current: 'What SAiM has prepared is shown to Nick on his SAiM screen, where he can act on it. An agent cannot read it on his behalf.',
   post_prepared_moves_request: 'Asking to confirm a prepared move is Nick, in NEURO, looking at exactly what it would write. An agent cannot do it.',
   post_prepared_moves_confirm: 'Confirming a prepared move writes to Nick\'s calendar and vault. Only Nick can confirm it, in NEURO.',
+  // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
+  get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',
+  post_saim_authority_grant_preview: 'Giving SAiM authority to act is Nick, in SAiM, reading exactly what it would allow. An agent cannot do it.',
+  post_saim_authority_grant: 'Giving SAiM authority to act is Nick’s decision, made in SAiM. An agent cannot do it.',
+  post_saim_authority_revoke: 'Taking SAiM’s allowance away is done by Nick in SAiM.',
+  post_saim_authority_stop: 'Stopping SAiM’s actions is done by Nick in SAiM.',
+  post_saim_authority_resume_preview: 'Resuming SAiM’s actions is Nick’s decision, made in SAiM.',
+  post_saim_authority_resume: 'Resuming SAiM’s actions is Nick’s decision, made in SAiM.',
   post_prepared_actions_by_id_reject:'Rejecting a drafted action is recorded as Nick\'s decision. He rejects it in NEURO → Actions.',
   // The legacy approval queue. Since Build 8 it sends nothing outbound (those
   // types answer 410), but approving still runs internal executors and is

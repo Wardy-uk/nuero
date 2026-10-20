@@ -104,6 +104,7 @@ const STATUS_WORDS = {
   failed: 'not saved',
   refused: 'refused before anything was written',
   'removed-since': 'made earlier and since removed — not recreated',
+  stopped: 'not attempted — SAiM’s actions were stopped',
 };
 
 /** PURE. The receipt in plain lines — every word from the receipt itself. */

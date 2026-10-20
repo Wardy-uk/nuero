@@ -78,6 +78,18 @@ const VOCABULARY = new Map(Object.entries({
   '#141b24': 'panel, second surface',
   '#09111a': 'ground, notification card',
 
+  // ── The prepared page (20 Oct 2026) ────────────────────────────────────
+  // The prepared moment shows SAiM's draft as a real page — paper-toned, dark
+  // ink — so it reads as a document she made, not another panel. Its open
+  // decisions (still human) are a dashed amber slot ON the paper, darker than
+  // the GAP amber because it sits on a light ground.
+  '#f2eee5': 'prepared page: paper',
+  '#1f2328': 'prepared page: ink',
+  '#7a6f5c': 'prepared page: quiet ink (tags, column heads, citation mark)',
+  '#dcd5c7': 'prepared page: rules and citation underline',
+  '#8a5a12': 'prepared page: still human — an open decision, text',
+  '#b7791f': 'prepared page: still human — an open decision, dashed edge',
+
   // ⚠ The centrepiece surfaces (Approach / Shelf / Dashboard) carry their own
   // near-white and grey ramp. It is DECLARED rather than folded into the four
   // above: Nick tuned these by eye against the live field on a Fire tablet, a

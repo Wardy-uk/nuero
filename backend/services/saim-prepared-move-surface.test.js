@@ -19,6 +19,24 @@ const esbuild = require('esbuild');
 const APP = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src');
 const NOW = Date.parse('2026-10-19T15:15:00Z');
 
+// The draft, in the shape the live draft has (sections, a citation line per
+// section, the decisions table with every cell still to agree).
+const ART_MD = [
+  '# T1 — Triage and escalation acceptance criteria (DRAFT prepared by SAiM)',
+  '',
+  '> Publish triage and escalation acceptance criteria for every team',
+  '',
+  '## Every escalation must carry',
+  '- Current customer ask',
+  '- Named owner',
+  '  _from Projects/Support Improvement Plan/SIP - Support Teams Review (Original).md:1007_',
+  '',
+  '## What each team accepts',
+  '| Team | Accepts when | Rejects with |',
+  '|---|---|---|',
+  ...['Customer Care', 'Production', 'Tier 2', 'Tier 3', 'Development', 'Data', 'Infra'].map((t) => `| ${t} | _to agree_ | _to agree_ |`),
+].join('\n');
+
 // ── A view as GET /api/prepared-moves/current returns it ─────────────────────
 const VIEW = {
   ok: true, contract: 'prepared-move-view-v1', generatedAt: '2026-10-19T15:15:00Z',
@@ -37,7 +55,9 @@ const VIEW = {
     notOffered: [],
     contacts: 'Nobody else is contacted: no invite, email or message. The shared board and your reply to the meeting invite are left alone.',
     nothingElse: 'Nothing else changes: no email, invite, task, board card, goal or notification.',
-    draft: { title: 'T1', path: 'Projects/Support Improvement Plan/SIP - T1 Acceptance Criteria (draft).md', markdown: '# T1 — draft\n| Customer Care | _to agree_ | _to agree_ |' },
+    draft: { title: 'T1', path: 'Projects/Support Improvement Plan/SIP - T1 Acceptance Criteria (draft).md', markdown: ART_MD },
+    // The page, exactly as the server parses it from the draft.
+    artefact: require('./prepared-move-artefact').artefactFrom(ART_MD),
     evidence: [{ fact: '"every escalation must show the current customer ask"', kind: 'vault', observedAt: '2026-10-19T15:15:00Z', caveat: null }],
     why: { because: ['Its Planner date has passed (observed).'], goal: 'Arrive with T1 drafted.', doneWhen: 'Agreed in the meeting.', willNot: ['Email, message or invite anyone'] },
     forum: { title: 'Support Improvement Plan', start: '2026-10-21T16:00' },
@@ -124,25 +144,65 @@ const primary = (h) => text(h.replace(/<details[\s\S]*?<\/details>/g, ''));
 /** Implementation words that must never reach Nick's surface. */
 const VOCAB = /SAIM_|saim_prepared|PREPARED_MOVE|execution|lockedByEnv|env\b|environment|\bflag\b|switched off|locked off|\bdev\b|dev-|\bmobile\b|\bAPI\b|\/api\/|grantId|recordId|writeHash|budget/i;
 
-test('ready: the primary view is five things — prepared, the open decision, the question, the two changes, one button', async () => {
+test('ready: the prepared MOMENT — what SAiM made, what is still human, one choice, proof folded — in that order', async () => {
   const s = await flow.load(fakeCall({ 'GET /api/prepared-moves/current': { status: 200, body: VIEW } }));
   const h = html(s); const p = primary(h);
-  assert.equal(p.trim(), [
+  const order = [
     'I’ve drafted triage and escalation acceptance criteria for Support Improvement Plan on Wednesday 21 Oct.',
-    'What each team accepts is not agreed yet for 7 teams.',
-    'Reserve 30 minutes on Tuesday 20 Oct (10:25–10:55) and save the draft?',
-    'Add “Triage and escalation criteria draft” to your calendar, Tuesday 20 Oct 10:25–10:55. Just you — nobody is invited.',
-    'Save the draft as a new note: Projects/Support Improvement Plan/SIP - T1 Acceptance Criteria (draft).md',
+    // Prepared: a FRAGMENT of the page — its title and first lines — not the whole draft.
+    'Triage and escalation acceptance criteria',
+    'Every escalation must carry from your notes Current customer ask Named owner',
+    // Human judgement remaining, written on the page, counted from the draft's own table.
+    'Still human 7 team decisions to agree',
+    // The protected opportunity, then the real moment it serves.
+    'Time to protect Tue 20 Oct · 10:25–10:55 30 minutes, just you',
+    'The meeting Wed 21 Oct · 16:00 Support Improvement Plan',
+    // One decision.
+    'Protect the time and save the draft',
     'This is ready to review. Changes aren’t enabled here yet.',
-    'Ask to confirm',
-  ].join(' '), 'exactly this, in this order — nothing else outside a disclosure');
-  // Behind disclosures: why, the team list, the draft, the evidence, authority, other times.
-  for (const s2 of ['Why this, and what SAiM won’t do', 'Read the draft', 'What this is based on', 'Other times']) assert.match(h, new RegExp(`<summary>${s2}</summary>`));
+  ];
+  let at = -1;
+  for (const piece of order) {
+    const i = p.indexOf(piece, at + 1);
+    assert.ok(i > at, `in order: "${piece}"\n— in: ${p}`);
+    at = i;
+  }
+  assert.equal((h.match(/class="pmo__open"/g) || []).length, 15, 'the count on the page, and every one of the seven teams’ two decisions open inside the full draft');
+  assert.match(h, /<summary>Read the full draft<\/summary>/);
+  assert.doesNotMatch(p, /Customer Care|Accepts when/, 'the whole document does not land before the relationship does');
+  assert.match(h, /<summary>Proof — how this was made<\/summary>/);
+  assert.match(h, /<summary>Another time<\/summary>/);
   assert.ok(!/<details[^>]*open/.test(h), 'all folded');
   const t = text(h);
-  assert.match(t, /T1 has passed two dates/); assert.match(t, /Customer Care, Production/); assert.match(t, /Nobody else is contacted/);
-  assert.doesNotMatch(h, /pm__act--(done|partial)|>Done<|>Partly done</, 'no success state before anything ran');
+  assert.match(t, /T1 has passed two dates/); assert.match(t, /Nobody else is contacted/);
+  assert.doesNotMatch(p, /Save the draft as a new note|to your calendar,/, 'the exact write list waits for the confirmation step');
+  assert.doesNotMatch(h, /pmo__act--(done|partial)|>Done<|>Partly done<|read back|Saved in your notes|In your calendar/, 'no success state, and no object claims to be placed, before anything ran');
   assert.ok(!t.includes('Weekly risk'), 'no withheld item');
+});
+
+test('the objects only claim to be placed when the receipt says so', () => {
+  const r = (calendar, note) => ({ kind: 'receipt', view: VIEW, option: 'approve', receipt: { complete: calendar === 'done' && note === 'done', plain: 'x', next: 'Nothing else will be done.', steps: [{ step: 'calendar', status: calendar }, { step: 'note', status: note }] } });
+  let h = html(r('done', 'failed'));
+  assert.match(h, /In your calendar · read back/); assert.doesNotMatch(h, /Saved in your notes/);
+  h = html(r('failed', 'done'));
+  assert.doesNotMatch(h, /In your calendar/); assert.match(h, /Saved in your notes · read back/);
+  h = html(r('done', 'stopped'));
+  assert.match(text(h), /Draft note ?: not attempted — SAiM’s actions were stopped/);
+  assert.doesNotMatch(h, /Saved in your notes/);
+  h = html({ ...r('done', 'done'), receipt: { ...r('done', 'done').receipt, target: 'sandbox', complete: true } });
+  assert.match(text(h), /Done — practice run, nothing real was changed/);
+  assert.match(h, /Practice run · placed and read back/); assert.match(h, /Practice run · saved and read back/);
+  assert.doesNotMatch(h, /In your calendar|Saved in your notes/, 'a practice run never claims his real calendar or notes');
+});
+
+test('a budget refusal at confirm is the server’s own words, and nothing is claimed', () => {
+  const say = 'Today’s allowance has no calendar blocks left (1 of 1 used). Nothing was written and your confirmation was not used.';
+  const h = html({ kind: 'refused', view: VIEW, option: 'approve', message: say });
+  assert.match(text(h), /Today’s allowance has no calendar blocks left \(1 of 1 used\)\. Nothing was written/);
+  assert.doesNotMatch(h, /In your calendar|Saved in your notes|>Done</);
+  // And before the click, a confirmation that would not fit says so.
+  const req = { ...REQUEST, executionEnabled: true, authority: { canAct: true, stopped: false, deviceOpen: true, granted: true, fits: false, limit: 'minutes', say: 'This block is 45 minutes; today’s allowance has 30 minutes left.' } };
+  assert.match(text(html({ kind: 'confirming', view: VIEW, option: 'approve', request: req })), /This block is 45 minutes; today’s allowance has 30 minutes left\./);
 });
 
 test('no implementation vocabulary anywhere on the surface — in any state — unless the debug view is asked for', async () => {
@@ -260,7 +320,7 @@ test('a partial receipt says exactly what did and did not happen, and offers onl
 
 test('the Surface passes the move into SAiM’s presence, and the copy about the move is never hard-coded', () => {
   const surface = fs.readFileSync(path.join(APP, 'views', 'Surface.jsx'), 'utf8');
-  assert.match(surface, /prepared=\{<PreparedMove \/>\}/);
+  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} \/>\}/);
   const comp = fs.readFileSync(path.join(APP, 'components', 'PreparedMove.jsx'), 'utf8') + fs.readFileSync(path.join(APP, 'preparedMove.mjs'), 'utf8');
   assert.doesNotMatch(comp, /T1|Triage|Support Improvement|Mel\b|acceptance criteria/i, 'no move-specific words in the client');
   assert.doesNotMatch(comp, /localStorage|sessionStorage|indexedDB/, 'nothing about the move is kept on the device');
@@ -268,19 +328,23 @@ test('the Surface passes the move into SAiM’s presence, and the copy about the
 
 // ── Off duty / on leave: held ────────────────────────────────────────────────
 
-test('off duty: one quiet sentence and "See what I prepared" — no time, question, change list, button, confirmation or execution words', async () => {
+test('off duty: the prepared page, held, with one quiet sentence — no time, question, change list, button, confirmation or execution words', async () => {
   const SAY = 'I’ve prepared this for your next working morning.';
   const { contacts, nothingElse, notOffered, forum, evidenceExpiresAt, ...rest } = VIEW.move;
   const HELD = { ...VIEW, held: { reason: 'off-duty', say: SAY }, move: { ...rest, held: true, prepared: { headline: SAY, detail: null }, options: [] } };
   const s = await flow.load(fakeCall({ 'GET /api/prepared-moves/current': { status: 200, body: HELD } }));
   const h = html(s);
-  assert.equal(primary(h).trim(), SAY, 'outside the disclosure: exactly the held sentence');
-  assert.match(h, /<summary>See what I prepared<\/summary>/);
+  const p = primary(h).trim();
+  assert.ok(p.startsWith(SAY), 'the held sentence first');
+  assert.match(p, /Triage and escalation acceptance criteria/, 'the artefact itself is shown, held');
+  assert.match(p, /Still human 7 team decisions to agree/, 'what is still owed by people, on the page');
+  assert.match(h, /<summary>Read the full draft<\/summary>/); assert.match(h, /<summary>What I based it on<\/summary>/);
   assert.ok(!/<details[^>]*open/.test(h), 'folded');
   assert.ok(!/<button/.test(h), 'no button at all');
+  assert.doesNotMatch(h, /pmo__path|pmo__node|pmo__choice|pmo__aside/, 'no time, no meeting, no choice');
   const t = text(h);
-  assert.doesNotMatch(t, /Reserve|Ask to confirm|Confirm|Changes aren|enabled|minutes on|calendar,|Save the draft as/i);
-  assert.match(t, /# T1 — draft/, 'the draft is there behind the disclosure');
+  assert.doesNotMatch(t, /Reserve|Ask to confirm|Protect the time|Confirm|Changes aren|enabled|minutes on|calendar,|Save the draft as|One choice|Just you|Time to protect|The meeting|allowance|locked|unlock|won’t|invite/i);
+  assert.match(t, /Customer Care to agree to agree/, 'the whole draft is there, folded inside the page');
   assert.match(t, /every escalation must show the current customer ask/, 'and the evidence');
   assert.doesNotMatch(t, VOCAB);
 });

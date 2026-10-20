@@ -77,6 +77,12 @@ function unresolvedFrom(markdown) {
   return out;
 }
 
+const { artefactFrom, momentFor } = require('./prepared-move-artefact');
+
+function _authority(now) {
+  try { return require('./authority-budget').brief({ now }); } catch { return { canAct: false, stopped: false, deviceOpen: false, granted: false, summary: 'SAiM couldn’t read its allowance.' }; }
+}
+
 function _execution() {
   try {
     const f = require('./feature-flags').list().find((x) => x.key === exec.FLAG) || {};
@@ -106,7 +112,7 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
   deps = { ..._deps, ...Object.fromEntries(Object.entries(deps).filter(([, v]) => v)) };
   const started = clock();
   const execution = _execution();
-  const base = { ok: true, contract: CONTRACT, generatedAt: new Date(now).toISOString(), execution, budgetMs };
+  const base = { ok: true, contract: CONTRACT, generatedAt: new Date(now).toISOString(), execution, authority: _authority(now), budgetMs };
   // ⚠ `pending` is NOT "no move": the check did not finish in time (a cold
   // start, a busy moment), so the answer is unknown — the client may ask again.
   // `nothing-prepared` is a real answer and is never retried.
@@ -139,6 +145,7 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
   const draftTitle = ((/^#\s+(.+)$/m.exec(draftMd) || [])[1] || s.title).replace(/\s*\(DRAFT prepared by SAiM\)\s*$/i, '').trim();
   const notePath = first.steps[1].path;
   const folded = {
+    artefact: artefactFrom(draftMd),
     draft: { title: draftTitle, path: notePath, markdown: draftMd },
     evidence: (s.observed || []).map((o) => ({ fact: o.fact, kind: (o.source || {}).kind || null, observedAt: (o.source || {}).observedAt || null, caveat: o.caveat || null })),
     why: {
@@ -223,10 +230,12 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
       nothingElse: 'Nothing else changes: no email, invite, task, board card, goal or notification.',
       ...folded,
       forum,
+      // The Surface's state for an actionable move (never used when held).
+      moment: momentFor(forum),
       decidedAt: new Date(decidedMs).toISOString(),
       evidenceExpiresAt: expiresAt,
     },
   };
 }
 
-module.exports = { CONTRACT, BUDGET_MS, currentView, humanTitle, questionFor, unresolvedFrom, _setDeps };
+module.exports = { CONTRACT, BUDGET_MS, currentView, humanTitle, questionFor, unresolvedFrom, artefactFrom, _setDeps };

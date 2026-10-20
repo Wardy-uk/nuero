@@ -307,6 +307,12 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 .sit--phone .sit__headline { font-size: clamp(2.3rem, 10vw, 3rem); }
 .sit--phone .sit__summary { margin-top: 0.4rem; color: var(--sit-ink); opacity: 0.86; }
 .sit--phone .sit__objects { margin-bottom: 1.4rem; }
+/* When a prepared moment leads, its state is the headline, but the work itself
+   is the subject: a smaller headline and a shorter drop keep the page, the time,
+   the meeting and the one choice inside the first screen (20 Oct 2026). */
+.sit--phone.sit--moment-leads .sit__body { padding-top: 0.9rem; }
+.sit--phone.sit--moment-leads .sit__situation { margin-bottom: 0.4rem; }
+.sit--phone.sit--moment-leads .sit__headline { font-size: clamp(1.6rem, 7vw, 1.9rem); }
 
 /* ⚠ THE READING SCRIM (12.1L). Field.css's rule is that legibility is bought
    with the SCRIM, never by dimming the nodes: the ground is laid over the mesh
@@ -332,6 +338,12 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 .sit--desktop .sit__body { max-width: 46rem; padding: 0.5rem 0 0.5rem; }
 .sit--desktop .sit__headline { font-size: 2.3rem; }
 .sit--desktop .sit__next-btn { grid-template-columns: minmax(9rem, auto) 1fr; column-gap: 1rem; }
+/* A prepared moment on a wide screen (20 Oct 2026): the page, the protected
+   time and the meeting are one scene, so the situation they belong to moves to
+   the visual centre instead of sitting as a small cluster top-left. The column
+   is wide enough for page + path side by side; nothing else changes. */
+.sit--desktop.sit--with-moment .sit__body { max-width: 58rem; margin-inline: auto; padding-top: clamp(1rem, 7vh, 4.5rem); }
+.sit--desktop.sit--with-moment .sit__prepared .pmo { max-width: none; }
 
 /* Kiosk (5 Oct 2026): the wall carries the desktop's CONTENT now, so it takes
    the desktop's TYPE too. The across-the-room sizes (a 7.4rem uppercase

@@ -202,6 +202,9 @@ export default function Situation({
   lead = null,
   // SAiM's one prepared decision, drawn right under the situation (19 Oct 2026).
   prepared = null,
+  // What kind of prepared moment is showing: { kind: 'actionable', headline }
+  // or { kind: 'held' } (PreparedMove.momentOf), or null.
+  preparedMoment = null,
 }) {
   const plan = composeForSurface(presentation, profile);
   if (!presentation) return null;
@@ -216,6 +219,12 @@ export default function Situation({
   // context group when there is one, on their own only when there is not.
   const hasContext = plan.blocks.some((b) => b.type === 'context');
   const hasNeedsYou = plan.blocks.some((b) => b.type === 'needsYou');
+  // ⚠ AN ACTIONABLE PREPARED MOVE IS NEVER DRAWN UNDER A QUIET "NOTHING NEEDS
+  // YOU" HEADING. With no Needs-you item above it, the move's own state leads
+  // (its headline, composed on the server from the packet). A Needs-you item
+  // keeps the headline; a held move leaves the quiet state alone; a degraded
+  // read keeps saying it cannot see.
+  const momentLeads = Boolean(preparedMoment && preparedMoment.kind === 'actionable' && preparedMoment.headline && !hasNeedsYou && plan.mode !== 'degraded');
   // The foot (escape hatch, laptop row) belongs after the content and before
   // the dock — not stranded below the composer (12.1I).
   const hasAsk = Boolean(ask) && plan.blocks.some((b) => b.type === 'ask');
@@ -230,7 +239,8 @@ export default function Situation({
   ) : null;
   // The summary is dropped only when the thing it is about is drawn as an object
   // right beneath it — never otherwise.
-  const showSummary = s.summary && !(about && drawnAsObject.has(about));
+  const showSummary = !momentLeads && s.summary && !(about && drawnAsObject.has(about));
+  const headline = momentLeads ? preparedMoment.headline : s.headline;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
   const aboutItem = about
@@ -241,7 +251,7 @@ export default function Situation({
 
   return (
     <section
-      className={`sit sit--${plan.profile} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}`}
+      className={`sit sit--${plan.profile} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
       data-mode={plan.mode}
       data-profile={plan.profile}
     >
@@ -254,7 +264,7 @@ export default function Situation({
             case 'situation':
               return [
                 <header key={i} className={`sit__situation sit__situation--${blk.variant}`} aria-live="polite">
-                  <h2 className="sit__headline">{s.headline}</h2>
+                  <h2 className="sit__headline">{headline}</h2>
                   {showSummary && <p className="sit__summary">{s.summary}</p>}
                   {ambient && aboutItem && aboutItem.summary && <p className="sit__handoff">{aboutItem.summary}</p>}
                   {lead && <div className="sit__lead">{lead}</div>}

@@ -232,6 +232,7 @@ app.use('/api/prepared-actions', require('./routes/prepared-actions'));
 // SAiM's prepared move: request + confirm, human only. Writes nothing unless
 // saim_prepared_move_execution is on (checked inside prepared-move-exec).
 app.use('/api/prepared-moves', require('./routes/prepared-moves'));
+app.use('/api/saim-authority', require('./routes/saim-authority'));
 app.use('/api/greeting', require('./routes/greeting'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/catalogues', require('./routes/catalogue'));

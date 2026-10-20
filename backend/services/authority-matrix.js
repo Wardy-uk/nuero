@@ -61,6 +61,7 @@ const CAPABILITIES = Object.freeze({
   'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
   'gmail.unsubscribe': { authority: 'A3', effect: "POST a mailing list's own one-click unsubscribe, on Nick's press", machine: 'refuse', approval: 'click', registry: 'external-writes:gmail.unsubscribe', ledger: true, verification: 'http status', idempotent: true },
   'saim.prepared-move': { authority: 'A2', effect: "confirm ONE prepared move: exactly the writes it lists (one solo block, one new note) and nothing else", machine: 'refuse', approval: 'click (intent grant)', registry: null, ledger: true, verification: 'per-step read-back', idempotent: 'per step' },
+  'saim.authority': { authority: 'A4', effect: "change what SAiM is allowed to do: grant or revoke today's allowance, stop or resume all SAiM actions", machine: 'refuse', approval: 'click + one-use confirmation (grant, resume)', registry: null, ledger: true, verification: 'saim_authority_events', idempotent: 'one grant per day; tokens one-use' },
   'saim.move.calendar-block': { authority: 'A2', effect: "one solo block in Nick's calendar for a prepared move he confirmed", machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.calendar-block', ledger: true, verification: 'event read-back', idempotent: 'one per move (ledger key + marker)' },
   'saim.move.vault-note': { authority: 'A2', effect: 'one new named vault note for a prepared move he confirmed (never an overwrite)', machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.vault-note', ledger: true, verification: 'content hash read-back', idempotent: 'one per move (ledger key + exact path)' },
   'email.self': { authority: 'A2', effect: 'a [TEST] copy to Nick only (refuses any other recipient)', machine: 'execute', approval: 'none', registry: 'external-writes:email.self', ledger: false, verification: null, idempotent: false },
@@ -122,6 +123,14 @@ const ROUTE_RULES = Object.freeze([
   R('GET', '/api/prepared-moves/current', 'saim.prepared-move'),
   R('POST', '/api/prepared-moves/request', 'saim.prepared-move'),
   R('POST', '/api/prepared-moves/confirm', 'saim.prepared-move'),
+  // 20 Oct 2026: what SAiM may do — every route, reads included, is Nick's.
+  R('GET', '/api/saim-authority/status', 'saim.authority'),
+  R('POST', '/api/saim-authority/grant/preview', 'saim.authority'),
+  R('POST', '/api/saim-authority/grant', 'saim.authority'),
+  R('POST', '/api/saim-authority/revoke', 'saim.authority'),
+  R('POST', '/api/saim-authority/stop', 'saim.authority'),
+  R('POST', '/api/saim-authority/resume/preview', 'saim.authority'),
+  R('POST', '/api/saim-authority/resume', 'saim.authority'),
 
   // Approval is Nick's.
   R('POST', '/api/prepared-actions/:id/approve', 'approval.decide'),

@@ -391,7 +391,10 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
  * reach the route, and hides it permanently on a 401/403 — capability, not
  * device, the same way the mic is gated.
  */
-const CLOSED_ON_PURPOSE = new Set(['health', 'desktop']);
+// 'saim-authority' (20 Oct 2026): what SAiM may do is changed from Nick's own
+// phone or desk app — never from the always-on kiosk, which holds SAiM's
+// credential and is reachable by anyone in the room.
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority']);
 
 /**
  * The kiosk's allowlist, read from `neuroProxy.js`.

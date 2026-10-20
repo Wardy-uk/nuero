@@ -1,0 +1,62 @@
+/* What SAiM may do. Two gates first — they decide everything else on the
+   page — then what is left, the move, receipts, and the stop. Full width,
+   reflowing to two columns on a wide screen. */
+
+.auth { width: 100%; padding: 0.25rem 0 2rem; display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  .auth { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 2rem; align-items: start; }
+  .auth__head, .auth__stopped, .auth__gates, .auth__confirm, .auth__gap, .auth__note { grid-column: 1 / -1; }
+  .auth__stop { grid-column: 1 / -1; justify-self: start; }
+}
+
+.auth__title { margin: 0; font-size: 1.3rem; font-weight: 600; }
+.auth__summary { margin: 0.35rem 0 0; color: var(--muted); font-size: 1rem; line-height: 1.45; }
+.auth__label { margin: 0 0 0.45rem; font-size: 0.74rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.auth__muted { color: var(--muted); margin: 0; line-height: 1.45; }
+
+/* The two gates: a row each, impossible to read as one switch. */
+.auth__gates { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+@media (min-width: 900px) { .auth__gates { grid-template-columns: 1fr 1fr; } }
+.auth__gate { display: flex; gap: 0.85rem; padding: 0.95rem 1rem; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.auth__gate--shut { border-color: rgba(240, 214, 166, 0.4); }
+.auth__gate--open { border-color: rgba(90, 209, 143, 0.45); }
+.auth__gatemark { font-size: 1.1rem; line-height: 1.3; color: #f0d6a6; }
+.auth__gate--open .auth__gatemark { color: #5ad18f; }
+.auth__gatesay { margin: 0; font-size: 1.05rem; line-height: 1.4; font-weight: 600; }
+.auth__gatesub { margin: 0.25rem 0 0.6rem; color: var(--muted); font-size: 0.92rem; line-height: 1.4; }
+
+.auth__confirm { padding: 1rem 1.1rem; border-radius: 12px; background: var(--panel-2); border: 1px solid rgba(var(--saim-rgb, 120, 160, 255), 0.55); }
+.auth__confirmhead { margin: 0 0 0.4rem; font-weight: 600; }
+.auth__confirm ul { margin: 0; padding-left: 1.15rem; line-height: 1.5; }
+.auth__confirm p { margin: 0.2rem 0; line-height: 1.45; }
+
+.auth__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.5rem; margin: 0; }
+.auth__tiles div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.75rem; }
+.auth__tiles dt { font-size: 0.78rem; color: var(--muted); }
+.auth__tiles dd { margin: 0.15rem 0 0; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.auth__tiles small { font-size: 0.8rem; color: var(--muted); }
+
+.auth__active p, .auth__receipts p { margin: 0; line-height: 1.45; }
+.auth__receipts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.auth__rc { padding: 0.7rem 0.85rem; border-radius: 10px; background: var(--panel); border-left: 3px solid #5ad18f; }
+.auth__rc--partial { border-left-color: #f0d6a6; }
+.auth__rcwhen { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.2rem !important; }
+.auth__rcsteps { margin-top: 0.35rem !important; font-size: 0.88rem; color: var(--muted); }
+.auth__rcsteps li { padding-left: 0; }
+
+.auth__stopped { padding: 0.95rem 1rem; border-radius: 12px; background: rgba(255, 180, 180, 0.07); border: 1px solid rgba(255, 180, 180, 0.45); }
+.auth__stopped p { margin: 0 0 0.6rem; }
+
+.auth__buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+.auth__btn { font: inherit; padding: 0.5rem 0.95rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); background: transparent; color: inherit; cursor: pointer; }
+.auth__btn--yes { border-color: rgba(var(--saim-rgb, 120, 160, 255), 0.9); background: rgba(var(--saim-rgb, 120, 160, 255), 0.14); }
+.auth__btn--quiet { border-color: var(--line); color: var(--muted); }
+.auth__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* The stop: always visible, never small, one press. */
+.auth__stop { font: inherit; font-weight: 600; font-size: 1.02rem; padding: 0.85rem 1.4rem; border-radius: 10px; border: 1px solid #ffb4b4; background: rgba(255, 180, 180, 0.12); color: #ffb4b4; cursor: pointer; width: 100%; }
+@media (min-width: 900px) { .auth__stop { width: auto; min-width: 20rem; } }
+.auth__stop:disabled { opacity: 0.6; }
+
+.auth__gap { margin: 0; color: #f0d6a6; }
+.auth__note { margin: 0; color: #5ad18f; }

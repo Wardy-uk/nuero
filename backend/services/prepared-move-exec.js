@@ -312,14 +312,25 @@ async function _noteStep(step, vault, { verifyOnly = false } = {}) {
 }
 
 /**
- * Run a confirmed, STORED move. Needs: the switch (for live), a grant minted for
- * this record version and write hash, and every fresh check passing. Returns a
- * receipt; never throws for a failed step.
+ * Run a confirmed, STORED move. Needs, IN THIS ORDER and all inside this
+ * function: the environment master lock (every target), no emergency stop, the
+ * record's newest version and exact write set, Nick on duty, the AUTHORITY
+ * BUDGET reserved atomically — and only then is the one-use confirmation spent
+ * and an adapter built. Every fresh check passes, then each step is ledgered,
+ * read back and settled against its budget reservation. Returns a receipt;
+ * never throws for a failed step.
+ *
+ * `adapters` is either the adapter object (tests) or a FUNCTION that builds it
+ * (the live path), with `target` naming what it builds — so nothing is
+ * constructed until every gate has passed.
  */
-async function execute({ recordId, option = 'approve', grantId, adapters, checks = null, now = Date.now() } = {}) {
-  // 1. The gate, before anything else is read — and before any adapter is touched.
-  if (!adapters || !['sandbox', 'live'].includes(adapters.kind)) return refuse('unknown execution target');
-  if (adapters.kind === 'live' && !require('./feature-flags').isEnabled(FLAG)) return refuse(`real execution is switched off (${FLAG}) — nothing was written`);
+async function execute({ recordId, option = 'approve', grantId, adapters, target = null, checks = null, now = Date.now() } = {}) {
+  const budget = require('./authority-budget');
+  const kind = typeof adapters === 'function' ? target : (adapters && adapters.kind);
+  // 1. The gates, before anything else is read — and before any adapter exists.
+  if (!adapters || !['sandbox', 'live'].includes(kind)) return refuse('unknown execution target');
+  if (!require('./feature-flags').isEnabled(FLAG)) return refuse(`SAiM is technically locked on this device (${FLAG}) — nothing was written and your confirmation was not used.`, { gate: 'device' });
+  if (budget.stopState().stopped) return refuse(`${budget.STOPPED_SAY} Nothing was written and your confirmation was not used.`, { gate: 'stop' });
   if (!grantId) return refuse('nothing runs without your confirmation');
 
   // 2. The stored record, its newest version, and the exact write set.
@@ -331,32 +342,78 @@ async function execute({ recordId, option = 'approve', grantId, adapters, checks
   if (!w.ok) return w;
   if (!record.options[option] || record.options[option].writeHash !== w.writeHash) return refuse('the stored move does not match its writes — prepare it again', { rePrepare: true });
 
-  // 3. The confirmation: a prepared-move grant (anyone else's is left unspent), for this record, version and hash.
+  // 3. One execution of a move at a time. A second confirm arriving while the
+  //    first is mid-write could otherwise look for the block before the first
+  //    has made it, and make a second one. Turned away unspent, not queued.
+  if (RUNNING.has(w.moveKey)) return refuse('This move is already being carried out — your confirmation was not used.', { busy: true });
+  RUNNING.add(w.moveKey);
+  try {
+    return await _executeHeld({ record, w, option, grantId, adapters, kind, checks, now, budget });
+  } finally {
+    RUNNING.delete(w.moveKey);
+  }
+}
+const RUNNING = new Set();
+
+async function _executeHeld({ record, w, option, grantId, adapters, kind, checks, now, budget }) {
+  // 4. Off duty: prepare and read only — never act.
+  const duty = await deps.readDuty(now);
+  if (!duty || duty.onDuty !== true) return refuse(HELD, { held: true });
+
+  // 4. The confirmation must be a prepared-move grant (anyone else's is left unspent).
   const ig = require('./intent-grants');
   const row = ig.get(grantId);
   if (!row || row.action_capability !== ig.PREPARED_MOVE_CAPABILITY) return refuse('that confirmation is not for a prepared move');
+
+  // 5. The authority budget, reserved ATOMICALLY before the confirmation is spent.
+  //    Keyed by the write ledger's own idempotency key, so a retry reuses it.
+  const stepKey = (step) => `${w.moveKey}:${step.step}`;
+  const res = budget.reserve({
+    action: budget.ACTION, moveKey: w.moveKey, title: w.title, now,
+    steps: w.steps.map((s) => (s.step === 'calendar'
+      ? { key: stepKey(s), kind: 'calendar.solo', minutes: toMin(s.end) - toMin(s.start), contacts: (s.attendees || []).length, spendPence: 0 }
+      : { key: stepKey(s), kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 })),
+  });
+  if (!res.ok) return refuse(`${res.say} Nothing was written and your confirmation was not used.`, { budget: res.limit });
+
   const spent = ig.consume({ grantId, actionId: record.id, version: record.version, payloadHash: w.writeHash, now });
-  if (!spent.ok) return refuse(spent.error);
+  if (!spent.ok) { budget.releaseUnstarted(res.created, { now }); return refuse(spent.error); }
 
-  // 4. Fresh checks, immediately before writing.
-  const fresh = await freshChecks({ record, w, checks: checks || (adapters.kind === 'live' ? defaultChecks({ adapters, now }) : null), now });
-  if (!fresh.ok) return fresh;
+  // 6. Only now is anything that can write constructed.
+  const ad = typeof adapters === 'function' ? adapters() : adapters;
+  if (!ad || ad.kind !== kind) { budget.releaseUnstarted(res.created, { now }); return refuse('unknown execution target'); }
+  const ck = typeof checks === 'function' ? checks(ad) : checks || (kind === 'live' ? defaultChecks({ adapters: ad, now }) : null);
 
-  // 5. The two steps, each ledgered, each read back.
+  // 7. Fresh checks, immediately before writing.
+  const fresh = await freshChecks({ record, w, checks: ck, now });
+  if (!fresh.ok) { budget.releaseUnstarted(res.created, { now }); return fresh; }
+
+  // 8. The two steps, each ledgered, each read back, each settled against the budget.
   const ext = require('./external-writes');
   const results = [];
   for (const step of w.steps) {
-    const key = `${w.moveKey}:${step.step}`;
-    const target = step.step === 'calendar' ? `${step.date} ${step.start}–${step.end} “${step.title}”` : step.path;
-    const b = ext.begin({ writer: step.writer, key, target, request: { ...step, content: undefined, recordId: record.id, version: record.version }, initiatedBy: `nick:${spent.grant.id}`, now });
-    if (!b.ok && !b.duplicate) { results.push({ step: step.step, status: 'refused', target, why: b.why, ledgerId: b.entry && b.entry.id }); continue; }
+    const key = stepKey(step);
+    const tgt = step.step === 'calendar' ? `${step.date} ${step.start}–${step.end} “${step.title}”` : step.path;
+    // The emergency stop is honoured between steps: a stopped step is never attempted.
+    if (budget.stopState().stopped) {
+      budget.releaseUnstarted([key], { now });
+      results.push({ step: step.step, target: tgt, status: 'stopped' });
+      continue;
+    }
+    const b = ext.begin({ writer: step.writer, key, target: tgt, request: { ...step, content: undefined, recordId: record.id, version: record.version }, initiatedBy: `nick:${spent.grant.id}`, now });
+    if (!b.ok && !b.duplicate) {
+      if (res.created.includes(key)) budget.releaseUnstarted([key], { now });
+      results.push({ step: step.step, status: 'refused', target: tgt, why: b.why, ledgerId: b.entry && b.entry.id });
+      continue;
+    }
     try {
       const opts = { verifyOnly: Boolean(b.duplicate) };
-      const r = step.step === 'calendar' ? await _calendarStep(step, adapters.calendar, opts) : await _noteStep(step, adapters.vault, opts);
+      const r = step.step === 'calendar' ? await _calendarStep(step, ad.calendar, opts) : await _noteStep(step, ad.vault, opts);
       const verified = r.checks.every(([, ok]) => ok);
       if (b.ok) ext.settle(b.entry.id, { status: verified ? 'confirmed' : 'uncertain', result: { id: r.id || null, path: r.path || null, created: r.created }, readback: r.checks.map(([what, ok]) => `${ok ? '✓' : '✗'} ${what}`).join('; '), now });
+      budget.settle(key, verified || r.gone || r.created || b.duplicate ? 'used' : 'unknown', { now });
       results.push({
-        step: step.step, target, ledgerId: (b.entry || {}).id,
+        step: step.step, target: tgt, ledgerId: (b.entry || {}).id,
         status: r.gone ? 'removed-since' : !verified ? 'unverified' : b.duplicate || !r.created ? 'already-done' : 'done',
         id: r.id || null, path: r.path || null,
         ...(r.keptAt ? { note: `Already booked for ${dayLong(r.keptAt.date)} ${r.keptAt.start}–${r.keptAt.end}; I didn’t move it.` } : {}),
@@ -366,30 +423,37 @@ async function execute({ recordId, option = 'approve', grantId, adapters, checks
     } catch (e) {
       const status = ext.classifyError(e);
       if (b.ok) ext.settle(b.entry.id, { status, result: { error: e.message }, readback: null, now });
-      results.push({ step: step.step, target, ledgerId: (b.entry || {}).id, status: 'failed', provablyNotApplied: status === 'failed', error: e.message });
+      // Provably not applied → the allowance comes back; uncertain → it stays spent.
+      budget.settle(key, status === 'failed' ? 'released' : 'unknown', { now });
+      results.push({ step: step.step, target: tgt, ledgerId: (b.entry || {}).id, status: 'failed', provablyNotApplied: status === 'failed', error: e.message });
     }
   }
 
   const good = (r) => r.status === 'done' || r.status === 'already-done';
   const complete = results.every(good);
+  const label = (r) => (r.step === 'calendar' ? 'The calendar block' : 'The note');
   const receipt = {
-    recordId: record.id, version: record.version, option, moveKey: w.moveKey, target: adapters.kind,
+    recordId: record.id, version: record.version, option, moveKey: w.moveKey, target: kind,
     at: new Date(now).toISOString(), confirmedWith: spent.grant.id, writeHash: w.writeHash,
     steps: results, complete,
     plain: complete
       ? 'Both are in place and checked.'
       : results.filter((r) => !good(r)).map((r) => (r.status === 'removed-since'
-        ? `${r.step === 'calendar' ? 'The calendar block' : 'The note'} was made earlier and has since been removed — I haven’t recreated it.`
-        : `${r.step === 'calendar' ? 'The calendar block' : 'The note'} ${r.status === 'failed' ? (r.provablyNotApplied ? 'was not saved' : 'may not have been saved') : 'was saved but did not read back as confirmed'}: ${r.error || 'the check did not match'}.`)).join(' ')
+        ? `${label(r)} was made earlier and has since been removed — I haven’t recreated it.`
+        : r.status === 'stopped'
+          ? `${label(r)} was not attempted — SAiM’s actions were stopped.`
+          : `${label(r)} ${r.status === 'failed' ? (r.provablyNotApplied ? 'was not saved' : 'may not have been saved') : 'was saved but did not read back as confirmed'}: ${r.error || 'the check did not match'}.`)).join(' ')
         + ` ${results.filter(good).map((r) => (r.step === 'calendar' ? 'The calendar block is in place and stays.' : 'The note is saved and stays.')).join(' ')}`.trimEnd(),
     next: complete ? 'Nothing else will be done.'
       : results.every((r) => good(r) || r.status === 'removed-since') ? 'Nothing else will be done.'
-        : 'Confirm again to retry only what is missing — nothing that worked is repeated or undone.',
+        : results.some((r) => r.status === 'stopped') ? 'Nothing more will happen while SAiM’s actions are stopped.'
+          : 'Confirm again to retry only what is missing — nothing that worked is repeated or undone.',
     contacted: [],
     forum: w.forum,
   };
   // Kept with what SAiM wrote, so a later read can tell Nick's own words from SAiM's.
   try { db.setState(`saim_move_receipt:${w.moveKey}`, JSON.stringify({ ...receipt, written: { path: w.steps[1].path, content: w.steps[1].content } })); } catch { /* the ledger still holds the steps */ }
+  budget.recordReceipt(receipt, { title: w.title, now });
   return { ok: true, receipt };
 }
 
@@ -429,6 +493,8 @@ const MACHINE = 'Only Nick, in NEURO, can confirm a prepared move — a machine 
  */
 async function requestForMove({ option = 'approve', surface = 'neuro-web', sessionId, caller = {}, now = Date.now() } = {}) {
   if (caller.machine) return refuse(MACHINE, { code: 403 });
+  const budget = require('./authority-budget');
+  if (budget.stopState().stopped) return refuse(`${budget.STOPPED_SAY} Nothing will be prepared for confirmation until you resume them.`, { code: 409, gate: 'stop' });
   const packet = await deps.prepare({ now });
   if (!packet || !packet.selected) {
     const why = (packet && (packet.noneBecause || (packet.withheld || []).map((x) => `${x.title}: ${x.reason}`).join('; '))) || 'nothing could be prepared';
@@ -451,11 +517,17 @@ async function requestForMove({ option = 'approve', surface = 'neuro-web', sessi
   if (!c.ok) return { ...c, code: 409 };
   const enabled = executionEnabled();
   const mins = toMin(w.slot.end) - toMin(w.slot.start);
+  // What would stop it — said BEFORE the click, from the same check execute() makes.
+  const fit = budget.wouldFit({
+    action: budget.ACTION, now,
+    steps: [{ kind: 'calendar.solo', minutes: mins, contacts: 0, spendPence: 0 }, { kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 }],
+  });
   return {
     ok: true,
     recordId: record.id, moveKey: record.moveKey, version: record.version, option, writeHash: c.writeHash,
     grantId: c.grantId, expiresAt: c.expiresAt,
     executionEnabled: enabled,
+    authority: { ...budget.brief({ now }), fits: fit.ok, ...(fit.ok ? {} : { limit: fit.limit, say: fit.say }) },
     confirmation: {
       question: `Reserve ${mins} minutes on ${dayLong(w.slot.date)} (${w.slot.start}–${w.slot.end}) and save the draft?`,
       writes: c.confirmation.writes,
@@ -473,7 +545,9 @@ async function requestForMove({ option = 'approve', surface = 'neuro-web', sessi
  */
 async function confirmMove({ recordId, version, option, grantId, caller = {}, now = Date.now() } = {}) {
   if (caller.machine) return refuse(MACHINE, { code: 403 });
-  if (!executionEnabled()) return refuse(`Carrying out prepared moves is switched off (${FLAG}) — nothing was written and your confirmation was not used.`, { code: 409, disabled: true });
+  if (!executionEnabled()) return refuse(`Carrying out prepared moves is switched off (${FLAG}) — nothing was written and your confirmation was not used.`, { code: 409, disabled: true, gate: 'device' });
+  const budget = require('./authority-budget');
+  if (budget.stopState().stopped) return refuse(`${budget.STOPPED_SAY} Nothing was written and your confirmation was not used.`, { code: 409, gate: 'stop' });
   // Re-read now: a confirmation minted in working hours is not used off duty.
   const duty = await deps.readDuty(now);
   if (!duty || duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
@@ -481,8 +555,9 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
   const record = store.get(recordId);
   if (!record) return refuse('no such prepared move', { code: 404 });
   if (Number(version) !== record.version || !store.isLatest(record)) return refuse('this move has changed since it was shown — it needs confirming again', { code: 409, rePrepare: true });
-  const adapters = deps.liveAdapters();
-  const r = await execute({ recordId, option, grantId, adapters, checks: deps.defaultChecks({ adapters, now }), now });
+  // The live adapters are a FACTORY: execute() builds them only after every
+  // gate — lock, stop, duty, budget, confirmation — has passed.
+  const r = await execute({ recordId, option, grantId, adapters: () => deps.liveAdapters(), target: 'live', checks: (ad) => deps.defaultChecks({ adapters: ad, now }), now });
   return r.ok ? r : { ...r, packet: undefined, code: 409 };
 }
 

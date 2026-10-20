@@ -37,6 +37,7 @@ import MeetingPrep from '../app/src/views/MeetingPrep';
 import Standup from '../app/src/views/Standup';
 import Controls from '../app/src/views/Controls';
 import Household from '../app/src/views/Household';
+import Authority from '../app/src/views/Authority';
 
 export const PRIMARY = [
   { id: 'capture', label: 'Capture', icon: '➕', Component: Capture },
@@ -59,6 +60,9 @@ export const SECONDARY = [
   // Who's in the house (7 Oct 2026): faces, from HA presence.
   { id: 'household', label: "Who's in", icon: '🏠', Component: Household },
   { id: 'controls', label: 'Controls', icon: '⚙', Component: Controls },
+  // What SAiM may do (20 Oct 2026): the two gates, today's allowance and the
+  // stop. Its own screen — never a setting inside Controls.
+  { id: 'authority', label: 'May do', icon: '⛉', Component: Authority },
 ];
 
 export const TABS = [...PRIMARY, ...SECONDARY];

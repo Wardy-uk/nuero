@@ -94,6 +94,7 @@ const CAN_LISTEN = Boolean(speechRecognitionCtor());
 export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArrival }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [busy, setBusy] = useState(false);
+  const [preparedMoment, setPreparedMoment] = useState(null);
   const [voiceOut, setVoiceOut] = useState(() => isVoiceOutEnabled());
 
   // The passing question. Null most of the time — this is an ambient screen
@@ -675,7 +676,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       hideSecondary={Boolean(exchange)}
       // SAiM's one prepared decision. It renders nothing unless NEURO says a
       // trustworthy move exists, and writes nothing without Nick's press.
-      prepared={<PreparedMove />}
+      prepared={<PreparedMove onMoment={setPreparedMoment} />}
+      preparedMoment={preparedMoment}
       crownExtra={(
         <button
           type="button"

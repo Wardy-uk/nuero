@@ -78,7 +78,14 @@ let n = 0;
 const sandbox = () => createSandbox(path.join(tmp, `sandbox-${++n}`), { realVault: VAULT });
 const ledger = () => db.all(`SELECT idempotency_key k, status, attempts FROM external_write_ledger WHERE idempotency_key LIKE ? ORDER BY id`, [`${MOVE}%`]);
 let counter = 0;
-const reset = () => { db.run(`DELETE FROM external_write_ledger WHERE idempotency_key LIKE 'saim-move:%'`); };
+// Every execution test runs with BOTH gates open: the device lock (env) and an
+// allowance for today. authority-budget.test.js closes each one in turn.
+const budget = require('./authority-budget');
+const reset = () => {
+  db.run(`DELETE FROM external_write_ledger WHERE idempotency_key LIKE 'saim-move:%'`);
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
+  budget._test.reset(); budget._test.grantToday({ now: NOW });
+};
 /** A fresh stored record for this test (a unique draft line makes it a new version). */
 function stored(edit = () => {}) {
   const p = packet((x) => { x.selected.preparation[0].draft = `${DRAFT}\n<!-- v${++counter} -->\n`; edit(x); });
@@ -92,7 +99,7 @@ async function confirmAndRun({ record, adapters, checks, option = 'approve' }) {
   return exec.execute({ recordId: record.id, option, grantId: c.grantId, adapters, checks: checks || sandboxChecks(adapters) });
 }
 
-test.before(async () => { await db.init(); });
+test.before(async () => { await db.init(); exec._setDeps({ readDuty: async () => ({ onDuty: true }) }); });
 test.after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } });
 
 // ── The record ───────────────────────────────────────────────────────────────
@@ -157,13 +164,14 @@ test('a grant for anything else is refused unspent; a prepared-move grant spends
 
 // ── The switch ───────────────────────────────────────────────────────────────
 
-test('default off: live execution is refused inside the executor and no adapter is touched', async () => {
+test('default off: execution is refused inside the executor and no adapter is touched', async () => {
+  reset(); delete process.env.SAIM_PREPARED_MOVE_EXECUTION;
   const rec = stored();
   const c = exec.requestConfirmation({ recordId: rec.id, sessionId: SESSION });
   let touched = 0;
   const trap = new Proxy({}, { get: () => { touched += 1; throw new Error('adapter touched'); } });
   const r = await exec.execute({ recordId: rec.id, grantId: c.grantId, adapters: { kind: 'live', calendar: trap, vault: trap }, checks: okChecks() });
-  assert.equal(r.ok, false); assert.match(r.reasons[0], /switched off \(saim_prepared_move_execution\)/);
+  assert.equal(r.ok, false); assert.match(r.reasons[0], /locked on this device \(saim_prepared_move_execution\)/);
   assert.equal(touched, 0);
   assert.equal(ig.get(c.grantId).consumed_at, null, 'refused before the confirmation was even spent');
   assert.equal(require('./feature-flags').isEnabled('saim_prepared_move_execution'), false);
