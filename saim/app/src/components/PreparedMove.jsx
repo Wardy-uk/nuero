@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
 import { loadWithRetry, askToConfirm, confirm, receiptLines, newSessionId, makeCall } from '../preparedMove.mjs';
 import { isDebugView } from '../debugView.mjs';
@@ -112,31 +112,52 @@ function Page({ artefact, mark }) {
   );
 }
 
-/**
- * Where the work goes: the time SAiM would protect, and the meeting it serves,
- * joined to the page by her light. Times are SLICED, never parsed.
- */
-function Path({ option, forum, mark }) {
-  if (!option) return null;
-  const p = parts(option.date);
-  const f = forum && forum.start ? parts(forum.start.slice(0, 10)) : null;
-  const mins = (() => { const [a, b] = option.start.split(':').map(Number); const [c, e] = option.end.split(':').map(Number); return (c * 60 + e) - (a * 60 + b); })();
+/** The moment's preview: the title and first lines, fading — the page is there, but it is not the point. */
+function PagePreview({ artefact, mark }) {
+  const first = artefact.sections[0];
   return (
-    <ol className="pmo__path" aria-label="When this happens">
-      <li className={`pmo__node pmo__node--slot${mark ? ' pmo__node--placed' : ''}`}>
-        <span className="pmo__nodekick">{mark ? 'Protected' : 'Time to protect'}</span>
-        <span className="pmo__nodewhen">{p.short} {p.day} {p.mon} · {option.start}–{option.end}</span>
-        <span className="pmo__nodewhat">{mins} minutes, just you</span>
-        {mark && <span className="pmo__nodemark">{mark}</span>}
-      </li>
-      {f && (
-        <li className="pmo__node pmo__node--forum">
-          <span className="pmo__nodekick">The meeting</span>
-          <span className="pmo__nodewhen">{f.short} {f.day} {f.mon} · {forum.start.slice(11, 16)}</span>
-          <span className="pmo__nodewhat">{forum.title}</span>
-        </li>
+    <span className="pmo__page pmo__page--preview">
+      <span className="pmo__pagetag">{mark || 'Draft'}</span>
+      <span className="pmo__pagetitle">{artefact.title}</span>
+      {first && (
+        <span className="pmo__sec">
+          <span className="pmo__sechead">{first.heading}</span>
+          {first.items.slice(0, FRAGMENT_ITEMS).map((it, j) => <span key={j} className="pmo__pli">{it.text}</span>)}
+        </span>
       )}
-    </ol>
+    </span>
+  );
+}
+
+/** The working document, whole. Every word is the draft's own. */
+function FullPage({ artefact, mark }) {
+  const d = artefact.decisions;
+  return (
+    <article className="pmo__page pmo__page--full" aria-label="The draft SAiM prepared">
+      <p className="pmo__pagetag">{mark || 'Draft · not saved yet'}</p>
+      <h2 className="pmo__pagetitle">{artefact.title}</h2>
+      {artefact.sections.map((sec, i) => (
+        <section key={i} className="pmo__sec">
+          <p className="pmo__sechead">{sec.heading}{sec.cited ? <span className="pmo__cite">from your notes</span> : null}</p>
+          <ul>{sec.items.map((it, j) => <li key={j} className={it.gap ? 'pmo__gapline' : undefined}>{it.text}</li>)}</ul>
+        </section>
+      ))}
+      {d && (
+        <section className="pmo__sec pmo__decisions">
+          <p className="pmo__sechead">{d.heading}</p>
+          <table>
+            <thead><tr>{d.columns.map((c, i) => <th key={i} scope="col">{c}</th>)}</tr></thead>
+            <tbody>{d.rows.map((r, i) => <tr key={i}><th scope="row">{r.who}</th>{r.cells.map((c, j) => <td key={j}>{c.open ? <span className="pmo__open">to agree</span> : c.text}</td>)}</tr>)}</tbody>
+          </table>
+        </section>
+      )}
+      {artefact.openQuestions.length > 0 && (
+        <section className="pmo__sec">
+          <p className="pmo__sechead">Open questions</p>
+          <ul>{artefact.openQuestions.map((q, i) => <li key={i}><span className="pmo__open">open</span> {q}</li>)}</ul>
+        </section>
+      )}
+    </article>
   );
 }
 
@@ -181,7 +202,7 @@ function gateLine(view, request) {
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, busy = false, now = Date.now(), debug = false, heldFolded = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, busy = false, now = Date.now(), debug = false, heldFolded = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -223,19 +244,122 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const options = move.options || [];
   const chosen = options.find((o) => o.id === state.option) || options[0] || null;
   const marks = receiptMarks(state.kind === 'receipt' ? state.receipt : null);
+  const art = move.artefact || null;
+  const forum = move.forum && move.forum.start ? move.forum : null;
+  const f = forum ? parts(forum.start.slice(0, 10)) : null;
+  const fTime = forum ? forum.start.slice(11, 16) : null;
+  const open = art && art.openCount ? art.openCount : 0;
+  // The server's own wording: "7 teams still need agreement", "14 acceptance and
+  // rejection criteria remain open". A table row is never called a decision.
+  const openLabel = (art && art.openLabel) || null;
+  const cellsLabel = (art && art.openCellsLabel) || null;
+  // Where the human work happens. Never a person's name: who is in the room is
+  // not established here.
+  const humanPlace = f ? `in ${f.dow}’s meeting` : 'with the people involved';
+  const drill = state.drill || null;
+  const go = (d) => onDrill && onDrill(d);
+  const back = <button type="button" className="pmo__back" onClick={() => go(null)}>‹ {f ? `${f.dow}’s preparation` : 'Back'}</button>;
 
-  // One relationship, read in one look: the page SAiM made → the time she
-  // would protect for it → the meeting it serves → the one choice.
+  // ── Drill-in: the whole working document. ──
+  if (drill === 'doc' && art) {
+    return (
+      <section className="pmo pmo--drill" aria-label="The draft SAiM prepared">
+        {back}
+        <div className="pmo__docgrid">
+          <FullPage artefact={art} mark={marks.note} />
+          <aside className="pmo__margin">
+            <p className="pmo__mnote">{art.cited ? 'Drafted from your notes — each section says where it came from. Nothing here is agreed.' : 'Drafted by SAiM. Nothing here is agreed.'}</p>
+            {open > 0 && (
+              <button type="button" className="pmo__mnote pmo__mnote--human" onClick={() => go('decisions')}>
+                <span className="pmo__mbig">{openLabel}</span> {humanPlace}{cellsLabel ? ` · ${cellsLabel}` : ''}
+              </button>
+            )}
+            <div className="pmo__choice">{renderChoice()}</div>
+          </aside>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Drill-in: the decisions SAiM cannot make. ──
+  if (drill === 'decisions' && art && art.decisions) {
+    const d = art.decisions;
+    return (
+      <section className="pmo pmo--drill" aria-label="The decisions still to agree">
+        {back}
+        <p className="pmo__dkick">{forum ? `${forum.title} · ${f.dow} ${fTime}` : 'Still to agree'}</p>
+        <h2 className="pmo__dtitle">{cellsLabel || openLabel}</h2>
+        <p className="pmo__dsub">{openLabel} {humanPlace}. The draft already sets out the rest; your notes don’t settle these, so they’re left open.</p>
+        <table className="pmo__dtable">
+          <thead><tr>{d.columns.map((c, i) => <th key={i} scope="col">{c}</th>)}</tr></thead>
+          <tbody>
+            {d.rows.map((r, i) => (
+              <tr key={i}>
+                <th scope="row">{r.who}</th>
+                {r.cells.map((c, j) => <td key={j}>{c.open ? <span className="pmo__open">to agree</span> : c.text}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="pmo__dfoot">From the draft “{art.title}”. <button type="button" className="pmo__link" onClick={() => go('doc')}>Read the whole draft</button></p>
+        <div className="pmo__choice pmo__choice--drill">{renderChoice()}</div>
+      </section>
+    );
+  }
+
+  // ── The moment: why now → what SAiM has done → what remains human → next. ──
+  const slotMins = chosen ? (() => { const [a, b] = chosen.start.split(':').map(Number); const [c, e] = chosen.end.split(':').map(Number); return (c * 60 + e) - (a * 60 + b); })() : null;
+  const sp = chosen ? parts(chosen.date) : null;
   return (
-    <section className="pmo" aria-label="Something SAiM has prepared">
-      <p className="pmo__say">{move.prepared.headline}</p>
+    <section className="pmo pmo--meeting" aria-label="Something SAiM has prepared">
+      {forum ? (
+        <header className="pmo__why">
+          <h2 className="pmo__when">{f.dow}, {fTime}</h2>
+          <p className="pmo__forum">{forum.title}</p>
+        </header>
+      ) : <p className="pmo__say">{move.prepared.headline}</p>}
 
-      <div className="pmo__stage">
-        <Page artefact={move.artefact} mark={marks.note} />
-        <div className="pmo__aside">
-          <Path option={chosen} forum={move.forum} mark={marks.calendar} />
+      <div className="pmo__ready">
+        <div className="pmo__prep">
+          <p className="pmo__kick">What I’ve prepared</p>
+          <ol className="pmo__seq">
+            <li className="pmo__step is-done">
+              <span className="pmo__stepwhat">{marks.note ? 'Draft saved' : 'Draft written'}</span>
+              <span className="pmo__stepsub">{art ? art.title : 'The draft'}{art && art.cited ? ', from your notes' : ''}{marks.note ? ` · ${marks.note}` : ''}</span>
+            </li>
+            {chosen && (
+              <li className={`pmo__step ${marks.calendar ? 'is-done' : 'is-found'}`}>
+                <span className="pmo__stepwhat">{marks.calendar ? 'Time protected' : 'A window to prepare'} · {sp.short} {sp.day} {sp.mon}, {chosen.start}–{chosen.end}</span>
+                <span className="pmo__stepsub">{slotMins} minutes, just you{marks.calendar ? ` · ${marks.calendar}` : ' — free in your diary'}</span>
+              </li>
+            )}
+            {forum && (
+              <li className="pmo__step is-human">
+                <span className="pmo__stepwhat">{f.short} {f.day} {f.mon}, {fTime} · {forum.title}</span>
+                <span className="pmo__stepsub">{openLabel || 'Where this gets agreed'}</span>
+              </li>
+            )}
+          </ol>
+        </div>
+
+        <div className="pmo__next">
+          {open > 0 && (
+            <button type="button" className="pmo__human7" onClick={() => go('decisions')}>
+              <span className="pmo__h7n">{open}</span>
+              <span className="pmo__h7t">{openLabel ? openLabel.replace(/^\d+\s+/, '') : ''} {humanPlace}</span>
+              <span className="pmo__h7s">{cellsLabel ? `${cellsLabel}. See them →` : 'See them →'}</span>
+            </button>
+          )}
           <div className="pmo__choice">{renderChoice()}</div>
         </div>
+
+        {/* The page: substantial, but after the reason, the human work and the move on a phone. */}
+        {art && (
+          <button type="button" className="pmo__sheet" onClick={() => go('doc')}>
+            <PagePreview artefact={art} mark={marks.note} />
+            <span className="pmo__sheetcta">Read the whole draft</span>
+          </button>
+        )}
       </div>
 
       <Proof move={move} label="Proof — how this was made" />
@@ -263,6 +387,19 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
           </ul>
           <p className="pmo__sub">{r.next}</p>
           {!r.complete && /retry/i.test(r.next || '') && <button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Ask again to finish it</button>}
+        </div>
+      );
+    }
+    // The one boundary, in the same story: what is ready stays ready; this is
+    // the single thing that stands between it and SAiM doing it.
+    if (state.kind === 'boundary') {
+      return (
+        <div className="pmo__act pmo__act--boundary" role="status">
+          <p className="pmo__boundary">{state.boundary.say}</p>
+          <div className="pmo__buttons">
+            {onOpenAuthority && <button type="button" className="pmo__btn pmo__btn--yes" onClick={onOpenAuthority}>Open what SAiM may do</button>}
+            <button type="button" className="pmo__btn" onClick={onCancel} disabled={busy}>Not now</button>
+          </div>
         </div>
       );
     }
@@ -311,7 +448,8 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
         </div>
       );
     }
-    const line = gateLine(view, null);
+    // No standing refusal on the ready surface: the boundary, if there is
+    // one, is named only when he reaches for the action.
     return (
       <div className="pmo__act pmo__act--ready">
         {/* The time is on the path above; the server's exact question and the
@@ -332,7 +470,6 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
             </details>
           )}
         </div>
-        {line && <p className="pmo__locked">{line}</p>}
       </div>
     );
   }
@@ -343,11 +480,14 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
 export function momentOf(state) {
   const v = state && state.view; const m = v && v.move;
   if (!m || state.kind === 'hidden' || state.kind === 'pending' || state.kind === 'loading') return null;
-  if (v.held || m.held) return { kind: 'held' };
-  return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline };
+  if (v.held || m.held) return { kind: 'held', entry: 'Prepared for your next working morning' };
+  const f = m.forum && m.forum.start ? parts(m.forum.start.slice(0, 10)) : null;
+  // When something else leads, the move is reached through this entry instead.
+  const entry = f ? `Prepared for ${f.dow}` : 'Prepared work';
+  return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, heldFolded = false }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   const sessionId = useMemo(() => newSessionId(), []);
   const debug = useMemo(() => isDebugView(), []);
@@ -374,9 +514,16 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
     return () => clearInterval(t);
   }, [state.kind]);
 
-  const run = async (fn) => { setBusy(true); try { setState(await fn()); } finally { setBusy(false); } };
+  // A drill-in survives a press: the boundary or receipt shows where he is.
+  const run = async (fn) => { setBusy(true); try { const next = await fn(); setState((s) => ({ ...next, drill: s.drill || null })); } finally { setBusy(false); } };
+  const root = useRef(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (root.current && root.current.scrollIntoView) root.current.scrollIntoView({ block: 'start' });
+  }, [state.drill]);
   return (
-    <PreparedMoveView
+    <div ref={root} className="pmo-root"><PreparedMoveView
       state={state}
       busy={busy}
       now={tick}
@@ -387,6 +534,8 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       onConfirm={() => run(() => confirm(call, { view: state.view, option: state.option, request: state.request }))}
       onCancel={() => setState((s) => ({ kind: 'ready', view: s.view, option: s.option }))}
       onAgain={() => run(() => loadWithRetry(call))}
-    />
+      onOpenAuthority={onOpenAuthority}
+      onDrill={(drill) => setState((s) => ({ ...s, drill }))}
+    /></div>
   );
 }

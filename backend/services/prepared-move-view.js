@@ -80,7 +80,7 @@ function unresolvedFrom(markdown) {
 const { artefactFrom, momentFor } = require('./prepared-move-artefact');
 
 function _authority(now) {
-  try { return require('./authority-budget').brief({ now }); } catch { return { canAct: false, stopped: false, deviceOpen: false, granted: false, summary: 'SAiM couldn’t read its allowance.' }; }
+  try { return require('./authority-budget').brief({ now }); } catch { return { canAct: false, stopped: false, deviceOpen: false, granted: false, summary: 'SAiM couldn’t read its allowance.', boundary: { gate: 'unreadable', say: 'I couldn’t check what I’m allowed to do, so I won’t do anything yet.' } }; }
 }
 
 function _execution() {

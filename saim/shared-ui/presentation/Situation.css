@@ -367,3 +367,13 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 @media (prefers-contrast: more) {
   .sit { --sit-soft: #e6edf3; --sit-quiet: #b7c2d0; }
 }
+
+/* SAiM's prepared move when something else leads (20 Oct 2026): one quiet entry
+   below the lead. Its action is inside, hidden until he opens it. */
+.sit__prepared--entry { margin: 1rem 0 1.4rem; }
+.sit__prepared-entry { cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.95rem; border-radius: 999px; border: 1px solid rgba(132, 166, 222, 0.45); color: var(--sit-ink, #e6edf3); font-size: 0.95rem; list-style: none; }
+.sit__prepared-entry::-webkit-details-marker { display: none; }
+.sit__prepared-entry::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: rgb(132, 166, 222); }
+.sit__prepared-entry::after { content: '›'; color: var(--sit-quiet, #8b98a8); }
+.sit__prepared--entry[open] > .sit__prepared-entry::after { content: '⌄'; }
+.sit__prepared--shown > .sit__prepared-entry { display: none; }

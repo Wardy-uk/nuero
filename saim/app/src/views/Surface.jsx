@@ -676,7 +676,7 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       hideSecondary={Boolean(exchange)}
       // SAiM's one prepared decision. It renders nothing unless NEURO says a
       // trustworthy move exists, and writes nothing without Nick's press.
-      prepared={<PreparedMove onMoment={setPreparedMoment} />}
+      prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} />}
       preparedMoment={preparedMoment}
       crownExtra={(
         <button

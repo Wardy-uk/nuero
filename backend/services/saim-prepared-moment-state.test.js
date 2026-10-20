@@ -86,7 +86,7 @@ test('held (off duty): the quiet state is kept, exactly as without a move', () =
 
 test('actionable, nothing needing him: the move’s own state leads — never a quiet / nothing-needs-you heading', () => {
   const QUIET = /\bQuiet\b|Nothing needs you|Nothing to do|All clear/i;
-  for (const id of ['empty', 'calm-saturday', 'live-sunday', 'working-busy']) {
+  for (const id of ['empty', 'calm-saturday', 'live-sunday', 'many-next', 'working-busy']) {
     for (const profile of ['phone', 'desktop']) {
       const quietBefore = text(render(id, profile, null));
       const h = render(id, profile, ACTIONABLE);
@@ -125,12 +125,12 @@ test('a degraded read keeps saying it cannot see, even with a move prepared', ()
 
 test('momentOf reads the move’s state: actionable / held / nothing — and the Surface wires it through', () => {
   const view = (move, extra = {}) => ({ kind: 'ready', view: { move, ...extra } });
-  assert.deepEqual(PM.momentOf(view({ moment: { headline: 'I’ve made Friday ready.' }, prepared: { headline: 'x' } })), { kind: 'actionable', headline: 'I’ve made Friday ready.' });
-  assert.deepEqual(PM.momentOf(view({ prepared: { headline: 'I’ve drafted it.' } })), { kind: 'actionable', headline: 'I’ve drafted it.' });
-  assert.deepEqual(PM.momentOf(view({ held: true, prepared: { headline: 'x' } }, { held: { say: 'x' } })), { kind: 'held' });
+  assert.deepEqual(PM.momentOf(view({ moment: { headline: 'I’ve made Friday ready.' }, prepared: { headline: 'x' }, forum: { title: 'x', start: '2026-10-23T09:30' } })), { kind: 'actionable', headline: 'I’ve made Friday ready.', entry: 'Prepared for Friday' });
+  assert.deepEqual(PM.momentOf(view({ prepared: { headline: 'I’ve drafted it.' } })), { kind: 'actionable', headline: 'I’ve drafted it.', entry: 'Prepared work' });
+  assert.deepEqual(PM.momentOf(view({ held: true, prepared: { headline: 'x' } }, { held: { say: 'x' } })), { kind: 'held', entry: 'Prepared for your next working morning' });
   for (const k of ['loading', 'pending', 'hidden']) assert.equal(PM.momentOf({ kind: k }), null, k);
   const surface = fs.readFileSync(path.join(APP, 'views', 'Surface.jsx'), 'utf8');
-  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} \/>\}/);
+  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} onOpenAuthority=\{\(\) => onNavigate\?\.\('authority'\)\} \/>\}/);
   assert.match(surface, /preparedMoment=\{preparedMoment\}/);
   const as = fs.readFileSync(path.join(SHARED, 'AttentionSurface.jsx'), 'utf8');
   assert.match(as, /preparedMoment=\{preparedMoment\}/, 'AttentionSurface hands it to Situation');

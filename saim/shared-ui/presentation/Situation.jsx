@@ -177,6 +177,11 @@ function NextRow({ item, onOpen, actions }) {
   );
 }
 
+/** The only modes on which a prepared move may lead. */
+const CALM_MODES = new Set(['calm', 'working', 'off-duty']);
+/** Modes that are themselves a lead (a held move folds beneath them). */
+const LEAD_MODES = new Set(['degraded', 'in-meeting', 'needs-attention', 'focus', 'upcoming']);
+
 export default function Situation({
   presentation,
   profile = 'phone',
@@ -224,7 +229,35 @@ export default function Situation({
   // (its headline, composed on the server from the packet). A Needs-you item
   // keeps the headline; a held move leaves the quiet state alone; a degraded
   // read keeps saying it cannot see.
-  const momentLeads = Boolean(preparedMoment && preparedMoment.kind === 'actionable' && preparedMoment.headline && !hasNeedsYou && plan.mode !== 'degraded');
+  // ⚠ HARD RULE (20 Oct 2026): it leads ONLY on a calm/neutral state — no
+  // Needs-you item, no P0 or urgent primary (risk, approval, urgent task),
+  // and a mode that is calm, working or off duty (not degraded, in a meeting, a protected
+  // block/focus, upcoming, bedtime or travelling). Otherwise the existing lead
+  // stays first and the move is reached through a folded entry below it, its
+  // action button hidden until he opens it.
+  // A primary is a lead when it is P0 (a risk, an approval) or urgent; an
+  // ordinary task follows the move rather than displacing it.
+  const hasPrimary = plan.blocks.some((b) => b.type === 'primary' && (b.items || []).some((it) => it.priority === 'P0' || it.urgency === 'critical' || it.urgency === 'high'));
+  const calmState = !hasNeedsYou && !hasPrimary && CALM_MODES.has(plan.mode);
+  const actionable = Boolean(preparedMoment && preparedMoment.kind === 'actionable' && preparedMoment.headline);
+  const momentLeads = actionable && calmState;
+  // Where the move goes when it does not lead: after Needs you, else after the
+  // primary, else after the situation header — and folded behind its entry.
+  const anchor = hasNeedsYou ? 'needsYou' : hasPrimary ? 'primary' : 'situation';
+  // A held move (off duty / leave) has no action; it folds only under a real lead.
+  const realLead = hasNeedsYou || hasPrimary || LEAD_MODES.has(plan.mode);
+  const fold = Boolean(preparedMoment) && (actionable ? !momentLeads : realLead);
+  // ⚠ ONE stable element whatever the state: switching the wrapper's element
+  // type remounts PreparedMove, which reloads, resets the moment and flips the
+  // wrapper back — a loop in which the move never shows. So it is always a
+  // <details>: open with its summary hidden when the move leads, closed behind
+  // its entry when it follows a lead.
+  const preparedEl = !prepared ? null : (
+    <details className={`sit__prepared${fold ? ' sit__prepared--entry' : ' sit__prepared--shown'}`} open={fold ? undefined : true}>
+      <summary className="sit__prepared-entry">{(preparedMoment && preparedMoment.entry) || 'Prepared work'}</summary>
+      {prepared}
+    </details>
+  );
   // The foot (escape hatch, laptop row) belongs after the content and before
   // the dock — not stranded below the composer (12.1I).
   const hasAsk = Boolean(ask) && plan.blocks.some((b) => b.type === 'ask');
@@ -270,8 +303,7 @@ export default function Situation({
                   {lead && <div className="sit__lead">{lead}</div>}
                 </header>,
                 // Outside the live region: a whole prepared move must not be re-announced on every poll.
-                // ⚠ After Needs you when there is one — P0 outranks a prepared move.
-                prepared && !hasNeedsYou ? <div key={`${i}-prepared`} className="sit__prepared">{prepared}</div> : null,
+                anchor === 'situation' && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
               ];
             case 'needsYou':
               return [
@@ -285,11 +317,11 @@ export default function Situation({
                   ))}
                   {blk.overflow > 0 && <p className="sit__more">and {blk.overflow} more</p>}
                 </div>,
-                prepared ? <div key={`${i}-prepared`} className="sit__prepared">{prepared}</div> : null,
+                anchor === 'needsYou' && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
               ];
             case 'primary': {
               const it = blk.items[0];
-              return (
+              return [(
                 <div key={i} className="sit__objects">
                   {renderPrimary ? renderPrimary(it) : (
                     <article className={`sit__object sit__object--${it.priority === 'P0' ? 'p0' : 'p1'}`}>
@@ -299,7 +331,7 @@ export default function Situation({
                     </article>
                   )}
                 </div>
-              );
+              ), anchor === 'primary' && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null];
             }
             case 'focal':
               return <Focal key={i} item={blk.items[0]} onOpen={onOpen} actions={plan.actions} />;

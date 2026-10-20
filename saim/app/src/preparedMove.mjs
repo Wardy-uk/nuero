@@ -60,7 +60,23 @@ export async function loadWithRetry(call, { delays = PENDING_RETRY_DELAYS_MS, sl
 }
 
 /** Nick pressed "Ask to confirm". Mints a one-use confirmation for that option. */
+/**
+ * PURE. The one boundary standing between SAiM and acting, as the server
+ * stated it on the read (authority.boundary) — or null. A boundary means a yes
+ * could not be carried out, so no confirmation is asked for.
+ */
+export function boundaryOf(view) {
+  const b = view && view.authority && view.authority.boundary;
+  return b && typeof b.say === 'string' && b.say ? { gate: b.gate || null, say: b.say } : null;
+}
+
 export async function askToConfirm(call, { view, option, sessionId }) {
+  // Lock closed or no allowance: nothing is requested — no record, no
+  // confirmation. The boundary is named and the way past it is offered.
+  // "Used up" is left to the server: a move already begun today may still be
+  // finished, and only the server knows which move that was.
+  const known = boundaryOf(view);
+  if (known && known.gate !== 'used') return { kind: 'boundary', view, option, boundary: known };
   let r;
   try {
     r = await call(`${BASE}/request`, { method: 'POST', body: { option, sessionId } });
@@ -71,6 +87,7 @@ export async function askToConfirm(call, { view, option, sessionId }) {
   if (r.status === 200 && b.ok && b.grantId) {
     return { kind: 'confirming', view, option, request: b };
   }
+  if (b.boundary && typeof b.boundary.say === 'string') return { kind: 'boundary', view, option, boundary: { gate: b.boundary.gate || null, say: b.boundary.say } };
   return { kind: 'refused', view, option, message: `${b.error || 'NEURO would not prepare the confirmation.'} Nothing was changed.`, again: true };
 }
 

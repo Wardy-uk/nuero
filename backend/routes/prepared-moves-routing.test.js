@@ -146,7 +146,12 @@ function fetchLocal(url, { method, headers, body }) {
     req.on('error', reject); req.end(body);
   });
 }
-const request = (body = {}) => post('request', { option: 'approve', sessionId: SESSION, ...body });
+const requestRaw = (body = {}) => post('request', { option: 'approve', sessionId: SESSION, ...body });
+// 20 Oct 2026: a request is only answered with a confirmation when SAiM could
+// act on a yes — lock open AND today's allowance. Most tests here are about
+// what happens AFTER that, so `request` opens both for the request alone; the
+// confirm then runs with the lock closed unless wrapped in withSwitch.
+const request = (body = {}) => withSwitch(() => requestRaw(body));
 const confirm = (r, extra = {}) => post('confirm', { recordId: r.recordId, version: r.version, option: r.option, grantId: r.grantId, ...extra });
 
 const graphWrites = () => G.calls.filter((c) => c.method !== 'GET');
@@ -176,18 +181,42 @@ const withSwitch = async (fn) => {
 
 // ── Default off ──────────────────────────────────────────────────────────────
 
-test('default off: request shows the confirmation; confirm refuses before any adapter, check, write or grant spend', async () => {
+const counts = () => ({
+  records: (db.get(`SELECT COUNT(*) n FROM sqlite_master WHERE name = 'prepared_moves'`).n ? db.get('SELECT COUNT(*) n FROM prepared_moves').n : 0),
+  grants: db.get('SELECT COUNT(*) n FROM human_action_intents').n,
+});
+
+test('the boundary: lock closed or no allowance — the request stores no record, mints no confirmation, and names the one boundary', async () => {
   resetWorld();
   assert.equal(flags.isEnabled('saim_prepared_move_execution'), false, 'off by default');
+  const before = counts();
+  // Device lock closed (an allowance would not matter): the device is named.
+  budget._test.grantToday();
+  let r = await requestRaw();
+  assert.equal(r.status, 409, JSON.stringify(r.json));
+  assert.equal(r.json.gate, 'device'); assert.equal(r.json.boundary.gate, 'device');
+  assert.equal(r.json.error, budget.BOUNDARY.device);
+  assert.equal(r.json.grantId, undefined); assert.equal(r.json.confirmation, undefined);
+  assert.deepEqual(counts(), before, 'nothing stored, nothing minted');
+  // Lock open, no allowance: the allowance is named, and only it.
+  budget._test.reset();
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
+  try { r = await requestRaw(); } finally { delete process.env.SAIM_PREPARED_MOVE_EXECUTION; }
+  assert.equal(r.status, 409); assert.equal(r.json.gate, 'allowance');
+  assert.equal(r.json.error, budget.BOUNDARY.allowance);
+  assert.deepEqual(counts(), before, 'nothing stored, nothing minted');
+  assert.equal(S.adapterBuilds, 0); assert.equal(G.calls.length, 0);
+});
+
+test('a confirmation minted while open, used after the lock closed: refused before any adapter, check, write or grant spend', async () => {
+  resetWorld();
   const before = listVault();
   const r = await request();
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.equal(r.json.executionEnabled, false);
+  assert.equal(r.json.executionEnabled, true);
   assert.equal(r.json.confirmation.question, `Reserve 30 minutes on ${exec.writesFor(fixture(), 'approve').confirmation.writes[0].match(/calendar, (.+?) 10:25/)[1]} (10:25–10:55) and save the draft?`);
-  assert.match(r.json.confirmation.off, /switched off, so confirming will not write anything/);
-  const buildsAfterRequest = S.adapterBuilds;
   const checksAfterRequest = S.checkBuilds;
-  assert.equal(buildsAfterRequest, 0, 'a request never builds the live writers');
+  assert.equal(S.adapterBuilds, 0, 'a request never builds the live writers');
 
   const c = await confirm(r.json);
   assert.equal(c.status, 409); assert.equal(c.json.disabled, true);

@@ -82,11 +82,18 @@ test('the slot renders ONCE, straight after the lead when it leads, otherwise af
   const live = (over) => ({ onAct() {}, onDeskOpen() {}, deskStates: {}, onChoose() {}, linkFor: () => null, busy: false, ...over });
   const lead = renderToString(React.createElement(View, { v: vm, live: live({ prepared: MARK, preparedLeads: true }) }));
   assert.match(lead, /class="wk__main mf__main--prep"/);
-  assert.match(lead, /class="mf__prepared mf__prepared--lead"><div class="pm-mark">PREPARED<\/div><\/div>/);
+  assert.match(lead, /<details class="mf__prepared mf__prepared--lead mf__prepared--shown" open="">/);
+  assert.ok(lead.indexOf('pm-mark') > lead.indexOf('mf__prepared--lead'), 'the move inside its slot');
   assert.equal((lead.match(/pm-mark/g) || []).length, 1, 'rendered once');
   assert.ok(lead.indexOf('wk__block') < lead.indexOf('mf__prepared'), 'directly after the lead block in the DOM');
   const after = renderToString(React.createElement(View, { v: vm, live: live({ prepared: MARK, preparedLeads: false }) }));
-  assert.match(after, /class="mf__prepared"><div class="pm-mark">/);
+  assert.match(after, /<details class="mf__prepared mf__prepared--shown" open="">/, 'before its moment is known: the same element, open');
+  // Something else leads (20 Oct 2026): the move is folded behind its entry, its action hidden until opened.
+  const folded = renderToString(React.createElement(View, { v: vm, live: live({ prepared: MARK, preparedLeads: false, preparedFold: true, preparedEntry: 'Prepared for Wednesday' }) }));
+  assert.match(folded, /<details class="mf__prepared mf__prepared--entry"><summary class="mf__prepared-entry">Prepared for Wednesday<\/summary><div class="pm-mark">/);
+  assert.ok(folded.indexOf('wk__block') < folded.indexOf('Prepared for Wednesday'), 'after the lead');
+  // ONE stable element type whatever the state — a changing wrapper remounts the move in a loop.
+  for (const h of [lead, after, folded]) assert.match(h, /<details class="mf__prepared/);
   const none = renderToString(React.createElement(View, { v: vm, live: live({}) }));
   assert.doesNotMatch(none, /mf__main--prep|mf__prepared/);
   const css = fs.readFileSync(path.join(ADAPTER, 'manifest.css'), 'utf8');
@@ -98,7 +105,12 @@ test('the slot renders ONCE, straight after the lead when it leads, otherwise af
 test('LiveSaim mounts the SHARED component with Alt’s held variant and learns the moment from it — no logic of its own', () => {
   const src = fs.readFileSync(path.join(ADAPTER, 'LiveSaim.jsx'), 'utf8');
   assert.match(src, /import PreparedMove from '\.\.\/src\/components\/PreparedMove';/);
-  assert.match(src, /<PreparedMove onMoment=\{setMoment\} heldFolded \/>/);
+  assert.match(src, /<PreparedMove onMoment=\{setMoment\} onOpenAuthority=\{onOpenAuthority\} heldFolded \/>/);
+  assert.match(src, /const preparedFold = Boolean\(moment\) && !place\.leads;/);
+  // "Open what SAiM may do" reaches Alt's own Controls → What SAiM may do.
+  const app = fs.readFileSync(path.join(APP, 'alt-v2', 'App.jsx'), 'utf8');
+  assert.match(app, /onOpenAuthority: openAuthority,/);
+  assert.match(app, /setRoute\(\{ tab: 'controls', focus: null, sub: 'authority' \}\)/);
   assert.match(src, /preparedPlacement\(manifest\(canonical\), moment\)/);
   const alt = ['LiveSaim.jsx', 'ManifestView.jsx', 'prepared.mjs', 'manifest.mjs'].map((f) => fs.readFileSync(path.join(ADAPTER, f), 'utf8')).join('\n')
     + fs.readFileSync(path.join(APP, 'alt-v2', 'App.jsx'), 'utf8');

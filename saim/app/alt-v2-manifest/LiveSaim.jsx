@@ -27,7 +27,7 @@ export function choiceError(res) {
   return null;
 }
 
-export default function LiveSaim({ canonical, error, at = null, busy, onAct, run, onDeskOpen, deskStates, neuroUrl, debug = false }) {
+export default function LiveSaim({ canonical, error, at = null, busy, onAct, run, onDeskOpen, deskStates, neuroUrl, debug = false, onOpenAuthority = null }) {
   const [choiceNote, setChoiceNote] = useState(null);
   // What kind of prepared moment the shared component is showing (its onMoment).
   const [moment, setMoment] = useState(null);
@@ -45,7 +45,10 @@ export default function LiveSaim({ canonical, error, at = null, busy, onAct, run
   // and receipt over the existing APIs); this page decides only where it sits.
   const place = preparedPlacement(manifest(canonical), moment);
   const vm = place.vm;
-  const prepared = place.show ? <PreparedMove onMoment={setMoment} heldFolded /> : null;
+  // "Open what SAiM may do" on the boundary goes to Alt's own Controls → What SAiM may do.
+  const prepared = place.show ? <PreparedMove onMoment={setMoment} onOpenAuthority={onOpenAuthority} heldFolded /> : null;
+  // Folded behind its entry whenever it does not lead (and once its moment is known).
+  const preparedFold = Boolean(moment) && !place.leads;
   const onChoose = (taskId, choice) => run(async () => {
     setChoiceNote(null);
     const res = await apiFetch(`/api/task-activity/${encodeURIComponent(taskId)}`, { method: 'POST', body: JSON.stringify({ choice, via: 'saim' }) });
@@ -61,7 +64,7 @@ export default function LiveSaim({ canonical, error, at = null, busy, onAct, run
         v={vm}
         live={{
           onAct, onDeskOpen, deskStates, busy, onChoose, choiceNote, debug,
-          prepared, preparedLeads: place.leads,
+          prepared, preparedLeads: place.leads, preparedFold, preparedEntry: (moment && moment.entry) || null,
           linkFor: (href) => linkHref(neuroUrl, href),
           dock: <Dock variant="wk" utterances={canonical.utterances} onSay={onAct} />,
         }}

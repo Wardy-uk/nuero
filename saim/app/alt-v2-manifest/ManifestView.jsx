@@ -68,8 +68,17 @@ export default function ManifestView({ v, live = null }) {
           {/* SAiM's prepared move (the shared component). Rendered ONCE, here, so
               it never remounts mid-confirmation; CSS order puts it straight under
               the lead when it leads, or after the lead's own content otherwise. */}
+          {/* ⚠ ONE stable element (20 Oct 2026): a <details> that is open with its
+              entry hidden when the move leads, and closed behind "Prepared for
+              Wednesday" when something else leads — so the move's action is not
+              shown above, or instead of, the real lead. Changing the wrapper's
+              element type would remount the move (it reloads, the moment resets,
+              the wrapper flips back — a loop in which it never shows). */}
           {live && live.prepared && (
-            <div className={`mf__prepared${live.preparedLeads ? ' mf__prepared--lead' : ''}`}>{live.prepared}</div>
+            <details className={`mf__prepared${live.preparedLeads ? ' mf__prepared--lead' : ''}${live.preparedFold ? ' mf__prepared--entry' : ' mf__prepared--shown'}`} open={live.preparedFold ? undefined : true}>
+              <summary className="mf__prepared-entry">{live.preparedEntry || 'Prepared work'}</summary>
+              {live.prepared}
+            </details>
           )}
 
           {v.refused && (

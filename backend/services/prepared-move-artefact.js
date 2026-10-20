@@ -56,12 +56,18 @@ function artefactFrom(markdown) {
       cur.items.push({ text, cited: isCited });
     }
   }
+  // Two counts, never conflated: the ROWS still to agree (7 teams) and the
+  // open CELLS (14 acceptance and rejection criteria). A row is not "a decision".
   const openCount = decisions ? decisions.rows.filter((r) => r.cells.some((c) => c.open)).length : 0;
-  // "7 team decisions to agree" — the noun is the table's own first column, so
-  // nothing here knows what kind of rows a draft has.
-  const noun = decisions && /^[A-Za-z]+$/.test(decisions.columns[0] || '') ? `${decisions.columns[0].toLowerCase()} ` : '';
-  const openLabel = openCount ? `${openCount} ${noun}${openCount === 1 ? 'decision' : 'decisions'} to agree` : null;
-  return { title, sections: sections.filter((x) => x.items.length), decisions, openQuestions, cited, openCount, openLabel };
+  const openCells = decisions ? decisions.rows.reduce((n, r) => n + r.cells.filter((c) => c.open).length, 0) : 0;
+  // The nouns are the table's own words, so nothing here knows what a draft holds.
+  const head = decisions && /^[A-Za-z]+$/.test(decisions.columns[0] || '') ? decisions.columns[0].toLowerCase() : null;
+  const rowNoun = (n) => (head ? (n === 1 ? head : `${head}s`) : (n === 1 ? 'row' : 'rows'));
+  const kinds = decisions ? decisions.columns.slice(1).map((c) => (/^accept/i.test(c) ? 'acceptance' : /^reject/i.test(c) ? 'rejection' : null)) : [];
+  const cellNoun = kinds.length && kinds.every(Boolean) ? `${[...new Set(kinds)].join(' and ')} ${openCells === 1 ? 'criterion' : 'criteria'}` : (openCells === 1 ? 'open cell' : 'open cells');
+  const openLabel = openCount ? `${openCount} ${rowNoun(openCount)} still ${openCount === 1 ? 'needs' : 'need'} agreement` : null;
+  const openCellsLabel = openCells ? `${openCells} ${cellNoun} ${openCells === 1 ? 'remains' : 'remain'} open` : null;
+  return { title, sections: sections.filter((x) => x.items.length), decisions, openQuestions, cited, openCount, openLabel, openCells, openCellsLabel };
 }
 
 /**

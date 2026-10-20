@@ -140,3 +140,94 @@
 .pmo__heldfold { margin-top: 0.4rem; }
 .pmo__heldfold > summary { cursor: pointer; color: var(--sit-soft, #b7c2d0); }
 .pmo__heldfold[open] > .pmo__stage { margin-top: 0.7rem; }
+/* The boundary: part of the same story, not an error. */
+.pmo__act--boundary { padding: 0.85rem 1rem; border-left: 2px solid rgba(var(--saim-rgb, 120, 160, 255), 0.7); background: rgba(255, 255, 255, 0.03); }
+.pmo__boundary { margin: 0 0 0.7rem; font-size: 0.98rem; line-height: 1.45; }
+
+/* ── Meeting readiness (20 Oct 2026) ──────────────────────────────────────────
+   Why now (the meeting) → what SAiM has done (one sequence) → what remains
+   human (one statement) → the one next move. The page is substantial but sits
+   under the reason, never above it. Blue = done by SAiM; amber = still human. */
+.pmo--meeting, .pmo--drill { max-width: 72rem; --pmo-done: 132, 166, 222; }
+.pmo__why { margin: 0 0 1.4rem; }
+.pmo__when { margin: 0; font: 400 clamp(2.4rem, 6vw, 4.2rem)/1.02 'Newsreader', 'Iowan Old Style', Georgia, serif; letter-spacing: -0.01em; }
+.pmo__forum { margin: 0.35rem 0 0; font: 400 clamp(1.15rem, 2.2vw, 1.55rem)/1.25 'Newsreader', 'Iowan Old Style', Georgia, serif; color: var(--sit-soft, #b7c2d0); }
+
+.pmo__ready { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+@media (min-width: 900px) {
+  .pmo__ready { grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 1fr); grid-template-areas: 'prep next' 'sheet next'; gap: 0.4rem 2.8rem; }
+  .pmo__prep { grid-area: prep; } .pmo__next { grid-area: next; } .pmo__ready > .pmo__sheet { grid-area: sheet; }
+}
+
+.pmo__kick { margin: 0 0 0.6rem; font-size: 0.7rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--sit-quiet, #8b98a8); }
+
+/* One sequence of preparation, joined by a single line — not three widgets. */
+.pmo__seq { list-style: none; margin: 0 0 0.4rem; padding: 0; position: relative; }
+.pmo__seq::before { content: ''; position: absolute; left: 5px; top: 0.7rem; bottom: 0.9rem; width: 1px; background: linear-gradient(rgba(var(--pmo-done), 0.9), rgba(233, 180, 106, 0.8)); }
+.pmo__step { position: relative; padding: 0 0 1rem 1.6rem; display: flex; flex-direction: column; gap: 0.1rem; }
+.pmo__step::before { content: ''; position: absolute; left: 0; top: 0.42rem; width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(var(--pmo-done), 0.9); background: #0b0f14; }
+.pmo__step.is-done::before { background: rgb(var(--pmo-done)); box-shadow: 0 0 10px rgba(var(--pmo-done), 0.7); }
+.pmo__step.is-found::before { background: rgba(var(--pmo-done), 0.35); }
+.pmo__step.is-human::before { border-color: #e9b46a; background: rgba(233, 180, 106, 0.3); }
+.pmo__stepwhat { font-size: 1.02rem; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.pmo__stepsub { font-size: 0.88rem; color: var(--sit-soft, #b7c2d0); line-height: 1.4; }
+.pmo__step.is-human .pmo__stepsub { color: #e9b46a; }
+
+/* The page: present and readable, below the reason. A button into the document. */
+.pmo__sheet { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pmo__page--preview { display: block; position: relative; max-height: 15rem; overflow: hidden; padding: 1.3rem 1.5rem 1rem; }
+.pmo__page--preview::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 5rem; background: linear-gradient(rgba(242, 238, 229, 0), #f2eee5 85%); }
+.pmo__page--preview .pmo__pagetag, .pmo__page--preview .pmo__pagetitle, .pmo__page--preview .pmo__sechead, .pmo__pli { display: block; }
+.pmo__page--preview .pmo__pagetitle { font-size: 1.3rem; }
+.pmo__pli { padding-left: 1rem; position: relative; }
+.pmo__pli::before { content: '•'; position: absolute; left: 0.2rem; }
+.pmo__sheetcta { display: inline-block; margin-top: 0.6rem; font-size: 0.9rem; color: rgb(var(--pmo-done)); border-bottom: 1px solid rgba(var(--pmo-done), 0.45); }
+.pmo__sheet:hover .pmo__page { box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 18px 40px rgba(0,0,0,0.55); }
+
+/* What remains human: one strong statement. */
+.pmo__human7 { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.9rem; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; padding: 1.1rem 1.25rem; border-radius: 14px; border: 1px solid rgba(233, 180, 106, 0.5); background: rgba(233, 180, 106, 0.1); }
+.pmo__h7n { grid-row: span 2; font: 400 3.4rem/0.95 'Newsreader', 'Iowan Old Style', Georgia, serif; color: #e9b46a; }
+.pmo__h7t { align-self: end; font-size: 1.15rem; line-height: 1.3; }
+.pmo__h7s { font-size: 0.86rem; color: #e9b46a; }
+.pmo__human7:hover { background: rgba(233, 180, 106, 0.16); }
+.pmo__next .pmo__choice { margin-top: 1.2rem; }
+
+/* ── Drill-ins ─────────────────────────────────────────────────────────────── */
+.pmo__back { font: inherit; font-size: 0.92rem; padding: 0.3rem 0; margin: 0 0 1rem; background: none; border: 0; color: rgb(var(--pmo-done)); cursor: pointer; }
+.pmo__link { font: inherit; padding: 0; background: none; border: 0; cursor: pointer; color: rgb(var(--pmo-done)); border-bottom: 1px solid rgba(var(--pmo-done), 0.45); }
+
+.pmo__docgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.4rem; align-items: start; }
+@media (min-width: 900px) { .pmo__docgrid { grid-template-columns: minmax(0, 48rem) minmax(16rem, 19rem); gap: 2.4rem; } .pmo__margin { position: sticky; top: 1rem; } }
+.pmo__page--full { padding: 2.2rem 2.6rem 2.4rem; font-size: 0.98rem; line-height: 1.55; }
+.pmo__page--full .pmo__pagetitle { font-size: 1.7rem; margin-bottom: 1rem; }
+.pmo__page--full .pmo__sec { margin-bottom: 1.2rem; }
+.pmo__page--full .pmo__sechead { font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6f5c; }
+.pmo__page--full .pmo__decisions table { font-size: 0.9rem; }
+.pmo__page--full .pmo__decisions th, .pmo__page--full .pmo__decisions td { padding: 0.45rem 0.5rem 0.45rem 0; }
+.pmo__mnote { display: block; width: 100%; margin: 0 0 1rem; padding: 0 0 0 0.9rem; border: 0; border-left: 2px solid rgba(var(--pmo-done), 0.6); background: none; font: inherit; font-size: 0.9rem; line-height: 1.45; color: var(--sit-soft, #b7c2d0); text-align: left; }
+.pmo__mnote--human { cursor: pointer; color: var(--sit-ink, #e6edf3); border-left-color: #e9b46a; background: rgba(233, 180, 106, 0.1); padding: 0.8rem 0.9rem; border-radius: 0 10px 10px 0; }
+.pmo__mbig { display: block; font: 400 1.6rem/1.1 'Newsreader', 'Iowan Old Style', Georgia, serif; color: #e9b46a; }
+
+.pmo__dkick { margin: 0 0 0.3rem; font-size: 0.72rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--sit-quiet, #8b98a8); }
+.pmo__dtitle { margin: 0 0 0.6rem; font: 400 clamp(1.7rem, 4vw, 2.6rem)/1.15 'Newsreader', 'Iowan Old Style', Georgia, serif; }
+.pmo__dnum { color: #e9b46a; }
+.pmo__dsub { margin: 0 0 1.4rem; max-width: 42rem; color: var(--sit-soft, #b7c2d0); line-height: 1.5; }
+.pmo__dtable { width: 100%; max-width: 52rem; border-collapse: collapse; }
+.pmo__dtable th, .pmo__dtable td { text-align: left; padding: 0.8rem 0.6rem 0.8rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); vertical-align: middle; }
+.pmo__dtable thead th { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sit-quiet, #8b98a8); font-weight: 600; }
+.pmo__dtable tbody th { font-weight: 600; font-size: 1.02rem; }
+.pmo__dtable .pmo__open { color: #e9b46a; border-color: rgba(233, 180, 106, 0.7); background: rgba(233, 180, 106, 0.12); font-size: 0.82rem; }
+.pmo__dfoot { margin: 1rem 0 0; font-size: 0.88rem; color: var(--sit-quiet, #8b98a8); }
+.pmo__choice--drill { max-width: 32rem; margin-top: 1.6rem; }
+
+@media (max-width: 600px) {
+  .pmo__why { margin-bottom: 1.1rem; }
+  .pmo__page--preview { max-height: 12rem; padding: 1rem 1.1rem; }
+  .pmo__page--full { padding: 1.3rem 1.1rem 1.5rem; font-size: 0.95rem; }
+  .pmo__page--full .pmo__pagetitle { font-size: 1.35rem; }
+  .pmo__h7n { font-size: 2.8rem; }
+  .pmo__dtable th, .pmo__dtable td { padding: 0.6rem 0.4rem 0.6rem 0; font-size: 0.92rem; }
+}
+
+.pmo--meeting .pmo__btn--yes, .pmo--drill .pmo__btn--yes { border-color: rgba(var(--pmo-done), 0.9); background: rgba(var(--pmo-done), 0.18); }
+.pmo--meeting .pmo__act--boundary, .pmo--drill .pmo__act--boundary, .pmo--meeting .pmo__act--confirm, .pmo--drill .pmo__act--confirm { border-left-color: rgba(var(--pmo-done), 0.8); }

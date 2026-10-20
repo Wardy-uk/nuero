@@ -144,22 +144,22 @@ const primary = (h) => text(h.replace(/<details[\s\S]*?<\/details>/g, ''));
 /** Implementation words that must never reach Nick's surface. */
 const VOCAB = /SAIM_|saim_prepared|PREPARED_MOVE|execution|lockedByEnv|env\b|environment|\bflag\b|switched off|locked off|\bdev\b|dev-|\bmobile\b|\bAPI\b|\/api\/|grantId|recordId|writeHash|budget/i;
 
-test('ready: the prepared MOMENT — what SAiM made, what is still human, one choice, proof folded — in that order', async () => {
+test('ready: Meeting readiness — why now, what SAiM has done, what remains human, the one move — in that order', async () => {
   const s = await flow.load(fakeCall({ 'GET /api/prepared-moves/current': { status: 200, body: VIEW } }));
   const h = html(s); const p = primary(h);
   const order = [
-    'I’ve drafted triage and escalation acceptance criteria for Support Improvement Plan on Wednesday 21 Oct.',
-    // Prepared: a FRAGMENT of the page — its title and first lines — not the whole draft.
-    'Triage and escalation acceptance criteria',
-    'Every escalation must carry from your notes Current customer ask Named owner',
-    // Human judgement remaining, written on the page, counted from the draft's own table.
-    'Still human 7 team decisions to agree',
-    // The protected opportunity, then the real moment it serves.
-    'Time to protect Tue 20 Oct · 10:25–10:55 30 minutes, just you',
-    'The meeting Wed 21 Oct · 16:00 Support Improvement Plan',
-    // One decision.
+    // 1. Why now: the meeting SAiM has made more ready.
+    'Wednesday, 16:00', 'Support Improvement Plan',
+    // 2. What SAiM has already done: one sequence.
+    'What I’ve prepared', 'Draft written', 'Triage and escalation acceptance criteria, from your notes',
+    'A window to prepare · Tue 20 Oct, 10:25–10:55', '30 minutes, just you',
+    'Wed 21 Oct, 16:00 · Support Improvement Plan', '7 teams still need agreement',
+    // 3. What remains human: one statement.
+    'teams still need agreement in Wednesday’s meeting', '14 acceptance and rejection criteria remain open',
+    // 4. The one move.
     'Protect the time and save the draft',
-    'This is ready to review. Changes aren’t enabled here yet.',
+    // …and only then the page: substantial, never ahead of the reason.
+    'Every escalation must carry', 'Read the whole draft',
   ];
   let at = -1;
   for (const piece of order) {
@@ -167,9 +167,9 @@ test('ready: the prepared MOMENT — what SAiM made, what is still human, one ch
     assert.ok(i > at, `in order: "${piece}"\n— in: ${p}`);
     at = i;
   }
-  assert.equal((h.match(/class="pmo__open"/g) || []).length, 15, 'the count on the page, and every one of the seven teams’ two decisions open inside the full draft');
-  assert.match(h, /<summary>Read the full draft<\/summary>/);
-  assert.doesNotMatch(p, /Customer Care|Accepts when/, 'the whole document does not land before the relationship does');
+  assert.doesNotMatch(p, /Customer Care|Accepts when/, 'the decisions themselves wait for the drill-in');
+  assert.doesNotMatch(h, /Mel\b/, 'no attendee is named without attendee evidence');
+  assert.doesNotMatch(text(h), /\b\d+ decisions?\b|team decisions/, 'a team row is never called a decision');
   assert.match(h, /<summary>Proof — how this was made<\/summary>/);
   assert.match(h, /<summary>Another time<\/summary>/);
   assert.ok(!/<details[^>]*open/.test(h), 'all folded');
@@ -320,10 +320,77 @@ test('a partial receipt says exactly what did and did not happen, and offers onl
 
 test('the Surface passes the move into SAiM’s presence, and the copy about the move is never hard-coded', () => {
   const surface = fs.readFileSync(path.join(APP, 'views', 'Surface.jsx'), 'utf8');
-  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} \/>\}/);
+  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} onOpenAuthority=\{\(\) => onNavigate\?\.\('authority'\)\} \/>\}/);
   const comp = fs.readFileSync(path.join(APP, 'components', 'PreparedMove.jsx'), 'utf8') + fs.readFileSync(path.join(APP, 'preparedMove.mjs'), 'utf8');
   assert.doesNotMatch(comp, /T1|Triage|Support Improvement|Mel\b|acceptance criteria/i, 'no move-specific words in the client');
   assert.doesNotMatch(comp, /localStorage|sessionStorage|indexedDB/, 'nothing about the move is kept on the device');
+});
+
+// ── Drill-ins (20 Oct 2026) ──────────────────────────────────────────────────
+
+test('Read the whole draft opens the working document; the open criteria open their own view — and back returns', async () => {
+  const s = await flow.load(fakeCall({ 'GET /api/prepared-moves/current': { status: 200, body: VIEW } }));
+  const drills = [];
+  html(s, { onDrill: (d) => drills.push(d) });
+  const doc = html({ ...s, drill: 'doc' });
+  const td = text(doc);
+  assert.match(td, /‹ Wednesday’s preparation/);
+  assert.match(td, /Every escalation must carry/); assert.match(td, /Customer Care/, 'the whole draft, including the team table');
+  assert.match(td, /7 teams still need agreement in Wednesday’s meeting · 14 acceptance and rejection criteria remain open/);
+  assert.match(td, /Protect the time and save the draft/, 'the one move is still reachable from the document');
+  const dec = html({ ...s, drill: 'decisions' });
+  const tq = text(dec);
+  assert.match(tq, /14 acceptance and rejection criteria remain open/);
+  assert.match(tq, /7 teams still need agreement in Wednesday’s meeting\./);
+  for (const team of ['Customer Care', 'Tier 2', 'Tier 3']) assert.match(tq, new RegExp(team));
+  assert.equal((dec.match(/class="pmo__open"/g) || []).length, 14, 'every open cell, and only those');
+  assert.match(tq, /Read the whole draft/);
+  assert.doesNotMatch(dec, /Mel\b/);
+  // The moment's own controls drive the drill-ins (the view is pure; the container owns the state).
+  const comp = fs.readFileSync(path.join(APP, 'components', 'PreparedMove.jsx'), 'utf8');
+  assert.match(comp, /onClick=\{\(\) => go\('doc'\)\}/); assert.match(comp, /onClick=\{\(\) => go\('decisions'\)\}/);
+  assert.match(comp, /onDrill=\{\(drill\) => setState/);
+});
+
+test('a receipt marks the sequence itself: draft saved, time protected — and the open criteria stay human', async () => {
+  const receipt = { complete: true, target: 'live', plain: 'Done.', next: 'Nothing more to do.', steps: [{ step: 'calendar', status: 'done' }, { step: 'note', status: 'done' }], contacted: [] };
+  const t = text(html({ kind: 'receipt', view: VIEW, option: 'approve', receipt }));
+  assert.match(t, /Draft saved/); assert.match(t, /Time protected · Tue 20 Oct, 10:25–10:55/);
+  assert.match(t, /teams still need agreement in Wednesday’s meeting/);
+});
+
+// ── The boundary (20 Oct 2026) ───────────────────────────────────────────────
+
+const BOUNDARY_SAY = 'I don’t have your go-ahead for today. Give me today’s allowance in “What SAiM may do” — I’ll still ask before I change anything.';
+
+test('the ready surface carries no standing refusal, whatever the lock or allowance', async () => {
+  const LOCKED = { ...VIEW, authority: { canAct: false, stopped: false, deviceOpen: false, granted: false, summary: 'x', boundary: { gate: 'device', say: 'This device is locked for SAiM, so I can prepare this but not do it. The lock is set on the Pi.' } } };
+  const s = await flow.load(fakeCall({ 'GET /api/prepared-moves/current': { status: 200, body: LOCKED } }));
+  const p = primary(html(s));
+  assert.match(p, /Protect the time and save the draft/);
+  assert.doesNotMatch(p, /locked|allowance|aren’t enabled|go-ahead/i);
+});
+
+test('the boundary: lock closed or no allowance — the tap requests NOTHING, names the one boundary, and opens What SAiM may do', async () => {
+  const V = { ...VIEW, authority: { canAct: false, stopped: false, deviceOpen: true, granted: false, summary: 'x', boundary: { gate: 'allowance', say: BOUNDARY_SAY } } };
+  const call = fakeCall({});
+  const st = await flow.askToConfirm(call, { view: V, option: 'approve', sessionId: 'saim_x0000000000' });
+  assert.equal(call.calls.length, 0, 'no request — no record, no confirmation');
+  assert.equal(st.kind, 'boundary'); assert.equal(st.boundary.say, BOUNDARY_SAY);
+  let opened = 0;
+  const h = html(st, { onOpenAuthority: () => { opened += 1; } });
+  assert.match(text(h), new RegExp(BOUNDARY_SAY.slice(0, 30)));
+  assert.match(h, />Open what SAiM may do</);
+  assert.doesNotMatch(h, /pmo__locked|Confirm</, 'not an error card, no confirmation');
+  // "Used up" goes to the server (a begun move may be finished), and its refusal is shown the same way.
+  const used = { ...VIEW, authority: { canAct: false, stopped: false, deviceOpen: true, granted: true, summary: 'x', boundary: { gate: 'used', say: 'Today’s allowance is already used.' } } };
+  const asked = fakeCall({ 'POST /api/prepared-moves/request': () => ({ status: 200, body: REQUEST }) });
+  assert.equal((await flow.askToConfirm(asked, { view: used, option: 'approve', sessionId: 'saim_x0000000000' })).kind, 'confirming');
+  assert.equal(asked.calls.length, 1);
+  // A server that refuses at request with a boundary is shown the same way.
+  const v2 = { ...VIEW };
+  const st2 = await flow.askToConfirm(fakeCall({ 'POST /api/prepared-moves/request': () => ({ status: 409, body: { ok: false, error: BOUNDARY_SAY, gate: 'allowance', boundary: { gate: 'allowance', say: BOUNDARY_SAY } } }) }), { view: v2, option: 'approve', sessionId: 'saim_x0000000000' });
+  assert.equal(st2.kind, 'boundary');
 });
 
 // ── Off duty / on leave: held ────────────────────────────────────────────────
@@ -337,7 +404,7 @@ test('off duty: the prepared page, held, with one quiet sentence — no time, qu
   const p = primary(h).trim();
   assert.ok(p.startsWith(SAY), 'the held sentence first');
   assert.match(p, /Triage and escalation acceptance criteria/, 'the artefact itself is shown, held');
-  assert.match(p, /Still human 7 team decisions to agree/, 'what is still owed by people, on the page');
+  assert.match(p, /Still human 7 teams still need agreement/, 'what is still owed by people, on the page');
   assert.match(h, /<summary>Read the full draft<\/summary>/); assert.match(h, /<summary>What I based it on<\/summary>/);
   assert.ok(!/<details[^>]*open/.test(h), 'folded');
   assert.ok(!/<button/.test(h), 'no button at all');

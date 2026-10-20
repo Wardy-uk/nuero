@@ -506,6 +506,22 @@ async function requestForMove({ option = 'approve', surface = 'neuro-web', sessi
   const w0 = writesFor(packet, option);
   if (!w0.ok) return { ...w0, code: 409 };
   if (!packet.duty || packet.duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
+  // The boundary (20 Oct 2026): a yes that could not be carried out is not
+  // asked for. Device lock, stop, today's allowance and whether this move fits
+  // it are judged BEFORE anything is stored or a confirmation is minted, and
+  // the one boundary that stands is named in plain words.
+  // A move already begun today (a retry to finish it, or to find what landed)
+  // was charged when it started, so "used up" is not a boundary for IT —
+  // execute() re-judges each step at reservation either way.
+  const b = budget.brief({ now }).boundary;
+  let begun = false;
+  try { begun = budget.usage(budget.londonDay(now)).moveKeys.includes(w0.moveKey); } catch { begun = false; }
+  if (b && !(begun && b.gate === 'used')) return refuse(b.say, { code: 409, gate: b.gate, boundary: b });
+  if (!begun) {
+    const mins0 = toMin(w0.slot.end) - toMin(w0.slot.start);
+    const fit0 = budget.wouldFit({ action: budget.ACTION, now, steps: [{ kind: 'calendar.solo', minutes: mins0, contacts: 0, spendPence: 0 }, { kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 }] });
+    if (!fit0.ok) return refuse(fit0.say, { code: 409, gate: 'allowance', boundary: { gate: 'fit', say: fit0.say } });
+  }
   const st =require('./prepared-move-store').store(packet, { now });
   if (!st.ok) return refuse(st.why, { code: 409 });
   const record = st.record;

@@ -668,7 +668,6 @@ export default function AttentionSurface({
 
         {askLife && <LifeAsk ask={data.life.ask} onAnswer={onLifeAnswer} busy={lifeBusy} />}
         {beforeSay}
-        {prepared}
 
         {/* ⚠ `--stacked` WHEN THE TRANSITION IS ALSO HERE. The cap below was
             sized for ONE sentence and its buttons; a transition adds a second
@@ -890,6 +889,20 @@ export default function AttentionSurface({
             </div>
           )}
         </div>
+
+        {/* SAiM's prepared move in the older layouts (20 Oct 2026): AFTER her
+            words, never above them, and folded behind its entry whenever she is
+            naming something else, cannot see, or is staying quiet. */}
+        {prepared && (() => {
+          // One stable element (see Situation): a changing wrapper remounts the move.
+          const fold = Boolean(preparedMoment) && Boolean(primary || !poolAvailable || quiet || preparedMoment.kind === 'held');
+          return (
+            <details className={`sit__prepared${fold ? ' sit__prepared--entry' : ' sit__prepared--shown'}`} open={fold ? undefined : true}>
+              <summary className="sit__prepared-entry">{(preparedMoment && preparedMoment.entry) || 'Prepared work'}</summary>
+              {prepared}
+            </details>
+          );
+        })()}
 
         {/* ── What she's showing ────────────────────────────────────────────
             Nick, 31 Aug 2026: SAiM is "a series of dashboards", and the

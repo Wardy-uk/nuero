@@ -89,6 +89,7 @@ const VOCABULARY = new Map(Object.entries({
   '#dcd5c7': 'prepared page: rules and citation underline',
   '#8a5a12': 'prepared page: still human — an open decision, text',
   '#b7791f': 'prepared page: still human — an open decision, dashed edge',
+  '#e9b46a': 'prepared move, on her ground: still human — what only people can settle (the count, the meeting step, its edge). The paper’s own still-human pair is above; this is the same meaning off the page',
 
   // ⚠ The centrepiece surfaces (Approach / Shelf / Dashboard) carry their own
   // near-white and grey ramp. It is DECLARED rather than folded into the four

@@ -273,6 +273,7 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
     page = renderSaim({
       canonical: day.canonical, error: day.error, at: day.at, busy, focus: route.focus,
       onAct, run, onDeskOpen: deskReachable ? deskOpen : null, deskStates, neuroUrl: NEURO_URL, debug,
+      onOpenAuthority: openAuthority,
     });
   } else if (route.tab === 'saim') {
     // Nothing read yet: the same composition, saying so — never a guess about the day.

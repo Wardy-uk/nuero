@@ -79,3 +79,12 @@ a.wk__open { text-decoration: none; display: inline-block; }
 .mf__main--prep > .mf__prepared--lead { order: 0; }
 .mf__main--prep > .wk__dockwrap { order: 2; }
 .mf__prepared .pmo { margin: 1.2em 0 0.4em; max-width: none; }
+
+/* The prepared move when something else leads (20 Oct 2026): one quiet entry. */
+.mf__prepared--shown > .mf__prepared-entry { display: none; }
+.mf__prepared--entry { margin: 1.1em 0 0.4em; }
+.mf__prepared-entry { cursor: pointer; display: inline-flex; align-items: center; gap: 0.5em; padding: 0.5em 0.95em; border-radius: 999px; border: 1px solid rgba(132, 166, 222, 0.45); color: var(--text); font-size: 0.92em; list-style: none; }
+.mf__prepared-entry::-webkit-details-marker { display: none; }
+.mf__prepared-entry::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: rgb(132, 166, 222); }
+.mf__prepared-entry::after { content: '›'; color: var(--muted); }
+.mf__prepared--entry[open] > .mf__prepared-entry::after { content: '⌄'; }

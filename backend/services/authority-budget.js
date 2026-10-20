@@ -474,12 +474,33 @@ function status({ now = Date.now() } = {}) {
 }
 
 /** The small slice the prepared-move view needs. */
+/**
+ * PURE over a status(). The ONE boundary between SAiM and acting, in plain
+ * words, or null when none stands. Device lock first (nothing else matters
+ * while it is closed), then the stop, then today's allowance. Read only.
+ */
+const BOUNDARY = {
+  device: 'This device is locked for SAiM, so I can prepare this but not do it. The lock is set on the Pi.',
+  stop: 'You’ve stopped all SAiM actions. Resume them in “What SAiM may do” and I can do this.',
+  allowance: 'I don’t have your go-ahead for today. Give me today’s allowance in “What SAiM may do” — I’ll still ask before I change anything.',
+  used: 'Today’s allowance is already used. It is fresh again tomorrow; “What SAiM may do” shows what was done.',
+  unreadable: 'I couldn’t check what I’m allowed to do, so I won’t do anything yet.',
+};
+function boundaryOf(s) {
+  if (!s || !s.gates) return { gate: 'unreadable', say: BOUNDARY.unreadable };
+  if (!s.gates.device.open) return { gate: 'device', say: BOUNDARY.device };
+  if (s.stopped) return { gate: 'stop', say: BOUNDARY.stop };
+  if (!s.grant) return { gate: 'allowance', say: BOUNDARY.allowance };
+  if (!s.canAct) return { gate: 'used', say: BOUNDARY.used };
+  return null;
+}
+
 function brief({ now = Date.now() } = {}) {
   try {
     const s = status({ now });
-    return { canAct: s.canAct, stopped: s.stopped, deviceOpen: s.gates.device.open, granted: Boolean(s.grant), summary: s.summary };
+    return { canAct: s.canAct, stopped: s.stopped, deviceOpen: s.gates.device.open, granted: Boolean(s.grant), summary: s.summary, boundary: boundaryOf(s) };
   } catch {
-    return { canAct: false, stopped: true, deviceOpen: false, granted: false, summary: 'SAiM couldn’t read its allowance.' };
+    return { canAct: false, stopped: true, deviceOpen: false, granted: false, summary: 'SAiM couldn’t read its allowance.', boundary: { gate: 'unreadable', say: BOUNDARY.unreadable } };
   }
 }
 
@@ -503,7 +524,7 @@ const _test = {
 };
 
 module.exports = {
-  ACTION, CEILING, CONFIRM_TTL_MS, STOPPED_SAY, londonDay, masterLock, stopState, stop, previewResume, resume,
+  ACTION, CEILING, CONFIRM_TTL_MS, STOPPED_SAY, BOUNDARY, boundaryOf, londonDay, masterLock, stopState, stop, previewResume, resume,
   validateTerms, statementFor, previewGrant, grant, revoke, usage, judge, wouldFit, reserve, settle, releaseUnstarted, recordReceipt,
   status, brief, _test,
 };

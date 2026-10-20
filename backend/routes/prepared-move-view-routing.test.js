@@ -154,7 +154,15 @@ test('a trustworthy move: what was prepared, why, what is unresolved, the exact 
 test('the view asks the same question /request will — one wording, never two', async () => {
   S.packet = () => fixture(); S.over = {};
   const v = (await get()).json.move;
-  const r = await req('POST', 'request', undefined, { option: 'approve', sessionId: 'view_test_0001' });
+  // The question is only asked when SAiM could act on a yes (20 Oct 2026):
+  // open the lock and grant today's allowance for the request alone.
+  const budget = require('../services/authority-budget');
+  const prior = process.env.SAIM_PREPARED_MOVE_EXECUTION;
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
+  if (!budget.status().grant) budget._test.grantToday();
+  let r;
+  try { r = await req('POST', 'request', undefined, { option: 'approve', sessionId: 'view_test_0001' }); }
+  finally { process.env.SAIM_PREPARED_MOVE_EXECUTION = prior; budget._test.reset(); }
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.confirmation.question, v.options[0].question);
   assert.deepEqual(r.json.confirmation.writes, v.options[0].writes);
