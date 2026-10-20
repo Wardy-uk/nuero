@@ -56,8 +56,8 @@ function DeviceLock({ onLock }) {
   return (
     <section className="v2-card" aria-label="This device">
       <p className="v2-eyebrow">This device</p>
-      <p className="v2-sub">Lock SAiM here; your PIN opens it again.</p>
-      <button type="button" className="v2-pill" onClick={onLock}>Lock SAiM</button>
+      <p className="v2-sub">Forgets your PIN in this browser only; it opens again with your PIN. It doesn’t change the device lock on the Pi or what SAiM may do.</p>
+      <button type="button" className="v2-pill" onClick={onLock}>Sign out on this device</button>
     </section>
   );
 }

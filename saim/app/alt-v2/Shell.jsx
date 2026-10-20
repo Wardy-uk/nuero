@@ -2,6 +2,9 @@ import Field from '../../shared-ui/Field';
 import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
 import { TABS } from './model.mjs';
 
+// The deployed build id (vite.config.alt3 defines it); guarded so a test bundle without Vite still loads.
+const BUILD = (import.meta.env && import.meta.env.VITE_BUILD_LABEL) || '';
+
 // The SAiM Alt v2 frame. Her field — the control's `Field`, driven exactly as
 // the control drives it — fills the screen; the page sits over it; a
 // persistent bottom bar holds the six destinations and when NEURO was read.
@@ -10,7 +13,8 @@ export default function Shell({ active, onGo, drive, updated = null, footer = nu
     <div className="v2 lit-scope" style={{ '--saim-rgb': surfaceRgb(drive) }}>
       <div className="v2__field" aria-hidden="true"><Field {...drive} /></div>
       <div className="v2__corner">
-        <span className="v2__marker" title="Experimental treatment — not the everyday SAiM">SAiM Alt</span>
+        {/* Identity is debug-only too: the selected SAiM tab is identity enough. */}
+        {debug && <span className="v2__marker" title={`Build ${BUILD || 'unknown'}`}>SAiM Alt{BUILD ? ` · ${BUILD}` : ''}</span>}
         {/* Operational chrome — the control link, refresh and lock — only in debug mode
             (?debug=1). Locking lives in Controls; the page polls on its own. */}
         {debug && marker}

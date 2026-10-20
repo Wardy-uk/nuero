@@ -56,17 +56,35 @@ test('debug mode is ?debug=1 and nothing else', () => {
 
 test('the shell shows no Control link, refresh or lock in normal view — and all three in debug', () => {
   const normal = shell(false);
-  assert.doesNotMatch(normal, /Control ↗|v2__refresh|Lock \/ change PIN|🔒|↻/);
+  assert.doesNotMatch(normal, /Control ↗|v2__refresh|Lock \/ change PIN|🔒|↻|SAiM Alt|v2__marker/);
   assert.match(normal, /class="v2__nav"/, 'the six-tab bar stays');
   const dbg = shell(true);
+  assert.match(dbg, /SAiM Alt/, 'debug keeps the Alt identity');
   assert.match(dbg, /Control ↗/); assert.match(dbg, /v2__refresh/); assert.match(dbg, /Lock \/ change PIN/);
 });
 
-test('locking lives in Controls', () => {
+test('signing out lives in Controls and says it touches neither the Pi lock nor the allowance', () => {
   const html = renderToString(React.createElement(Controls.ControlsPageView, { resp: { settings: { enabled: true } }, onLock() {}, onOpenAuthority() {} }));
-  assert.match(html, /aria-label="This device"/); assert.match(html, />Lock SAiM</);
+  assert.match(html, /aria-label="This device"/); assert.match(html, />Sign out on this device</);
+  assert.match(html, /doesn’t change the device lock on the Pi or what SAiM may do/);
+  assert.doesNotMatch(html, />Lock SAiM</, 'no button that reads like the Pi lock');
   const unread = renderToString(React.createElement(Controls.ControlsPageView, { resp: null, error: 'x', onLock() {} }));
-  assert.match(unread, />Lock SAiM</, 'still reachable when settings cannot be read');
+  assert.match(unread, />Sign out on this device</, 'still reachable when settings cannot be read');
+});
+
+test('no Alt browser action can reach the Pi execution lock, the switches or an allowance', () => {
+  // Signing out is client-only: it forgets the PIN and shows the lock screen. No request at all.
+  const app = fs.readFileSync(path.join(APP, 'alt-v2', 'App.jsx'), 'utf8');
+  assert.ok(app.includes('const lock = () => { clearPin(); setAuthed(false); };'));
+  const api = fs.readFileSync(path.join(APP, 'src', 'api.js'), 'utf8');
+  const clear = api.slice(api.indexOf('export function clearPin'), api.indexOf('export function apiUrl'));
+  assert.ok(clear.includes('localStorage.removeItem')); assert.doesNotMatch(clear, /fetch/);
+  // No Alt shell file names the lock, the switch route, or the grant/move routes (those live only in the shared screens).
+  const files = ['alt-v2/App.jsx', 'alt-v2/Shell.jsx', 'alt-v2/ControlsPage.jsx', 'alt-v2/model.mjs', 'alt-v2-manifest/LiveSaim.jsx', 'alt-v2-manifest/ManifestView.jsx', 'alt-v2-manifest/prepared.mjs', 'alt-v2-manifest/manifest.mjs', 'alt-v3/main.jsx'];
+  const alt = files.map((f) => fs.readFileSync(path.join(APP, f), 'utf8')).join('\n');
+  for (const word of ['SAIM_PREPARED_MOVE_EXECUTION', 'saim_prepared_move_execution', 'feature-flags', '/api/saim-authority', '/api/prepared-moves']) {
+    assert.ok(!alt.includes(word), `Alt names ${word}`);
+  }
 });
 
 test('the desk-state line is debug-only on the live page', () => {
