@@ -57,7 +57,14 @@ const localHM = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe
 const localWall = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).replace(' ', 'T');
 
 // The instant: the next Tuesday, 12:30 London (a working day, a bundled moment).
-let d0 = Date.now() + DAY;
+// ⚠ EVERY seeded date below derives from this ONE instant `T`, never from the
+// real clock. The children judge at a frozen `T`; dates seeded from `Date.now()`
+// drifted against it by up to six days depending on what weekday the suite ran,
+// so on a Tuesday the commitments were already overdue at `T` and the calm case
+// led with S7 instead of S11 (20 Oct 2026). `PARITY_FROM` (YYYY-MM-DD) pins the
+// day the search starts from, to reproduce any date.
+const FROM = process.env.PARITY_FROM ? Date.parse(`${process.env.PARITY_FROM}T12:00:00Z`) : Date.now();
+let d0 = FROM + DAY;
 while (new Date(`${lday(d0)}T12:00:00Z`).getUTCDay() !== 2) d0 += DAY;
 const DAYKEY = lday(d0);
 const T = london(DAYKEY, '12:30');
@@ -114,10 +121,10 @@ test.before(async () => {
   await db.init();
   const taskStore = require('./task-store');
   const mk = (text, note, daysAgo, slips) => {
-    const id = (taskStore.createTask({ text, source: 'meeting-promotion', origin_path: note, due_date: ymd(Date.now() + 3 * DAY) }).task || {}).id
+    const id = (taskStore.createTask({ text, source: 'meeting-promotion', origin_path: note, due_date: ymd(T + 3 * DAY) }).task || {}).id
       || db.get('SELECT id FROM tasks WHERE text = ?', [text]).id;
-    db.run('UPDATE tasks SET created_at = ? WHERE id = ?', [new Date(Date.now() - daysAgo * DAY).toISOString().replace('T', ' ').slice(0, 19), id]);
-    for (let i = 1; i <= slips; i += 1) taskStore.updateTask(id, { due_date: ymd(Date.now() + (3 + i) * DAY) });
+    db.run('UPDATE tasks SET created_at = ? WHERE id = ?', [new Date(T - daysAgo * DAY).toISOString().replace('T', ' ').slice(0, 19), id]);
+    for (let i = 1; i <= slips; i += 1) taskStore.updateTask(id, { due_date: ymd(T + (3 + i) * DAY) });
     return id;
   };
   mk('Nick to send Alex Reed the list of ticket types blocked by skill gaps', 'Meetings/2026/09/2026-09-14 - Ops sync.md', 34, 2);
