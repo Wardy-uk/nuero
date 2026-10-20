@@ -468,8 +468,11 @@ async function graphFetchAll(urlPath, token, extraHeaders = {}, maxPages = 20) {
   return { value: items, pages, truncated: true };
 }
 
-// Fetch calendar events for a date range (YYYY-MM-DD strings)
-async function fetchCalendarEvents(startDate, endDate) {
+// Fetch calendar events for a date range (YYYY-MM-DD strings).
+// `{ bridge: false }` answers from NEURO's own MSAL sign-in only — what NOVA asks
+// for, since NOVA's own fallback IS the bridge; without it a dead NEURO sign-in
+// would hand NOVA its own answer back.
+async function fetchCalendarEvents(startDate, endDate, { bridge = true } = {}) {
   // Priority 1 — MSAL/Graph direct
   const token = await getAccessToken();
   if (token) {
@@ -544,7 +547,7 @@ async function fetchCalendarEvents(startDate, endDate) {
   }
 
   // Priority 2 — NOVA bridge (when MSAL not authenticated)
-  if (isBridgeConfigured()) {
+  if (bridge && isBridgeConfigured()) {
     try {
       const bridgeData = await novaBridgeFetch('/calendar', { start: startDate, end: endDate });
       if (bridgeData) {

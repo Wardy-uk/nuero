@@ -48,9 +48,16 @@ router.post('/auth', async (req, res) => {
 });
 
 // GET /api/microsoft/calendar
+// `?source=msal` (NOVA's 1-2-1 calendar reads): own sign-in only, and a failed
+// read is a 503 — not `events: []`, which reads as an empty diary.
 router.get('/calendar', async (req, res) => {
   const { start, end } = req.query;
   try {
+    if (req.query.source === 'msal') {
+      const events = await microsoft.fetchCalendarEvents(start, end, { bridge: false });
+      if (!events) return res.status(503).json({ error: 'NEURO is not signed in to Microsoft, or the calendar read failed' });
+      return res.json({ events, source: 'msal', truncated: !!events.truncated });
+    }
     const events = await microsoft.fetchCalendarEvents(start, end);
     res.json({ events: events || [] });
   } catch (err) {
