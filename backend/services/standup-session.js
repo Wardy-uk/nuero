@@ -470,10 +470,6 @@ function _renderContext(ctx) {
   // open tasks were MUST, and asked "what are the top things?" SAiM said she had
   // no backlog view — true of the context, false of NEURO.
   parts.push('(Only tasks rated MUST are listed above. The whole ranked list is one list_tasks call away; urgent email is get_urgent_emails.)');
-  // ⚠ The MUSTs are a SLICE of the list, not the list. 16 Oct 2026: 2 of 38
-  // open tasks were MUST, and asked "what are the top things?" SAiM said she had
-  // no backlog view — true of the context, false of NEURO.
-  parts.push('(Only tasks rated MUST are listed above. The whole ranked list is one list_tasks call away; urgent email is get_urgent_emails.)');
   if (ctx.plan) {
     parts.push(`\n90-DAY PLAN: day ${ctx.plan.day}, ${ctx.plan.done}/${ctx.plan.total} done.`);
   }
@@ -661,22 +657,6 @@ const SESSION_TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
-    name: 'list_tasks',
-    description: 'Read his open tasks, ranked exactly as his Focus screen ranks them (most pressing first). Use whenever he asks what is on, what is next or what the top things are. Reads only. A task with id null is a Microsoft or daily-note item: it can be discussed but not blocked or completed here.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        filter: { type: 'string', enum: ['all', 'overdue', 'today'], description: 'all = every open task (default); overdue = past due; today = due today.' },
-        limit: { type: 'integer', description: 'How many from the top (default 10, max 30).' },
-      },
-    },
-  },
-  {
-    name: 'get_urgent_emails',
-    description: 'Read the emails triage says need an action or a reply from him, with sender and why. Reads only — nothing is sent.',
-    input_schema: { type: 'object', properties: {} },
-  },
-  {
     name: 'block_time',
     description: 'Put tasks into ONE time block in his calendar, when he has named a time for them. Takes existing task ids — a task already sitting in an earlier block is moved into this one, not copied. Only say it is booked if this returns ok.',
     input_schema: {
@@ -821,10 +801,6 @@ function _describeToolResult(name, input = {}, result = {}) {
       return `list_tasks (${result.filter}): read ${(result.tasks || []).length} of ${result.total}`;
     case 'get_urgent_emails':
       return `get_urgent_emails: read ${(result.emails || []).length}`;
-    case 'list_tasks':
-      return `list_tasks (${result.filter}): read ${(result.tasks || []).length} of ${result.total}`;
-    case 'get_urgent_emails':
-      return `get_urgent_emails: read ${(result.emails || []).length}`;
     case 'create_task':
       return `create_task: CREATED #${result.task_id ?? '?'} "${result.text || input.text || ''}"`;
     case 'set_weekly_target':
@@ -961,44 +937,6 @@ async function _executeTool(session, name, input = {}) {
           : 'No free gap of 15+ minutes in the working day. Say so and offer another day.',
       };
     }
-
-    case 'list_tasks': {
-      const filter = input.filter == null ? 'all' : String(input.filter);
-      const { rankedTodos, FILTERS } = require('./focus-ranking');
-      if (!FILTERS.includes(filter)) return { ok: false, error: `filter must be one of ${FILTERS.join(', ')}.` };
-      const limit = Math.min(Math.max(Number(input.limit) || 10, 1), 30);
-      let ranked;
-      try {
-        ranked = rankedTodos(filter);
-      } catch (e) {
-        // Could not look is not "nothing open" — say which.
-        return { ok: false, error: `Could not read the task list (${e.message}). Say so — do not tell him the list is empty.` };
-      }
-      const today = new Date().toISOString().split('T')[0];
-      return {
-        ok: true,
-        filter,
-        total: ranked.length,
-        tasks: ranked.slice(0, limit).map((t, i) => ({
-          rank: i + 1,
-          // Only a NEURO task id can be blocked or completed — a mirror line
-          // gets null rather than its list index, which is not an id at all.
-          id: t.task_id || null,
-          text: t.text,
-          // His rating, kept apart from what the classifier reads it as.
-          moscow: t.moscowSet || null,
-          readsAs: t.moscow || null,
-          due: t.due_date ? t.due_date.split('T')[0] : null,
-          overdue: Boolean(t.due_date && t.due_date.split('T')[0] < today && !t.myPartDone),
-          where: t.msPlan || t.source || null,
-          why: t._scoreReason || null,
-        })),
-        note: ranked.length > limit ? `Top ${limit} of ${ranked.length}. Ask for more only if he wants them.` : undefined,
-      };
-    }
-
-    case 'get_urgent_emails':
-      return chatTools.execute(name, {});
 
     case 'list_tasks': {
       const filter = input.filter == null ? 'all' : String(input.filter);
