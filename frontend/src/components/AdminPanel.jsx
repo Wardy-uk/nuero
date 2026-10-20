@@ -396,7 +396,9 @@ function FeatureSwitches() {
             </label>
             <p className="admin-hint">
               {f.description}
-              {f.lockedByEnv && ` · Set by ${f.envVar} in the environment, so it can’t be changed here.`}
+              {f.managedOnPi
+                ? ` · This lock is managed on the Pi (${f.envVar}); it can only be shown here.`
+                : f.lockedByEnv && ` · Set by ${f.envVar} in the environment, so it can’t be changed here.`}
               {f.blockedBy && ' · Off while the switch above it is off.'}
             </p>
           </div>

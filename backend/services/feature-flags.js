@@ -184,8 +184,15 @@ const FLAGS = [
     // built or a confirmation spent — a hidden button is not the gate. Default
     // FALSE. While off, POST /api/prepared-moves/request still shows what a yes
     // would do; /confirm refuses before anything is read or written.
+    //
+    // ⚠ 20 Oct 2026: ENV-ONLY. This is the device lock, and it is managed on the
+    // Pi alone: only SAIM_PREPARED_MOVE_EXECUTION exactly 'true' opens it; unset,
+    // empty or any other value is locked. A stored switch value is never read,
+    // and Settings cannot write one (setEnabled refuses before any DB write). An
+    // old stored value is left where it is, with no effect.
     key: 'saim_prepared_move_execution',
     env: 'SAIM_PREPARED_MOVE_EXECUTION',
+    envOnly: true,
     default: false,
     label: 'Let SAiM carry out a prepared move you confirm',
     description: 'When you confirm a prepared move, SAiM adds ONE solo block to your calendar (nobody invited) '
@@ -228,6 +235,9 @@ function isEnabled(key) {
   // act on it is not running, which is a claim about behaviour that cannot happen.
   if (flag.requires && !isEnabled(flag.requires)) return false;
 
+  // An env-only switch is the environment's exact 'true' and nothing else.
+  if (flag.envOnly) return process.env[flag.env] === 'true';
+
   const fromEnv = envValue(flag);
   if (fromEnv !== null) return fromEnv;
   const stored = storedValue(flag);
@@ -238,6 +248,8 @@ function isEnabled(key) {
 function setEnabled(key, on) {
   const flag = BY_KEY.get(key);
   if (!flag) return { ok: false, error: `Unknown switch "${key}".` };
+  // Refused before anything is read or written: no stored value, no Activity line.
+  if (flag.envOnly) return { ok: false, managedOnPi: true, error: 'This lock is managed on the Pi.' };
   if (envValue(flag) !== null) {
     return {
       ok: false,
@@ -266,7 +278,9 @@ function list() {
     enabled: isEnabled(flag.key),
     // So the UI can disable the control and SAY why, rather than offering a
     // toggle that silently does nothing.
-    lockedByEnv: envValue(flag) !== null,
+    lockedByEnv: flag.envOnly ? true : envValue(flag) !== null,
+    // An env-only switch can only ever be shown here, never set.
+    managedOnPi: Boolean(flag.envOnly),
     envVar: flag.env,
     default: flag.default,
     // A dependent switch that is off only because its parent is.

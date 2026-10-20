@@ -163,10 +163,15 @@ function resetWorld() {
 const budget = require('../services/authority-budget');
 // "Switched on" means BOTH gates: the device lock open AND an allowance for today.
 // (The allowance persists across a retry inside one test; resetWorld clears it.)
+// 20 Oct 2026: the device lock is env-only — the Pi's SAIM_PREPARED_MOVE_EXECUTION
+// exactly 'true' — so the test opens it the one way production can.
 const withSwitch = async (fn) => {
-  flags.setEnabled('saim_prepared_move_execution', true);
+  const prior = process.env.SAIM_PREPARED_MOVE_EXECUTION;
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
   if (!budget.status().grant) budget._test.grantToday();
-  try { return await fn(); } finally { flags.setEnabled('saim_prepared_move_execution', false); }
+  try { return await fn(); } finally {
+    if (prior === undefined) delete process.env.SAIM_PREPARED_MOVE_EXECUTION; else process.env.SAIM_PREPARED_MOVE_EXECUTION = prior;
+  }
 };
 
 // ── Default off ──────────────────────────────────────────────────────────────

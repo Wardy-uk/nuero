@@ -416,3 +416,55 @@ test('a refusal names the limit in plain words and never an internal identifier'
   const r = await run(rec, sandbox());
   assert.doesNotMatch(r.reasons[0], /saim-move:|pm_|ig_|ag_|ar_|PLANNER/);
 });
+
+// ── The device lock is the Pi environment, exactly (20 Oct 2026) ─────────────
+
+const flagsMod = require('./feature-flags');
+const LOCK_KEY = `${flagsMod.STATE_PREFIX}saim_prepared_move_execution`;
+const setEnv = (v) => { if (v === undefined) delete process.env.SAIM_PREPARED_MOVE_EXECUTION; else process.env.SAIM_PREPARED_MOVE_EXECUTION = v; };
+
+test('env-only lock: only the exact value "true" opens it; a stored switch value never does', () => {
+  try {
+    for (const stored of [null, 'true', 'false']) {
+      if (stored === null) db.run('DELETE FROM agent_state WHERE key = ?', [LOCK_KEY]); else db.setState(LOCK_KEY, stored);
+      setEnv('true');
+      assert.equal(flagsMod.isEnabled('saim_prepared_move_execution'), true, `env true, stored ${stored}`);
+      assert.equal(budget.masterLock().open, true);
+      for (const v of [undefined, '', 'TRUE', 'True', '1', 'yes', 'on', ' true', 'true ', 'false']) {
+        setEnv(v);
+        assert.equal(flagsMod.isEnabled('saim_prepared_move_execution'), false, `env ${JSON.stringify(v)}, stored ${stored}`);
+        assert.equal(budget.masterLock().open, false, `masterLock env ${JSON.stringify(v)}`);
+      }
+    }
+  } finally { db.run('DELETE FROM agent_state WHERE key = ?', [LOCK_KEY]); delete process.env.SAIM_PREPARED_MOVE_EXECUTION; }
+});
+
+test('missing env is locked even when an old stored switch says enabled — and nothing is spent or written', async () => {
+  fresh({ lock: false, grant: true });
+  db.setState(LOCK_KEY, 'true');
+  try {
+    const rec = stored(); const grantId = confirmation(rec);
+    let built = 0;
+    const r = await exec.execute({ recordId: rec.id, option: 'approve', grantId, adapters: () => { built += 1; return sandbox(); }, target: 'sandbox', checks: () => okChecks(null) });
+    assert.equal(r.ok, false); assert.equal(r.gate, 'device');
+    assert.equal(built, 0, 'no adapter built');
+    assert.equal(ig.get(grantId).consumed_at, null, 'confirmation not spent');
+    assert.equal(db.get(`SELECT COUNT(*) n FROM saim_authority_reservations`).n, 0, 'nothing reserved');
+  } finally { db.run('DELETE FROM agent_state WHERE key = ?', [LOCK_KEY]); }
+});
+
+test('a move happens only with the exact env value AND an allowance', async () => {
+  // env "TRUE" (not exact) + allowance → device gate.
+  fresh({ lock: false, grant: true }); setEnv('TRUE');
+  let rec = stored(); let r = await run(rec, sandbox());
+  assert.equal(r.ok, false); assert.equal(r.gate, 'device');
+  // exact env, no allowance → no-allowance.
+  fresh({ lock: true, grant: false });
+  rec = stored(); r = await run(rec, sandbox());
+  assert.equal(r.ok, false); assert.equal(r.budget, 'no-allowance');
+  // exact env + allowance → it runs (sandbox).
+  fresh({ lock: true, grant: true });
+  rec = stored(); r = await run(rec, sandbox());
+  assert.equal(r.ok, true, JSON.stringify(r.reasons || r));
+  delete process.env.SAIM_PREPARED_MOVE_EXECUTION;
+});

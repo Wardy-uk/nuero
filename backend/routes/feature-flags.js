@@ -25,7 +25,8 @@ router.get('/', (req, res) => {
 router.post('/:key', (req, res) => {
   try {
     const result = flags.setEnabled(req.params.key, req.body?.enabled === true);
-    res.status(result.ok ? 200 : 400).json({ ...result, flags: flags.list() });
+    // The device lock is managed on the Pi: a 403, not a malformed request.
+    res.status(result.ok ? 200 : (result.managedOnPi ? 403 : 400)).json({ ...result, flags: flags.list() });
   } catch (e) {
     console.error('[feature-flags] write failed:', e.message);
     res.status(500).json({ ok: false, error: e.message });
