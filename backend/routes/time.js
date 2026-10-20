@@ -18,7 +18,6 @@ const router = express.Router();
 const db = require('../db/database');
 const timeFit = require('../services/time-fit');
 const taskStore = require('../services/task-store');
-const taskScoring = require('../services/task-scoring');
 
 const MAX_FIT_LIMIT = 50;
 
@@ -92,7 +91,7 @@ router.get('/what-fits', (req, res) => {
 
     // Same ranking as everywhere else, so this cannot disagree with Focus about
     // what matters — it only cuts that order down to what fits.
-    const ranked = taskScoring.rankTasks(taskStore.activeTodos());
+    const ranked = require('../services/task-order').rankWithOrder(taskStore.activeTodos());
 
     // "I have some time" asks for every task that fits, not the top five, so the
     // limit can be raised — but bounded, because a list of 150 is the task list.

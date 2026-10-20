@@ -19,6 +19,7 @@ const { domainOrDefault, normaliseDomain } = require('../../shared/task-domain.c
 const { normaliseOrigin, inferOrigin } = require('../../shared/task-origin.cjs');
 const recurrence = require('../../shared/task-recurrence.cjs');
 const { toDateStr } = require('../../shared/working-days.cjs');
+const triage = require('../../shared/task-triage.cjs');
 
 const VALID_MOSCOW = ['must', 'should', 'could', 'wont'];
 const VALID_STATUS = ['open', 'in-progress', 'done', 'dropped'];
@@ -152,6 +153,9 @@ function toTodoShape(row, jiraKeys) {
     // the weekly risk report counts it as its own bucket rather than guessing.
     origin: normaliseOrigin(row.origin),
     originProposed: Boolean(row.origin_proposed),
+    // Triage fields Nick answered "none" (shared/task-triage.cjs). An array,
+    // always — never the raw JSON string, so no consumer has to parse it.
+    triageNone: triage.normNone(row.triage_none),
     notes: row.notes || null,
     filePath: null,
     lineNumber: null,
@@ -719,6 +723,22 @@ function updateTask(id, fields = {}, opts = {}) {
     );
   }
   if ('due_date' in fields) patch.due_date = fields.due_date || null;
+  // Triage "none" answers. A list REPLACES the stored one; omitted leaves it.
+  // Then, whatever was sent: a field that now HAS a value is no longer "none" —
+  // otherwise setting a date after answering "no date" leaves a stale none
+  // behind that would hide the field if the date were later cleared.
+  {
+    const noneIn = 'triageNone' in fields ? triage.normNone(fields.triageNone) : triage.normNone(row.triage_none);
+    const val = (col) => (col in patch ? patch[col] : row[col]);
+    const pruned = triage.pruneNone(noneIn, {
+      priority: val('priority'),
+      estimate: val('estimate_minutes'),
+      due: val('due_date'),
+      origin: val('origin'),
+    });
+    const next = pruned.length ? JSON.stringify(pruned) : null;
+    if ((next || null) !== (row.triage_none || null)) patch.triage_none = next;
+  }
   // ⚠ A field missing from this whitelist is SILENTLY DROPPED — the way
   // estimateMinutes went missing from POST /api/tasks. Both of these are
   // three-valued in effect: absent means "leave it", null means "clear it".
@@ -770,6 +790,12 @@ function updateTask(id, fields = {}, opts = {}) {
   const completing = patch.status === 'done' && row.status !== 'done';
 
   db.updateTaskRow(id, patch);
+
+  // A MoSCoW changed by hand moves the task to another band, and its dragged
+  // position meant something only in the old one (services/task-order.js).
+  if ('moscow' in patch && patch.moscow !== row.moscow) {
+    try { require('./task-order').forget(`task:${id}`); } catch {}
+  }
 
   // ── A BLOCK IS A PLAN, AND A TICK IS A FACT (15 Sep 2026) ─────────────────
   //
@@ -842,7 +868,7 @@ function updateTask(id, fields = {}, opts = {}) {
   // `notes` and `status` are deliberately absent: rewriting the wording is
   // editing, and finishing is already counted. Counting either here would make
   // one act land in two ledgers.
-  const TRIAGE_FIELDS = ['moscow', 'priority', 'due_date', 'estimate_minutes', 'origin', 'domain'];
+  const TRIAGE_FIELDS = ['moscow', 'priority', 'due_date', 'estimate_minutes', 'origin', 'domain', 'triage_none'];
   const triaged = TRIAGE_FIELDS.filter((f) => f in patch && String(patch[f] ?? '') !== String(row[f] ?? ''));
   if (triaged.length) {
     try {

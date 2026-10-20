@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const obsidian = require('../services/obsidian');
 const vaultCache = require('../services/vault-cache');
-const { rankTasks } = require('../services/task-scoring');
 const todoIntelligence = require('../services/todo-intelligence');
 const taskStore = require('../services/task-store');
 const microsoft = require('../services/microsoft');
@@ -12,6 +11,8 @@ const msTask = require('../../shared/ms-task.cjs');
 const msLocal = require('../services/ms-task-local');
 const lifecycle = require('../services/attention-lifecycle');
 const candidateProvenance = require('../services/candidate-provenance');
+const taskOrder = require('../services/task-order');
+const taskTriage = require('../../shared/task-triage.cjs');
 
 // How many pending capture_todo suggestions the todos payload will carry. The
 // queue hit 930 in August and collapsed to single figures once #108 made it
@@ -123,6 +124,10 @@ router.get('/', (req, res) => {
       // "not classified", and the panel's filter counts it as its own pile.
       origin: t.origin || null,
       originProposed: Boolean(t.originProposed),
+      // Triage fields answered "none" — part of what decides whether this row
+      // still needs triage (shared/task-triage.cjs). Missing from this list and
+      // a "No date" answer would read back as unanswered on every reload.
+      triageNone: Array.isArray(t.triageNone) ? t.triageNone : [],
       // Work or personal. Added at the same time because it was missing too, so
       // `domainBadge` in TodoPanel could never fire in full mode — the personal
       // chip has never once rendered on this screen. Same whitelist, same
@@ -152,7 +157,22 @@ router.get('/', (req, res) => {
     // whether Nick is mid-way through one or stuck on it. Folded in BEFORE
     // decoration and the lane, or the letter he just set would render on the
     // badge and change no ranking, which is the half-working shape.
-    const enriched = msLocal.annotate(mapped).map((task) => todoIntelligence.decorateTask(task));
+    //
+    // ⚠ `triage` is stamped BEFORE decorateTask, which overwrites `moscow` with
+    // the classifier's reading — after it, an unrated task never looks unrated.
+    const enriched = msLocal.annotate(mapped)
+      .map((task) => ({
+        ...task,
+        triage: taskTriage.triageable(task) ? { missing: taskTriage.missingFields(task) } : null,
+      }))
+      .map((task) => todoIntelligence.decorateTask(task));
+    // Ranked by score with Nick's dragged order honoured inside each MoSCoW
+    // band (services/task-order.js) — the same order the lane and Focus read,
+    // so the list and the lane cannot disagree about what comes first.
+    const todayStr = new Date().toISOString().split('T')[0];
+    const activeRanked = taskOrder.rankWithOrder(enriched.filter((task) => !task.done), todayStr);
+    const ordered = [...activeRanked, ...enriched.filter((task) => task.done)];
+    const triageCount = activeRanked.filter((t) => t.triage && t.triage.missing.length).length;
     // What Nick has said "not today" to. A cheap read of open records — no
     // writes on this path, and a record whose window has already passed is not
     // returned, so a poll arriving before `releaseDeferrals` runs cannot hide
@@ -172,8 +192,8 @@ router.get('/', (req, res) => {
     }
     const laneHeld = [];
     const todayLane = todoIntelligence.buildTodayLane(
-      rankTasks(enriched.filter((task) => !task.done), new Date().toISOString().split('T')[0]),
-      new Date().toISOString().split('T')[0],
+      activeRanked,
+      todayStr,
       5,
       { deferred, held: laneHeld, keyFor: laneKeyFor },
     );
@@ -233,7 +253,11 @@ router.get('/', (req, res) => {
     // what is waiting. Send the real total rather than letting the screen imply
     // one — the same reason /api/actions carries pendingTotal (#97).
     res.json({
-      todos: enriched,
+      todos: ordered,
+      // How many open tasks still need a triage decision — the "Triage (N)"
+      // button. Counted here, from the same rows, so the button and the run
+      // it opens cannot disagree.
+      triageCount,
       suggested,
       todayLane,
       // Held back, never silently dropped — a lane that is simply shorter is
@@ -588,11 +612,30 @@ router.patch('/ms/:msId/local', (req, res) => {
 
     const body = req.body || {};
     const fields = {};
-    for (const key of ['state', 'moscow', 'priority']) {
+    for (const key of ['state', 'moscow', 'priority', 'estimateMinutes', 'origin', 'none']) {
       if (key in body) fields[key] = body[key];
     }
     if (!Object.keys(fields).length) {
-      return res.status(400).json({ error: 'Nothing to change — send state, moscow or priority.' });
+      return res.status(400).json({ error: 'Nothing to change — send state, moscow, priority, estimateMinutes, origin or none.' });
+    }
+    // The triage fields follow the same refuse-don't-normalise rule as state.
+    if (fields.moscow != null && fields.moscow !== '' && taskStore.normMoscow(fields.moscow) === null) {
+      return res.status(400).json({ error: 'moscow must be must, should, could or wont.' });
+    }
+    if (fields.priority != null && fields.priority !== '' && taskStore.normPriority(fields.priority) === null) {
+      return res.status(400).json({ error: 'priority must be 1, 2 or 3.' });
+    }
+    if (fields.estimateMinutes != null && taskStore.normEstimate(fields.estimateMinutes) === null) {
+      return res.status(400).json({ error: 'estimateMinutes must be a positive number of minutes.' });
+    }
+    if (fields.origin != null && fields.origin !== '' && !['commitment', 'improvement'].includes(String(fields.origin))) {
+      return res.status(400).json({ error: "origin must be 'commitment' or 'improvement' (or null to clear)." });
+    }
+    if ('none' in fields && fields.none != null) {
+      const list = Array.isArray(fields.none) ? fields.none : null;
+      if (!list || list.some((f) => !taskTriage.NONE_ALLOWED.includes(f))) {
+        return res.status(400).json({ error: `none must be a list of: ${taskTriage.NONE_ALLOWED.join(', ')}.` });
+      }
     }
     // A value NEURO does not recognise is REFUSED, never silently stored as
     // null: "clear it" and "I sent you something you did not understand" are
@@ -611,6 +654,43 @@ router.patch('/ms/:msId/local', (req, res) => {
   } catch (e) {
     console.error('[Todos] MS local annotation error:', e);
     res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/todos/order — Nick's drag-and-drop order for one MoSCoW band.
+ *
+ * Body: { band: 'must'|'should'|'could'|'wont'|'none', keys: ['task:12', 'ms:…'] }
+ * — the WHOLE band top to bottom as it looked after the drop. His order then
+ * wins inside that band on every ranked surface (services/task-order.js).
+ * Nothing leaves the building; it is a private ranking.
+ */
+// POST /api/todos/order — drag and drop task order: save the order of one MoSCoW band (keys task:N / ms:id). Keywords: reorder, manual order, priority order.
+router.post('/order', (req, res) => {
+  try {
+    const { band, keys } = req.body || {};
+    const r = taskOrder.reorder({ band, keys });
+    if (!r.ok) return res.status(400).json(r);
+    vaultCache.invalidateType('todos');
+    res.json(r);
+  } catch (e) {
+    console.error('[Todos] Reorder error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/todos/order/reset — drop Nick's manual order for one MoSCoW band, so the score orders it again.
+router.post('/order/reset', (req, res) => {
+  try {
+    const { band } = req.body || {};
+    if (!['must', 'should', 'could', 'wont', 'none'].includes(band)) {
+      return res.status(400).json({ ok: false, error: 'band must be one of must, should, could, wont, none' });
+    }
+    const r = taskOrder.resetBand(band);
+    vaultCache.invalidateType('todos');
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

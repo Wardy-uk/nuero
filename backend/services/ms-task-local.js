@@ -44,6 +44,8 @@
 
 const db = require('../db/database');
 const taskStore = require('./task-store');
+const { normaliseOrigin } = require('../../shared/task-origin.cjs');
+const triage = require('../../shared/task-triage.cjs');
 
 const KEY = 'ms_task_local';
 
@@ -107,11 +109,37 @@ function set(msId, fields = {}) {
   const map = readAll();
   const entry = { ...(map[id] || {}) };
 
+  const moscowBefore = entry.moscow || null;
   if ('state' in fields) entry.state = normState(fields.state);
   if ('moscow' in fields) entry.moscow = taskStore.normMoscow(fields.moscow);
   if ('priority' in fields) entry.priority = taskStore.normPriority(fields.priority);
+  // Triage (20 Oct 2026, Nick: Microsoft tasks are triaged for every field).
+  // Microsoft has nowhere to hold an estimate or a commitment/improvement call,
+  // so — like MoSCoW — they live here, privately. A due date is NOT here: that
+  // one is Microsoft's own field and goes to Graph through PATCH /ms/:msId.
+  if ('estimateMinutes' in fields) {
+    entry.estimateMinutes = fields.estimateMinutes == null ? null : taskStore.normEstimate(fields.estimateMinutes);
+  }
+  if ('origin' in fields) entry.origin = fields.origin == null || fields.origin === '' ? null : normaliseOrigin(fields.origin);
+  if ('none' in fields) entry.none = triage.normNone(fields.none);
+  // A field that now has a value is no longer "none".
+  if (entry.none) {
+    entry.none = triage.pruneNone(entry.none, {
+      priority: entry.priority || null,
+      estimate: entry.estimateMinutes == null ? null : entry.estimateMinutes,
+      origin: entry.origin || null,
+      due: null,
+    });
+    if (!entry.none.length) delete entry.none;
+  }
+  for (const k of ['estimateMinutes', 'origin']) if (entry[k] == null) delete entry[k];
 
-  const empty = !entry.state && !entry.moscow && !entry.priority;
+  if ((entry.moscow || null) !== moscowBefore) {
+    try { require('./task-order').forget(`ms:${id}`); } catch {}
+  }
+
+  const empty = !entry.state && !entry.moscow && !entry.priority
+    && entry.estimateMinutes == null && !entry.origin && !(entry.none && entry.none.length);
   if (empty) {
     delete map[id];
   } else {
@@ -153,6 +181,11 @@ function annotate(rows) {
       meta,
       moscow: entry.moscow || row.moscow || null,
       taskPriority: entry.priority || row.taskPriority || null,
+      // Private triage answers. The mirror never carries these, so the local
+      // value is the only one there is — no fallback to compare it against.
+      estimateMinutes: entry.estimateMinutes != null ? entry.estimateMinutes : (row.estimateMinutes ?? null),
+      origin: entry.origin || row.origin || null,
+      triageNone: triage.normNone(entry.none),
       msLocalState: entry.state || null,
       // A neutral flag rather than the state word, because `todo-intelligence`
       // ranks every task in the system and has no business knowing Microsoft's

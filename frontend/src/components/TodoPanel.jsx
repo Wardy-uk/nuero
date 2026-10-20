@@ -16,6 +16,7 @@ import TimeFitCard from './TimeFitCard';
 import { pinFromContext, findPinned } from '../taskPin';
 import TaskDedupe from './TaskDedupe';
 import TaskBlocks, { BlockTimeControl } from './TaskBlocks';
+import TaskTriage from './TaskTriage.jsx';
 import './TodoPanel.css';
 import { useWorkOnly } from '../workOnly';
 
@@ -256,133 +257,6 @@ const MS_LOCAL_STATE_CHIP = {
     title: 'Your half is finished. The card is still open on the board and nothing has been completed — it just no longer counts as your overdue work.',
   },
 };
-
-function MoscowReview({ onClose }) {
-  const [tasks, setTasks] = useState([]);
-  const [index, setIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ total: 0, triaged: 0, untriaged: 0 });
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetch(apiUrl('/api/todos/moscow/review'))
-      .then(r => r.json())
-      .then(d => {
-        setTasks(d.tasks || []);
-        setStats({ total: d.total, triaged: d.triaged, untriaged: d.untriaged });
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const current = tasks[index];
-  const progress = tasks.length > 0 ? Math.round(((index) / tasks.length) * 100) : 0;
-
-  const handleRate = async (moscow) => {
-    if (!current || saving) return;
-    setSaving(true);
-    try {
-      await fetch(apiUrl('/api/todos/moscow'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Only the id — the review is scoped to NEURO-owned tasks, so every row
-        // here has one, and the path fields it used to send were always null
-        // anyway (#50).
-        body: JSON.stringify({ taskId: current.task_id, moscow })
-      });
-    } catch {}
-    setSaving(false);
-    if (index < tasks.length - 1) {
-      setIndex(i => i + 1);
-    } else {
-      // Done
-      setIndex(tasks.length);
-    }
-  };
-
-  const handleSkip = () => {
-    if (index < tasks.length - 1) setIndex(i => i + 1);
-    else setIndex(tasks.length);
-  };
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === '1' || e.key === 'm' || e.key === 'M') handleRate('must');
-      else if (e.key === '2' || e.key === 's' || e.key === 'S') handleRate('should');
-      else if (e.key === '3' || e.key === 'c' || e.key === 'C') handleRate('could');
-      else if (e.key === '4' || e.key === 'w' || e.key === 'W') handleRate('wont');
-      else if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); handleSkip(); }
-      else if (e.key === 'Escape') onClose?.();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  });
-
-  if (loading) return <div className="moscow-review"><div className="moscow-loading">Loading tasks...</div></div>;
-
-  if (tasks.length === 0 || index >= tasks.length) {
-    return (
-      <div className="moscow-review">
-        <div className="moscow-done">
-          <div className="moscow-done-icon">✓</div>
-          <div className="moscow-done-title">All tasks triaged</div>
-          <div className="moscow-done-stats">{stats.triaged + (index)} of {stats.total} rated</div>
-          <button className="btn btn-primary" onClick={onClose} style={{ marginTop: '16px' }}>Done</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="moscow-review">
-      <div className="moscow-header">
-        <h2 className="moscow-title">MoSCoW Triage</h2>
-        <div className="moscow-progress-info">
-          <span>{index + 1} of {tasks.length} remaining</span>
-          <button className="moscow-close" onClick={onClose}>✕</button>
-        </div>
-      </div>
-
-      <div className="moscow-progress-track">
-        <div className="moscow-progress-fill" style={{ width: `${progress}%` }} />
-      </div>
-
-      <div className="moscow-card">
-        <div className="moscow-task-text">{current.text}</div>
-        <div className="moscow-task-meta">
-          {current.proposedMoscow && (
-            <span className={`todo-moscow-badge ${current.proposedMoscow}`}>
-              {current.proposedMoscow}? — proposed, confirm or change
-            </span>
-          )}
-          {current.source && <span className={`todo-source ${sourceClass(current.source)}`}>{current.source}</span>}
-          {planBadge(current) && <span className="todo-ms-plan" title="Microsoft board / list">{planBadge(current)}</span>}
-          {current.due_date &&<span className={`todo-due ${isOverdue(current.due_date) ? 'due-overdue' : ''}`}>{formatDue(current.due_date)}</span>}
-        </div>
-      </div>
-
-      <div className="moscow-buttons">
-        {MOSCOW_OPTIONS.map(opt => (
-          <button
-            key={opt.key}
-            className="moscow-btn"
-            style={{ '--moscow-color': opt.color }}
-            onClick={() => handleRate(opt.key)}
-            disabled={saving}
-          >
-            <span className="moscow-btn-label">{opt.label}</span>
-            <span className="moscow-btn-desc">{opt.desc}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="moscow-skip">
-        <button className="moscow-skip-btn" onClick={handleSkip}>Skip →</button>
-        <span className="moscow-hint">Keys: 1-4 to rate, Space to skip, Esc to close</span>
-      </div>
-    </div>
-  );
-}
 
 // ── Editing controls ──
 // Only shown for tasks NEURO owns (task_id present). Before the 13 Aug migration none
@@ -1185,6 +1059,21 @@ function MicrosoftTaskControls({ todo, onSaved }) {
  * positional id — which is still unstable, but is the best a row with no
  * identity of its own can offer.
  */
+// Drag-to-reorder vocabulary. The key and band rules MUST match
+// services/task-order.js (keyFor / bandOf), or a drop saves under a key the
+// ranking never reads.
+const BAND_ORDER = ['must', 'should', 'could', 'wont', 'none'];
+const BAND_LABEL = { must: 'Must', should: 'Should', could: 'Could', wont: "Won't", none: 'Not rated' };
+export function orderKeyOf(todo) {
+  if (todo.task_id) return `task:${todo.task_id}`;
+  if (todo.ms_id) return `ms:${todo.ms_id}`;
+  return null;
+}
+export function bandOfRow(todo) {
+  const m = todo && (todo.moscow || (todo.meta && todo.meta.moscow));
+  return ['must', 'should', 'could', 'wont'].includes(m) ? m : 'none';
+}
+
 function rowKey(todo) {
   if (todo.task_id) return `task:${todo.task_id}`;
   if (todo.filePath) return `file:${todo.filePath}#${todo.lineNumber ?? ''}`;
@@ -2105,14 +1994,17 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   };
   const [syncing, setSyncing] = useState(false);
   const [expanded, setExpanded] = useState(null);
-  const [showMoscow, setShowMoscow] = useState(false);
-  const [moscowRatings, setMoscowRatings] = useState({});
+  // The triage run (TaskTriage) replaced the MoSCoW-only review on 20 Oct 2026.
+  // It needs the full list, so opening it from the focused view switches mode.
+  const [showTriage, setShowTriage] = useState(false);
+  const openTriage = () => { setMode('full'); setShowTriage(true); };
   const [actingSuggestionId, setActingSuggestionId] = useState(null);
-
-  // Load MoSCoW ratings
-  useEffect(() => {
-    fetch(apiUrl('/api/todos/moscow')).then(r => r.json()).then(d => setMoscowRatings(d.ratings || {})).catch(() => {});
-  }, [showMoscow]); // Refresh when moscow review closes
+  // Drag to reorder: the row being dragged, where it would land, and the band
+  // order just dropped (shown until the refetch confirms it).
+  const [drag, setDrag] = useState(null); // { key, band }
+  const [dropAt, setDropAt] = useState(null); // { key, pos: 'before'|'after' }
+  const [localBandOrder, setLocalBandOrder] = useState({}); // band -> [orderKey]
+  const [orderError, setOrderError] = useState(null);
 
   // ⚠ Pin from the PROP as well as at mount. TodoPanel stays mounted while it
   // is the active view, so a second "open it" from a card on this page (the
@@ -2615,10 +2507,6 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     const breakdown = focusData?.breakdown || {};
     const loading = focusData === null;
 
-    if (showMoscow) {
-      return <MoscowReview onClose={() => setShowMoscow(false)} />;
-    }
-
     return (
       <div className="todo-container">
         <div className="todo-header">
@@ -2627,8 +2515,8 @@ export default function TodoPanel({ focusContext, onClearContext }) {
              focusFilter === 'today' ? 'Due Today' : 'Tasks'} — Start Here
           </h2>
           <div className="todo-header-right">
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowMoscow(true)}>
-              MoSCoW
+            <button className="btn btn-secondary btn-sm" onClick={openTriage} title="Run through every task still missing a MoSCoW, priority, estimate, due date or origin">
+              Triage
             </button>
             <button className="btn btn-secondary btn-sm" onClick={() => { setMode('full'); }}>
               Full view
@@ -2856,8 +2744,77 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     return own ? rows.filter(own).length : rows.length;
   };
 
-  if (showMoscow) {
-    return <MoscowReview onClose={() => setShowMoscow(false)} />;
+  // ── Bands and drag-to-reorder (20 Oct 2026) ──
+  // The server sends the list already in Nick's order inside each band
+  // (services/task-order.js); this only groups it. Reordering is offered only
+  // on the unfiltered list, because a filtered band is a subset and there is no
+  // honest answer to where a dropped task sits among rows nobody can see.
+  const canReorder = !pin && activeFilterKeys.length === 0;
+  const bands = BAND_ORDER.map((band) => {
+    let rows = filtered.filter((t) => bandOfRow(t) === band);
+    const local = localBandOrder[band];
+    if (local) {
+      const at = new Map(local.map((key, i) => [key, i]));
+      rows = [...rows].sort((a, b) => (at.get(orderKeyOf(a)) ?? -1) - (at.get(orderKeyOf(b)) ?? -1));
+    }
+    return { band, rows };
+  }).filter((b) => b.rows.length);
+
+  const clearLocal = (band) => setLocalBandOrder((prev) => { const n = { ...prev }; delete n[band]; return n; });
+
+  const dropInto = async (band, rows, targetKey, pos) => {
+    const from = drag && drag.key;
+    setDrag(null);
+    setDropAt(null);
+    if (!from || !targetKey || from === targetKey) return;
+    const keys = rows.map(orderKeyOf).filter(Boolean);
+    if (!keys.includes(from) || !keys.includes(targetKey)) return; // across bands: not a drag
+    const order = keys.filter((key) => key !== from);
+    let i = order.indexOf(targetKey);
+    if (pos === 'after') i += 1;
+    order.splice(i, 0, from);
+    setLocalBandOrder((prev) => ({ ...prev, [band]: order }));
+    setOrderError(null);
+    try {
+      const res = await fetch(apiUrl('/api/todos/order'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ band, keys: order }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || `NEURO answered ${res.status}`);
+      await refreshAfterWrite();
+    } catch (e) {
+      // Put the band back as the server has it — never leave a drop on
+      // screen that did not save.
+      setOrderError(e.message);
+    }
+    clearLocal(band);
+  };
+
+  const resetBandOrder = async (band) => {
+    setOrderError(null);
+    try {
+      const res = await fetch(apiUrl('/api/todos/order/reset'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ band }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || `NEURO answered ${res.status}`);
+      await refreshAfterWrite();
+    } catch (e) {
+      setOrderError(e.message);
+    }
+  };
+
+  if (showTriage) {
+    if (loading) return <div className="todo-container"><div className="todo-empty">Loading tasks&hellip;</div></div>;
+    return (
+      <div className="todo-container">
+        <TaskTriage todos={activeTodos} onClose={() => { setShowTriage(false); refreshAfterWrite(); }} onSaved={refreshAfterWrite} />
+      </div>
+    );
   }
 
   const todoSaimLine = buildTodoSaimLine(activeTodos, overdueTodos);
@@ -2888,8 +2845,12 @@ export default function TodoPanel({ focusContext, onClearContext }) {
             {activeTodos.length} open
             {overdueTodos.length > 0 && <span className="overdue-count"> / {overdueTodos.length} overdue</span>}
           </span>
-          <button className="btn btn-secondary" onClick={() => setShowMoscow(true)}>
-            MoSCoW
+          <button
+            className="btn btn-secondary"
+            onClick={openTriage}
+            title="Run through every task still missing a MoSCoW, priority, estimate, due date or origin"
+          >
+            Triage{fullData?.triageCount ? ` (${fullData.triageCount})` : ''}
           </button>
           <button className="btn btn-secondary" onClick={() => setMode('focused')}>
             Smart view
@@ -3091,17 +3052,85 @@ export default function TodoPanel({ focusContext, onClearContext }) {
               {activeFilterKeys.length === 0 ? 'No open todos. Rare.' : 'No matching todos.'}
             </div>
           )}
-          {filtered.map(todo => (
-            <TodoItem
-              key={rowKey(todo)}
-              todo={todo}
-              toggling={toggling}
-              onToggle={toggleTodo}
-              expanded={expanded}
-              onExpand={setExpanded}
-              onPatch={patchTask}
-              onRefresh={refreshAfterWrite}
-            />
+          {filtered.length > 0 && (
+            <p className="todo-order-note">
+              {canReorder
+                ? 'Drag 83f to put tasks in your order within a band — Focus, Now and the planner follow it. Change a MoSCoW to move a task between bands.'
+                : 'Clear the filters to drag tasks into your own order.'}
+            </p>
+          )}
+          {orderError && <div className="todo-order-error">Order not saved — {orderError}</div>}
+          {bands.map(({ band, rows }) => (
+            <div key={band} className="todo-band">
+              <div className="todo-band-head">
+                <span>{BAND_LABEL[band]}</span>
+                <span className="todo-band-count">{rows.length}</span>
+                {canReorder && rows.some((t) => t.manualRank != null) && (
+                  <button
+                    type="button"
+                    className="todo-band-reset"
+                    title="Forget your order for this band and let NEURO's score order it again"
+                    onClick={() => resetBandOrder(band)}
+                  >
+                    Reset order
+                  </button>
+                )}
+              </div>
+              {rows.map((todo) => {
+                const k = orderKeyOf(todo);
+                const movable = canReorder && Boolean(k);
+                const cls = [
+                  'todo-drag-row',
+                  drag && drag.key === k ? 'dragging' : '',
+                  dropAt && dropAt.key === k ? `drop-${dropAt.pos}` : '',
+                ].filter(Boolean).join(' ');
+                return (
+                  <div
+                    key={rowKey(todo)}
+                    className={cls}
+                    onDragOver={(e) => {
+                      if (!drag || drag.band !== band || !k || drag.key === k) return;
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      const pos = e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+                      if (!dropAt || dropAt.key !== k || dropAt.pos !== pos) setDropAt({ key: k, pos });
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      dropInto(band, rows, k, dropAt && dropAt.key === k ? dropAt.pos : 'before');
+                    }}
+                  >
+                    <span
+                      className={`todo-drag-handle${movable ? '' : ' todo-drag-handle--off'}`}
+                      draggable={movable}
+                      title={!canReorder
+                        ? 'Clear the filters to reorder'
+                        : k ? 'Drag to reorder within this band'
+                          : 'This line lives in a daily note and cannot hold a position'}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', k);
+                        const row = e.currentTarget.parentElement;
+                        if (row && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(row, 16, 16);
+                        setDrag({ key: k, band });
+                      }}
+                      onDragEnd={() => { setDrag(null); setDropAt(null); }}
+                    >
+                      83f
+                    </span>
+                    <TodoItem
+                      todo={todo}
+                      toggling={toggling}
+                      onToggle={toggleTodo}
+                      expanded={expanded}
+                      onExpand={setExpanded}
+                      onPatch={patchTask}
+                      onRefresh={refreshAfterWrite}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           ))}
         </div>
       )}

@@ -58,14 +58,13 @@ function dateKey(d) {
 function tasksSection(now) {
   try {
     const taskStore = require('./task-store');
-    const { rankTasks } = require('./task-scoring');
     // ⚠ activeTodos() returns the LEGACY TODO shape (`task_id`, `estimateMinutes`),
     // not task rows (`id`, `estimate_minutes`). Reading the wrong keys filters
     // everything out and reports a full backlog as a quiet day — 27 Aug's
     // day-planner bug, which cost a silent "nothing open to schedule" against
     // 148 open tasks.
     const todos = taskStore.activeTodos();
-    const ranked = rankTasks(todos, dateKey(now));
+    const ranked = require('./task-order').rankWithOrder(todos, dateKey(now));
     const items = ranked.slice(0, LIMITS.tasks).map((t) => ({
       id: `task:${t.task_id}`,
       taskId: t.task_id,

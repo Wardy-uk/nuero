@@ -12,7 +12,6 @@
 
 const db = require('../db/database');
 const workingMemory = require('./working-memory');
-const { rankTasks } = require('./task-scoring');
 
 // ── Tier thresholds ──
 const TIER_1_MIN = 80;
@@ -402,7 +401,7 @@ function collectOverdueTodos(ctx) {
   // something worth doing rather than something worth ignoring.
   const _pick = (tasks) => {
     if (!tasks.length) return null;
-    const top = rankTasks(tasks, todayStr)[0];
+    const top = require('./task-order').rankWithOrder(tasks, todayStr)[0];
     const source = (top.source || '').toLowerCase();
     return {
       text: top.text,

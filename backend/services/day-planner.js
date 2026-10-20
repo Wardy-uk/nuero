@@ -432,7 +432,6 @@ function gather(now = new Date()) {
   let replanHeld = 0;
   try {
     const taskStore = require('./task-store');
-    const { rankTasks } = require('./task-scoring');
     // ⚠ `activeTodos()` returns the LEGACY todo shape, not task rows: the id is
     // `task_id` and the estimate is `estimateMinutes`. Reading `id` /
     // `estimate_minutes` here filtered all 148 open tasks out and the planner
@@ -440,7 +439,8 @@ function gather(now = new Date()) {
     // exactly like a quiet day rather than a bug. A file-backed line (Microsoft,
     // a daily note) has a null task_id and genuinely cannot be blocked, so the
     // filter itself is right; it was reading the wrong key.
-    const ranked = rankTasks(taskStore.activeTodos(), dateKey);
+    // Nick's dragged order inside each MoSCoW band (task-order.js).
+    const ranked = require('./task-order').rankWithOrder(taskStore.activeTodos(), dateKey);
     // Held back because they are personal, counted BEFORE the map so the number
     // is reportable. A planner that quietly plans less than it was asked to is
     // indistinguishable from one with nothing to do — `overflowed`'s rule, and

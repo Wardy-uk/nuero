@@ -7,7 +7,6 @@
 // about what comes first.
 
 const vaultCache = require('./vault-cache');
-const { rankTasks } = require('./task-scoring');
 const todoIntelligence = require('./todo-intelligence');
 const msLocal = require('./ms-task-local');
 
@@ -85,7 +84,8 @@ function rankedTodos(filter = 'overdue') {
       tasks = tasks.filter(t => !t.done);
     }
 
-    return rankTasks(tasks.map((task) => todoIntelligence.decorateTask(task, todayStr)), todayStr);
+    // Nick's dragged order wins inside each MoSCoW band (task-order.js).
+    return require('./task-order').rankWithOrder(tasks.map((task) => todoIntelligence.decorateTask(task, todayStr)), todayStr);
   });
 }
 

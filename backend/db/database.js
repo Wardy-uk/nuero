@@ -251,6 +251,13 @@ async function init() {
       db.exec('ALTER TABLE tasks ADD COLUMN moscow_proposed INTEGER NOT NULL DEFAULT 0');
       console.log('[DB] tasks.moscow_proposed added');
     }
+    // Migration: tasks.triage_none — JSON list of triage fields Nick answered
+    // "none" (no date / no estimate / no priority / neither origin). NULL is
+    // "nothing answered none", never an empty decision (shared/task-triage.cjs).
+    if (taskColumns.length && !taskColumns.includes('triage_none')) {
+      db.exec('ALTER TABLE tasks ADD COLUMN triage_none TEXT');
+      console.log('[DB] tasks.triage_none added');
+    }
     // Migration: tasks.estimate_minutes — how long the thing takes. NULL means
     // "not estimated", never zero, so an un-estimated task is distinguishable
     // from an instant one and the assumption used in its place stays visible.
@@ -2605,6 +2612,7 @@ const TASK_FIELDS = [
   'origin_path', 'origin_line', 'origin_detail', 'context', 'domain', 'origin', 'origin_proposed',
   'notes', 'ms_id', 'ms_source', 'ms_plan',
   'estimate_minutes', 'assignee', 'household', 'criticality', 'recurrence_json',
+  'triage_none',
 ];
 
 // ── Repeating tasks: one row per completed occurrence (17 Oct 2026) ─────────
