@@ -72,6 +72,12 @@ async function call(path, { method = 'GET', body, token, timeoutMs = 0 } = {}) {
     if (timer) clearTimeout(timer);
   }
 
+  // Sliding session: the server renews a token past half its life. Only take
+  // it if we are still holding the token it renewed (a sign-out mid-request
+  // must not be undone by the answer arriving).
+  const fresh = res.headers && res.headers.get && res.headers.get('X-Vesta-Session');
+  if (fresh && token && getToken() === token) setToken(fresh);
+
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.ok === false) {
     // A gateway that cannot reach the Pi (502–504) is the same fact as no network.

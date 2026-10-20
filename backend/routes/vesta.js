@@ -53,6 +53,9 @@ function requireAccount(req, res, next) {
   const account = capture.resolveSession(token);
   if (!account) return res.status(401).json({ ok: false, error: 'Please sign in again.' });
   req.account = account;
+  // Sliding session: past half-life, hand back a fresh token (see renewSession).
+  const fresh = capture.renewSession(token);
+  if (fresh) res.set('X-Vesta-Session', fresh);
   next();
 }
 

@@ -379,6 +379,25 @@ function resolveSession(token, now = new Date()) {
   return account;
 }
 
+/**
+ * A fresh token for a session that is past half its life, or null.
+ *
+ * ⚠ Sessions SLIDE. A fixed 12 hours signed the always-on family wall out
+ * every twelve hours (20 Oct 2026) — it polls every minute, so it is never
+ * idle, it just outlived its token. A device in use is renewed on its next
+ * request; one nobody touches still expires after SESSION_HOURS, and
+ * revocation still bites on the next request because resolveSession re-reads
+ * `enabled` every time. Only a VALID token is renewed — never a dead one.
+ */
+function renewSession(token, now = new Date()) {
+  const account = resolveSession(token, now);
+  if (!account) return null;
+  const body = Buffer.from(String(token).split('.')[0], 'base64url').toString('utf8');
+  const expires = Number(body.slice(body.lastIndexOf('.') + 1));
+  if (expires - now.getTime() > (SESSION_HOURS * 3600 * 1000) / 2) return null;
+  return issueSession(account.username, now);
+}
+
 // ── Submitting ───────────────────────────────────────────────────────────────
 
 function _noteUse(username, now) {
@@ -747,6 +766,7 @@ module.exports = {
   login,
   issueSession,
   resolveSession,
+  renewSession,
   submit,
   submissions,
   sourceFor,

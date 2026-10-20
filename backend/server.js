@@ -55,7 +55,9 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 // maxAge: the family wall is cross-origin with a bearer token, so every
 // request needs a preflight; without this Safari re-asks every ~5 s (18 Oct 2026).
-app.use(cors({ maxAge: 600 }));
+// exposedHeaders: VESTA's sliding session arrives in X-Vesta-Session, which a
+// cross-origin page cannot read unless it is exposed.
+app.use(cors({ maxAge: 600, exposedHeaders: ['X-Vesta-Session'] }));
 // ⚠ /api/v is the PUBLIC mount (Tailscale Funnel), and since VESTA gained a
 // fridge photo it accepts uploads. It gets its own, much tighter parser
 // REGISTERED FIRST — body-parser skips a request whose body is already parsed,

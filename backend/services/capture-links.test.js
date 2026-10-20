@@ -137,6 +137,31 @@ test('a tampered or expired session is rejected', () => {
   assert.equal(capture.resolveSession(token, future), null);
 });
 
+test('⚠ a session in use slides; an idle one still expires (the wall signed out every 12h)', () => {
+  newAccount({ username: 'wall', label: 'Wall' });
+  const t0 = Date.now();
+  const token = capture.login('wall', '4821').token;
+
+  // Fresh token: nothing to renew.
+  assert.equal(capture.renewSession(token, new Date(t0 + 60 * 1000)), null);
+
+  // Past half-life: a new token that outlives the old one.
+  const at7h = new Date(t0 + 7 * 3600 * 1000);
+  const fresh = capture.renewSession(token, at7h);
+  assert.ok(fresh, 'a token past half-life must be renewed');
+  const at13h = new Date(t0 + 13 * 3600 * 1000);
+  assert.equal(capture.resolveSession(token, at13h), null, 'the old token still expires');
+  assert.ok(capture.resolveSession(fresh, at13h), 'the renewed one carries the wall past 12h');
+
+  // A dead token is never renewed (positive pair above, negative here).
+  assert.equal(capture.renewSession(token, at13h), null);
+  assert.equal(capture.renewSession('nonsense', at7h), null);
+
+  // Revocation still wins over renewal.
+  capture.revoke('wall');
+  assert.equal(capture.renewSession(fresh, new Date(t0 + 12 * 3600 * 1000)), null);
+});
+
 test('⚠ revoking takes effect immediately, not when the session expires', () => {
   newAccount({ username: 'gone', label: 'Gone' });
   const token = capture.login('gone', '4821').token;
