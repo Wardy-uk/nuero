@@ -33,10 +33,39 @@ function Choice({ on, children, onClick, disabled }) {
   return <button type="button" className={`v2-pill${on ? ' v2-pill--strong' : ''}`} aria-pressed={on} disabled={disabled} onClick={onClick}>{children}</button>;
 }
 
-export function ControlsPageView({ resp, now = Date.now(), busy = false, error = null, onPatch = null, notificationsHref = null }) {
+/**
+ * The way in to what SAiM may do (20 Oct 2026). This build has its own six-tab
+ * bar and never mounted the control's "May do" tab, so a human could not reach
+ * the allowance the prepared move needs. It lives here, under Controls — not a
+ * seventh tab, and nothing on SAiM's own page.
+ */
+function MayDoEntry({ onOpen }) {
+  if (!onOpen) return null;
+  return (
+    <section className="v2-card" aria-label="What SAiM may do">
+      <p className="v2-eyebrow">What SAiM may do</p>
+      <p className="v2-sub">The two locks, today’s allowance, receipts, and the stop.</p>
+      <button type="button" className="v2-pill v2-pill--strong" onClick={onOpen}>What SAiM may do</button>
+    </section>
+  );
+}
+
+/** Locking this device lives here, not as an icon over SAiM's page (20 Oct 2026). */
+function DeviceLock({ onLock }) {
+  if (!onLock) return null;
+  return (
+    <section className="v2-card" aria-label="This device">
+      <p className="v2-eyebrow">This device</p>
+      <p className="v2-sub">Lock SAiM here; your PIN opens it again.</p>
+      <button type="button" className="v2-pill" onClick={onLock}>Lock SAiM</button>
+    </section>
+  );
+}
+
+export function ControlsPageView({ resp, now = Date.now(), busy = false, error = null, onPatch = null, notificationsHref = null, onOpenAuthority = null, onLock = null }) {
   const s = resp && resp.settings;
   if (!s) {
-    return <div className="v2-page"><section className="v2-card"><p className="v2-muted">{error ? `I can’t read SAiM’s settings — ${error}.` : 'Reading settings…'}</p></section></div>;
+    return <div className="v2-page"><MayDoEntry onOpen={onOpenAuthority} /><section className="v2-card"><p className="v2-muted">{error ? `I can’t read SAiM’s settings — ${error}.` : 'Reading settings…'}</p></section><DeviceLock onLock={onLock} /></div>;
   }
   const patch = (p) => onPatch && onPatch(p);
   const off = !onPatch || busy;
@@ -46,6 +75,8 @@ export function ControlsPageView({ resp, now = Date.now(), busy = false, error =
   return (
     <div className="v2-page">
       {error && <p className="v2-stale" role="status">That didn’t save — {error}. Showing what NEURO last said.</p>}
+
+      <MayDoEntry onOpen={onOpenAuthority} />
 
       <section className="v2-card" aria-label="Notifications">
         <p className="v2-eyebrow">Notifications</p>
@@ -97,6 +128,8 @@ export function ControlsPageView({ resp, now = Date.now(), busy = false, error =
         </label>
         <p className="v2-muted v2-small">Switching one off stops it interrupting; it is still collected and still shown when you look.</p>
       </section>
+
+      <DeviceLock onLock={onLock} />
     </div>
   );
 }

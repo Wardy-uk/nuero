@@ -181,7 +181,7 @@ function gateLine(view, request) {
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, busy = false, now = Date.now(), debug = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, busy = false, now = Date.now(), debug = false, heldFolded = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -199,10 +199,22 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
     return (
       <section className="pmo pmo--held" aria-label="Something SAiM has prepared">
         <p className="pmo__say">{(view.held && view.held.say) || move.prepared.headline}</p>
-        <div className="pmo__stage pmo__stage--held">
-          <Page artefact={move.artefact} />
-        </div>
-        <Proof move={basis} label="What I based it on" />
+        {heldFolded ? (
+          // Alt (20 Oct 2026): the sentence, and the draft FOLDED — nothing open
+          // on the page until he asks to see it.
+          <details className="pmo__heldfold">
+            <summary>See what I prepared</summary>
+            <div className="pmo__stage pmo__stage--held"><Page artefact={move.artefact} /></div>
+            <Proof move={basis} label="What I based it on" />
+          </details>
+        ) : (
+          <>
+            <div className="pmo__stage pmo__stage--held">
+              <Page artefact={move.artefact} />
+            </div>
+            <Proof move={basis} label="What I based it on" />
+          </>
+        )}
         {debug && <pre className="pm__dev">{JSON.stringify({ held: view.held, withheldCount: view.withheldCount, elapsedMs: view.elapsedMs }, null, 1)}</pre>}
       </section>
     );
@@ -276,7 +288,11 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
           <p className="pmo__ask">{c.question}</p>
           <ul className="pmo__writes">{c.writes.map((w, i) => <li key={i}>{w}</li>)}</ul>
           <p className="pmo__sub">{c.contacts}</p>
-          {line && <p className="pmo__locked">{line}</p>}
+          {/* The allowance this would use: the server's own sentence when nothing
+              stops it; the reason it would be refused when something does. */}
+          {line
+            ? <p className="pmo__locked">{line}</p>
+            : (state.request.authority && state.request.authority.summary && <p className="pmo__allow">{state.request.authority.summary}</p>)}
           {expired && <p className="pmo__locked">This confirmation has expired. Nothing was changed.</p>}
           <div className="pmo__buttons">
             {expired
@@ -331,7 +347,7 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, heldFolded = false }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   const sessionId = useMemo(() => newSessionId(), []);
   const debug = useMemo(() => isDebugView(), []);
@@ -365,6 +381,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       busy={busy}
       now={tick}
       debug={debug}
+      heldFolded={heldFolded}
       onChoose={(option) => setState((s) => ({ ...s, option }))}
       onAsk={() => run(() => askToConfirm(call, { view: state.view, option: state.option, sessionId }))}
       onConfirm={() => run(() => confirm(call, { view: state.view, option: state.option, request: state.request }))}

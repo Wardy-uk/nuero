@@ -72,9 +72,15 @@
 .wk__link { margin-top: 0.5em; padding: 0; font: inherit; font-size: 0.82em; cursor: pointer; background: none; border: none; color: var(--v2-accent); }
 
 @media (max-width: 900px) {
-  .wk__grid { grid-template-columns: 1fr; }
+  /* minmax(0, …): a bare 1fr grows to its content, which pushed the phone page to 502px wide (20 Oct 2026). */
+  .wk__grid { grid-template-columns: minmax(0, 1fr); }
   .wk__title { font-size: 1.8em; }
   .wk__placerow { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 520px) {
+  /* The dock on a phone: the field on its own line, the buttons beneath it. */
+  .wk__dock { flex-wrap: wrap; }
+  .wk__ask { flex-basis: 100%; }
 }
 
 /* Wired states (same composition) */

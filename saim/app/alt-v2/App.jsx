@@ -16,8 +16,9 @@ import { WorkingView } from './WorkingFixture';
 import { NowPageView } from './NowPage';
 import { BriefingPageView } from './BriefingPage';
 import { ControlsPageView } from './ControlsPage';
+import Authority from '../src/views/Authority';
 import {
-  DEFAULT_TAB, resolveTab, parseDeepLink, neuroLink, driveFrom, deskStateSettled, hhmmOf, workingView,
+  DEFAULT_TAB, resolveTab, parseDeepLink, subFromSearch, debugFromSearch, neuroLink, driveFrom, deskStateSettled, hhmmOf, workingView,
 } from './model.mjs';
 import '../src/App.css';
 import './v2.css';
@@ -43,9 +44,10 @@ const CONTROL_URL = ENV.VITE_CONTROL_URL || 'https://saim.nickward.co.uk';
 const POLL_MS = 60_000;
 
 function initialRoute() {
-  if (typeof window === 'undefined') return { tab: DEFAULT_TAB, focus: null };
+  if (typeof window === 'undefined') return { tab: DEFAULT_TAB, focus: null, sub: null };
   const d = parseDeepLink(window.location.search);
-  return d ? { tab: d.tab, focus: (d.recordId || d.blockId) ? { recordId: d.recordId, blockId: d.blockId } : null } : { tab: DEFAULT_TAB, focus: null };
+  const r = d ? { tab: d.tab, focus: (d.recordId || d.blockId) ? { recordId: d.recordId, blockId: d.blockId } : null } : { tab: DEFAULT_TAB, focus: null };
+  return { ...r, sub: subFromSearch(window.location.search, r.tab) };
 }
 
 // `renderSaim` (16 Oct 2026): a build may supply its own SAiM page (the alt-v3
@@ -128,10 +130,32 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
     }
   }
 
+  // What SAiM may do: a view PUSHED under Controls (its own history entry, so the
+  // phone's back gesture and the browser's Back return to Controls).
+  const openAuthority = useCallback(() => {
+    setRoute({ tab: 'controls', focus: null, sub: 'authority' });
+    if (typeof window !== 'undefined') window.history.pushState({ altSub: 'authority' }, '', '/?tab=controls&view=authority');
+  }, []);
+  const backToControls = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.state && window.history.state.altSub === 'authority') { window.history.back(); return; }
+    setRoute({ tab: 'controls', focus: null, sub: null });
+    if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=controls');
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onPop = () => {
+      const d = parseDeepLink(window.location.search);
+      const tab = d ? d.tab : DEFAULT_TAB;
+      setRoute({ tab, focus: null, sub: subFromSearch(window.location.search, tab) });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const go = useCallback((id) => {
     const r = resolveTab(id);
     if (r.tab) {
-      setRoute({ tab: r.tab, focus: null });
+      setRoute({ tab: r.tab, focus: null, sub: null });
       setHandoff(null);
       if (typeof window !== 'undefined') window.history.replaceState(null, '', `/?tab=${r.tab}`);
       return;
@@ -241,11 +265,14 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
   const drive = driveFor ? driveFor(day.canonical) : driveFrom(day.canonical, isPressing);
   const updated = day.at ? `Read ${hhmmOf(day.at)}${day.error ? ' · last refresh failed' : ''}` : (day.error ? 'Can’t reach NEURO' : null);
 
+  // ?debug=1 shows the operational chrome; normal view is the moment alone.
+  const debug = typeof window !== 'undefined' && debugFromSearch(window.location.search);
+  const lock = () => { clearPin(); setAuthed(false); };
   let page;
   if (route.tab === 'saim' && renderSaim) {
     page = renderSaim({
       canonical: day.canonical, error: day.error, at: day.at, busy, focus: route.focus,
-      onAct, run, onDeskOpen: deskReachable ? deskOpen : null, deskStates, neuroUrl: NEURO_URL,
+      onAct, run, onDeskOpen: deskReachable ? deskOpen : null, deskStates, neuroUrl: NEURO_URL, debug,
     });
   } else if (route.tab === 'saim') {
     // Nothing read yet: the same composition, saying so — never a guess about the day.
@@ -277,8 +304,17 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
     // control app is untouched). NowPageView (the block timeline) stays in the
     // tree for its tests but is no longer routed.
     page = <div className="v2-control v2-now"><Now onNavigate={go} /></div>;
+  } else if (route.tab === 'controls' && route.sub === 'authority') {
+    // The control's own What SAiM may do screen, unchanged: human-only routes,
+    // a read that writes nothing, and every sentence the server's.
+    page = (
+      <div className="v2-control v2-authority">
+        <button type="button" className="v2-link v2-back" onClick={backToControls} aria-label="Back to Controls"><span aria-hidden="true">‹</span> Controls</button>
+        <Authority />
+      </div>
+    );
   } else if (route.tab === 'controls') {
-    page = <ControlsPageView resp={controls.resp} error={controls.error} busy={controls.busy} onPatch={patchControls} notificationsHref={CONTROL_URL ? `${CONTROL_URL.replace(/\/+$/, '')}/?tab=controls` : null} />;
+    page = <ControlsPageView onOpenAuthority={openAuthority} onLock={lock}resp={controls.resp} error={controls.error} busy={controls.busy} onPatch={patchControls} notificationsHref={CONTROL_URL ? `${CONTROL_URL.replace(/\/+$/, '')}/?tab=controls` : null} />;
   } else if (route.tab === 'briefing') {
     page = <BriefingPageView resp={briefing.resp} error={briefing.error} neuroUrl={NEURO_URL} />;
   } else {
@@ -293,7 +329,8 @@ export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM
       drive={drive}
       updated={updated}
       footer={footer}
-      onLock={() => { clearPin(); setAuthed(false); }}
+      debug={debug}
+      onLock={lock}
       // The control's ↻: a full reload, so a new deploy is picked up as well as fresh data.
       onRefresh={() => window.location.reload()}
       marker={<a className="v2__ctl" href={CONTROL_URL}>Control ↗</a>}

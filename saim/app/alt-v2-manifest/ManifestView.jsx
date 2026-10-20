@@ -48,9 +48,10 @@ export default function ManifestView({ v, live = null }) {
   const busy = Boolean(live && live.busy);
   return (
     <div className={`wk mf mf--${v.tone}`}>
-      <p className="wk__presence">{v.presence}</p>
+      {/* Desk state is an operational read, not part of the moment: debug only on the live page. */}
+      {(!live || live.debug) && <p className="wk__presence">{v.presence}</p>}
       <div className="wk__grid">
-        <section className="wk__main" aria-label="Current work">
+        <section className={`wk__main${live && live.prepared ? ' mf__main--prep' : ''}`} aria-label="Current work">
           <div className="wk__block">
             <p className="wk__state mf__state"><span className="wk__dot mf__dot" aria-hidden="true" />{v.state.toUpperCase()}</p>
             <h1 className={`wk__title${v.sentence ? '' : ' mf__title--sentence'}`}>{v.title}</h1>
@@ -64,10 +65,19 @@ export default function ManifestView({ v, live = null }) {
             )}
           </div>
 
+          {/* SAiM's prepared move (the shared component). Rendered ONCE, here, so
+              it never remounts mid-confirmation; CSS order puts it straight under
+              the lead when it leads, or after the lead's own content otherwise. */}
+          {live && live.prepared && (
+            <div className={`mf__prepared${live.preparedLeads ? ' mf__prepared--lead' : ''}`}>{live.prepared}</div>
+          )}
+
           {v.refused && (
             <div className="mf__blind">
               <p className="wk__label">Why</p>
-              <p className="mf__blindnote">{v.refused.why} Nothing on this screen means “nothing waiting”.</p>
+              <p className="mf__blindnote">{live && !live.debug
+                ? 'What NEURO sent didn’t line up, so I’m not guessing. Nothing on this screen means “nothing waiting” — check NEURO directly.'
+                : `${v.refused.why} Nothing on this screen means “nothing waiting”.`}</p>
             </div>
           )}
 

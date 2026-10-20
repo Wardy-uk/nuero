@@ -70,3 +70,12 @@ a.wk__open { text-decoration: none; display: inline-block; }
 .mf__room .wk__placerow { gap: 12px; flex-wrap: wrap; }
 .mf__roomacts { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .mf__roomline { margin: 6px 0 0; }
+
+/* SAiM's prepared move on Alt's page (20 Oct 2026). One element, placed by order:
+   straight under the lead when it leads; after the lead's own content when a
+   real item leads; the dock always last. */
+.wk__main.mf__main--prep { display: flex; flex-direction: column; }
+.mf__main--prep > .mf__prepared { order: 1; }
+.mf__main--prep > .mf__prepared--lead { order: 0; }
+.mf__main--prep > .wk__dockwrap { order: 2; }
+.mf__prepared .pmo { margin: 1.2em 0 0.4em; max-width: none; }

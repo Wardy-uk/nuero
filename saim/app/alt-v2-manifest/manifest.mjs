@@ -141,8 +141,8 @@ const WHERE = Object.freeze({ desk: 'opens on the laptop', link: 'opens in a new
 function refusal(why, problem) {
   return {
     refused: { why, problem: problem || null },
-    tone: 'blind', presence: 'SAiM · can’t read SAiM’s decision', state: 'Can’t read SAiM’s decision',
-    title: 'I can’t read SAiM’s decision right now — this isn’t an all-clear.', sentence: null,
+    tone: 'blind', presence: 'SAiM · can’t read SAiM’s decision', state: 'Can’t see your day',
+    title: 'I can’t tell what needs you right now — this isn’t an all-clear.', sentence: null,
     guard: null, actions: [], handoff: null, ask: null, handoffNote: null, joinGap: null,
     rail: { next: { unread: true, why: 'nothing was read' }, held: { unread: true, why: 'nothing was read' }, judgement: { unread: true, why: 'nothing was read' } },
     drive: { degraded: true }, rule: null,

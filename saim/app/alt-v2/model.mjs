@@ -874,3 +874,13 @@ export function holdPhrase(displaced, owed, dropped) {
   if (!parts.length) return null;
   return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
+
+/** `?tab=controls&view=authority` is the What SAiM may do view, under Controls. PURE. */
+export function subFromSearch(search, tab) {
+  try { return tab === 'controls' && new URLSearchParams(search || '').get('view') === 'authority' ? 'authority' : null; } catch { return null; }
+}
+
+/** `?debug=1` shows the operational chrome (desk state, refresh, control link, raw errors). PURE. */
+export function debugFromSearch(search) {
+  try { return new URLSearchParams(search || '').get('debug') === '1'; } catch { return false; }
+}
