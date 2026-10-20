@@ -43,5 +43,5 @@ test('a health delivery is one transaction (pinned) and the per-row guard stays 
   assert.match(src, /db\.batchSaves\(\(\) => \{ ingestRows\(\); ingestFood\(\); \}\)/, 'samples and food are written inside one batchSaves');
   const rows = src.slice(src.indexOf('const ingestRows'), src.indexOf('db.batchSaves(() => { ingestRows'));
   assert.match(rows, /catch \(e\)/, 'one bad row is still caught and cannot lose the batch');
-  assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /cors\(\{ maxAge: 600 \}\)/, 'preflights may be cached');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /cors\(\{ maxAge: 600[,}]/, 'preflights may be cached');
 });
