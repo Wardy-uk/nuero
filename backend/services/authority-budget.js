@@ -54,21 +54,29 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const rid = (p) => `${p}_${crypto.randomBytes(10).toString('hex')}`;
 
 let ready = false;
-/** Do the tables exist? (A read never creates them.) */
+const TABLES = ['saim_authority_grants', 'saim_authority_reservations', 'saim_authority_controls', 'saim_authority_pending', 'saim_authority_events'];
+/**
+ * Do the tables exist? Every READ asks this and nothing else: a read never
+ * creates the schema (20 Oct 2026 — opening May do used to create five empty
+ * tables on first view). Absent tables read as the zero state: nothing granted,
+ * nothing used, not stopped, no receipts.
+ */
 function has() {
   if (ready) return true;
-  try { return Boolean(db.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'saim_authority_events'`)); } catch { return false; }
+  try { return db.get(`SELECT COUNT(*) n FROM sqlite_master WHERE type = 'table' AND name IN (${TABLES.map(() => '?').join(',')})`, TABLES).n === TABLES.length; } catch { return false; }
 }
 /**
- * Create the tables — but NEVER inside a read-only pass (viewing the prepared
- * move must not create anything). There, absent tables read as "nothing granted,
- * nothing used, not stopped" and the queries below fall back accordingly.
+ * Create the schema — called ONLY by an intentional state change (grant
+ * preview/grant, stop, resume, revoke of a real grant, reserve/settle/receipt
+ * during a confirmed move). Never inside a read-only pass. The whole schema is
+ * created in ONE IMMEDIATE transaction with IF NOT EXISTS, so it lands whole or
+ * not at all, and a second caller racing the first waits and then finds it.
  */
 function ensure() {
   if (ready) return;
   if (require('./read-only-scope').active()) { ready = has(); return; }
   const g = db.getDb();
-  g.exec(`
+  g.transaction(() => g.exec(`
     CREATE TABLE IF NOT EXISTS saim_authority_grants (
       id TEXT PRIMARY KEY,
       day TEXT NOT NULL,
@@ -140,7 +148,7 @@ function ensure() {
       BEFORE UPDATE ON saim_authority_events BEGIN SELECT RAISE(ABORT, 'the authority log is append-only'); END;
     CREATE TRIGGER IF NOT EXISTS saim_authority_events_append_only_d
       BEFORE DELETE ON saim_authority_events BEGIN SELECT RAISE(ABORT, 'the authority log is append-only'); END;
-  `);
+  `)).immediate();
   ready = true;
 }
 
@@ -162,7 +170,7 @@ function masterLock() {
 /** The emergency stop. Unreadable counts as stopped (fail closed). */
 function stopState() {
   try {
-    ensure();
+    // read only: never creates the schema (see has())
     if (!has()) return { stopped: false, since: null }; // never created = never stopped
     const r = db.get(`SELECT value, at FROM saim_authority_controls WHERE key = 'stop'`);
     if (!r) return { stopped: false, since: null };
@@ -185,7 +193,7 @@ function stop({ by = 'nick', now = Date.now() } = {}) {
 // ── Grants ───────────────────────────────────────────────────────────────────
 
 function _grantFor(day) {
-  ensure();
+  // read only: never creates the schema (see has())
   if (!has()) return null;
   return db.get(`SELECT * FROM saim_authority_grants WHERE day = ? AND revoked_at IS NULL ORDER BY granted_at DESC LIMIT 1`, [day]) || null;
 }
@@ -300,7 +308,7 @@ function resume({ confirmToken, by = 'nick', now = Date.now() } = {}) {
 
 const COUNTS = `state IN ('reserved', 'used', 'unknown')`;
 function usage(day) {
-  ensure();
+  // read only: never creates the schema (see has())
   if (!has()) return { blocks: 0, minutes: 0, notes: 0, moves: 0, moveKeys: [] };
   const rows = db.all(`SELECT kind, minutes, move_key FROM saim_authority_reservations WHERE day = ? AND ${COUNTS}`, [day]);
   return {
@@ -417,7 +425,7 @@ function recordReceipt(receipt, { title = null, now = Date.now() } = {}) {
 
 /** Everything the control surface shows. Reads only. */
 function status({ now = Date.now() } = {}) {
-  ensure();
+  // read only: never creates the schema (see has())
   const day = londonDay(now);
   const lock = masterLock();
   const st = stopState();
