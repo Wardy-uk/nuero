@@ -7,14 +7,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:alt": "vite build --config vite.config.alt.js --mode alt",
-    "dev:alt": "vite --config vite.config.alt.js --mode alt",
-    "build:alt2": "vite build --config vite.config.alt2.js --mode alt2",
-    "dev:alt2": "vite --config vite.config.alt2.js --mode alt2",
-    "build:alt3": "vite build --config vite.config.alt3.js --mode alt3",
-    "dev:alt2-manifest": "vite --config vite.config.alt2-manifest.js --mode alt2-manifest",
+    "build:alt": "node scripts/retired-build.cjs alt-v1 && vite build --config vite.config.alt.js --mode alt",
+    "dev:alt": "node scripts/retired-build.cjs alt-v1 && vite --config vite.config.alt.js --mode alt",
+    "build:alt2": "node scripts/retired-build.cjs alt-v2 && vite build --config vite.config.alt2.js --mode alt2",
+    "dev:alt2": "node scripts/retired-build.cjs alt-v2 && vite --config vite.config.alt2.js --mode alt2",
+    "build:alt3": "node scripts/retired-build.cjs alt-v3 && vite build --config vite.config.alt3.js --mode alt3",
+    "dev:alt2-manifest": "node scripts/retired-build.cjs alt-v2-manifest && vite --config vite.config.alt2-manifest.js --mode alt2-manifest",
     "preview": "vite preview",
-    "build:legacy": "vite build --mode legacy --outDir dist-legacy && node -e \"require('fs').writeFileSync('dist-legacy/_redirects','/*  /index.html  200\\n')\""
+    "build:legacy": "node scripts/retired-build.cjs legacy-control && vite build --mode legacy --outDir dist-legacy && node -e \"require('fs').writeFileSync('dist-legacy/_redirects','/*  /index.html  200\\n')\""
   },
   "dependencies": {
     "react": "^19.0.0",

@@ -1,3 +1,5 @@
+> ⛔ **RETIRED 21 Oct 2026** — not a SAiM product any more. See `RETIRED.md` and `saim/retired-alt/README.md`.
+
 # SAiM Alt — A/B treatment of the SAiM desktop companion
 
 > ⚠ **16 Oct 2026: hostnames swapped.** Alt v3 now serves https://saim.nickward.co.uk (site `saim-alt-nickward`) and the legacy control desktop serves https://saim-alt.nickward.co.uk (site `saim-legacy-nickward`, `npm run build:legacy`). The phone (`sara.nickward.co.uk`, site `saim-nickward`) is unchanged. The table below describes the original A/B layout. See CLAUDE.md "SAiM desktop hostname swap".

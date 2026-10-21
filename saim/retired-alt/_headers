@@ -1,0 +1,11 @@
+/*
+  X-Robots-Tag: noindex, nofollow
+  Referrer-Policy: no-referrer
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Clear-Site-Data: "cache", "storage"
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Clear-Site-Data: "cache", "storage"
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate

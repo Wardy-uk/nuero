@@ -1,0 +1,12 @@
+# SAiM Alt is RETIRED (21 Oct 2026). sara.nickward.co.uk is the only SAiM.
+# Deployed by hand to saim.nickward.co.uk, saim-alt.nickward.co.uk and
+# saim-alt-v1.nickward.co.uk. See README.md for site ids and rollback.
+#
+# /sw.js stays a REAL 200 on purpose: a browser keeps an old service worker
+# until it can fetch a new one from the SAME origin. A cross-origin redirect
+# fails that update and the stale shell survives for ever.
+/sw.js              /sw.js     200!
+/service-worker.js  /sw.js     200!
+# Everything else: permanent redirect to the canonical app. :splat keeps the
+# path; Netlify carries the query string across a 301 on its own.
+/*                  https://sara.nickward.co.uk/:splat  301!

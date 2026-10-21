@@ -1,3 +1,5 @@
+> ⛔ **RETIRED 21 Oct 2026** — not a SAiM product any more. See `RETIRED.md` and `saim/retired-alt/README.md`.
+
 # SAiM Alt v2 — the actionable daily front door
 
 The A/B treatment of the SAiM desktop companion. NEURO is the brain and control room; SAiM is

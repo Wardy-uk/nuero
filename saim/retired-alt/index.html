@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>SAiM has moved</title>
+<!-- Fallback only: Netlify's 301 normally answers before this file is read. -->
+<script>
+(function () {
+  var target = 'https://sara.nickward.co.uk' + location.pathname + location.search + location.hash;
+  function go() { location.replace(target); }
+  try {
+    var jobs = [];
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+    }
+    if (window.caches && caches.keys) {
+      jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+    }
+    Promise.all(jobs).then(go, go);
+    setTimeout(go, 1500);
+  } catch (e) { go(); }
+})();
+</script>
+</head>
+<body style="background:#06090d;color:#f0eee7;font:16px Georgia,serif;padding:2rem">
+<p>SAiM has moved to <a style="color:#f2b95f" href="https://sara.nickward.co.uk/">sara.nickward.co.uk</a>.</p>
+</body>
+</html>

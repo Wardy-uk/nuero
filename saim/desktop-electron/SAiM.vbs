@@ -19,15 +19,17 @@
 '      to "Minimized" still puts an item in the taskbar.
 '
 ' ⚠ The URL is an ARGUMENT, not a constant. This file is committed to a public
-' repo and the desktop shell points at whichever surface Nick wants that day —
-' the phone build on saim.nickward.co.uk, or the kiosk on localhost:3005. A
+' repo. Since the 21 Oct 2026 cutover there is ONE SAiM, https://sara.nickward.co.uk,
+' and main.js opens it by default; a retired Alt/legacy host or the old local
+' shell passed here is sent there too (target.js). An argument remains for a
+' local preview only. A
 ' shortcut cannot set an environment variable, which is exactly why the old one
 ' went through `cmd /c "set SAIM_URL=... && npm start"` and dragged a console
 ' along with it. Taking it as an argument removes the reason cmd was there.
 '
 ' Usage:
-'   wscript.exe "…\SAiM.vbs"                          -> main.js default (:3005)
-'   wscript.exe "…\SAiM.vbs" "https://saim.nickward.co.uk"
+'   wscript.exe "…\SAiM.vbs"                          -> https://sara.nickward.co.uk
+'   wscript.exe "…\SAiM.vbs" "http://127.0.0.1:5185"     -> a local preview
 '
 ' Make a shortcut to that and give it `saim/desktop/saim-desktop.ico`.
 

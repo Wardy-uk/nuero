@@ -6,8 +6,10 @@ wake; the Pi kiosk is unchanged (overlay-only).
 
 ## How it fits
 
-- **Window:** loads the existing SAiM frontend from `SAIM_URL` (default
-  `http://localhost:3005/`). No frontend changes beyond the lock hook.
+- **Window:** loads the ONE canonical SAiM, `https://sara.nickward.co.uk/`
+  (21 Oct 2026 cutover) — the same responsive home as the phone and kiosk.
+  `SAIM_URL` may point it at a local preview; a retired Alt/legacy host or the
+  old local shell on port 3005 is sent to the canonical app instead (`target.js`).
 - **Native bridge:** `preload.js` exposes `window.saimNative` to the renderer.
   `usePresenceLock` calls it *in addition to* its in-app LockScreen overlay — guarded,
   so a plain browser or the Pi (where `canOSLock` is false) behaves exactly as before.
@@ -56,7 +58,8 @@ npm start
 ```
 
 Env:
-- `SAIM_URL` — where the frontend is served (default `http://localhost:3005/`).
+- `SAIM_URL` — a local preview only (default `https://sara.nickward.co.uk/`;
+  retired hosts are rewritten to it).
 - `SAIM_FULLSCREEN=1` — borderless fullscreen (wall-display mode).
 
 ## Verifying the lock seam

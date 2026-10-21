@@ -1,3 +1,7 @@
+// ⛔ RETIRED (21 Oct 2026). SAiM Alt and the legacy control desktop are retired as
+// product variants: sara.nickward.co.uk is the only SAiM. Its build command refuses
+// to run (scripts/retired-build.cjs); the old hostnames redirect (saim/retired-alt/).
+// Kept for rollback only — a rollback is a Netlify deploy restore, not a rebuild.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';

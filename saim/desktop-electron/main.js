@@ -6,11 +6,15 @@
 // OS lock + Windows-Hello wake via IPC. On the Pi the adapter is a no-op, so SAiM
 // behaves exactly as the kiosk does today.
 //
-// Backend is assumed already running at SAIM_URL (Phase 2 bundles/spawns it).
+// It opens the ONE canonical SAiM (https://sara.nickward.co.uk) — see target.js.
+// SAIM_URL may point it at a local preview; a retired Alt/legacy host or the old
+// local shell (saim/backend) is sent to the canonical app instead (21 Oct 2026).
 const { app, BrowserWindow, ipcMain, powerMonitor, shell } = require('electron');
 const lockAdapter = require('./lock');
+const target = require('./target').resolveTarget(process.env.SAIM_URL);
 
-const SAIM_URL = process.env.SAIM_URL || 'http://localhost:3005/';
+const SAIM_URL = target.url;
+console.log(`[SAiM] opening ${SAIM_URL} (${target.reason}${target.from ? ` from ${target.from}` : ''})`);
 // How old the page may be before focusing the window refetches it. Ten minutes
 // is long enough that alt-tabbing about does not reload anything, and short
 // enough that a deploy reaches the desk the next time he looks at her.

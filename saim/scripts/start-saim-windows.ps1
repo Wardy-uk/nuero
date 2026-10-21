@@ -20,7 +20,12 @@ $logDir = Join-Path $root 'saim\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 # 1. Backend (:3005) — skip if something already holds the port.
-if (-not (Get-NetTCPConnection -LocalPort 3005 -State Listen -ErrorAction SilentlyContinue)) {
+# ⚠ 21 Oct 2026 cutover: the desktop window opens the ONE canonical SAiM
+# (https://sara.nickward.co.uk), so the local saim/backend on :3005 — the old
+# local shell — is no longer started by default. Set SAIM_LOCAL_BACKEND=1 to
+# bring it back (kiosk development). The Watch reporter below is unchanged: it
+# feeds the Pi and Electron's own lock, not the local backend.
+if ($env:SAIM_LOCAL_BACKEND -eq '1' -and -not (Get-NetTCPConnection -LocalPort 3005 -State Listen -ErrorAction SilentlyContinue)) {
   Start-Process -FilePath 'node' -ArgumentList '--env-file=.env', 'server.js' `
     -WorkingDirectory (Join-Path $root 'saim\backend') `
     -RedirectStandardOutput (Join-Path $logDir 'backend.out.log') `
@@ -29,7 +34,7 @@ if (-not (Get-NetTCPConnection -LocalPort 3005 -State Listen -ErrorAction Silent
 }
 
 # Wait up to ~30s for the backend to listen before launching the UI.
-for ($i = 0; $i -lt 60; $i++) {
+for ($i = 0; $i -lt 60 -and $env:SAIM_LOCAL_BACKEND -eq '1'; $i++) {
   if (Get-NetTCPConnection -LocalPort 3005 -State Listen -ErrorAction SilentlyContinue) { break }
   Start-Sleep -Milliseconds 500
 }
