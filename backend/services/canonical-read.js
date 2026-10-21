@@ -1302,6 +1302,39 @@ let _radarMemo = null;
 let _homeMemo = null;
 let _outdoorMemo = null;
 let _keepWordMemo = null;
+
+/**
+ * Keep my word's raw inputs for Now, memoised per minute. READ-ONLY.
+ * `deps.workbench(ledger, proofs)` is for tests only.
+ */
+function keepWordBlock(nowMs, deps = {}) {
+  const minute = Math.floor(nowMs / 60000);
+  if (_keepWordMemo && _keepWordMemo.minute === minute) return _keepWordMemo.k;
+  const ledger = require('./promise-ledger').read({ now: nowMs });
+  const proofs = require('./promise-score').readProofs();
+  const workbench = deps.workbench ? deps.workbench(ledger, proofs) : require('./promise-workbench').read({ now: nowMs, ledger, proofs: proofs.proofs });
+  // Read-only: whether each draftable promise has one named address and a
+  // draft already waiting, and whether approved email can be sent at all.
+  const draftable = (workbench.items || []).filter((i) => i.preparation && i.preparation.state === 'needs-a-draft').map((i) => i.key);
+  let sending = false;
+  try { sending = require('./feature-flags').isEnabled('governed_execution') === true; } catch { sending = false; }
+  _keepWordMemo = { minute, k: {
+    score: require('./promise-score').read({ now: nowMs, ledger }),
+    workbench,
+    receipt: require('./keep-my-word').latestVerifiedReceipt({ now: nowMs }),
+    authority: require('./authority-budget').brief({ now: nowMs }),
+    delivery: { sending, items: Object.fromEntries(require('./promise-delivery').readiness(draftable, { ledger })) },
+  } };
+  return _keepWordMemo.k;
+}
+
+/**
+ * Drop ONLY the Keep my word memo, so the next Now read sees a promise
+ * delivery that was just prepared instead of offering to draft it again.
+ * Called by promise-delivery after a SUCCESSFUL prepare; nothing else.
+ * Every other memo here (outdoor, leisure, home…) is untouched.
+ */
+function invalidateKeepMyWord() { _keepWordMemo = null; }
 let _leisureMemo = null;
 // `readOnly` (the meeting-promises shadow): passed to attention.build, which then
 // writes no lifecycle record and saves no room visit. Default false = unchanged.
@@ -1407,25 +1440,7 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
   // today's verified receipt — READ-ONLY, memoised per minute, never allowed to
   // fail Now. Composed into `presentation.keepMyWord` below.
   try {
-    const minute = Math.floor(nowMs / 60000);
-    if (!_keepWordMemo || _keepWordMemo.minute !== minute) {
-      const ledger = require('./promise-ledger').read({ now: nowMs });
-      const proofs = require('./promise-score').readProofs();
-      const workbench = require('./promise-workbench').read({ now: nowMs, ledger, proofs: proofs.proofs });
-      // Read-only: whether each draftable promise has one named address and a
-      // draft already waiting, and whether approved email can be sent at all.
-      const draftable = (workbench.items || []).filter((i) => i.preparation && i.preparation.state === 'needs-a-draft').map((i) => i.key);
-      let sending = false;
-      try { sending = require('./feature-flags').isEnabled('governed_execution') === true; } catch { sending = false; }
-      _keepWordMemo = { minute, k: {
-        score: require('./promise-score').read({ now: nowMs, ledger }),
-        workbench,
-        receipt: require('./keep-my-word').latestVerifiedReceipt({ now: nowMs }),
-        authority: require('./authority-budget').brief({ now: nowMs }),
-        delivery: { sending, items: Object.fromEntries(require('./promise-delivery').readiness(draftable, { ledger })) },
-      } };
-    }
-    payload.keepMyWord = _keepWordMemo.k;
+    payload.keepMyWord = keepWordBlock(nowMs);
   } catch (e) { payload.keepMyWord = null; gaps.push({ input: 'promises', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
@@ -1487,6 +1502,7 @@ module.exports = {
   shapeCommitment, summariseCommitments, sourceVerdict, shapeSource, sourceMatters, attentionVerdict, shapeFinding,
   commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly, isKnownNonWork, workOnlyPresentation,
   // readers / writers
+  keepWordBlock, invalidateKeepMyWord,
   commitments, commitmentDetail, tasks, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,
   addGoalLink, removeGoalLink, GOAL_LINK_PREFIXES,
 };

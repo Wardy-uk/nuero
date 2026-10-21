@@ -25,7 +25,7 @@ for (const k of ['GOVERNED_EXECUTION_ENABLED', 'COMMITMENT_RISK_MODE', 'MEETING_
 
 const V = process.env.OBSIDIAN_VAULT_PATH;
 const put = (rel, text) => { const f = path.join(V, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
-const PEOPLE = ['Alex Reed', 'Sam Patel', 'Robin Hale', 'Casey Lin', 'Drew Moss', 'Avery Nolan', 'Quinn Hart', 'Morgan Lee', 'Toby Vance', 'Jamie Ross'];
+const PEOPLE = ['Alex Reed', 'Sam Patel', 'Robin Hale', 'Casey Lin', 'Drew Moss', 'Avery Nolan', 'Quinn Hart', 'Morgan Lee', 'Toby Vance', 'Jamie Ross', 'Kit Varga'];
 put('People/Pat Gray.md', ['---', 'role: contractor', '---', '# Pat Gray', ''].join('\n')); // no address on file
 for (const name of PEOPLE) put(`People/${name}.md`, `---\nemail: ${name.toLowerCase().replace(' ', '.')}@nurtur.tech\n---\n# ${name}\n`);
 const NOTE = 'Meetings/2026/10/2026-10-14 - Ops sync.md';
@@ -41,6 +41,7 @@ const T = {
   retry: 'Nick to send Toby Vance the capacity model',
   offline: 'Nick to send Jamie Ross the cover rota',
   noaddr: 'Nick to send Pat Gray the meeting minutes',
+  cache: 'Nick to send Kit Varga the escalation map',
 };
 put(NOTE, ['# Ops sync', '', '## Actions', ...Object.values(T).map((t) => `- ${t}`), ''].join('\n'));
 
@@ -128,7 +129,7 @@ async function deliver(name, at, { hidden = false } = {}) {
 test.before(async () => {
   await db.init();
   assert.equal(proofs.setCode(CODE).ok, true);
-  for (const name of ['kept', 'straddle', 'late', 'ticked', 'chase', 'executed', 'hr', 'retry', 'offline', 'noaddr']) task(name, '2026-10-21');
+  for (const name of ['kept', 'straddle', 'late', 'ticked', 'chase', 'executed', 'hr', 'retry', 'offline', 'noaddr', 'cache']) task(name, '2026-10-21');
   task('early', '2026-10-20');
 });
 
@@ -202,6 +203,54 @@ test('the route over HTTP: prepares, repeats idempotently, refuses an employment
     assert.equal(noaddr.body.recipientNeeded, true);
     assert.equal(sentItems.length, sentBefore, 'nothing was sent');
   } finally { server.close(); }
+});
+
+test('freshness: a successful prepare drops ONLY the Keep my word memo; the next read reports the draft; refusals change nothing', () => {
+  const canonical = require('./canonical-read');
+  const km = require('./keep-my-word');
+  const key = keyOf('cache');
+  const wb = () => ({ state: 'ok', items: [{ key, taskIds: [ID.cache], leadTaskId: ID.cache, title: T.cache, owedTo: 'Kit Varga',
+    due: { date: '2026-10-21', say: 'due today', endsAt: '2026-10-21T23:00:00.000Z' }, preparation: { state: 'needs-a-draft', why: 'x' }, evidence: [], because: [] }], withheld: {} });
+  const AT = Date.parse('2026-10-21T08:40:00Z');
+  canonical.invalidateKeepMyWord();
+  const first = canonical.keepWordBlock(AT, { workbench: wb });
+  assert.equal(first.delivery.items[key].live, null);
+  assert.equal(km.compose({ ...first, presentation: { mode: 'calm', needsYou: [] }, now: AT }).thread.draft.control, 'Draft the delivery note');
+  // Within the minute the memo serves the same read.
+  assert.equal(canonical.keepWordBlock(AT + 1000), first, 'memoised within the minute');
+  // Refusals (employment matter, no address, unknown promise) leave it exactly as it was.
+  assert.equal(delivery.prepare(keyOf('hr'), { now: AT }).ok, false);
+  assert.equal(delivery.prepare(keyOf('noaddr'), { now: AT }).ok, false);
+  assert.equal(delivery.prepare('promise:999999', { now: AT }).ok, false);
+  assert.equal(canonical.keepWordBlock(AT + 2000), first, 'a refusal invalidates nothing');
+  // Success: the very next read — same minute — sees the draft.
+  const prep = delivery.prepare(key, { now: AT + 3000 });
+  assert.equal(prep.ok, true, prep.error);
+  const next = canonical.keepWordBlock(AT + 4000, { workbench: wb });
+  assert.notEqual(next, first, 'the stale read is gone');
+  assert.deepEqual(next.delivery.items[key].live, { actionId: prep.action.actionId, status: 'prepared' });
+  const thread = km.compose({ ...next, presentation: { mode: 'calm', needsYou: [] }, now: AT }).thread;
+  assert.equal(thread.draft.control, 'Show the delivery note', 'reports the existing draft, no stale “Draft” offer');
+  assert.equal(thread.draft.say, 'A delivery note is already drafted and waiting for your approval.');
+  // Repeat: the same draft, still ONE live draft, and the read stays truthful.
+  const again = delivery.prepare(key, { now: AT + 5000 });
+  assert.equal(again.already, true);
+  assert.equal(again.action.actionId, prep.action.actionId);
+  assert.equal(delivery.actionsFor(key).filter((r) => delivery.LIVE.includes(r.status)).length, 1);
+  assert.equal(canonical.keepWordBlock(AT + 6000, { workbench: wb }).delivery.items[key].live.actionId, prep.action.actionId);
+});
+
+test('the invalidation scope is exactly the Keep my word memo — nothing else is touched', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'canonical-read.js'), 'utf-8');
+  const body = /function invalidateKeepMyWord\(\) \{([^}]*)\}/.exec(src);
+  assert.ok(body, 'invalidateKeepMyWord exists');
+  assert.equal(body[1].trim(), '_keepWordMemo = null;', 'it clears ONLY the Keep my word memo');
+  const calls = [...src.matchAll(/invalidateKeepMyWord\(/g)].length;
+  assert.equal(calls, 1, 'canonical-read never calls it itself');
+  const dsrc = fs.readFileSync(path.join(__dirname, 'promise-delivery.js'), 'utf-8');
+  const requires = [...dsrc.matchAll(/require\(['"]([^'"]+)['"]\)/g)].map((m) => m[1]).sort();
+  assert.ok(!requires.some((r) => /prepared-move|authority-budget|action-executor|intent-grants|email-sender|smtp-mail|action-mail/.test(r)), `no other cache or sender is reached: ${requires.join(', ')}`);
+  assert.match(dsrc, /if \(r && r\.ok\) _fresh\(\);/, 'only a successful prepare invalidates');
 });
 
 test('a missing recipient is CHOSEN, never guessed', () => {

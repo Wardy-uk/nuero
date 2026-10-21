@@ -139,7 +139,6 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
             <span className="kmw__rowlabel">Delivery</span>
             <div>
               <p className="kmw__rowline kmw__draft-say">{draft.say}</p>
-              {draft.waiting && <p className="kmw__rowline">{draft.waiting}</p>}
               {draft.sendingOff && !result && <p className="kmw__rowline">{draft.sendingOff}</p>}
               {canDraft && !(result && result.ok) && (
                 <div className="kmw__actions">

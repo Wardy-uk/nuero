@@ -43,6 +43,7 @@ const THREAD_ITEM = {
 const BENCH = { state: 'ok', items: [THREAD_ITEM], withheld: { sensitive: 1, ambiguous: 0, unreadable: 0, undated: 0 } };
 const DRAFT_ITEM = { ...THREAD_ITEM, title: 'Send Hope the onboarding checklist', preparation: { state: 'needs-a-draft', why: 'It is a message to one person; nothing is drafted yet.' } };
 const DRAFT_BENCH = { ...BENCH, items: [DRAFT_ITEM] };
+const kmwButtons = (out) => [...out.matchAll(/<button type="button" class="kmw__open"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
 const READY = (over = {}) => ({ sending: true, items: { 'promise:31': { addressable: true, why: null, live: null, ...over } } });
 const CALM = { mode: 'calm', needsYou: [], primary: null };
 const URGENT = { mode: 'needs-attention', needsYou: [{ id: 'risk', title: 'Weekly Risk report waits for you' }], primary: null };
@@ -302,14 +303,18 @@ test('needs-a-draft with “Send approved emails” off: drafting still offered,
   assert.ok(out.includes('can’t be approved to send until that setting is on'));
 });
 
-test('a draft already waiting: the same control returns the same draft; one past “prepared” is reported, never offered again', () => {
+test('a draft that EXISTS is never offered as a new draft: prepared → “Show the delivery note”; further on → status only', () => {
   const waiting = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY({ live: { actionId: 'pa_1', status: 'prepared' } }), presentation: CALM, now: NOW });
-  assert.equal(waiting.thread.draft.control, 'Draft the delivery note');
-  assert.match(waiting.thread.draft.waiting, /already drafted and waiting for your approval/);
+  assert.equal(waiting.thread.draft.control, 'Show the delivery note');
+  assert.equal(waiting.thread.draft.say, 'A delivery note is already drafted and waiting for your approval.');
+  assert.ok(!JSON.stringify(waiting.thread).includes('Draft the delivery note'), 'no stale offer');
+  assert.ok(!JSON.stringify(waiting.thread).includes('SAiM can prepare a delivery note'), 'no stale offer sentence');
+  const out = html(presentationWith(waiting, CALM), 'desktop', { onPrepareDelivery: async () => ({ ok: true }) });
+  assert.deepEqual(kmwButtons(out), ['Show the delivery note'], 'still exactly one control');
   for (const status of ['approved', 'executing', 'executed', 'execution_uncertain']) {
     const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY({ live: { actionId: 'pa_1', status } }), presentation: CALM, now: NOW });
     assert.equal(v.thread.draft.control, null, status);
-    assert.ok(v.thread.draft.waiting, status);
+    assert.ok(/delivery note/.test(v.thread.draft.say) && !/SAiM can prepare/.test(v.thread.draft.say), status);
   }
 });
 
@@ -319,7 +324,6 @@ test('under an urgent lead the thread (and its control) folds beneath the lead',
   assert.equal(v.thread.draft.control, 'Draft the delivery note');
 });
 
-const kmwButtons = (out) => [...out.matchAll(/<button type="button" class="kmw__open"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
 
 test('render: the offer and ONE control — no approve, send or confirm anywhere in the thread', () => {
   const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: READY(), presentation: CALM, now: NOW });

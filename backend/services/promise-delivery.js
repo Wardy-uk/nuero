@@ -115,6 +115,7 @@ function prepare(key, { to = null, now = Date.now(), deps = {} } = {}) {
   if (live.some((r) => r.status === 'verified')) return { ok: false, code: 409, delivered: true, error: 'this promise was already delivered and read back in Sent Items' };
   if (live.length) {
     const pa = require('./prepared-actions');
+    _fresh(); // the draft already exists — a memo that missed it is stale
     return { ok: true, already: true, action: pa.get(live[live.length - 1].action_id) };
   }
 
@@ -129,12 +130,23 @@ function prepare(key, { to = null, now = Date.now(), deps = {} } = {}) {
   }
 
   const d = draftFor(p, recipients[0].name);
-  return require('./prepared-actions').prepareCompose({
+  const r = require('./prepared-actions').prepareCompose({
     from: 'work', to: recipients, subject: d.subject, body: d.body, origin: ORIGIN,
     generatedBy: 'template (promise delivery, no model call)',
     evidence: { promiseKey: key, move: MOVE, taskIds: p.taskIds },
     now: nowMs,
   });
+  if (r && r.ok) _fresh();
+  return r;
+}
+
+/**
+ * A draft now exists: drop ONLY the home's Keep my word memo, so the next Now
+ * read reports it rather than offering to draft it again. A refusal never
+ * reaches here, so it leaves every cache as it was.
+ */
+function _fresh() {
+  try { require('./canonical-read').invalidateKeepMyWord(); } catch { /* the memo expires within the minute anyway */ }
 }
 
 module.exports = { MOVE, ORIGIN, LIVE, meetingPhrase, draftFor, actionsFor, recipientFor, readiness, prepare };

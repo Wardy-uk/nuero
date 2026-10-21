@@ -191,6 +191,7 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
 /** PURE. The held sentence when the thread needs authority SAiM lacks — or null. */
 const DRAFT_SAY = 'SAiM can prepare a delivery note for your approval. Nothing will be sent.';
 const DRAFT_CONTROL = 'Draft the delivery note';
+const SHOW_CONTROL = 'Show the delivery note';
 const SENDING_OFF = '“Send approved emails” is off, so the note can be reviewed but can’t be approved to send until that setting is on.';
 const REVIEW_SAY = 'Review it, write in what you promised, and approve it in Actions, in NEURO on the desktop. Nothing is sent until you do.';
 const WAITING = {
@@ -212,12 +213,13 @@ function draftFor(item, delivery) {
   const r = delivery && delivery.items ? delivery.items[item.key] : null;
   if (!r || !r.addressable) return null;
   const live = r.live || null;
-  const offered = !live || live.status === 'prepared';
+  // A draft that exists is never offered as a NEW draft: a prepared one can be
+  // shown again (the same idempotent route returns it); one further on is
+  // reported only.
   return {
     key: item.key,
-    say: DRAFT_SAY,
-    control: offered ? DRAFT_CONTROL : null,
-    waiting: live ? WAITING[live.status] || null : null,
+    say: live ? (WAITING[live.status] || 'A delivery note already exists for this promise.') : DRAFT_SAY,
+    control: !live ? DRAFT_CONTROL : live.status === 'prepared' ? SHOW_CONTROL : null,
     liveActionId: live ? live.actionId : null,
     sendingOff: delivery.sending === true ? null : SENDING_OFF,
     review: REVIEW_SAY,
@@ -297,4 +299,4 @@ function compose({ score: sc = null, workbench = null, receipt = null, authority
   };
 }
 
-module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, DRAFT_SAY, DRAFT_CONTROL, SENDING_OFF, REVIEW_SAY, draftFor, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, compose };
+module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, DRAFT_SAY, DRAFT_CONTROL, SHOW_CONTROL, SENDING_OFF, REVIEW_SAY, draftFor, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, compose };
