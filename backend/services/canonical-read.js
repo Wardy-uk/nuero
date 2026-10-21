@@ -1484,6 +1484,18 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
     console.warn('[Canonical] SAiM hand-off failed:', e.message);
     payload.handoff = null;
   }
+  // `work.deskOffer.relevant` (21 Oct 2026): the few desk apps that matter to
+  // what leads now — never the installed catalogue. Presentation only; [] on
+  // any failure, so the surface omits the "On the desktop" block.
+  if (payload.work && payload.work.deskOffer) {
+    let relevant = [];
+    try {
+      relevant = require('./desk-relevance').relevantApps({ offer: payload.work.deskOffer, handoff: payload.handoff, device: require('./saim-device').report(nowMs) });
+    } catch (e) {
+      console.warn('[Canonical] desk relevance failed:', e.message);
+    }
+    payload.work = { ...payload.work, deskOffer: { ...payload.work.deskOffer, relevant } };
+  }
   try {
     payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });
     if (workOnly && payload.presentation) payload.presentation = workOnlyPresentation(payload.presentation);

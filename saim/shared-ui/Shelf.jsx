@@ -90,7 +90,9 @@ export default function Shelf({
   // and `meeting_alert`.
   const offer = work && work.deskOffer;
   const host = (offer && offer.host) || (work && work.host) || null;
-  const apps = offer && Array.isArray(offer.apps) ? offer.apps : [];
+  // Only the apps relevant to the moment (`relevant`, composed server-side) —
+  // never the whole installed catalogue. None → no laptop chips at all.
+  const apps = offer && Array.isArray(offer.relevant) ? offer.relevant.slice(0, 3) : [];
   if (onDeskOpen && apps.length > 0 && work.atDesk) {
     apps.forEach(({ id, label }) => {
       items.push({

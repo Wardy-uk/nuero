@@ -80,7 +80,7 @@
   --kmw-ink: #f0eee7; --kmw-amber: #d69042; --kmw-gold: #f2b95f; --kmw-dim: #a5a49a; --kmw-line: #d6904275;
   --sit-ink: #f0eee7; --sit-soft: #d5d1c7; --sit-quiet: #a5a49a;
   background: radial-gradient(ellipse at 52% 112%, #18251d 0%, transparent 48%), #06090d;
-  min-height: 100svh;
+  min-height: 100%; /* fills its shell (flex), never the whole viewport: the app bars are inside it */
   color: var(--kmw-ink);
 }
 /* The reading vignette — the prototype's `.world:after`, over the network. */
@@ -109,21 +109,53 @@
 .sit--scene .sit__label { color: var(--kmw-amber); letter-spacing: .16em; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .sit--scene .sit__object { background: transparent; border: 0; border-left: 2px solid #ffb45c; border-radius: 0; padding: 4px 0 4px 14px; }
 
-/* Wide: readout at left, main surface at right, the space between is HER. */
+/* Wide: readout at left, main surface at right, held together in ONE bounded,
+   centred composition (21 Oct 2026, Nick's first use: the readout and the main
+   surface sat at opposite edges of a 1920 screen with a void between, and the
+   page scrolled at 1440×900). The field is the background, not the gap.
+   ⚠ Fits 1440×900 and 1920×1080 with no page scroll in the normal states, never
+   overflows sideways down to 1024px, and stacks below 1080px. Pinned by
+   saim-scene-layout.test.js (a real Chromium layout). */
 .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body {
   display: grid;
-  grid-template-columns: minmax(180px, 230px) minmax(0, 560px);
-  justify-content: space-between;
-  column-gap: clamp(40px, 8vw, 180px);
+  grid-template-columns: minmax(200px, 250px) minmax(0, 620px);
+  justify-content: center;
+  align-content: start;
   align-items: start;
-  max-width: none;
-  margin: 0;
-  min-height: 100svh;
-  padding: clamp(48px, 16vh, 180px) clamp(28px, 7vw, 120px) 48px;
+  column-gap: clamp(40px, 5vw, 88px);
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: clamp(28px, 6vh, 80px) clamp(24px, 4vw, 56px) 12px;
 }
-.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 2; }
-.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: clamp(48px, 16vh, 180px); margin: 0; }
-.sit--scene:not(.sit--phone) .sit__situation { margin-bottom: 2rem; }
+.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 2; min-width: 0; }
+.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: clamp(28px, 6vh, 80px); margin: 0; }
+.sit--scene:not(.sit--phone) .sit__situation { margin-bottom: 1.5rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__headline,
+.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline { font-size: clamp(36px, 3.4vw, 54px); }
+.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline--thread { font-size: clamp(30px, 2.9vw, 44px); }
+/* The rest of the main column is CONTEXT, read at a glance: tighter rhythm on
+   a wide screen so the scene is one screen, never smaller type. */
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__objects { margin-bottom: 1rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__nextblock,
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__ctxblock { margin-bottom: 0.9rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__next-btn { padding: 0.2rem 0; min-height: 36px; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__details summary { min-height: 36px; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__details { margin-bottom: 0.4rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__ctxblock .sit__details { margin-top: 0.2rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__desk { margin: 0.2rem 0 0.6rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .sit__foot { margin-bottom: 0.6rem; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__rows { margin-top: 16px; }
+.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__row { padding: 9px 0; }
+/* Under a comfortable two-column width: one column, readout first, then the
+   main surface, then context — the same order the phone reads in. */
+@media (max-width: 1079px) {
+  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body { grid-template-columns: minmax(0, 640px); }
+  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 1; }
+  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-row: auto; position: static; margin: 0 0 1.75rem; }
+}
 
 /* Phone (390px): the same hierarchy as ONE composed vertical scene — the
    readout as a band above, the main surface beneath, never a stack of cards. */

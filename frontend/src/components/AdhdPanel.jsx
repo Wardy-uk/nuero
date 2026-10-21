@@ -106,9 +106,13 @@ export function DeskLaunch({ work, onOpen, states }) {
   //   that has not said what it can open gets NO buttons and a stated reason:
   //   offering everything and hoping is what made this row untrustworthy.
   const offer = work.deskOffer || null;
-  const apps = offer && Array.isArray(offer.apps) ? offer.apps : [];
+  // Only the apps relevant to the moment (`relevant`, composed server-side from
+  // what leads now and the app in front) — never the installed catalogue.
+  const apps = offer && Array.isArray(offer.relevant) ? offer.relevant.slice(0, 3) : [];
   if (!apps.length) {
-    return offer && offer.why
+    // A machine that could not say what it can open is a stated gap; a machine
+    // with nothing relevant right now shows no block at all.
+    return offer && offer.why && !(Array.isArray(offer.apps) && offer.apps.length)
       ? <p className="adhd__desk-note">Nothing to open — {offer.why}.</p>
       : null;
   }

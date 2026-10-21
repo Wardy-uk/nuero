@@ -171,11 +171,14 @@ test('⚠ every offer is rendered — a second one cannot be silently dropped', 
 //   TARGET MACHINE said it can open, composed server-side as `work.deskOffer`.
 //   These fixtures therefore carry one — a `work` without it is a machine that
 //   has not said, which correctly offers nothing, and is its own test below.
-const AT_DESK = { atDesk: true, deskKnown: true, host: 'DESKTOP-8LGF9RR', deskOffer: { known: true, host: 'DESKTOP-8LGF9RR', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }, { id: 'terminal', label: 'Terminal' }, { id: 'browser', label: 'Browser' }] } };
+const AT_DESK = { atDesk: true, deskKnown: true, host: 'DESKTOP-8LGF9RR', deskOffer: { known: true, host: 'DESKTOP-8LGF9RR', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }, { id: 'terminal', label: 'Terminal' }, { id: 'browser', label: 'Browser' }],
+  // 21 Oct 2026: what the server judged RELEVANT to the moment (desk-relevance).
+  relevant: [{ id: 'code', label: 'VS Code', why: 'in front on the laptop now' }, { id: 'music', label: 'Music', why: 'what leads now happens here' }] } };
 
-test('at the laptop, SAiM offers what THAT MACHINE said it can open', () => {
+test('at the laptop, SAiM offers only the RELEVANT apps that machine can open — not its catalogue', () => {
   const html = render({ data: { ...payload(null), work: AT_DESK }, onDeskOpen: () => {} });
-  for (const l of ['Music', 'VS Code', 'Terminal', 'Browser']) assert.match(html, new RegExp(l));
+  for (const l of ['Music', 'VS Code']) assert.match(html, new RegExp(l));
+  for (const l of ['Terminal', 'Browser']) assert.doesNotMatch(html, new RegExp(l), `${l} is installed, not relevant`);
   // ⚠ IT NAMES THE MACHINE. A press acts on one laptop, and a row reading
   //   "your desk" cannot say which — half the point of device awareness is not
   //   silently opening something on a machine in another room.
@@ -187,13 +190,21 @@ test('⚠ NEGATIVE: only what the machine OFFERED is rendered', () => {
   // listening, so a button could name a program the target machine lacks.
   const work = {
     ...AT_DESK,
-    deskOffer: { known: true, host: 'MAC', why: null, apps: [{ id: 'browser', label: 'Browser' }] },
+    deskOffer: { known: true, host: 'MAC', why: null, apps: [{ id: 'browser', label: 'Browser' }], relevant: [{ id: 'browser', label: 'Browser' }] },
   };
   const html = render({ data: { ...payload(null), work }, onDeskOpen: () => {} });
   assert.match(html, /Browser/);
   for (const gone of ['Music', 'VS Code', 'Terminal']) {
     assert.doesNotMatch(html, new RegExp(gone), `${gone} was not offered by that machine`);
   }
+});
+
+test('⚠ installed apps with NOTHING relevant: the whole block is omitted', () => {
+  const work = { ...AT_DESK, deskOffer: { ...AT_DESK.deskOffer, relevant: [] } };
+  const html = render({ data: { ...payload(null), work }, onDeskOpen: () => {} });
+  assert.doesNotMatch(html, /surface__desk|sit__desk|Open on/);
+  const older = { ...AT_DESK, deskOffer: { ...AT_DESK.deskOffer, relevant: undefined } };
+  assert.doesNotMatch(render({ data: { ...payload(null), work: older }, onDeskOpen: () => {} }), /surface__desk|sit__desk/, 'an older payload with no `relevant` fails closed');
 });
 
 test('⚠ a machine that has NOT SAID offers nothing, and says why', () => {

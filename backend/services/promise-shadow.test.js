@@ -314,7 +314,7 @@ test('excluded features are absent from the branch: no briefing, proposals, goal
   // never sends (approval code in Actions), is machine-refused and interactive
   // in the gateway. Everything else stays excluded, pinned exactly.
   const server = fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8');
-  assert.deepEqual(server.split('\n').filter((l) => /promise/i.test(l)), ["app.use('/api/promises', require('./routes/promise-delivery'));"], 'only the delivery door is mounted');
+  assert.deepEqual(server.split(/\r?\n/).filter((l) => /promise/i.test(l)), ["app.use('/api/promises', require('./routes/promise-delivery'));"], 'only the delivery door is mounted');
   const door = fs.readFileSync(path.join(root, 'backend', 'routes', 'promise-delivery.js'), 'utf8');
   assert.deepEqual([...door.matchAll(/router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['post /:key/prepare'], 'the door has exactly one route');
   const matrixSrc = fs.readFileSync(path.join(__dirname, 'authority-matrix.js'), 'utf8');

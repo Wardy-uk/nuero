@@ -302,6 +302,10 @@ export default function Situation({
   const aboutItem = about
     ? [...(presentation.needsYou || []), presentation.primary].filter(Boolean).find((i) => i.id === about)
     : null;
+  // On the wide scene the basis is folded behind its summary (still one tap
+  // away, still named — "What I can’t see" stays visible as the summary) so
+  // the home is one screen.
+  const foldDetails = Boolean(kmw && scene && plan.profile !== 'phone');
   // Only the watch is ambient now: the wall carries the desktop's content (5 Oct 2026).
   const ambient = plan.profile === 'watch';
 
@@ -415,7 +419,7 @@ export default function Situation({
                 return (
                   <div key={i} className="sit__ctxblock">
                     <ContextGroup items={blk.items} honesty={blk.honesty} ambient={ambient} />
-                    {detailsBlk && <Details items={detailsBlk.items} mode={plan.mode} open={detailsBlk.variant === 'open'} />}
+                    {detailsBlk && <Details items={detailsBlk.items} mode={plan.mode} open={detailsBlk.variant === 'open' && !foldDetails} />}
                     {plan.actions && blk.correction && (
                       <Correction correction={blk.correction} activity={activity} onCorrect={onCorrect} onNotNow={onNotNow} busy={correcting} />
                     )}
@@ -448,7 +452,7 @@ export default function Situation({
             case 'details':
               // Attached under the context group when there is one (above).
               if (hasContext && !ambient) return null;
-              return <Details key={i} items={blk.items} mode={plan.mode} open={blk.variant === 'open'} />;
+              return <Details key={i} items={blk.items} mode={plan.mode} open={blk.variant === 'open' && !foldDetails} />;
             case 'ask':
               return ask ? (
                 <div key={i} className="sit__tailwrap">

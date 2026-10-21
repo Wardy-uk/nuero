@@ -256,6 +256,13 @@ export default function AttentionSurface({
     approvals = null,
   } = data;
 
+  // The desk apps worth offering NOW — composed server-side from explicit links
+  // (what leads now, the app in front). Absent on an older payload → nothing,
+  // never the installed catalogue: mere installation is not relevance.
+  const relevantDesk = work && work.deskOffer && Array.isArray(work.deskOffer.relevant)
+    ? work.deskOffer.relevant.slice(0, 3)
+    : [];
+
   // ── Saying it ONCE ─────────────────────────────────────────────────────────
   //
   // Nick, 8 Sep 2026: "find a better way to present this so I dont see the same
@@ -546,10 +553,12 @@ export default function AttentionSurface({
     // home whenever the presentation carries it — which it always does now,
     // honest state included. Never on the watch.
     const scene = Boolean(presentation && presentation.keepMyWord) && prof !== 'watch';
-    const deskRow = onDeskOpen && work && work.atDesk && work.deskOffer && work.deskOffer.known && (work.deskOffer.apps || []).length > 0 ? (
+    // Only what bears on the moment (`deskOffer.relevant`, server-side) — never
+    // the installed catalogue. None → no block at all.
+    const deskRow = onDeskOpen && work && work.atDesk && work.deskOffer && work.deskOffer.known && relevantDesk.length > 0 ? (
       <p className="sit__desk">
         <span className="sit__label">On the {work.deskOffer.host || 'laptop'}</span>
-        {work.deskOffer.apps.map((a) => (
+        {relevantDesk.map((a) => (
           <button key={a.id} type="button" className="sit__chip sit__chip--quiet" onClick={() => onDeskOpen(a.id)}>
             {a.label}{deskStates[a.id] ? ` · ${deskStates[a.id]}` : ''}
           </button>
@@ -1078,12 +1087,12 @@ export default function AttentionSurface({
             a stated reason. Offering everything and hoping is what made the
             row untrustworthy in the first place. */}
         {!hideSecondary && layout !== 'approach' && onDeskOpen && work && work.atDesk && work.deskOffer
-          && work.deskOffer.apps && work.deskOffer.apps.length > 0 && (
+          && relevantDesk.length > 0 && (
           <div className="surface__desk">
             <span className="surface__desklabel">
               Open on {work.deskOffer.host || 'your desk'}
             </span>
-            {work.deskOffer.apps.map(({ id, label }) => (
+            {relevantDesk.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
