@@ -126,9 +126,21 @@ async function poll({ now = Date.now(), deps = {} } = {}) {
   } catch (e) { console.warn('[HaPresence] source-health unavailable:', e.message); }
   if (!configured) { run.fail('Home Assistant is not configured', { reason: 'not-configured' }); return { ok: false, error: 'not-configured', published: 0, folded: 0, entities: [] }; }
   let states;
-  try { states = await fetchStates(); } catch (e) {
-    run.fail(e, { reason: 'unreachable' });
-    return { ok: false, error: e.message, published: 0, folded: 0, entities: [] };
+  try { states = await fetchStates(); } catch (first) {
+    // A TIMEOUT is retried once before it counts. Measured 21 Oct 2026: HA
+    // answers /api/states in ~2ms, yet every failure was the 5s abort firing at
+    // :00/:30/:40 past the hour — the minutes NEURO runs synchronous vault
+    // walks. The stall was our own event loop, not HA; recording it as HA
+    // "unreachable" fed the degradation investigator a fault that wasn't there.
+    // A real outage fails the retry too. Any other error is not retried.
+    const timedOut = first && (first.name === 'TimeoutError' || /timed? ?out/i.test(String(first.message)));
+    try {
+      if (!timedOut) throw first;
+      states = await fetchStates();
+    } catch (e) {
+      run.fail(e, { reason: 'unreachable', ...(timedOut ? { retried: true } : {}) });
+      return { ok: false, error: e.message, published: 0, folded: 0, entities: [] };
+    }
   }
   if (!Array.isArray(states) || !states.length) {
     run.fail('Home Assistant returned no states', { reason: 'empty', ambiguous: true });

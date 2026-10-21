@@ -24,6 +24,19 @@ const TYPE = sd.TYPE;
 const DAY_MS = 86400000;
 const LOOKBACK_DAYS = 21;          // enough to find a cluster's start and its quiet tail
 const CO_OCCUR_MS = 15 * 60 * 1000;
+// A new episode of the SAME pattern is not new information. Re-investigate when
+// the count has changed AND either a day has passed or the count has doubled
+// (a sudden escalation). Before 21 Oct 2026 any change re-ran it, so a sense
+// wobbling hourly got an identical investigation every hour.
+const REGATHER_MIN_MS = DAY_MS;
+function _shouldRegather(inv, counted, nowMs) {
+  if (inv.state === 'gathering' || inv.state === 'detected') return true;
+  if (inv.triggerSignature === String(counted)) return false;
+  const last = Number(inv.triggerSignature);
+  if (Number.isFinite(last) && last > 0 && counted >= last * 2) return true;
+  const at = Date.parse(inv.updatedAt);
+  return !Number.isFinite(at) || nowMs - at >= REGATHER_MIN_MS;
+}
 
 function _iso(ms) { return new Date(ms).toISOString(); }
 function _localMinute(ms) { return require('./world-model').localMinute(ms); }
@@ -207,7 +220,7 @@ async function run({ now = Date.now(), deps = {} } = {}) {
       invs._event(inv.id, at, 'detected', null, 'detected', { cluster: cl.id, episodes: cl.counted, why: cl.why });
       await _investigate(inv, sourceId, cl, { nowMs, deps: runDeps, boots, others: allEpisodes });
       out.started += 1;
-    } else if (inv.state === 'gathering' || inv.state === 'detected' || inv.triggerSignature !== String(cl.counted)) {
+    } else if (_shouldRegather(inv, cl.counted, nowMs)) {
       await _investigate(inv, sourceId, cl, { nowMs, deps: runDeps, boots, others: allEpisodes });
       out.regathered += 1;
     } else {
@@ -264,4 +277,4 @@ function replay({ now = Date.now(), thresholds = [2, 3, 4] } = {}) {
   return out;
 }
 
-module.exports = { TYPE, run, replay, episodesFor, bootTimes, defaultProbes, summaryFor };
+module.exports = { TYPE, REGATHER_MIN_MS, _shouldRegather, run, replay, episodesFor, bootTimes, defaultProbes, summaryFor };

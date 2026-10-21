@@ -125,7 +125,7 @@ const quietProbes = () => {
 };
 const deps = (extra = {}) => ({ boots: [], sources: ['homeassistant.presence'], probes: quietProbes(), readMoment: async () => ({ moment: { known: true, onDuty: true, now: new Date(NOW) } }), ...extra });
 
-test('17. the runner dedupes by CLUSTER — a second pass writes nothing; a new episode re-gathers the SAME investigation', async () => {
+test('17. the runner dedupes by CLUSTER — a second pass writes nothing; a new episode re-gathers the SAME investigation (at most daily)', async () => {
   seedHaEpisodes(3);
   const r1 = await di.run({ now: NOW, deps: deps() });
   assert.equal(r1.started, 1, JSON.stringify(r1));
@@ -137,7 +137,9 @@ test('17. the runner dedupes by CLUSTER — a second pass writes nothing; a new 
   assert.equal(invs.events(all[0].id).length, before, 'unchanged cluster → nothing written');
   seedHaEpisodes(1, { startDaysAgo: 0.5 });
   const r3 = await di.run({ now: NOW + 2 * H, deps: deps() });
-  assert.equal(r3.regathered, 1);
+  assert.equal(r3.regathered, 0, 'one more episode of the same pattern within a day is not news');
+  const r4 = await di.run({ now: NOW + 25 * H, deps: deps() });
+  assert.equal(r4.regathered, 1, 'a day on, the changed count is looked at again');
   assert.equal(invs.list({ limit: 50 }).filter((i) => i.type === sd.TYPE).length, 1, 'still one investigation for the cluster');
 });
 
@@ -235,4 +237,31 @@ test('Activity shows the conclusion and the close — never the episodes', () =>
   assert.ok(mine.some((e) => e.type === 'investigation.degradation' && /keeps dropping out/.test(e.headline)));
   assert.ok(mine.some((e) => e.type === 'investigation.degradation-closed'));
   assert.ok(mine.length <= 4, `concise: ${mine.length}`);
+});
+
+test('a re-run that reaches the SAME verdict is not a new Activity line; a changed one is', () => {
+  const tl = require('./activity-timeline');
+  const inv = { id: 'inv_x', type: 'repeated_source_degradation', subject_ref: 'source:homeassistant.presence', trigger_ref: 'c1' };
+  const evs = []; let id = 0;
+  const pass = (at, top, level, decision = 'MONITOR') => {
+    evs.push({ id: ++id, investigation_id: 'inv_x', at, transition: 'hypothesised', detail_json: JSON.stringify({ top, level }) });
+    evs.push({ id: ++id, investigation_id: 'inv_x', at, transition: 'decided', detail_json: JSON.stringify({ decision }) });
+  };
+  pass('2026-10-21T00:17:00Z', 'provider-errors', 'high');
+  pass('2026-10-21T00:47:00Z', 'provider-errors', 'high');
+  pass('2026-10-21T03:47:00Z', 'provider-errors', 'high');
+  pass('2026-10-21T04:47:00Z', 'unknown', 'low');
+  const out = tl.fromInvestigations([inv], new Map([['inv_x', evs]]));
+  assert.equal(out.length, 2, `five-a-night of the same sentence collapses to one; the change still shows (${out.length})`);
+});
+
+test('one more drop-out of the same pattern does not re-run the investigation; a day or a doubling does', () => {
+  const { _shouldRegather } = require('./degradation-investigations');
+  const t = Date.parse('2026-10-21T08:00:00Z');
+  const inv = { state: 'monitoring', triggerSignature: '54', updatedAt: '2026-10-21T07:47:00Z' };
+  assert.equal(_shouldRegather(inv, 54, t), false, 'nothing new');
+  assert.equal(_shouldRegather(inv, 55, t), false, 'the 55th episode an hour later is not news');
+  assert.equal(_shouldRegather(inv, 108, t), true, 'a doubling is an escalation');
+  assert.equal(_shouldRegather(inv, 55, t + 86400000), true, 'a day on, look again');
+  assert.equal(_shouldRegather({ ...inv, state: 'detected' }, 54, t), true, 'a new investigation always runs');
 });

@@ -178,6 +178,7 @@ function fromInvestigations(invs, eventsById, { healedInvestigations = new Set()
     const sourceId = String(inv.subject_ref || '').replace(/^source:/, '');
     const label = _label(sourceId);
     let lastHyp = null;
+    let lastSaid = null;
     for (const ev of eventsById.get(inv.id) || []) {
       const d = _json(ev.detail_json, {}) || {};
       // The conclusion of THIS pass is the hypothesis recorded just before its
@@ -190,6 +191,11 @@ function fromInvestigations(invs, eventsById, { healedInvestigations = new Set()
           const top = (lastHyp && lastHyp.top) || 'unknown';
           const lvl = (lastHyp && lastHyp.level) || 'low';
           const dg = require('./source-degradation');
+          // Each new drop-out re-runs the investigation; a pass that reached
+          // the SAME conclusion is not news. Only a changed verdict is a line.
+          const said = [top, lvl, d.decision || '', (d.fix && d.fix.kind) || ''].join('|');
+          if (said === lastSaid) continue;
+          lastSaid = said;
           out.push(entry({
             id: `inv:${inv.id}:${ev.id}`, occurredAt: ev.at, category: 'investigated', type: 'investigation.degradation',
             headline: `NEURO investigated why ${label} keeps dropping out`,

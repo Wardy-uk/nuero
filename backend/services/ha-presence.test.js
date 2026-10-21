@@ -170,3 +170,22 @@ test('9 Oct 2026: the roster going A→B→A under one last_changed is three eve
   assert.ok(r.published >= 1, 'the return to "away" must publish, not fold into the first "away"');
   assert.equal(isaac(T0 + 87400e3), 'away', 'the card must not be left saying he is home');
 });
+
+test('a timeout is retried once: our own stalled event loop is not HA being unreachable', async () => {
+  const timeout = () => Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+  let calls = 0;
+  const flaky = { isConfigured: () => true, fetchStates: async () => { calls += 1; if (calls === 1) throw timeout(); return states(); } };
+  const ok = await hp.poll({ now: T0 + 600e3, deps: flaky });
+  assert.equal(ok.ok, true, 'the retry answered, so the poll succeeded');
+  assert.equal(calls, 2);
+
+  let dead = 0;
+  const down = await hp.poll({ now: T0 + 720e3, deps: { isConfigured: () => true, fetchStates: async () => { dead += 1; throw timeout(); } } });
+  assert.equal(down.ok, false, 'a real outage fails the retry too');
+  assert.equal(dead, 2);
+
+  let refused = 0;
+  const other = await hp.poll({ now: T0 + 840e3, deps: { isConfigured: () => true, fetchStates: async () => { refused += 1; throw new Error('HA API error: 401'); } } });
+  assert.equal(other.ok, false);
+  assert.equal(refused, 1, 'only a timeout is retried');
+});
