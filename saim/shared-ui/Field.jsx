@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef } from 'react';
 import { FieldCoverContext } from './FieldCover';
-import { drive, colour, nodeColour, rgbText, PULSE_PERIOD } from './fieldDrive.mjs';
+import { drive, colour, sceneColour, nodeColour, rgbText, PULSE_PERIOD } from './fieldDrive.mjs';
 import './Field.css';
 
 // Field — SAiM's presence on the phone.
@@ -156,7 +156,7 @@ const bucketAlpha = (b, rest, span) => rest + (b / (ALPHA_BUCKETS - 1)) * span;
 // or the light comes back a moment before the verdict does, she is still there.
 // "Whenever I see SAiM" is satisfied by a static field; it is not satisfied by a
 // blank canvas, and it costs nothing to honour.
-export default function Field({ activity, confidenceLevel, quiet = false, degraded = false, pressing = false, still = false }) {
+export default function Field({ activity, confidenceLevel, quiet = false, degraded = false, pressing = false, still = false, palette = null }) {
   const canvasRef = useRef(null);
   // See FieldCover. An overlay covering this subtree means nobody can see the
   // field, whatever the tab's visibility state says.
@@ -167,11 +167,12 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
   const loopRef = useRef(null);
   // Live state the loop reads without being torn down and rebuilt — regenerating
   // the substrate on every poll would make the whole field flicker once a minute.
-  const driveRef = useRef(drive({ degraded, confidenceLevel, quiet, activity, pressing }));
+  // `palette: 'amber'` is the Keep my word scene's resting presence (sceneColour).
+  const driveRef = useRef({ ...drive({ degraded, confidenceLevel, quiet, activity, pressing }), palette });
 
   useEffect(() => {
-    driveRef.current = drive({ degraded, confidenceLevel, quiet, activity, pressing });
-  }, [degraded, confidenceLevel, quiet, activity, pressing]);
+    driveRef.current = { ...drive({ degraded, confidenceLevel, quiet, activity, pressing }), palette };
+  }, [degraded, confidenceLevel, quiet, activity, pressing, palette]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -254,8 +255,9 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       // ⚠ COLOUR IS THE STATE CHANNEL — read per paint off the live drive, so a
       // poll changes her hue without rebuilding the substrate.
       const d0 = driveRef.current;
-      const edgeRgb = rgbText(colour(d0.intensity, d0.unresolved));
-      const nodeRgb = rgbText(nodeColour(colour(d0.intensity, d0.unresolved)));
+      const tint = d0.palette === 'amber' ? sceneColour : colour;
+      const edgeRgb = rgbText(tint(d0.intensity, d0.unresolved));
+      const nodeRgb = rgbText(nodeColour(tint(d0.intensity, d0.unresolved)));
 
       // Edges first — cognition is relationship-first, nodes secondary.
       for (let i = 0; i < ALPHA_BUCKETS; i++) { edgeBuckets[i].length = 0; nodeBuckets[i].length = 0; }

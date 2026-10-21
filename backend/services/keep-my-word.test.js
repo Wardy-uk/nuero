@@ -272,7 +272,10 @@ test('composePresentation attaches keepMyWord from the Now payload, and a fault 
   const fx = FIXTURES[0];
   const payload = JSON.parse(JSON.stringify(fx.payload));
   const bare = composePresentation(payload, { now: fx.at });
-  assert.equal(bare.keepMyWord, null, 'no promises block → null, so every renderer draws what it drew before');
+  assert.equal(bare.keepMyWord.contract, 'keep-my-word-v1', 'the scene is always composed — honest when unread');
+  assert.equal(bare.keepMyWord.readout.figure, null);
+  assert.equal(bare.keepMyWord.readout.figureNote, 'Can’t read yet');
+  assert.match(bare.keepMyWord.readout.line, /couldn’t read your promises/);
   payload.keepMyWord = { score: SCORE, workbench: BENCH, receipt: null, authority: OPEN };
   const p = composePresentation(payload, { now: fx.at });
   assert.equal(p.keepMyWord.contract, 'keep-my-word-v1');
@@ -439,4 +442,41 @@ test('phone/Alt helper: POSTs ONLY to the prepare route with nothing in the body
   const down = await mod.exports.prepareDelivery('promise:7', { fetchImpl: async () => { throw new Error('offline'); } });
   assert.deepEqual(down, { ok: false, error: 'NEURO didn’t answer, so nothing was drafted.' });
   assert.equal(calls.length, 2, 'one call per press, no retries');
+});
+
+
+// ── The scene is the SAiM home (21 Oct 2026) ─────────────────────────────────
+test('the scene renders only where a SAiM shell opts in — NEURO’s own Now keeps its look; never the watch', () => {
+  const kmw = k.compose({ score: SCORE, workbench: BENCH, presentation: CALM, now: NOW });
+  const p = presentationWith(kmw, CALM);
+  assert.ok(html(p, 'desktop', { scene: true }).includes('sit--scene'));
+  assert.ok(html(p, 'phone', { scene: true }).includes('sit--scene'));
+  assert.ok(!html(p, 'desktop').includes('sit--scene'), 'no opt-in → not the scene');
+  assert.ok(!html(p, 'watch', { scene: true }).includes('sit--scene'), 'never the watch');
+});
+
+test('an unmeasured week is a deliberate statement, not an empty readout', () => {
+  const v = k.compose({ score: { ratio: null, why: 'x', counts: { reDated: 0 }, entries: [] }, presentation: CALM, now: NOW });
+  assert.equal(v.readout.figureNote, 'Not measured yet');
+  const out = html(presentationWith(v, CALM), 'phone', { scene: true });
+  assert.ok(out.includes('kmw__figure kmw__figure--note'));
+  assert.ok(out.includes('Not measured yet'));
+  const none = k.compose({ score: { ratio: { kept: 0, of: 0 }, counts: { pending: 2, reDated: 0 }, entries: [] }, presentation: CALM, now: NOW });
+  assert.equal(none.readout.figureNote, 'Nothing due yet');
+});
+
+test('a calm scene with nothing at risk still says so, under the headline', () => {
+  const v = k.compose({ score: SCORE, workbench: { state: 'ok', items: [], withheld: {}, why: 'No promise is at risk this week.' }, presentation: CALM, now: NOW });
+  const out = html(presentationWith(v, CALM), 'desktop', { scene: true });
+  assert.ok(out.includes('No promise is at risk this week.'));
+  assert.ok(out.includes('7 / 9'), 'the readout stands beside it');
+});
+
+test('AttentionSurface makes the scene the default situation home and gives her the amber presence', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'AttentionSurface.jsx'), 'utf-8');
+  assert.match(src, /const scene = Boolean\(presentation && presentation\.keepMyWord\) && prof !== 'watch';/);
+  assert.match(src, /palette=\{scene \? 'amber' : null\}/);
+  assert.match(src, /scene=\{scene\}/);
+  const tabs = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'tabs.jsx'), 'utf-8');
+  assert.match(tabs, /export const DEFAULT_TAB = 'surface';/, 'the app opens on the Surface — no flag, no navigation');
 });

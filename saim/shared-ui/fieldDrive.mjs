@@ -103,6 +103,18 @@ export function colour(intensity, unresolved = false) {
   return t <= 0.5 ? lerp(COLD, MID, t * 2) : lerp(MID, HOT, (t - 0.5) * 2);
 }
 
+// ── The Keep my word scene (21 Oct 2026, the locked timefield.html) ─────────
+// Her RESTING presence there is the locked amber network. State still reads:
+// a pressing item drives her to red exactly as the ramp does, and blind stays
+// grey — the scene recolours her calm, never her warnings.
+export const AMBER = [193, 113, 43];
+export function sceneColour(intensity, unresolved = false) {
+  if (unresolved) return UNRESOLVED.slice();
+  const n = Number(intensity);
+  const t = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  return t <= 0.6 ? AMBER.slice() : lerp(AMBER, HOT, (t - 0.6) / 0.4);
+}
+
 // Nodes sit slightly lighter than their edges, as they always have
 // (+0.12 of full scale, matching the Swift renderer).
 export function nodeColour(rgb) {

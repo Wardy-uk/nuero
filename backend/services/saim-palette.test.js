@@ -104,6 +104,8 @@ const VOCABULARY = new Map(Object.entries({
   '#d5d1c7': 'keep my word: lead sentence under the headline',
   '#b8b3a7': 'keep my word: row detail (read-back lines, the note path)',
   '#22170d': 'keep my word: ink on the gold button',
+  '#06090d': 'keep my word: the scene’s night ground (locked timefield.html)',
+  '#18251d': 'keep my word: the low green-black glow at the foot of the scene',
 
   // ⚠ The centrepiece surfaces (Approach / Shelf / Dashboard) carry their own
   // near-white and grey ramp. It is DECLARED rather than folded into the four

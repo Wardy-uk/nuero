@@ -542,6 +542,10 @@ export default function AttentionSurface({
       if (item.kind === 'event') onNavigate('prep');
       else if (item.kind === 'commitment' || item.kind === 'task') onNavigate('tasks');
     };
+    // The Keep my word scene (21 Oct 2026, the locked timefield.html) is the
+    // home whenever the presentation carries it — which it always does now,
+    // honest state included. Never on the watch.
+    const scene = Boolean(presentation && presentation.keepMyWord) && prof !== 'watch';
     const deskRow = onDeskOpen && work && work.atDesk && work.deskOffer && work.deskOffer.known && (work.deskOffer.apps || []).length > 0 ? (
       <p className="sit__desk">
         <span className="sit__label">On the {work.deskOffer.host || 'laptop'}</span>
@@ -553,10 +557,11 @@ export default function AttentionSurface({
       </p>
     ) : null;
     return (
-      <div className={`${rootClassName} surface--situation`} style={{ '--approach-rgb': toneRgb, '--saim-rgb': toneRgb }}>
+      <div className={`${rootClassName} surface--situation${scene ? ' surface--scene' : ''}`} style={{ '--approach-rgb': toneRgb, '--saim-rgb': toneRgb }}>
         <Situation
           presentation={presentation}
           profile={prof}
+          scene={scene}
           field={(
             <Field
               activity={context?.activity}
@@ -564,6 +569,7 @@ export default function AttentionSurface({
               quiet={quiet}
               degraded={!poolAvailable}
               pressing={pressing}
+              palette={scene ? 'amber' : null}
             />
           )}
           renderPrimary={renderPrimary}

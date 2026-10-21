@@ -26,7 +26,7 @@ export function KmwReadout({ readout, compact = false }) {
       <p className="kmw__label">{readout.label}</p>
       {readout.figure
         ? <p className="kmw__figure">{readout.figure}</p>
-        : null}
+        : readout.figureNote ? <p className="kmw__figure kmw__figure--note">{readout.figureNote}</p> : null}
       {readout.line && <p className="kmw__line">{readout.line}{readout.trend && <><br /><span className="kmw__trend">{readout.trend}</span></>}</p>}
       {readout.reDated && <p className="kmw__line kmw__line--quiet">{readout.reDated}</p>}
       {readout.monday && readout.monday.line && (

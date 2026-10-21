@@ -215,6 +215,9 @@ export default function Situation({
   // PREPARES the governed draft) and its hand-off to Actions. Absent → no control.
   onPrepareDelivery = null,
   onOpenActions = null,
+  // The locked Keep my word scene (dark amber network, readout left, main
+  // surface right). The SAiM shells opt in; NEURO's own Now does not.
+  scene = false,
 }) {
   const plan = composeForSurface(presentation, profile);
   if (!presentation) return null;
@@ -304,7 +307,7 @@ export default function Situation({
 
   return (
     <section
-      className={`sit sit--${plan.profile}${kmw ? ' sit--kmw' : ''} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
+      className={`sit sit--${plan.profile}${kmw ? ' sit--kmw' : ''}${kmw && scene ? ' sit--scene' : ''} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
       data-mode={plan.mode}
       data-profile={plan.profile}
     >
@@ -326,6 +329,7 @@ export default function Situation({
                   <header key={i} className={`sit__situation sit__situation--${blk.variant}`} aria-live="polite">
                     <h2 className="sit__headline">{headline}</h2>
                     {showSummary && <p className="sit__summary">{s.summary}</p>}
+                    {kmw && scene && !kmw.thread && !kmw.receipt && kmw.benchWhy && <p className="kmw__quiet">{kmw.benchWhy}</p>}
                     {ambient && aboutItem && aboutItem.summary && <p className="sit__handoff">{aboutItem.summary}</p>}
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>

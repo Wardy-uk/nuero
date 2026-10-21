@@ -663,7 +663,9 @@ function composePresentation(p, { now = Date.now() } = {}) {
   // Keep my word (21 Oct 2026): the readout + receipt/thread scene, decided
   // against THIS presentation's lead. Additive: null draws what it drew before.
   try {
-    out.keepMyWord = p.keepMyWord ? require('./keep-my-word').compose({ ...p.keepMyWord, presentation: out, now }) : null;
+    // Always composed: when Now could not read the promises the scene says so
+    // (the honest state), rather than the home falling back to the old screen.
+    out.keepMyWord = require('./keep-my-word').compose({ ...(p.keepMyWord || {}), presentation: out, now });
   } catch (e) {
     out.keepMyWord = null;
   }

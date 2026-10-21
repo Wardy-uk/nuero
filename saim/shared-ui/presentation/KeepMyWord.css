@@ -66,3 +66,75 @@
 /* Alt (ManifestView): the readout becomes the grid's left column. */
 .wk__grid--kmw { grid-template-columns: minmax(170px, 230px) minmax(0, 7fr) minmax(0, 3fr); }
 @media (max-width: 900px) { .wk__grid--kmw { grid-template-columns: minmax(0, 1fr); } }
+
+/* ═══ The SCENE — the locked timefield.html as SAiM's home (21 Oct 2026) ═══
+   Opted into by the SAiM shells (AttentionSurface `scene`), never NEURO's own
+   Now. The night ground with a low green-black glow, the amber network behind
+   (Field palette 'amber'), a left/right vignette for reading, Georgia for her
+   voice, the compact readout LEFT and ONE fused main surface RIGHT. */
+.kmw__figure--note { font-size: 30px; line-height: 1.05; letter-spacing: -.03em; color: var(--kmw-ink); margin: 12px 0 10px; }
+.kmw__quiet { margin: 14px 0 0; font: 15px/1.55 Georgia, serif; color: var(--kmw-dim); max-width: 30rem; }
+
+.surface--scene { background: #06090d; }
+.sit--scene {
+  --kmw-ink: #f0eee7; --kmw-amber: #d69042; --kmw-gold: #f2b95f; --kmw-dim: #a5a49a; --kmw-line: #d6904275;
+  --sit-ink: #f0eee7; --sit-soft: #d5d1c7; --sit-quiet: #a5a49a;
+  background: radial-gradient(ellipse at 52% 112%, #18251d 0%, transparent 48%), #06090d;
+  min-height: 100svh;
+  color: var(--kmw-ink);
+}
+/* The reading vignette — the prototype's `.world:after`, over the network. */
+.sit--scene .sit__field::after,
+.sit--scene.sit--phone .sit__field::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(3, 7, 11, .79), transparent 29%, transparent 71%, rgba(3, 7, 11, .69)),
+    linear-gradient(0deg, rgba(3, 7, 11, .82), transparent 37%);
+}
+.sit--scene .sit__field canvas { opacity: .95; }
+
+/* Her voice: the headline and its sentence in the locked type. */
+.sit--scene .sit__headline { font: 400 clamp(42px, 4.8vw, 67px)/.94 Georgia, serif; letter-spacing: -.07em; color: var(--kmw-ink); }
+.sit--scene .sit__summary { font: 400 16px/1.55 Georgia, serif; color: #d5d1c7; max-width: 30rem; }
+.sit--scene .kmw__headline { font-size: clamp(42px, 4.8vw, 67px); }
+.sit--scene .kmw__headline--thread { font-size: clamp(32px, 3.6vw, 48px); }
+
+/* Everything that is not the readout or the main surface stays quiet: the
+   composition is two things, not a list of panels. */
+.sit--scene .sit__nextblock,
+.sit--scene .sit__ctxblock,
+.sit--scene .sit__obs,
+.sit--scene .sit__tracked,
+.sit--scene .sit__offers { opacity: .8; font-size: .92em; }
+.sit--scene .sit__label { color: var(--kmw-amber); letter-spacing: .16em; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.sit--scene .sit__object { background: transparent; border: 0; border-left: 2px solid #ffb45c; border-radius: 0; padding: 4px 0 4px 14px; }
+
+/* Wide: readout at left, main surface at right, the space between is HER. */
+.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 560px);
+  justify-content: space-between;
+  column-gap: clamp(40px, 8vw, 180px);
+  align-items: start;
+  max-width: none;
+  margin: 0;
+  min-height: 100svh;
+  padding: clamp(48px, 16vh, 180px) clamp(28px, 7vw, 120px) 48px;
+}
+.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 2; }
+.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: clamp(48px, 16vh, 180px); margin: 0; }
+.sit--scene:not(.sit--phone) .sit__situation { margin-bottom: 2rem; }
+
+/* Phone (390px): the same hierarchy as ONE composed vertical scene — the
+   readout as a band above, the main surface beneath, never a stack of cards. */
+.sit--scene.sit--phone .sit__body { padding: 2.25rem 1.5rem 1rem; max-width: 34rem; }
+.sit--scene.sit--phone .kmw__week { max-width: none; margin: 0 0 2.4rem; }
+.sit--scene.sit--phone .kmw__week--compact .kmw__figure { font-size: 46px; }
+.sit--scene.sit--phone .sit__headline { font-size: 44px; }
+.sit--scene.sit--phone .kmw__headline { font-size: 44px; }
+.sit--scene.sit--phone .kmw__headline--thread { font-size: 32px; }
+.sit--scene.sit--phone .kmw__row { grid-template-columns: 88px 1fr; }
+.sit--scene.sit--phone .sit__tail { background: linear-gradient(to top, rgba(6, 9, 13, .96) 55%, rgba(6, 9, 13, 0)); }
+/* An unmeasured week is a STATEMENT, not a number: it stays compact so the
+   main surface keeps the headline (phone and wide alike). */
+.sit--scene.sit--phone .kmw__week--compact .kmw__figure--note { font-size: 26px; margin: 10px 0 8px; }

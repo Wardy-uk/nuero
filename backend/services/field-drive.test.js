@@ -110,7 +110,8 @@ test('⚠ Field.jsx actually DRAWS with it — no hardcoded blue, no local fadin
   // positive control: the file we think we are scanning
   assert.match(src, /export default function Field\(/);
   assert.match(src, /from '\.\/fieldDrive\.mjs'/);
-  assert.match(src, /colour\(d0\.intensity, d0\.unresolved\)/);
+  assert.match(src, /tint\(d0\.intensity, d0\.unresolved\)/);
+  assert.match(src, /const tint = d0\.palette === 'amber' \? sceneColour : colour;/, 'the scene palette is the ONLY alternative to her ramp');
   assert.doesNotMatch(src, /rgba\(120,170,235/, 'the fixed blue edge colour is back');
   assert.doesNotMatch(src, /rgba\(150,190,240/, 'the fixed blue node colour is back');
   assert.doesNotMatch(src, /function drive\(/, 'a second, local drive() would be free to fade her again');
@@ -124,4 +125,15 @@ test('⚠ the resting substrate is drawn bright enough to SEE on the desk screen
   const num = (name) => Number((src.match(new RegExp('const ' + name + ' = ([0-9.]+)')) || [])[1]);
   assert.ok(num('NODE_REST_ALPHA') >= 0.42, 'node rest alpha lowered again');
   assert.ok(num('EDGE_REST_ALPHA') >= 0.24, 'edge rest alpha lowered again');
+});
+
+
+// ── The Keep my word scene's amber presence (21 Oct 2026) ────────────────────
+test('the scene palette: calm is the locked amber, pressing still goes red, blind stays grey', async () => {
+  const fd = await import(require('url').pathToFileURL(path.join(SHARED, 'fieldDrive.mjs')).href);
+  assert.deepEqual(fd.sceneColour(fd.drive({ confidenceLevel: 'high' }).intensity), fd.AMBER, 'a calm read is amber');
+  assert.deepEqual(fd.sceneColour(fd.drive({ quiet: true }).intensity), fd.AMBER);
+  assert.deepEqual(fd.sceneColour(fd.drive({ pressing: true }).intensity), fd.HOT, 'pressing is red in the scene too');
+  const blind = fd.drive({ degraded: true });
+  assert.deepEqual(fd.sceneColour(blind.intensity, blind.unresolved), fd.UNRESOLVED, 'blind is never amber');
 });

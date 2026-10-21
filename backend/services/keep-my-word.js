@@ -153,13 +153,16 @@ function trendLine(cur, prev) {
 /** PURE. The left-hand readout. */
 function readoutFrom({ score: sc, workbench, receipt, now }) {
   const nowMs = typeof now === 'number' ? now : Date.parse(now);
-  const out = { label: 'Holding the week', figure: null, line: null, trend: null, next: null, judgement: null, monday: null };
+  const out = { label: 'Holding the week', figure: null, figureNote: null, line: null, trend: null, next: null, judgement: null, monday: null };
   if (!sc) {
+    out.figureNote = 'Can’t read yet';
     out.line = 'NEURO couldn’t read your promises, so nothing is counted.';
   } else if (!sc.ratio) {
-    out.line = sc.why || 'Not measured yet.';
+    out.figureNote = 'Not measured yet';
+    out.line = sc.why || 'Nothing records a delivery yet, so nothing is counted as kept.';
   } else if (sc.ratio.of === 0) {
-    out.line = sc.counts.pending ? `Nothing has come due yet — ${num(sc.counts.pending).toLowerCase()} still to come this week.` : 'Nothing was due this week.';
+    out.figureNote = 'Nothing due yet';
+    out.line = sc.counts.pending ? `${num(sc.counts.pending)} still to come this week.` : 'Nothing was due this week.';
   } else {
     out.figure = `${sc.ratio.kept} / ${sc.ratio.of}`;
     out.line = 'Promises kept on time — each one read back as delivered.';
