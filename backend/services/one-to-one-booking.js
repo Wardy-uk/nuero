@@ -209,27 +209,67 @@ function findSlot(events, from, durationMinutes, personOff = null) {
 }
 
 /**
- * When is this person booked off? A synchronous cache read — `team-availability`
- * refreshes from NOVA on its own schedule, and a booking flow must not wait on
- * the bridge.
+ * PURE. Whose leave blocks a 1-2-1: the other person's AND Nick's own.
  *
- * Never throws and never blocks: an unreadable feed returns `known:false`, and
- * every caller treats that as "carry on as before, but say so".
+ * ⚠ Until 21 Oct 2026 only the OTHER person's People HR leave was consulted —
+ * Nick's own was in the very same NOVA feed and nothing asked for it, so a batch
+ * put three 1-2-1s on his booked annual leave (2–3 Nov). His Outlook carried no
+ * OOF block for it, so the calendar could not catch it either.
+ *
+ * `checked` is true only when BOTH were readable. A dates set is still returned
+ * from whichever half was, so an unreadable half never unblocks the other.
+ */
+function mergeLeave(person, self, personName = 'their') {
+  const dates = new Set([...(person?.known ? person.dates : []), ...(self?.known ? self.dates : [])]);
+  const reasons = [];
+  if (!person?.known) reasons.push(`${personName}'s leave: ${person?.reason || 'unknown'}`);
+  if (!self?.known) reasons.push(`your own leave: ${self?.reason || 'unknown'}`);
+  return {
+    checked: Boolean(person?.known && self?.known),
+    dates,
+    reason: reasons.length ? reasons.join('; ') : null,
+    // Leave is only known as far ahead as NOVA was asked for it.
+    coversTo: person?.coversTo || self?.coversTo || null,
+  };
+}
+
+/**
+ * PURE. Was leave really checked for THIS slot? A date past the feed's horizon
+ * was not checked at all, however `checked` the rest of the window is — the
+ * 21 Oct batch reported 5 Nov slots as leave-checked from a feed ending 4 Nov.
+ */
+/** PURE. The leave dates (theirs and Nick's) a screen needs to warn on a hand-picked slot. */
+function leaveDays(away) {
+  return away && away.dates ? [...away.dates].sort() : [];
+}
+
+function leaveCheckFor(away, date) {
+  if (!away || !away.checked) {
+    return { awayCheck: 'unknown', awayNote: `Could not check leave — ${away?.reason || 'no data'}` };
+  }
+  if (away.coversTo && date && date > away.coversTo) {
+    return { awayCheck: 'unknown', awayNote: `Leave is only known up to ${away.coversTo} — this date was not checked` };
+  }
+  return { awayCheck: 'checked', awayNote: null };
+}
+
+/**
+ * When is this person — or Nick — booked off? A synchronous cache read:
+ * `team-availability` refreshes from NOVA on its own schedule, and a booking
+ * flow must not wait on the bridge.
+ *
+ * Never throws and never blocks: an unreadable feed returns `checked:false`,
+ * and every caller treats that as "carry on as before, but say so".
  */
 function awayFor(personName) {
   try {
     const availability = require('./team-availability');
-    const info = availability.daysOffFor(personName, availability.snapshot());
-    return {
-      checked: info.known,
-      dates: info.known ? info.dates : null,
-      // Named so a proposal can say WHY it could not check, rather than
-      // implying it did.
-      reason: info.known ? null : info.reason,
-      coversTo: info.coversTo || null,
-    };
+    const snap = availability.snapshot();
+    const person = availability.daysOffFor(personName, snap);
+    const self = availability.selfDaysOff(snap);
+    return mergeLeave(person, self, personName);
   } catch (e) {
-    return { checked: false, dates: null, reason: e.message, coversTo: null };
+    return { checked: false, dates: new Set(), reason: e.message, coversTo: null };
   }
 }
 
@@ -302,7 +342,7 @@ async function propose(name, { durationMinutes = DEFAULT_DURATION_MIN, notBefore
     return {
       ok: false,
       error: `No free ${durationMinutes}-minute slot in the next ${SEARCH_DAYS} days`
-        + (away.checked && away.dates.size ? ` (${name} is off ${away.dates.size} of them)` : ''),
+        + (away.dates.size ? ` (${away.dates.size} of them are leave — theirs or yours)` : ''),
       awayCheck: away.checked ? 'checked' : 'unknown',
     };
   }
@@ -315,11 +355,7 @@ async function propose(name, { durationMinutes = DEFAULT_DURATION_MIN, notBefore
   // two fields added here. It shipped that way for one deploy: the route
   // answered `{"awayCheck":"checked","awayNote":null}` and nothing else.
   const proposal = await describe(name, slot, { durationMinutes, fmDue, latest });
-  return {
-    ...proposal,
-    awayCheck: away.checked ? 'checked' : 'unknown',
-    awayNote: away.checked ? null : `Could not check ${name}'s leave — ${away.reason}`,
-  };
+  return { ...proposal, ...leaveCheckFor(away, slot.date), leaveDays: leaveDays(away) };
 }
 
 /**
@@ -375,19 +411,20 @@ async function planAll(names, { durationMinutes = DEFAULT_DURATION_MIN } = {}) {
     // Per person: each has their own leave, so this cannot be hoisted out of
     // the loop the way the calendar read can.
     const away = awayFor(c.name);
-    if (away.checked) awayChecked.push(c.name); else awayUnchecked.push({ person: c.name, reason: away.reason });
 
     const slot = findSlot(events, earliest, durationMinutes, away.dates);
     if (!slot) {
       skipped.push({
         person: c.name,
         reason: `no free slot in the next ${SEARCH_DAYS} days`
-          + (away.checked && away.dates.size ? ` (off for ${away.dates.size} of them)` : ''),
+          + (away.dates.size ? ` (${away.dates.size} of them are leave — theirs or yours)` : ''),
       });
       continue;
     }
+    const lc = leaveCheckFor(away, slot.date);
+    if (lc.awayCheck === 'checked') awayChecked.push(c.name); else awayUnchecked.push({ person: c.name, reason: lc.awayNote });
     reserve(events, c.name, slot);
-    planned.push(await describe(c.name, slot, { durationMinutes, fmDue: c.fmDue, latest: c.latest }));
+    planned.push({ ...(await describe(c.name, slot, { durationMinutes, fmDue: c.fmDue, latest: c.latest })), ...lc, leaveDays: leaveDays(away) });
   }
 
   return {
@@ -706,7 +743,7 @@ async function proposeReschedule(name, { after = null, durationMinutes = null } 
     return {
       ok: false,
       error: `No free ${minutes}-minute slot in the next ${SEARCH_DAYS} days`
-        + (away.checked && away.dates.size ? ` (${name} is off ${away.dates.size} of them)` : ''),
+        + (away.dates.size ? ` (${away.dates.size} of them are leave — theirs or yours)` : ''),
       current,
       awayCheck: away.checked ? 'checked' : 'unknown',
     };
@@ -724,8 +761,8 @@ async function proposeReschedule(name, { after = null, durationMinutes = null } 
     eventId: current.id,
     moveCount: priorMoves.length,
     previousMoves: priorMoves.slice(0, 5),
-    awayCheck: away.checked ? 'checked' : 'unknown',
-    awayNote: away.checked ? null : `Could not check ${name}'s leave — ${away.reason}`,
+    ...leaveCheckFor(away, slot.date),
+    leaveDays: leaveDays(away),
     // Surfaced so the confirm screen can say it out loud rather than NEURO
     // quietly moving the same 1-2-1 for the fourth time.
     warning: priorMoves.length >= 2
@@ -1068,16 +1105,17 @@ async function planWindow(names, { from, to, durationMinutes = DEFAULT_DURATION_
       ? (Math.max(15, toMinutes(r.existing.end) - toMinutes(r.existing.start)) || durationMinutes)
       : durationMinutes;
     const away = awayFor(r.name);
-    if (!away.checked) awayUnchecked.push({ person: r.name, reason: away.reason });
     const slot = findSlotInDays(working, days, spreadIndex(i, rows.length, days.length), minutes, away.dates);
     if (!slot) {
       skipped.push({
         person: r.name,
         reason: `no free ${minutes}-minute slot in ${v.effectiveFrom} – ${v.to}`
-          + (away.checked && away.dates.size ? ' (allowing for their leave)' : ''),
+          + (away.dates.size ? ' (allowing for their leave and yours)' : ''),
       });
       return;
     }
+    const lc = leaveCheckFor(away, slot.date);
+    if (lc.awayCheck !== 'checked') awayUnchecked.push({ person: r.name, reason: lc.awayNote });
     reserve(working, r.name, slot);
     const current = r.existing
       ? { eventId: r.existing.id, start: r.existing.start, end: r.existing.end, subject: r.existing.subject }
@@ -1096,7 +1134,8 @@ async function planWindow(names, { from, to, durationMinutes = DEFAULT_DURATION_
       current,
       dueDate: r.fmDue || null,
       moveCount: current ? movesFor(r.name).length : 0,
-      awayCheck: away.checked ? 'checked' : 'unknown',
+      ...lc,
+      leaveDays: leaveDays(away),
       searchDays,
     });
   });
@@ -1205,6 +1244,7 @@ module.exports = {
     dateStr, isWorkingDay, earliestDate, toMinutes,
     isRealEventId, recordMove, findClashExcluding, MOVES_KEY,
     PM_WINDOW, AM_WINDOW, MAX_PER_DAY, SEARCH_DAYS,
+    mergeLeave, leaveCheckFor,
     matchOneToOnes, validateWindow, eligibleDays, spreadIndex, findSlotInDays, horizonDays,
   },
 };

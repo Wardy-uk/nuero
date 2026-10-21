@@ -262,10 +262,13 @@ function mins(hhmm) {
   return h * 60 + m;
 }
 
-function slotWarning(date, time, durationMinutes = 30) {
+function slotWarning(date, time, durationMinutes = 30, leaveDays = null) {
   if (!date || !time) return null;
   const day = new Date(`${date}T12:00:00`).getDay();
   if (day === 0 || day === 6) return 'That is a weekend.';
+  // Theirs or yours, from People HR via NOVA — the server sends the dates.
+  if (leaveDays && leaveDays.includes(date)) return 'Leave booked that day (theirs or yours).';
+  if (day === 5) return 'That is a Friday — your rule is no 1-2-1s on a Friday.';
   const from = mins(time);
   const to = from + durationMinutes;
   const inAm = from >= AM[0] && to <= AM[1];
@@ -278,8 +281,8 @@ function slotWarning(date, time, durationMinutes = 30) {
 }
 
 /** Date + time override, shared by both booking dialogs. */
-function SlotEditor({ date, time, durationMinutes, onChange, compact }) {
-  const warning = slotWarning(date, time, durationMinutes);
+function SlotEditor({ date, time, durationMinutes, onChange, compact, leaveDays }) {
+  const warning = slotWarning(date, time, durationMinutes, leaveDays);
   return (
     <div className={`slot-editor${compact ? ' slot-editor-compact' : ''}`}>
       <label>
@@ -542,7 +545,7 @@ function ScheduleWizard({ preselect = [], onClose, onDone }) {
                     <td>
                       {p.person}
                       {p.moveCount >= 2 && <div className="sched-note">already moved {p.moveCount} times</div>}
-                      {p.awayCheck === 'unknown' && <div className="sched-note">leave not checked</div>}
+                      {p.awayCheck === 'unknown' && <div className="sched-note" title={p.awayNote || ''}>leave not checked</div>}
                     </td>
                     <td><span className={`sched-mode sched-mode-${p.mode}`}>{MODE_LABEL[p.mode]}</span></td>
                     <td>{p.current ? `${formatDate(String(p.current.start).slice(0, 10))} ${hhmm(p.current.start)}` : '—'}</td>
@@ -555,6 +558,7 @@ function ScheduleWizard({ preselect = [], onClose, onDone }) {
                           date={edits[p.person]?.date ?? p.date}
                           time={edits[p.person]?.time ?? hhmm(p.start)}
                           durationMinutes={p.durationMinutes}
+                          leaveDays={p.leaveDays}
                           onChange={next => setEdits(prev => ({ ...prev, [p.person]: next }))}
                         />
                       )}
@@ -583,7 +587,10 @@ function ScheduleWizard({ preselect = [], onClose, onDone }) {
               <div className="book-warn">No email for {plan.withoutInvite.join(', ')} — add it to their People note to book them.</div>
             )}
             {plan.awayUnchecked?.length > 0 && (
-              <div className="book-warn">Couldn't check leave for {plan.awayUnchecked.map(a => a.person).join(', ')} — the slots ignore any holiday they have booked.</div>
+              <div className="book-warn">
+                Leave not checked for these slots — confirm before sending:
+                <ul>{plan.awayUnchecked.map(a => <li key={a.person}>{a.person} — {a.reason}</li>)}</ul>
+              </div>
             )}
 
             <p className="book-caveat">
@@ -718,6 +725,7 @@ function BookDialog({ name, onClose, onBooked }) {
               date={slot.date}
               time={slot.time}
               durationMinutes={proposal.durationMinutes}
+              leaveDays={proposal.leaveDays}
               onChange={setSlot}
             />
             <dl className="book-meta">
@@ -730,6 +738,7 @@ function BookDialog({ name, onClose, onBooked }) {
                 <><dt>Last 1-2-1</dt><dd>{formatDate(proposal.lastOneToOne.date)}</dd></>
               )}
             </dl>
+            {proposal.awayNote && <div className="book-warning">{proposal.awayNote}</div>}
             <p className="book-caveat">
               Slot is free in your calendar; {name.split(' ')[0]}'s availability isn't visible to
               NEURO, so this goes out as a normal invite they can decline.
@@ -849,6 +858,7 @@ function RescheduleDialog({ name, onClose, onMoved }) {
         ) : (
           <div className="book-dialog-body">
             {proposal.warning && <div className="book-warning">{proposal.warning}</div>}
+            {proposal.awayNote && <div className="book-warning">{proposal.awayNote}</div>}
             <dl className="book-meta">
               <dt>Currently</dt>
               <dd>
@@ -866,6 +876,7 @@ function RescheduleDialog({ name, onClose, onMoved }) {
               date={slot.date}
               time={slot.time}
               durationMinutes={proposal.durationMinutes}
+              leaveDays={proposal.leaveDays}
               onChange={(s) => { setSlot(s); setClash(null); setError(''); }}
             />
             <input

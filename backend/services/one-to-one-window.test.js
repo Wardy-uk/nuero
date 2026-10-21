@@ -24,6 +24,7 @@ const availability = require('./team-availability');
 const preparedActions = require('./prepared-actions');
 const workingDays = require('./working-days');
 const {
+  mergeLeave, leaveCheckFor,
   validateWindow, eligibleDays, spreadIndex, findSlotInDays, matchOneToOnes, dateStr,
 } = booking._internals;
 
@@ -47,7 +48,7 @@ const ev = (id, date, from, to, subject, extra = {}) => ({
   id, date, start: `${date}T${from}:00`, end: `${date}T${to}:00`, subject, showAs: 'busy', ...extra,
 });
 
-function stubTeam(t, names, { events = [], emails = {} } = {}) {
+function stubTeam(t, names, { events = [], emails = {}, myLeave = [], theirLeave = [], coversTo = '2099-12-31' } = {}) {
   t.mock.method(detect, 'getIndex', () => ({
     people: names.map(name => ({ name, bookable: true })), byPerson: {},
   }));
@@ -56,7 +57,8 @@ function stubTeam(t, names, { events = [], emails = {} } = {}) {
   }));
   t.mock.method(microsoft, 'fetchCalendarEvents', async () => events.map(e => ({ ...e })));
   t.mock.method(availability, 'snapshot', () => ({}));
-  t.mock.method(availability, 'daysOffFor', () => ({ known: true, dates: new Set() }));
+  t.mock.method(availability, 'daysOffFor', () => ({ known: true, dates: new Set(theirLeave), coversTo }));
+  t.mock.method(availability, 'selfDaysOff', () => ({ known: true, dates: new Set(myLeave), coversTo }));
 }
 
 // ── validateWindow ─────────────────────────────────────────────────────────
@@ -231,4 +233,50 @@ test('plan: a PAST 1-2-1 is never moved — that person gets a new booking inste
   const r = await booking.planWindow(['Ann One'], { from: days[0], to: days[3] });
   assert.strictEqual(r.planned[0].mode, 'book');
   assert.strictEqual(r.planned[0].current, null);
+});
+
+// ── Nick's own leave (21 Oct 2026) ─────────────────────────────────────────
+// A batch put three 1-2-1s on his People HR annual leave: only the OTHER
+// person's leave was ever consulted, and the feed stopped 14 days out.
+
+test("NICK'S leave blocks a slot, not only theirs", async (t) => {
+  const days = cleanWeek();
+  stubTeam(t, ['Ann One'], { myLeave: [days[0], days[1]] });
+  const r = await booking.planWindow(['Ann One'], { from: days[0], to: days[3] });
+  assert.strictEqual(r.planned[0].date, days[2]);
+  assert.strictEqual(r.planned[0].awayCheck, 'checked');
+  assert.ok(r.planned[0].leaveDays.includes(days[0]), 'the screen gets the dates to warn on a hand edit');
+});
+
+test("a slot past the leave feed's horizon is UNCHECKED, never 'checked'", async (t) => {
+  const days = cleanWeek();
+  stubTeam(t, ['Ann One'], { coversTo: dateStr(addDays(new Date(`${days[0]}T12:00:00`), -1)) });
+  const r = await booking.planWindow(['Ann One'], { from: days[0], to: days[3] });
+  assert.strictEqual(r.planned[0].awayCheck, 'unknown');
+  assert.match(r.planned[0].awayNote, /only known up to/);
+  assert.strictEqual(r.awayUnchecked.length, 1);
+});
+
+test('mergeLeave: an unreadable half never unblocks the other', () => {
+  const m = mergeLeave({ known: true, dates: new Set(['2099-01-05']), coversTo: '2099-02-01' },
+    { known: false, reason: 'roster empty' }, 'Ann One');
+  assert.strictEqual(m.checked, false);
+  assert.ok(m.dates.has('2099-01-05'));
+  assert.match(m.reason, /your own leave: roster empty/);
+  const both = mergeLeave({ known: true, dates: new Set(['a']) }, { known: true, dates: new Set(['b']) });
+  assert.deepStrictEqual([...both.dates].sort(), ['a', 'b']);
+  assert.strictEqual(both.checked, true);
+  assert.strictEqual(leaveCheckFor({ checked: true, coversTo: '2099-01-10' }, '2099-01-10').awayCheck, 'checked');
+  assert.strictEqual(leaveCheckFor({ checked: true, coversTo: '2099-01-10' }, '2099-01-11').awayCheck, 'unknown');
+});
+
+test("selfDaysOff reads Nick's own rows, and refuses rather than reading empty", () => {
+  const snap = { known: true, rosterCount: 2, to: '2099-02-01',
+    roster: [{ rosterId: 24, name: 'Nick Ward', syncable: true }, { rosterId: 7, name: 'Ann One', syncable: true }],
+    absences: [{ rosterId: 24, date: '2099-01-05' }, { rosterId: 7, date: '2099-01-06' }] };
+  const me = availability.selfDaysOff(snap, { by: 'id', id: 24 });
+  assert.deepStrictEqual([...me.dates], ['2099-01-05']);
+  assert.strictEqual(me.coversTo, '2099-02-01');
+  assert.strictEqual(availability.selfDaysOff({ known: true, rosterCount: 0 }).known, false);
+  assert.strictEqual(availability.selfDaysOff(snap, { by: 'id', id: 99 }).known, false);
 });

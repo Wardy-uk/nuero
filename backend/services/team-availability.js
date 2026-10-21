@@ -25,7 +25,10 @@
 const db = require('../db/database');
 
 const CACHE_KEY = 'team_availability';
-const WINDOW_DAYS = 14;
+// 90 = NOVA's own maximum. It was 14, which suited the nudge (is he off TODAY)
+// and silently starved 1-2-1 booking: a slot three weeks out was reported as
+// leave-checked against a feed that stopped after two (21 Oct 2026).
+const WINDOW_DAYS = 90;
 
 // Beyond this the cached copy is reported as stale. It is not discarded — a
 // week-old answer about who booked leave is still far better than none, and
@@ -234,6 +237,23 @@ function daysOffFor(personName, snap) {
   return { known: true, rosterId: row.rosterId, dates, coversTo: snap.to || null };
 }
 
+/**
+ * Nick's OWN booked days off, as a Set — the shape `daysOffFor` returns, so a
+ * booking flow can union the two. PURE. Same refusals as `selfAbsenceOn`: no
+ * data, an empty roster, Nick missing from it, or no People HR id are all
+ * `known:false`, never an empty set.
+ */
+function selfDaysOff(snap, matcher = selfMatcher()) {
+  const empty = new Set();
+  if (!snap?.known) return { known: false, reason: snap?.reason || 'no availability data', dates: empty };
+  if (!snap.rosterCount) return { known: false, reason: 'roster empty', dates: empty };
+  const me = (snap.roster || []).find(r => isSelf(r, matcher));
+  if (!me) return { known: false, reason: `not in the NOVA roster (matched by ${matcher.by})`, dates: empty };
+  if (me.syncable === false) return { known: false, reason: 'no People HR id', dates: empty };
+  const dates = new Set((snap.absences || []).filter(a => Number(a.rosterId) === Number(me.rosterId)).map(a => a.date));
+  return { known: true, rosterId: me.rosterId, dates, coversTo: snap.to || null };
+}
+
 /** Everyone else who is off on a date — meeting prep, 1-2-1 booking, planning. */
 function othersOff(dateStr, snap, matcher = selfMatcher()) {
   if (!snap?.known) return [];
@@ -273,6 +293,7 @@ module.exports = {
   // pure, and the half worth pinning
   selfAbsenceOn,
   daysOffFor,
+  selfDaysOff,
   othersOff,
   isSelf,
   selfMatcher,
