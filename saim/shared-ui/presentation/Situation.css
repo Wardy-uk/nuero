@@ -377,3 +377,8 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 .sit__prepared-entry::after { content: '›'; color: var(--sit-quiet, #8b98a8); }
 .sit__prepared--entry[open] > .sit__prepared-entry::after { content: '⌄'; }
 .sit__prepared--shown > .sit__prepared-entry { display: none; }
+
+/* The one next step (21 Oct 2026): under the headline, in the main scene. The
+   primary is the resolver's own first destination; the alternative is quiet. */
+.sit__step { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.9rem 0 0.2rem; }
+.sit__step .sit__step-go { font-weight: 700; }

@@ -80,6 +80,8 @@ test('18. a synthetic escalation travels the attention path and arrives as ONE e
   const pres = await req('GET', '/api/canonical/presentation');
   assert.equal(pres.json.presentation.p0.count, after.json.p0.count);
   assert.equal(pres.json.presentation.mode, 'needs-attention');
+  // 21 Oct 2026: SAiM's hand-off rides along for the native one next step (key always present).
+  assert.ok(Object.prototype.hasOwnProperty.call(pres.json, 'handoff'), 'the presentation route carries the hand-off');
   assert.ok(pres.json.presentation.synthesis.themes.length <= 1, 'P0 shrinks the themes');
 });
 

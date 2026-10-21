@@ -41,6 +41,11 @@
 const CONTRACT = 'presentation-v1';
 const TZ = process.env.NEURO_TIMEZONE || 'Europe/London';
 
+const ASK_LABEL = Object.freeze({
+  'in-meeting': 'Note a decision from this meeting, or ask SAiM',
+  'pre-meeting': 'Ask SAiM about this meeting',
+  default: 'Ask SAiM',
+});
 const MODES = ['degraded', 'in-meeting', 'needs-attention', 'upcoming', 'focus', 'bedtime',
   'travelling', 'working', 'off-duty', 'calm'];
 
@@ -639,7 +644,10 @@ function composePresentation(p, { now = Date.now() } = {}) {
       quiet: !!p.quiet,
     },
     correction,
-    voicePrompt: { label: 'Ask SAiM', hint: mode === 'needs-attention' ? 'Ask about this' : mode === 'degraded' ? 'Ask what I can see' : 'Ask about your day' },
+    // The ask bar's words follow the moment (21 Oct 2026) — supporting input,
+    // never the only affordance. In a meeting, chat's own append_daily_note
+    // tool is what makes "note a decision" true; nothing new is routed.
+    voicePrompt: { label: ASK_LABEL[mode === 'in-meeting' ? 'in-meeting' : ctx.activity === 'pre-meeting' ? 'pre-meeting' : 'default'], hint: mode === 'needs-attention' ? 'Ask about this' : mode === 'degraded' ? 'Ask what I can see' : 'Ask about your day' },
   };
   // ── Build 12.3: the P0 digest (what the watch counts and the phone may
   //    notify about) and the synthesis (what the calm screen draws). Both are

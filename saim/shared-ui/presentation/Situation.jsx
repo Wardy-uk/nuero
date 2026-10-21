@@ -199,6 +199,9 @@ export default function Situation({
   // The way to talk to her. A slot because whether a mic exists is a fact about
   // the DEVICE (Electron exposes speech recognition with nothing behind it).
   ask = null,
+  // The one next step (a rendered control group from the shell), drawn under
+  // the headline so it is in the main scene, never behind "Show me everything".
+  step = null,
   // Below everything: the shell's escape hatch ("Show me everything").
   foot = null,
   // A note from the shell (a failed room act, a voice error), below the blocks.
@@ -335,6 +338,7 @@ export default function Situation({
                     {showSummary && <p className="sit__summary">{s.summary}</p>}
                     {kmw && scene && !kmw.thread && !kmw.receipt && kmw.benchWhy && <p className="kmw__quiet">{kmw.benchWhy}</p>}
                     {ambient && aboutItem && aboutItem.summary && <p className="sit__handoff">{aboutItem.summary}</p>}
+                    {step}
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>
                 ),

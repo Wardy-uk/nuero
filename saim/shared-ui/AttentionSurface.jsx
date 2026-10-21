@@ -13,6 +13,7 @@ import { surfaceRgb } from './fieldDrive.mjs';
 // iOS's `Operation.swift`. A renderer that built its own words from `phase`
 // would be a second opinion about what she is doing.
 import { labelFor, isActivePhase } from '../../shared/operation-phase.cjs';
+import { nextStep } from './presentation/nextStep.mjs';
 import './AttentionSurface.css';
 
 // AttentionSurface — the attention feed, rendered.
@@ -254,6 +255,9 @@ export default function AttentionSurface({
     // by `approval-summary`. Rendered as a STATEMENT — approval is desktop-only
     // and needs a human proof, so there is deliberately no button here.
     approvals = null,
+    // saim-handoff-v1: WHERE to go for the lead SAiM chose (saim/policy).
+    // Read for the one next step on the home; never re-decided here.
+    handoff = null,
   } = data;
 
   // The desk apps worth offering NOW — composed server-side from explicit links
@@ -565,6 +569,31 @@ export default function AttentionSurface({
         ))}
       </p>
     ) : null;
+    // The ONE next step (21 Oct 2026): SAiM's own hand-off for a meeting, as a
+    // control — only where this shell can complete it. Calm stays quiet.
+    const step = nextStep({
+      handoff, presentation, context,
+      can: {
+        external: prof !== 'kiosk' && prof !== 'watch' && typeof window !== 'undefined',
+        tab: (id) => Boolean(onNavigate) && (id === 'prep' || id === 'capture'),
+        desk: Boolean(onDeskOpen && work && work.atDesk),
+        neuro: false,
+      },
+    });
+    const runStep = (a) => {
+      const r = a.run;
+      if (r.type === 'external') window.open(r.href, '_blank', 'noopener');
+      else if (r.type === 'tab') onNavigate(r.tab);
+      else if (r.type === 'desk') onDeskOpen(r.app);
+    };
+    const stepEl = step ? (
+      <div className="sit__step" role="group" aria-label="Next step">
+        <button type="button" className="sit__chip sit__chip--yes sit__step-go" onClick={() => runStep(step.primary)}>{step.primary.label}</button>
+        {step.alternatives.map((a) => (
+          <button key={a.label} type="button" className="sit__chip sit__chip--quiet sit__step-alt" onClick={() => runStep(a)}>{a.label}</button>
+        ))}
+      </div>
+    ) : null;
     return (
       <div className={`${rootClassName} surface--situation${scene ? ' surface--scene' : ''}`} style={{ '--approach-rgb': toneRgb, '--saim-rgb': toneRgb }}>
         <Situation
@@ -582,6 +611,7 @@ export default function AttentionSurface({
             />
           )}
           renderPrimary={renderPrimary}
+          step={stepEl}
           onOpen={openItem}
           onOffer={onRoomAct ? (it, yes) => onRoomAct(it.actionRef.offerKey, yes ? 'accept' : 'decline') : null}
           onCorrect={onLifeAnswer ? (doing) => onLifeAnswer(doing) : null}

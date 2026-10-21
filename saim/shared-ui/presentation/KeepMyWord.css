@@ -170,3 +170,7 @@
 /* An unmeasured week is a STATEMENT, not a number: it stays compact so the
    main surface keeps the headline (phone and wide alike). */
 .sit--scene.sit--phone .kmw__week--compact .kmw__figure--note { font-size: 26px; margin: 10px 0 8px; }
+
+/* The scene's next step wears the scene's one control colour (= .kmw__open). */
+.sit--scene .sit__step .sit__step-go { border: 0; border-radius: 0; background: var(--kmw-gold); color: #22170d; padding: 11px 15px; font-size: 12px; font-weight: 800; }
+.sit--scene .sit__step .sit__step-alt { font-size: 12px; }

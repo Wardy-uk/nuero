@@ -117,7 +117,9 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
     }
   };
   // One control per state: where a delivery can be drafted, that IS the control.
-  const open = actions && onOpen && !canDraft
+  // A HELD thread offers none: opening the task resolves nothing it names (the
+  // missing address or authority), so the held sentence stands alone.
+  const open = actions && onOpen && !canDraft && !thread.held
     ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
     : null;
   return (

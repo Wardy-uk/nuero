@@ -86,6 +86,22 @@ const CASES = {
 const ONE_SCREEN = ['calm-thread', 'needs-you-folded', 'working-busy', 'receipt', 'degraded', 'unmeasured-week'];
 const SIZES = [[1024, 768], [1280, 800], [1440, 900], [1920, 1080]];
 
+// The one next step (21 Oct 2026): in a meeting, the step must be above the
+// fold — measured with the app's own chrome allowed for (top bar ~52px, bottom
+// nav ~64px), on the desktop scene and on the phone.
+function inMeeting() {
+  const f = fixture('many-next');
+  const payload = { ...f.payload, context: { ...f.payload.context, activity: 'in-meeting', quiet: true } };
+  const p = composePresentation(payload, { now: f.at });
+  p.keepMyWord = k.compose({ score: SCORE, workbench: BENCH, authority: OPEN, presentation: p, now: NOW });
+  return p;
+}
+const STEP_CASES = [
+  { name: 'in-meeting-step-desktop', profile: 'desktop', make: inMeeting, sizes: [[1440, 900]] },
+  { name: 'in-meeting-step-phone', profile: 'phone', make: inMeeting, sizes: [[390, 844]] },
+];
+const CHROME = { top: 52, bottom: 64 };
+
 // ── Build the pages ──────────────────────────────────────────────────────────
 
 function cssStub() {
@@ -105,7 +121,7 @@ async function loadSituation() {
 const CSS = ['AttentionSurface.css', 'presentation/Situation.css', 'presentation/KeepMyWord.css', 'Field.css']
   .map((f) => fs.readFileSync(path.join(UI, f), 'utf8')).join('\n');
 
-function page(Situation, presentation) {
+function page(Situation, presentation, { profile = 'desktop', step = false } = {}) {
   // The shell's real wrappers: a flex-column surface root, an ask dock and a
   // RELEVANT desk row (three chips — the cap), so the measured screen is the
   // one Nick sees, not a bare component.
@@ -117,7 +133,10 @@ function page(Situation, presentation) {
     ['VS Code', 'Teams', 'Outlook'].map((l) => React.createElement('button', { key: l, type: 'button', className: 'sit__chip sit__chip--quiet' }, l)));
   const field = React.createElement('div', { style: { position: 'absolute', inset: 0, background: '#0b1310' } });
   const body = renderToString(React.createElement('div', { className: 'surface surface--situation surface--scene', style: { minHeight: '100vh', display: 'flex', flexDirection: 'column' } },
-    React.createElement(Situation, { presentation, profile: 'desktop', scene: true, field, ask, foot, onOpen: () => {}, onPrepareDelivery: () => {}, onOpenActions: () => {} })));
+    React.createElement(Situation, { presentation, profile, scene: true, field, ask, foot: profile === 'phone' ? null : foot,
+      step: step ? React.createElement('div', { className: 'sit__step' },
+        React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--yes sit__step-go' }, 'Join in Teams'),
+        React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--quiet sit__step-alt' }, 'Open meeting prep')) : null, onOpen: () => {}, onPrepareDelivery: () => {}, onOpenActions: () => {} })));
   return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#06090d}*{animation:none!important;transition:none!important}${CSS}</style></head><body>${body}</body></html>`;
 }
 
@@ -145,7 +164,7 @@ app.whenReady().then(async () => {
       const vw = document.documentElement.clientWidth;
       const over = [...document.querySelectorAll('.sit__body *')].filter((e) => e.getBoundingClientRect().right > vw + 1).slice(0, 5).map((e) => e.className || e.tagName);
       return { vw, vh: innerHeight, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight,
-        week: r('.kmw__week'), main: r('.sit__situation'), body: r('.sit__body'), over };
+        week: r('.kmw__week'), main: r('.sit__situation'), body: r('.sit__body'), step: r('.sit__step'), over };
     })()\`);
     if (process.env.SCENE_SHOTS) { const img = await win.webContents.capturePage(); fs.writeFileSync(path.join(process.env.SCENE_SHOTS, j.name + '-' + j.w + 'x' + j.h + '.png'), img.toPNG()); }
     out.push({ name: j.name, w: j.w, h: j.h, ...m });
@@ -169,6 +188,11 @@ test.before(async () => {
     const file = path.join(dir, `${name}.html`);
     fs.writeFileSync(file, page(Situation, make()));
     for (const [w, h] of SIZES) jobs.push({ name, file, w, h });
+  }
+  for (const c of STEP_CASES) {
+    const file = path.join(dir, `${c.name}.html`);
+    fs.writeFileSync(file, page(Situation, c.make(), { profile: c.profile, step: true }));
+    for (const [w, h] of c.sizes) jobs.push({ name: c.name, file, w, h });
   }
   const appDir = path.join(dir, 'app');
   fs.mkdirSync(appDir);
@@ -228,5 +252,17 @@ test('below the two-column width (1024): one column, readout first, main surface
     const m = get(name, 1024);
     assert.ok(m.week.bottom <= m.main.top + 1, `${name} @1024: readout above the main surface`);
     assert.ok(Math.abs(m.week.left - m.main.left) < 2, `${name} @1024: one column`);
+  }
+});
+
+test('in a meeting the next step is ABOVE THE FOLD at 1440×900 and 390×844, app chrome included', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  for (const c of STEP_CASES) {
+    for (const [w, h] of c.sizes) {
+      const m = results.find((x) => x.name === c.name && x.w === w);
+      assert.ok(m.step, `${c.name}: the step renders`);
+      assert.ok(m.step.bottom + CHROME.top <= h - CHROME.bottom, `${c.name} @${w}×${h}: step ends at ${Math.round(m.step.bottom + CHROME.top)}px of ${h - CHROME.bottom}`);
+      assert.ok(m.step.right <= m.vw, `${c.name} @${w}: not clipped sideways`);
+    }
   }
 });

@@ -42,7 +42,9 @@ router.get('/now', async (req, res) => {
 router.get('/presentation', async (req, res) => {
   try {
     const out = await canonical.now({});
-    res.json({ ok: true, contract: out.contract, presentation: out.presentation || null });
+    // `handoff` rides along (21 Oct 2026): the native home draws the same one
+    // next step the web does, from SAiM's own resolver — never re-derived.
+    res.json({ ok: true, contract: out.contract, presentation: out.presentation || null, handoff: out.handoff || null });
   } catch (e) { fail(res, e); }
 });
 
