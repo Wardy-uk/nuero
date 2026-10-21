@@ -35,6 +35,11 @@ const db = require('../db/database');
 const attention = require('./attention');
 const meetingFinish = require('./meeting-finish');
 const mobileSync = require('./mobile-sync');
+// ⚠ HERMETIC: the prep route reads the LIVE calendar first (obsidian.fetchCalendarEvents)
+// and only falls back to the cache this test seeds. On the Pi that live read reaches
+// Nick's real diary, so the seeded meeting was never consulted and the test failed there
+// while passing on a laptop with no credentials. Pin the live read to "nothing".
+require('./obsidian').fetchCalendarEvents = async () => null;
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const iso = (ms) => new Date(ms).toISOString();
