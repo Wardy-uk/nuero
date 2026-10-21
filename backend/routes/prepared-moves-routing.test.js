@@ -437,7 +437,7 @@ test('partial: the calendar refuses, the note lands — the note stays and a ret
 
 test('source: the routes reach only the view (read), the planner + store (proposals), requestForMove and confirmMove; the executor holds no other writer', () => {
   const routes = fs.readFileSync(path.join(__dirname, 'prepared-moves.js'), 'utf8');
-  assert.deepEqual([...routes.matchAll(/router\.(\w+)\('([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['get /current', 'get /eligible', 'post /prepare', 'post /respond', 'post /answer', 'post /request', 'post /confirm']);
+  assert.deepEqual([...routes.matchAll(/router\.(\w+)\('([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['get /current', 'get /eligible', 'get /promises', 'post /prepare', 'post /respond', 'post /answer', 'post /request', 'post /confirm']);
   assert.deepEqual([...routes.matchAll(/exec\(\)\.(\w+)\(/g)].map((m) => m[1]), ['requestForMove', 'confirmMove']);
   assert.deepEqual([...new Set([...routes.matchAll(/view\(\)\.(\w+)\(/g)].map((m) => m[1]))].sort(), ['currentView', 'v2View']);
   assert.deepEqual([...new Set([...routes.matchAll(/planner\(\)\.(\w+)\(/g)].map((m) => m[1]))].sort(), ['eligibleNow', 'planAndStore'], 'proposals and a read only — the planner writes nothing outside NEURO');

@@ -63,6 +63,7 @@ function actionsFor(key, db = require('../db/database')) {
 
 /** PURE. The ONE recipient NEURO can name for a promise, or why it cannot (the same rule prepare uses). */
 function recipientFor(p, contacts) {
+  if (p.owedTo && !p.owedTo.resolved && p.owedTo.group) return { ok: false, why: `“${p.owedTo.group}” isn’t one person in your People notes, so NEURO has no address to use — choose the recipient` };
   if (!p.owedTo || !p.owedTo.resolved) return { ok: false, why: 'NEURO cannot tell who this is owed to — choose the recipient' };
   const c = (contacts || []).find((x) => x.name === p.owedTo.resolved);
   if (!c || !EMAIL_RE.test(String(c.email || ''))) return { ok: false, why: `no address for ${p.owedTo.resolved} in their People note — choose the recipient` };
@@ -79,8 +80,9 @@ function readiness(keys, { ledger, contacts = null, db = require('../db/database
   let people = contacts;
   try { if (!people) people = require('./contact-directory').fromPeopleNotes(); } catch { people = []; }
   for (const key of keys) {
-    const p = ((ledger && ledger.promises) || []).find((x) => x.key === key);
-    if (!p) { out.set(key, { addressable: false, why: 'NEURO couldn’t find this promise', live: null }); continue; }
+    const found = ((ledger && ledger.promises) || []).find((x) => x.key === key);
+    if (!found) { out.set(key, { addressable: false, why: 'NEURO couldn’t find this promise', live: null }); continue; }
+    const p = require('./promise-owed').overlay([found])[0];
     const r = recipientFor(p, people);
     let live = null;
     try {
@@ -103,8 +105,10 @@ function prepare(key, { to = null, now = Date.now(), deps = {} } = {}) {
   let facts;
   try { facts = deps.ledger || require('./promise-ledger').read({ now: nowMs }); } catch (e) { return { ok: false, code: 503, error: `NEURO couldn’t read your promises: ${e.message}` }; }
   if ((facts.gaps || []).some((g) => g.input === 'tasks')) return { ok: false, code: 503, error: 'NEURO couldn’t read the task list, so nothing is prepared' };
-  const p = (facts.promises || []).find((x) => x.key === key);
-  if (!p) return { ok: false, code: 404, error: 'no such promise' };
+  const found = (facts.promises || []).find((x) => x.key === key);
+  if (!found) return { ok: false, code: 404, error: 'no such promise' };
+  // Nick's own answer to "who is this owed to?" — never a guess, never an inferred address.
+  const p = deps.owed === false ? found : require('./promise-owed').overlay([found])[0];
   // ⚠ The HR rule, enforced at the write door.
   if (p.sensitivity && p.sensitivity.sensitive) return { ok: false, code: 409, routing: true, error: policy.ROUTING_TEXT };
   if (!p.open) return { ok: false, code: 409, error: 'this promise is closed — there is nothing left to deliver' };

@@ -246,12 +246,25 @@ function heldFor(item, authority, delivery = null) {
   return null;
 }
 
+/** PURE. The prepared-move state for the thread's promise, as the card shows it (promise-moves.moveFor). */
+function moveView(m) {
+  if (!m) return null;
+  return {
+    state: m.state, ref: m.ref, control: m.control || null, say: m.say || null,
+    question: m.question ? { id: m.question.id, question: m.question.question, why: m.question.why || null, choices: m.question.choices || [] } : null,
+    recordId: m.recordId || null, version: m.version || null, scheduled: m.scheduled || null,
+  };
+}
+
 /** PURE. The promise SAiM is holding, as the scene draws it. */
-function threadFrom(workbench, authority, delivery = null) {
+function threadFrom(workbench, authority, delivery = null, moves = null) {
   const items = (workbench && workbench.items) || [];
   if (!items.length) return null;
   const it = items[0];
-  const held = heldFor(it, authority, delivery);
+  const move = moveView(moves ? moves[it.key] : null);
+  // A needs-a-block promise SAiM can PREPARE is not held: the allowance only
+  // matters when a prepared move is confirmed, and that confirm names it.
+  const held = move && it.preparation.state === 'needs-a-block' ? null : heldFor(it, authority, delivery);
   const draft = held ? null : draftFor(it, delivery);
   const sensitiveWithheld = (workbench.withheld && workbench.withheld.sensitive) || 0;
   return {
@@ -265,6 +278,7 @@ function threadFrom(workbench, authority, delivery = null) {
     because: it.because,
     held: held ? { say: held } : null,
     draft,
+    move,
     more: items.length > 1 ? { count: items.length - 1, titles: items.slice(1).map((x) => x.title) } : null,
     withheld: sensitiveWithheld ? `${num(sensitiveWithheld)} more involve${sensitiveWithheld === 1 ? 's' : ''} someone’s employment — not shown here.` : null,
   };
@@ -277,11 +291,12 @@ function threadFrom(workbench, authority, delivery = null) {
  *   receipt       receiptView() or null
  *   authority     authority-budget.brief() or null
  *   delivery      { sending, items: { key → promise-delivery.readiness() } } or null
+ *   moves         { key → promise-moves.moveFor() } or null — taking a promise forward
  *   presentation  the presentation it rides on (for the lead rule)
  */
-function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, presentation = null, now = Date.now() } = {}) {
+function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, moves = null, presentation = null, now = Date.now() } = {}) {
   const lead = leadFrom(presentation);
-  const thread = threadFrom(workbench, authority, delivery);
+  const thread = threadFrom(workbench, authority, delivery, moves);
   const readout = readoutFrom({ score: sc, workbench, receipt, now });
   const hasMain = Boolean(receipt || thread);
   let state;
@@ -306,4 +321,4 @@ function compose({ score: sc = null, workbench = null, receipt = null, authority
   };
 }
 
-module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, DRAFT_SAY, DRAFT_CONTROL, SHOW_CONTROL, SENDING_OFF, REVIEW_SAY, draftFor, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, compose };
+module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, DRAFT_SAY, DRAFT_CONTROL, SHOW_CONTROL, SENDING_OFF, REVIEW_SAY, draftFor, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, moveView, compose };

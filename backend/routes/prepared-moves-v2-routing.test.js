@@ -86,7 +86,7 @@ test('a desktop chat (API token) can make it ready — a proposal only, nothing 
   // The same ref from Nick's screen converges on the same stored proposal.
   const mine = await post('/prepare', { ref: REF });
   assert.equal(mine.json.move.recordId, r.json.move.recordId);
-  assert.equal(mine.json.outcome, 'unchanged');
+  assert.equal(mine.json.outcome, 'existing');
 });
 
 test('Nick can ask to confirm the STORED proposal: the exact writes, and nothing is sent', async () => {

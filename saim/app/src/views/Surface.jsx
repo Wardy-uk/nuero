@@ -16,7 +16,7 @@ import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import AskDock from '../../../shared-ui/presentation/AskDock';
 import PreparedMove from '../components/PreparedMove';
-import { prepareDelivery } from '../promiseDelivery.mjs';
+import { prepareDelivery, promiseMove } from '../promiseDelivery.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
 import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
@@ -681,6 +681,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       preparedMoment={preparedMoment}
       // Keep my word: prepare the governed delivery note; approval stays in Actions on the desktop.
       onPrepareDelivery={(key) => prepareDelivery(key)}
+      // Keep my word: take a held promise forward — asks, in place, what SAiM needs; stores a proposal only.
+      onPromiseMove={(op) => promiseMove(op)}
       crownExtra={(
         <button
           type="button"

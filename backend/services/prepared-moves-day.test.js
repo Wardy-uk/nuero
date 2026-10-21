@@ -146,40 +146,40 @@ test('every move — note, block or reply — needs ITS OWN confirmation; three 
 
 // ── 2. The loop moves on ─────────────────────────────────────────────────────
 
-test('scan: keeps ONE open proposal; moves on once it is declined, deferred or done; stops when the moves are used up', async () => {
+test('scan: replies never wait on each other; at most three unbooked automatic proposals; a decision frees a place; stops when the moves are used up', async () => {
   budget._test.reset(); delete process.env.SAIM_PREPARED_MOVE_EXECUTION;
-  const ids = [`a-${uniq()}`, `b-${uniq()}`, `c-${uniq()}`, `d-${uniq()}`];
+  const ids = [`a-${uniq()}`, `b-${uniq()}`, `c-${uniq()}`, `d-${uniq()}`, `e-${uniq()}`];
   const cands = ids.map((id) => emailCand(id));
   // Proposals left by earlier tests are about emails no longer in triage, so
-  // they stop blocking — exactly as a resolved item would.
+  // they stop counting — exactly as a resolved item would.
   const mine = (id) => (ids.includes(id) ? triage(id) : null);
   const sc = (over = {}) => scan.scanOnce({ now: NOW, deps: { flagOn: true, workingDay: true, duty: { onDuty: true }, inMeeting: false, planner: deps(cands, { triageEntry: mine }), ...over } });
   const kOf = (id) => planner.moveKeyFor('email-reply', `email:${id}`);
-  const r1 = await sc();
-  assert.equal(r1.outcome, 'stored'); assert.equal(r1.moveKey, kOf(ids[0]));
-  const again = await sc();
-  assert.equal(again.outcome, 'active-kept', 'an open proposal is kept, nothing new prepared');
-  assert.equal(again.moveKey, kOf(ids[0]));
-  // Declined → next.
+  // A reply needs no block, so it never holds up the next one.
+  const r1 = await sc(); assert.equal(r1.outcome, 'stored'); assert.equal(r1.moveKey, kOf(ids[0]));
+  const r2 = await sc(); assert.equal(r2.outcome, 'stored'); assert.equal(r2.moveKey, kOf(ids[1]));
+  assert.equal(r2.reviewWaiting, null, 'a reply is not a review waiting to be booked');
+  const r3 = await sc(); assert.equal(r3.moveKey, kOf(ids[2]));
+  // The first proposal is untouched by preparing the others.
+  assert.equal(store.latest(kOf(ids[0])).version, 1);
+  // Three unbooked automatic proposals open → nothing more until one is dealt with.
+  const capped = await sc();
+  assert.equal(capped.outcome, 'open-cap'); assert.equal(capped.open.length, scan.OPEN_AUTOMATIC_MAX);
+  // Declined → a place frees.
   const rec1 = store.latest(kOf(ids[0]));
   store.respond({ recordId: rec1.id, version: rec1.version, response: 'decline' });
-  const r2 = await sc();
-  assert.equal(r2.outcome, 'stored'); assert.equal(r2.moveKey, kOf(ids[1]));
-  // Deferred → next.
+  const r4 = await sc(); assert.equal(r4.outcome, 'stored'); assert.equal(r4.moveKey, kOf(ids[3]));
+  // Deferred → another.
   const rec2 = store.latest(kOf(ids[1]));
   store.respond({ recordId: rec2.id, version: rec2.version, response: 'defer', days: 1, reason: 'not-now' });
-  const r3 = await sc();
-  assert.equal(r3.moveKey, kOf(ids[2]));
-  // Confirmed and carried out → next.
-  db.setState(`saim_move_receipt:${kOf(ids[2])}`, JSON.stringify({ complete: true, target: 'live', version: 1 }));
-  const r4 = await sc();
-  assert.equal(r4.moveKey, kOf(ids[3]));
+  const r5 = await sc(); assert.equal(r5.moveKey, kOf(ids[4]));
+  // Re-scanning prepares nothing twice.
+  const r6 = await sc(); assert.equal(r6.outcome, 'open-cap');
   // The day's moves used up → no more preparing today.
   const done = await sc({ authority: () => ({ grant: { day: 'x' }, allowance: { moves: { left: 0 } } }) });
   assert.equal(done.ran, false); assert.match(done.why, /used up/);
-  // Resolved elsewhere (the email left triage) → the open one stops blocking.
-  const r5 = await sc({ planner: deps(cands, { triageEntry: (id) => (id === ids[3] || !ids.includes(id) ? null : triage(id)) }) });
-  assert.notEqual(r5.outcome, 'active-kept');
+  // Tidy for the tests below: nothing of ours stays open.
+  for (const id of ids) { const r = store.latest(kOf(id)); if (r && store.activeV2({ now: NOW, limit: 50 }).some((x) => x.id === r.id)) store.respond({ recordId: r.id, version: r.version, response: 'decline' }); }
 });
 
 // ── 3. The next genuinely available slot ─────────────────────────────────────

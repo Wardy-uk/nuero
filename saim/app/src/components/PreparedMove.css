@@ -254,3 +254,11 @@
 @media (max-width: 480px) {
   .pmo2 .pmo__buttons > .pmo__btn--yes { width: 100%; }
 }
+
+/* Also open (24 Oct 2026): the other prepared items, one line each — never a queue. */
+.pmo2__also { margin-top: 18px; }
+.pmo2__alsolist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.pmo2__alsoitem { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; }
+.pmo2__alsotitle { grid-column: 1; overflow-wrap: anywhere; }
+.pmo2__alsoitem .pmo__sub { grid-column: 1; }
+.pmo2__alsoshow { grid-column: 2; grid-row: 1 / span 2; }

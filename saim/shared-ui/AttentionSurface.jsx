@@ -177,6 +177,8 @@ export default function AttentionSurface({
   preparedMoment = null,
   // Keep my word (21 Oct 2026): passed straight to Situation; null = no control.
   onPrepareDelivery = null,
+  // Keep my word: take a held promise forward as a prepared move (ask / answer). null = no control.
+  onPromiseMove = null,
   onOpenActions = null,
   footAside = null,
   footExtra = null,
@@ -636,6 +638,7 @@ export default function AttentionSurface({
           prepared={prepared}
           preparedMoment={preparedMoment}
           onPrepareDelivery={onPrepareDelivery}
+          onPromiseMove={onPromiseMove}
           onOpenActions={onOpenActions}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />

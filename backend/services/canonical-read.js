@@ -1324,14 +1324,25 @@ function keepWordBlock(nowMs, deps = {}) {
     receipt: require('./keep-my-word').latestVerifiedReceipt({ now: nowMs }),
     authority: require('./authority-budget').brief({ now: nowMs }),
     delivery: { sending, items: Object.fromEntries(require('./promise-delivery').readiness(draftable, { ledger })) },
+    moves: _promiseMoves(workbench, nowMs),
   } };
   return _keepWordMemo.k;
+}
+
+/** Read only: each at-risk promise's prepared-move state (promise-moves). A failed read offers nothing. */
+function _promiseMoves(workbench, nowMs) {
+  const out = {};
+  for (const it of (workbench && workbench.items) || []) {
+    try { const m = require('./promise-moves').moveFor(it, { now: nowMs }); if (m) out[it.key] = m; } catch { /* no control is better than a wrong one */ }
+  }
+  return out;
 }
 
 /**
  * Drop ONLY the Keep my word memo, so the next Now read sees a promise
  * delivery that was just prepared instead of offering to draft it again.
- * Called by promise-delivery after a SUCCESSFUL prepare; nothing else.
+ * Called by promise-delivery after a SUCCESSFUL prepare, and by the
+ * prepared-moves routes after a promise's move was prepared or answered.
  * Every other memo here (outdoor, leisure, home…) is untouched.
  */
 function invalidateKeepMyWord() { _keepWordMemo = null; }

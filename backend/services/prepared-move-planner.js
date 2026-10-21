@@ -171,6 +171,10 @@ const DEFAULT_DEPS = {
     } catch { return 'unknown'; }
   },
   activeV2: (now) => require('./prepared-move-store').activeV2({ now }),
+  // A Keep my word promise, read from the ledger (read only).
+  promise: (key, now) => { const l = require('./promise-ledger').read({ now }); if ((l.gaps || []).some((g) => g.input === 'tasks')) throw new Error('the task list could not be read'); return (l.promises || []).find((x) => x.key === key) || null; },
+  promiseDelivered: (key) => { try { return require('./promise-score').readProofs().proofs.has(key); } catch { return false; } },
+  promiseOwed: (p, answers) => require('./promise-owed').stateFor(p, { answer: (answers || []).filter((a) => a.questionId === 'owed').pop() || null }),
   completed: (moveKey) => require('./prepared-move-store').completedMove(moveKey),
   draft: (kind, input) => require('./prepared-move-drafter').draft(kind, input),
   answers: (moveKey) => require('./prepared-move-store').answersFor(moveKey),
@@ -276,7 +280,7 @@ async function gather(n, ctx) {
   const facts = []; // { text, cite, kind:'source'|'you' }
   const observed = [];
   const freshness = [];
-  for (const a of answers || []) facts.push({ text: a.text, cite: `you, ${String(a.at).slice(0, 16).replace('T', ' ')}`, kind: 'you' });
+  for (const a of answers || []) if (a.questionId !== 'owed') facts.push({ text: a.text, cite: `you, ${String(a.at).slice(0, 16).replace('T', ' ')}`, kind: 'you' });
 
   if (n.kind === 'email-reply') {
     const e = deps.triageEntry(n.source.emailId);
@@ -353,6 +357,26 @@ async function gather(n, ctx) {
   if (!task || !['open', 'in-progress'].includes(task.status)) return { ok: false, withhold: 'gone', why: 'That task is no longer open.' };
   if (task.domain === 'personal') return { ok: false, withhold: 'personal-domain', why: 'A personal task.' };
   if (ledger.hrSensitivity(task.text, '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-wording'], why: 'It reads as an employment matter — routing only.' };
+  // A Keep my word promise (24 Oct 2026): who it is owed to comes first — from
+  // its own notes, or from Nick's answer to the ONE question asked. Never a guess.
+  if (n.source.promiseKey) {
+    const p = deps.promise(n.source.promiseKey, nowMs);
+    if (!p || !p.open) return { ok: false, withhold: 'gone', why: 'That promise is no longer open.' };
+    if (p.sensitivity && p.sensitivity.sensitive) return { ok: false, withhold: 'employment-route', why: require('../../saim/policy/promises.cjs').ROUTING_TEXT };
+    const o = deps.promiseOwed(p, answers);
+    if (o.question) {
+      return { ok: true, plan: 'ask', title: task.text, observed, facts, freshness, questions: [o.question], promiseKey: p.key, evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask-owed', answers || []])) };
+    }
+    const who = o.owedTo.resolved || o.owedTo.group;
+    if (o.source === 'nick') facts.push({ text: `It is owed to ${who}.`, cite: `you, ${String(o.answer.at).slice(0, 16).replace('T', ' ')}`, kind: 'you' });
+    else facts.push({ text: `It is owed to ${who}.`, cite: (p.source && p.source.path) || 'the promise', kind: 'source' });
+    observed.push({ fact: `It is a promise${p.source && p.source.title ? ` from “${p.source.title}”` : ''}, owed to ${who}${o.source === 'nick' ? ' (you said)' : ''}.`, source: { kind: o.source === 'nick' ? 'you' : 'note', ref: p.key, observedAt: new Date(nowMs).toISOString() } });
+    // A message to ONE named person is delivered by the existing governed
+    // delivery note (promise-delivery), not by a project note — hand it there.
+    if (o.owedTo.resolved && require('./promise-workbench').MESSAGE_ACT.test(p.text || '')) {
+      return { ok: false, handoff: true, withhold: 'delivery-note', why: `It is a message to ${o.owedTo.resolved} — SAiM can draft the delivery note for your approval instead. Nothing is sent.` };
+    }
+  }
   const folders = projectFolders();
   const fromOrigin = (/^Projects\/([^/]+)\//.exec(String(task.origin_path || '')) || [])[1] || null;
   const answeredFolder = said('folder');
@@ -411,7 +435,8 @@ function composeV2({ n, g, draft, slot, alternatives = [], decision, duty, nowMs
   if (g.plan === 'ask') {
     return {
       ...base, plan: 'ask',
-      headline: kind === 'project-note' ? 'I can start this — I need one thing from you first.' : kind === 'meeting-prep' ? `I can prepare for ${g.title} — tell me what you want from it.` : 'I need one thing from you before I can draft this.',
+      headline: ((g.questions || [])[0] || {}).id === 'owed' ? 'I can take this forward — I need to know who it is owed to.'
+        : kind === 'project-note' ? 'I can start this — I need one thing from you first.' : kind === 'meeting-prep' ? `I can prepare for ${g.title} — tell me what you want from it.` : 'I need one thing from you before I can draft this.',
       outcome: { goal: kind === 'meeting-prep' ? `Walk into ${g.title} prepared.` : `Get “${g.title}” started.`, firstStep: 'Answer the question below.' },
       ask: { questions: g.questions },
       deliverable: { kind, title: g.title, sourceFacts: g.facts || [], suggested: null, gaps: [] },
@@ -558,7 +583,7 @@ function _slotFor(deps, nowMs) {
  *
  * → { ok, outcome: 'stored'|'unchanged'|'covered-by-v1'|'none'|'withheld', record?, withheld[], why? }
  */
-async function planAndStore({ now = Date.now(), ref = null, source = null, origin = 'scan', deps: over = {} } = {}) {
+async function planAndStore({ now = Date.now(), ref = null, source = null, origin = 'scan', firstOrigin = null, skipKeys = null, noBlockKinds = null, deps: over = {} } = {}) {
   const deps = { ...DEFAULT_DEPS, ...over };
   const nowMs = typeof now === 'number' ? now : Date.parse(now);
   const v1 = await deps.prepareV1({ now: nowMs });
@@ -567,26 +592,31 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
   const roster = deps.roster();
   const withheld = [];
 
-  // ⚠ EXACTLY ONE ACTIVE PREPARED MOVE, whichever route asks (23 Oct 2026).
-  // A manual press while another proposal is still open (not expired,
-  // deferred, declined, done, and still true) prepares NOTHING and touches
-  // nothing — that proposal is not deferred, replaced or re-checked here.
-  let openRec = null;
-  if (ref && !source) {
-    for (const rec of (deps.activeV2(nowMs) || [])) {
-      let ok = false;
-      try { ok = (await recheck(rec.packet, { deps: over })).ok === true; } catch { ok = false; }
-      if (ok) { openRec = rec; break; }
-    }
-  }
-
+  // ⚠ NO GLOBAL ONE-ACTIVE RULE (24 Oct 2026). A manual "Make this ready" is
+  // ALWAYS prepared, whatever else SAiM has open — another proposal is never
+  // deferred, replaced or touched here. The automatic scan keeps its own cap
+  // (prepared-move-scan: one unscheduled review at a time). Every other rule —
+  // eligibility, the allowance, per-move confirmation — is unchanged.
   let list;
   if (source) list = [{ n: source }];
-  else {
+  else if (ref && /^promise:/.test(ref)) {
+    // A held Keep my word promise, taken forward by Nick from its card.
+    const key = ref.slice('promise:'.length);
+    let p;
+    try { p = deps.promise(key, nowMs); } catch (e) { return { ok: false, outcome: 'withheld', why: `NEURO couldn’t read your promises (${e.message}), so nothing is prepared.`, withheld }; }
+    if (!p) return { ok: false, outcome: 'none', why: 'That promise is no longer in what NEURO holds.', withheld };
+    if (p.sensitivity && p.sensitivity.sensitive) return { ok: false, outcome: 'withheld', reason: 'employment-route', why: require('../../saim/policy/promises.cjs').ROUTING_TEXT, withheld };
+    if (!p.open) return { ok: false, outcome: 'withheld', reason: 'gone', why: 'That promise is closed — there is nothing left to prepare.', withheld };
+    if (deps.promiseDelivered(key)) return { ok: false, outcome: 'withheld', reason: 'delivered', why: 'That promise was already delivered and read back.', withheld };
+    const lead = p.leadTaskId || (p.taskIds || [])[0];
+    if (!lead) return { ok: false, outcome: 'withheld', reason: 'unresolvable', why: 'That promise has no task behind it.', withheld };
+    list = [{ n: { kind: 'project-note', sourceKey: `task:${lead}`, source: { taskId: lead, promiseKey: key }, ref, title: p.text } }];
+  } else {
     const cands = (v1 && v1.candidates) || [];
     list = (ref ? cands.filter((c) => c.ref === ref) : cands).map((c) => ({ c }));
     if (ref && !list.length) return { ok: false, outcome: 'none', why: 'That item is no longer in what SAiM is weighing up right now.', withheld };
   }
+  const skip = new Set(skipKeys || []);
 
   for (const entry of list) {
     const c = entry.c;
@@ -597,13 +627,12 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
     const n = entry.n || normalise(c, deps);
     if (n.withhold) { withheld.push({ ref: c && c.ref, title: c && c.title, reason: n.withhold, why: n.why }); continue; }
     const moveKey = moveKeyFor(n.kind, n.sourceKey);
-    if (openRec && openRec.moveKey !== moveKey) {
-      const head = ((openRec.packet || {}).selected || {}).headline || 'a prepared move';
-      return {
-        ok: false, outcome: 'already-active', withheld,
-        why: `SAiM already has something ready for you — “${head}” Deal with that one first: it’s on your SAiM home. Nothing new was prepared.`,
-        active: { recordId: openRec.id, version: openRec.version, title: ((openRec.packet || {}).selected || {}).title || null, headline: head },
-      };
+    // The scan never re-prepares a move it already has open — it moves on.
+    if (!ref && !source && skip.has(moveKey)) continue;
+    // A review move may be withheld from the scan while its cap is taken.
+    if (!ref && !source && (noBlockKinds || []).includes(n.kind)) {
+      withheld.push({ ref: n.ref, title: n.title, reason: 'review-cap', why: 'Another prepared item is still waiting for you to choose a time, so SAiM hasn’t started a second one.' });
+      continue;
     }
     const sup = deps.suppression(moveKey, nowMs);
     if (sup && !source) {
@@ -617,9 +646,26 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
       if (ref) return { ok: false, outcome: 'withheld', why: 'You already confirmed this one and it was carried out.', withheld };
       continue;
     }
+    // A repeated manual press for the same item returns its OPEN proposal — no
+    // duplicate, no new draft, no model call. (A promise press returns one only
+    // if it was made for that promise.)
+    if (ref && !source) {
+      const prior = deps.latest(moveKey);
+      const live = prior && prior.packet && prior.packet.contract === CONTRACT && Date.parse(prior.evidenceExpiresAt) > nowMs
+        && (!n.source.promiseKey || (prior.packet.selected.source || {}).promiseKey === n.source.promiseKey);
+      if (live) {
+        let still = false;
+        try { still = (await recheck(prior.packet, { deps: over })).ok === true; } catch { still = false; }
+        if (still) { deps.markChecked(prior.id, nowMs); return { ok: true, outcome: 'existing', record: prior, withheld }; }
+      }
+    }
     const answers = deps.answers(moveKey) || [];
     let g;
     try { g = await gather(n, { deps, roster, nowMs, answers }); } catch (e) { g = { ok: false, withhold: 'unreadable', why: `SAiM could not read what this rests on (${e.message}).` }; }
+    if (!g.ok && g.handoff) {
+      if (ref || source) return { ok: true, outcome: 'handoff', why: g.why, handoff: { to: 'promise-delivery', key: n.source.promiseKey }, withheld };
+      continue;
+    }
     if (!g.ok) {
       withheld.push({ ref: n.ref, title: n.title, reason: g.withhold, why: g.why, categories: g.categories });
       if (ref || source) return { ok: false, outcome: 'withheld', why: g.why, reason: g.withhold, withheld };
@@ -681,7 +727,7 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
       if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
       continue;
     }
-    const packet = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), origin, decision, duty, selected, withheld };
+    const packet = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), origin, firstOrigin: firstOrigin || origin, decision, duty, selected, withheld };
     const st = deps.store(packet, { now: nowMs });
     if (!st.ok) {
       withheld.push({ ref: n.ref, title: n.title, reason: 'refused', why: st.why });
@@ -792,6 +838,12 @@ async function recheck(packet, { deps: over = {} } = {}) {
   const t = deps.task(s.source.taskId);
   if (!t || !['open', 'in-progress'].includes(t.status)) return { ok: false, why: 'the task is no longer open' };
   if (t.text !== s.title) return { ok: false, why: 'the task’s wording has changed since this was prepared' };
+  if (s.source.promiseKey) {
+    let p = null;
+    try { p = deps.promise(s.source.promiseKey, Date.now()); } catch { return { ok: false, why: 'NEURO couldn’t read the promise it is for' }; }
+    if (!p || !p.open) return { ok: false, why: 'the promise is no longer open' };
+    if (deps.promiseDelivered(s.source.promiseKey)) return { ok: false, why: 'the promise was already delivered' };
+  }
   return { ok: true };
 }
 

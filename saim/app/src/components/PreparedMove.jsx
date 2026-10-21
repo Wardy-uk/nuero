@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
-import { loadWithRetry, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer } from '../preparedMove.mjs';
+import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, outstandingOf } from '../preparedMove.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
 import './PreparedMove.css';
@@ -216,7 +216,31 @@ export function confirmLabel(move) {
  * writes, then one choice — confirm, put off, or say no. A question SAiM needs
  * answered is drawn as one. On the kiosk it is read-only.
  */
-function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority }) {
+/**
+ * The other open items (24 Oct 2026), one line each: "Needs your decision
+ * before I can schedule it" stays visibly apart from "Scheduled for …; I can
+ * now make the next item ready". A list, not a queue — showing one only loads it.
+ */
+export function Outstanding({ view, busy = false, onShow = null }) {
+  const rows = outstandingOf(view);
+  if (!rows.length) return null;
+  return (
+    <section className="pmo2__also" aria-label="Also open">
+      <p className="pmo__sechead">Also open</p>
+      <ul className="pmo2__alsolist">
+        {rows.map((r) => (
+          <li key={r.recordId} className={`pmo2__alsoitem pmo2__alsoitem--${r.state || 'open'}`}>
+            <span className="pmo2__alsotitle">{r.title}</span>
+            <span className="pmo__sub">{r.say}</span>
+            {onShow && r.state !== 'scheduled' && <button type="button" className="pmo__btn pmo2__alsoshow" disabled={busy} onClick={() => onShow(r.recordId)}>Show</button>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow }) {
   const { view } = state; const move = view.move;
   const d = move.deliverable || {};
   const [deferDays, setDeferDays] = useState(1);
@@ -289,6 +313,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
         {(move.freshness || []).length > 0 && <ul className="pmo__sub">{move.freshness.map((f, i) => <li key={i}>{f.ref}: {f.ageHours == null ? 'unreadable' : `${f.ageHours}h old`} (limit {f.maxHours}h)</li>)}</ul>}
         {move.why && move.why.willNot && move.why.willNot.length > 0 && <><p className="pmo__prooflabel">SAiM will not</p><ul>{move.why.willNot.map((b, i) => <li key={i}>{b}</li>)}</ul></>}
       </details>
+      <Outstanding view={view} busy={busy} onShow={onShow} />
     </section>
   );
 
@@ -374,7 +399,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -395,7 +420,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
-  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} />;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -730,6 +755,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       onConfirm={() => run(() => confirm(call, { view: state.view, option: state.option, request: state.request }))}
       onCancel={() => setState((s) => ({ kind: 'ready', view: s.view, option: s.option }))}
       onAgain={() => run(() => loadWithRetry(call))}
+      onShow={(recordId) => run(() => load(call, { recordId }))}
       onOpenAuthority={onOpenAuthority}
       onDrill={(drill) => setState((s) => ({ ...s, drill }))}
     /></div>

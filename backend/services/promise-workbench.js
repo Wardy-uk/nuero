@@ -107,8 +107,10 @@ function preparationFor(p, { due, progress, booked }) {
   if (progress.state === 'likely_fulfilled') {
     return { state: 'waiting-for-Nick', why: 'It may already be delivered — only you can say. Nothing counts it as kept until a delivery is read back.' };
   }
-  const recipient = p.owedTo ? p.owedTo.resolved : null;
-  if (!recipient) return { state: 'waiting-for-Nick', why: 'Your notes don’t name who it is owed to, so only you can say who should get it.' };
+  // Nick's own answer counts here too (promise-owed's read-time overlay): a
+  // person, or a group kept exactly as he wrote it — never with a guessed address.
+  const recipient = p.owedTo ? (p.owedTo.resolved || p.owedTo.group || null) : null;
+  if (!recipient) return { state: 'waiting-for-Nick', missing: 'owed-to', why: 'Your notes don’t name who it is owed to, so only you can say who should get it.' };
   if (booked.length) return { state: 'ready', why: PREP_SAY.ready };
   if (MESSAGE_ACT.test(p.text || '')) return { state: 'needs-a-draft', why: PREP_SAY['needs-a-draft'] };
   return { state: 'needs-a-block', why: PREP_SAY['needs-a-block'] };
@@ -179,7 +181,8 @@ function select({ promises = [], proofs = new Map(), dueBases = new Map(), progr
     return {
       key: c.p.key, taskIds: c.p.taskIds, leadTaskId: c.p.leadTaskId || c.p.taskIds[0],
       title: c.p.text,
-      owedTo: c.p.owedTo.resolved || null,
+      owedTo: c.p.owedTo.resolved || c.p.owedTo.group || null,
+      owedToSaidBy: c.p.owedTo.stated ? { by: c.p.owedTo.stated.by, at: c.p.owedTo.stated.at } : null,
       due: { date: c.due.date, basis: c.due.basis, endsAt: new Date(c.due.endsMs).toISOString(), tier: ['overdue', 'today', 'soon', 'this-week'][c.tier], say: TIER_SAY[c.tier] },
       nextMeeting: c.meeting ? { title: c.meeting.title, start: c.meeting.start } : null,
       booked: c.booked,
@@ -216,11 +219,13 @@ function _progressFor(promises) {
 /** The bench for `now`. Reads only. */
 function read({ now = Date.now(), ledger = null, proofs = null } = {}) {
   const nowMs = msOf(now);
-  const facts = ledger || require('./promise-ledger').read({ now: nowMs });
+  const raw = ledger || require('./promise-ledger').read({ now: nowMs });
+  // Who it is owed to, where only Nick could say: his answer, read at this moment.
+  const facts = { ...raw, promises: require('./promise-owed').overlay(raw.promises || []) };
   const pr = proofs || score.readProofs().proofs;
   const dueBases = score.readDueBases(facts.promises);
   const { map, scannedAt } = _progressFor(facts.promises);
   return select({ promises: facts.promises, proofs: pr, dueBases, progress: map, freshness: { readAt: facts.readAt, progressScannedAt: scannedAt }, gaps: facts.gaps, now: nowMs });
 }
 
-module.exports = { CONTRACT, MAX_ITEMS, HORIZON_DAYS, READ_STALE_MS, PROGRESS_STALE_MS, dueTier, withholdReason, preparationFor, relevantMeeting, select, read };
+module.exports = { CONTRACT, MESSAGE_ACT, MAX_ITEMS, HORIZON_DAYS, READ_STALE_MS, PROGRESS_STALE_MS, dueTier, withholdReason, preparationFor, relevantMeeting, select, read };

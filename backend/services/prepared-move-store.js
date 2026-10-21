@@ -238,6 +238,33 @@ function completedMove(moveKey) {
 }
 
 /**
+ * Is this move's private review/work block BOOKED? (24 Oct 2026) Only when a
+ * LIVE confirm wrote the calendar block AND read it back — the receipt's
+ * calendar step is `done` or `already-done` (prepared-move-exec writes those
+ * statuses only after the read-back matched, and the external-write ledger
+ * holds the same step). A proposed or suggested slot is NOT scheduled; a
+ * sandbox (practice) run is not; a failed, unverified or removed block is not.
+ * → { date, start, end } | null. Read only.
+ */
+const CAL_TARGET = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})–(\d{2}:\d{2})/;
+function scheduledFor(moveKey) {
+  if (!moveKey) return null;
+  let r;
+  try { r = JSON.parse(db.getState(`saim_move_receipt:${moveKey}`) || 'null'); } catch { return null; }
+  if (!r || r.target === 'sandbox') return null;
+  const cal = (r.steps || []).find((x) => x && x.step === 'calendar' && (x.status === 'done' || x.status === 'already-done'));
+  if (!cal) return null;
+  const m = CAL_TARGET.exec(String(cal.target || ''));
+  return m ? { date: m[1], start: m[2], end: m[3], at: r.at } : { date: null, start: null, end: null, at: r.at };
+}
+
+/** PURE. Does a stored v2 proposal need a private review/work block to finish? */
+function needsBlock(record) {
+  const s = record && record.packet && record.packet.selected;
+  return Boolean(s && s.plan === 'draft' && ((s.decision || {}).proposedWrites || []).some((w) => w.kind === 'calendar.solo'));
+}
+
+/**
  * The v2 proposals that could be shown now: each move's NEWEST version, not
  * deferred or declined, evidence still within its lifetime, newest check first.
  */
@@ -268,5 +295,5 @@ function isLatest(record) {
 
 module.exports = {
   CONTRACT, EVIDENCE_LIFETIME_MS, ensure, store, get, latest, isLatest, packetHash,
-  markChecked, respond, suppression, addAnswer, answersFor, activeV2, completedMove, DEFER_DAYS, DEFER_REASONS, DECLINE_REASONS,
+  markChecked, respond, suppression, addAnswer, answersFor, activeV2, completedMove, scheduledFor, needsBlock, DEFER_DAYS, DEFER_REASONS, DECLINE_REASONS,
 };

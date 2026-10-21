@@ -46,6 +46,17 @@
 .kmw__draft-body { margin: 8px 0; padding: 10px 0 10px 12px; border-left: 1px solid var(--kmw-line); white-space: pre-wrap; font: 12px/1.5 Georgia, serif; color: #b8b3a7; }
 .kmw__open:disabled { opacity: .6; cursor: default; }
 
+/* Taking a held promise forward in place (24 Oct 2026): the one question, answered here. */
+.kmw__ask { margin: 0; }
+.kmw__ask-q { color: var(--kmw-ink); font-size: 14px; }
+.kmw__ask-why { color: var(--kmw-dim); margin-top: 4px; }
+.kmw__ask-input { display: block; width: 100%; max-width: 420px; box-sizing: border-box; margin-top: 12px; padding: 10px 12px; background: transparent; border: 1px solid var(--kmw-line); color: var(--kmw-ink); font: 14px Georgia, serif; }
+.kmw__ask-input:focus { outline: 1px solid var(--kmw-gold); border-color: var(--kmw-gold); }
+.kmw__choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.kmw__choice { border: 1px solid var(--kmw-line); background: transparent; color: var(--kmw-ink); padding: 7px 11px; font: 12px Georgia, serif; cursor: pointer; }
+.kmw__choice--on { border-color: var(--kmw-gold); color: var(--kmw-gold); }
+.kmw__row--move .kmw__actions { margin-top: 12px; }
+
 /* The folded thread beneath an urgent lead: a recognisable line, opened on demand. */
 .kmw__fold { margin: 16px 0; }
 .kmw__fold > summary { cursor: pointer; list-style: none; font: 13px/1.5 Georgia, serif; color: var(--kmw-dim); border-left: 2px solid var(--kmw-amber); padding: 4px 0 4px 12px; }

@@ -20,3 +20,24 @@ export async function prepareDelivery(key, { fetchImpl = fetch } = {}) {
     return { ok: false, error: 'NEURO didn’t answer, so nothing was drafted.' };
   }
 }
+
+/**
+ * Keep my word (24 Oct 2026): take a held promise forward as a prepared move —
+ * only through the prepared-move routes, which store a PROPOSAL or Nick's
+ * answer and nothing else. → the route's JSON (ok:false on a refusal). Never throws.
+ *   { action: 'prepare', ref } | { action: 'answer', recordId, version, questionId, text }
+ */
+export async function promiseMove(op, { fetchImpl = fetch } = {}) {
+  const path = op && op.action === 'answer' ? '/api/prepared-moves/answer' : '/api/prepared-moves/prepare';
+  const body = op && op.action === 'answer'
+    ? { recordId: op.recordId, version: op.version, questionId: op.questionId, text: op.text }
+    : { ref: op && op.ref };
+  try {
+    const res = await fetchImpl(apiUrl(path), { method: 'POST', headers: authHeaders(path, { 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+    const b = await res.json().catch(() => null);
+    if (b && typeof b === 'object') return res.ok ? b : { ...b, ok: false };
+    return { ok: false, error: `NEURO answered ${res.status}.` };
+  } catch {
+    return { ok: false, error: 'NEURO didn’t answer.' };
+  }
+}

@@ -188,7 +188,47 @@ function makeReadyFrom(packet, now) {
   return null;
 }
 
-async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS, clock = Date.now } = {}) {
+/**
+ * PURE-ish (reads NEURO's own store). Every other open prepared move, in ONE
+ * line each, so several outstanding items stay intelligible without a queue:
+ * what SAiM needs before it can go on, versus what is already booked.
+ *   needs-answer    it asked a question
+ *   needs-decision  drafted; you choose a time before anything is scheduled
+ *   ready           drafted; nothing needs booking — waiting for your confirm
+ *   scheduled       your time for it is booked (written and read back)
+ */
+function outstandingFrom(active, now = Date.now()) {
+  const st = require('./prepared-move-store');
+  const rows = [];
+  for (const rec of active || []) {
+    const s = (rec.packet || {}).selected || {};
+    const booked = st.scheduledFor(rec.moveKey);
+    let state; let say;
+    if (s.plan === 'ask') { state = 'needs-answer'; say = 'Needs an answer from you before I can go on.'; }
+    else if (booked) { state = 'scheduled'; say = `Scheduled for ${dayLong(booked.date)} ${booked.start}–${booked.end}; I can now make the next item ready.`; }
+    else if (st.needsBlock(rec)) { state = 'needs-decision'; say = 'Needs your decision before I can schedule it.'; }
+    else { state = 'ready'; say = 'Ready for you to confirm — nothing needs booking.'; }
+    rows.push({ recordId: rec.id, version: rec.version, title: s.title || rec.moveKey, kind: s.kind || null, state, say, automatic: ((rec.packet || {}).firstOrigin || (rec.packet || {}).origin) === 'scan' });
+  }
+  // Carried out, with its block still ahead: booked, so the next can be made ready.
+  const today = new Date(now).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10);
+  const seen = new Set(rows.map((r) => r.recordId));
+  let receipts = [];
+  try { receipts = require('../db/database').all(`SELECT key, value FROM agent_state WHERE key LIKE 'saim_move_receipt:saim-move:v2:%'`); } catch { receipts = []; }
+  for (const r of receipts) {
+    const moveKey = r.key.slice('saim_move_receipt:'.length);
+    const booked = st.scheduledFor(moveKey);
+    if (!booked || !booked.date || booked.date < today) continue;
+    let rec; try { rec = JSON.parse(r.value); } catch { continue; }
+    if (!rec || seen.has(rec.recordId)) continue;
+    const stored = st.get(rec.recordId);
+    rows.push({ recordId: rec.recordId, version: rec.version, title: (((stored || {}).packet || {}).selected || {}).title || moveKey, kind: (((stored || {}).packet || {}).selected || {}).kind || null,
+      state: 'scheduled', say: `Scheduled for ${dayLong(booked.date)} ${booked.start}–${booked.end}; I can now make the next item ready.`, automatic: (((stored || {}).packet || {}).firstOrigin || ((stored || {}).packet || {}).origin) === 'scan', carriedOut: Boolean(rec.complete) });
+  }
+  return rows.slice(0, 6);
+}
+
+async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS, clock = Date.now, recordId = null } = {}) {
   deps = { ..._deps, ...Object.fromEntries(Object.entries(deps).filter(([, v]) => v)) };
   const started = clock();
   const execution = _execution();
@@ -197,11 +237,15 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
   // one prepared move at a time.
   if (!deps.prepare) {
     let active = [];
-    try { active = require('./prepared-move-store').activeV2({ now }); } catch { active = []; }
+    try { active = require('./prepared-move-store').activeV2({ now, limit: 50 }); } catch { active = []; }
+    // ?recordId= shows THAT open proposal first (Nick picked it from the list).
+    if (recordId) active = [...active.filter((r) => r.id === recordId), ...active.filter((r) => r.id !== recordId)];
+    let outstanding = [];
+    try { outstanding = outstandingFrom(active, now); } catch { outstanding = []; }
     for (const rec of active) {
       const duty = await (deps.readDuty || ((t) => require('./prepared-move').readDuty(t)))(now);
       const v = await v2View(rec, { now, duty, checks: deps.checks ? deps.checks({ now }) : null });
-      if (v.move) return { ...base, elapsedMs: clock() - started, withheldCount: 0, ...(v.held ? { held: v.held } : {}), move: v.move };
+      if (v.move) return { ...base, elapsedMs: clock() - started, withheldCount: 0, ...(v.held ? { held: v.held } : {}), move: v.move, outstanding: outstanding.filter((o) => o.recordId !== v.move.recordId) };
     }
   }
   // ⚠ `pending` is NOT "no move": the check did not finish in time (a cold
@@ -332,4 +376,4 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
   };
 }
 
-module.exports = { CONTRACT, BUDGET_MS, currentView, v2View, makeReadyFrom, humanTitle, questionFor, unresolvedFrom, artefactFrom, _setDeps };
+module.exports = { CONTRACT, BUDGET_MS, currentView, v2View, outstandingFrom, makeReadyFrom, humanTitle, questionFor, unresolvedFrom, artefactFrom, _setDeps };

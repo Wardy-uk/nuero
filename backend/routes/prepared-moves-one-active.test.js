@@ -1,12 +1,12 @@
 'use strict';
 
 /**
- * Exactly ONE active prepared move, whichever route asks (23 Oct 2026) — over
- * real HTTP through NEURO's real api-auth and authority guard, and through the
- * real client flow (saim/app makeReady.mjs). Two different eligible Now items:
- * the second press prepares nothing, changes nothing about the first, and
- * says where the first one is. Once the first is declined, the second press
- * prepares it. Also: leave that cannot be checked never yields a time.
+ * A manual press always prepares (24 Oct 2026; replaces the 23 Oct one-active
+ * rule) — over real HTTP through NEURO's real api-auth and authority guard,
+ * and through the real client flow (saim/app makeReady.mjs). Two different
+ * items are both prepared and neither touches the other; pressing the same
+ * item again returns the existing proposal. Also: leave that cannot be
+ * checked never yields a time.
  */
 
 const test = require('node:test');
@@ -74,7 +74,7 @@ const snapshot = () => ({
   grants: db.get(`SELECT COUNT(*) n FROM human_action_intents`).n,
 });
 
-test('two different eligible Now items: the second press prepares nothing and leaves the first exactly as it was', async () => {
+test('a manual press ALWAYS prepares: two different items are both prepared, and the first is left exactly as it was', async () => {
   const flow = await import(pathToFileURL(path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'makeReady.mjs')).href);
   const call = await clientCall();
   const first = await flow.makeItReady(call, { ref: A.ref });
@@ -82,52 +82,46 @@ test('two different eligible Now items: the second press prepares nothing and le
   assert.equal(first.headline, 'I drafted the reply to Sam.');
   const before = snapshot();
   assert.equal(before.moves.length, 1);
-  const draftsBefore = drafts;
+  const recA = store.latest(planner.moveKeyFor('email-reply', 'email:email-A'));
 
-  // The second, different item — through the real client flow.
+  // The second, different item — through the real client flow — is prepared too.
   const second = await flow.makeItReady(call, { ref: B.ref });
-  assert.equal(second.kind, 'already');
-  assert.match(second.message, /^SAiM already has something ready for you — “I drafted the reply to Sam\.” Deal with that one first: it’s on your SAiM home\. Nothing new was prepared\.$/);
-  // …and the raw response names the open one and the route to it.
-  const raw = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: B.ref } });
-  assert.equal(raw.status, 409);
-  assert.equal(raw.body.outcome, 'already-active');
-  assert.equal(raw.body.openOn, 'surface');
-  assert.equal(raw.body.active.headline, 'I drafted the reply to Sam.');
-
-  // Exactly one active record; the first untouched — no new version, no
-  // response recorded, not even its check stamp moved; no model call; no grant.
-  assert.deepEqual(snapshot(), before);
-  assert.equal(drafts, draftsBefore, 'nothing was drafted for the second item');
-  const active = store.activeV2({ now: Date.now() });
-  assert.equal(active.length, 1); assert.equal(active[0].moveKey, planner.moveKeyFor('email-reply', 'email:email-A'));
-
-  // Pressing the SAME item again is not a second proposal — it is the same one.
-  const again = await flow.makeItReady(call, { ref: A.ref });
-  assert.equal(again.kind, 'prepared');
-  assert.equal(snapshot().moves.length, 1);
-
-  // Once the open one is declined, the next press may prepare the next item.
-  const rec = store.latest(planner.moveKeyFor('email-reply', 'email:email-A'));
-  store.respond({ recordId: rec.id, version: rec.version, response: 'decline' });
-  const next = await flow.makeItReady(call, { ref: B.ref });
-  assert.equal(next.kind, 'prepared', JSON.stringify(next));
-  const after = store.activeV2({ now: Date.now() });
-  assert.equal(after.length, 1); assert.equal(after[0].moveKey, planner.moveKeyFor('email-reply', 'email:email-B'));
+  assert.equal(second.kind, 'prepared', JSON.stringify(second));
+  const after = snapshot();
+  assert.equal(after.moves.length, 2);
+  // A untouched: same row, same version, no response, no grant.
+  assert.deepEqual(after.moves.find((m) => m.move_key === recA.moveKey), before.moves[0]);
+  assert.equal(store.latest(recA.moveKey).id, recA.id);
+  assert.deepEqual(after.responses, before.responses);
+  assert.equal(after.grants, before.grants);
+  const active = store.activeV2({ now: Date.now() }).map((r) => r.moveKey).sort();
+  assert.deepEqual(active, [planner.moveKeyFor('email-reply', 'email:email-A'), planner.moveKeyFor('email-reply', 'email:email-B')].sort());
 });
 
-test('an open proposal that has become invalid (resolved elsewhere) no longer blocks the next press', async () => {
+test('pressing the SAME item again returns the existing proposal — no second row, no second draft', async () => {
   const flow = await import(pathToFileURL(path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'makeReady.mjs')).href);
   const call = await clientCall();
-  // B is open now; its email leaves triage (answered elsewhere).
+  const before = snapshot(); const draftsBefore = drafts;
+  const raw = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: A.ref } });
+  assert.equal(raw.status, 200);
+  assert.equal(raw.body.outcome, 'existing');
+  assert.equal(raw.body.move.prepared.headline, 'I drafted the reply to Sam.');
+  const again = await flow.makeItReady(call, { ref: A.ref });
+  assert.equal(again.kind, 'prepared');
+  const after = snapshot();
+  assert.deepEqual(after.moves, before.moves, 'no new row or version');
+  assert.deepEqual(after.responses, before.responses);
+  assert.equal(drafts, draftsBefore, 'no second model call');
+});
+
+test('an existing proposal that has become invalid (resolved elsewhere) is not returned as if it still held', async () => {
+  const flow = await import(pathToFileURL(path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'makeReady.mjs')).href);
+  const call = await clientCall();
   const was = planner.DEFAULT_DEPS.triageEntry;
   planner.DEFAULT_DEPS.triageEntry = (id) => (id === 'email-B' ? null : was(id));
-  // Restore A by undoing the decline, so it is eligible again.
-  const recA = store.latest(planner.moveKeyFor('email-reply', 'email:email-A'));
-  store.respond({ recordId: recA.id, version: recA.version, response: 'restore' });
   try {
-    const r = await flow.makeItReady(call, { ref: A.ref });
-    assert.equal(r.kind, 'prepared', JSON.stringify(r));
+    const r = await flow.makeItReady(call, { ref: B.ref });
+    assert.notEqual(r.kind, 'prepared', JSON.stringify(r));
   } finally { planner.DEFAULT_DEPS.triageEntry = was; }
 });
 

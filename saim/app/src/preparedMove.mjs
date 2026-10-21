@@ -25,9 +25,9 @@ export function newSessionId(rand = Math.random) {
  * Hidden covers "nothing trustworthy is prepared" AND "could not ask" — the
  * surface must not grow a broken panel, and a guessed one is worse.
  */
-export async function load(call) {
+export async function load(call, { recordId = null } = {}) {
   let r;
-  try { r = await call(`${BASE}/current`); } catch { return { kind: 'hidden', why: 'unreachable' }; }
+  try { r = await call(recordId ? `${BASE}/current?recordId=${encodeURIComponent(recordId)}` : `${BASE}/current`); } catch { return { kind: 'hidden', why: 'unreachable' }; }
   if (!r || r.status !== 200 || !r.body || r.body.contract !== 'prepared-move-view-v1') return { kind: 'hidden', why: 'unreadable' };
   const view = r.body;
   // Not finished in time is NOT "nothing prepared" — the answer is unknown yet.
@@ -189,4 +189,14 @@ export function makeCall({ fetchImpl, apiUrl, authHeaders }) {
     try { parsed = await res.json(); } catch { parsed = null; }
     return { status: res.status, body: parsed };
   };
+}
+
+/**
+ * PURE. The other open prepared items, one line each, as the server stated
+ * them (prepared-move-view.outstandingFrom): what still needs Nick before SAiM
+ * can go on, versus what is already booked. Never more than the server sent.
+ */
+export function outstandingOf(view) {
+  const rows = view && Array.isArray(view.outstanding) ? view.outstanding : [];
+  return rows.filter((r) => r && typeof r.say === 'string' && r.recordId).map((r) => ({ recordId: r.recordId, title: r.title || '', say: r.say, state: r.state || null }));
 }

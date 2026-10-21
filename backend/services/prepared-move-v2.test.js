@@ -131,7 +131,7 @@ test('manual and automatic converge: "Make this ready" on the same item returns 
   const { d, calls } = deps([emailItem(id)]);
   const a = await planner.planAndStore({ now: NOW, origin: 'scan', deps: d });
   const b = await planner.planAndStore({ now: NOW + 60000, ref: emailItem(id).ref, origin: 'manual', deps: d });
-  assert.equal(b.outcome, 'unchanged');
+  assert.equal(b.outcome, 'existing', 'a repeated manual press returns the open proposal');
   assert.equal(b.record.id, a.record.id);
   assert.equal(calls.drafts, 1, 'unchanged evidence buys no second draft');
   assert.ok(Date.parse(store.get(a.record.id).evidenceExpiresAt) > Date.parse(a.record.evidenceExpiresAt), 'the re-check keeps it fresh');

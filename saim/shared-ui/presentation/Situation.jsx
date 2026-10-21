@@ -217,6 +217,8 @@ export default function Situation({
   // Keep my word: the shell's call to POST /api/promises/:key/prepare (only
   // PREPARES the governed draft) and its hand-off to Actions. Absent → no control.
   onPrepareDelivery = null,
+  // Keep my word: take a held promise forward as a prepared move. Absent → no control.
+  onPromiseMove = null,
   onOpenActions = null,
   // The locked Keep my word scene (dark amber network, readout left, main
   // surface right). The SAiM shells opt in; NEURO's own Now does not.
@@ -298,7 +300,7 @@ export default function Situation({
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
   const kmwFolded = kmw && !kmwLeads && (kmw.receipt || kmw.thread)
-    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />
+    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} />
     : null;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
@@ -329,7 +331,7 @@ export default function Situation({
               return [
                 kmwLeads ? (
                   <header key={i} className={`sit__situation sit__situation--kmw sit__situation--kmw-${kmw.state}`}>
-                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />
+                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} />
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>
                 ) : (

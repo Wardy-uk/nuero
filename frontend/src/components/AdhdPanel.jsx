@@ -802,6 +802,19 @@ export default function AdhdPanel({ onNavigate }) {
                 return body && typeof body === 'object' ? (res.ok ? body : { ...body, ok: false }) : { ok: false, error: `NEURO answered ${res.status}, so nothing was drafted.` };
               } catch { return { ok: false, error: 'NEURO didn’t answer, so nothing was drafted.' }; }
             }}
+            // Keep my word: take a held promise forward as a prepared move — asks, in place,
+            // the one thing SAiM needs (who it is owed to); stores a proposal or the answer only.
+            onPromiseMove={async (op) => {
+              const path = op && op.action === 'answer' ? '/api/prepared-moves/answer' : '/api/prepared-moves/prepare';
+              const body = op && op.action === 'answer' ? { recordId: op.recordId, version: op.version, questionId: op.questionId, text: op.text } : { ref: op && op.ref };
+              try {
+                const res = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const b = await res.json().catch(() => null);
+                const out = b && typeof b === 'object' ? (res.ok ? b : { ...b, ok: false }) : { ok: false, error: `NEURO answered ${res.status}.` };
+                if (out.ok) attention.refresh();
+                return out;
+              } catch { return { ok: false, error: 'NEURO didn’t answer.' }; }
+            }}
             onOpenActions={onNavigate ? () => onNavigate('actions') : null}
           />
         </section>

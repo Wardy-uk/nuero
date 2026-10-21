@@ -8,7 +8,8 @@
  * desktop chats over MCP:
  *
  *   GET  /current — what SAiM has prepared, read only: stores nothing and
- *                   mints nothing (prepared-move-view).
+ *                   mints nothing (prepared-move-view). ?recordId= shows that one.
+ *   GET  /promises — Keep my word promises and what SAiM needs to know (read).
  *   POST /prepare — plan one Now item and store the proposal (no external write).
  *   POST /respond — defer (1/3/7 days, with a reason), decline, or restore.
  *   POST /answer  — answer SAiM's question; the move is planned again.
@@ -49,7 +50,9 @@ const send = (res, r) => {
 };
 
 const RECORD_RE = /^pm_[0-9a-f]{20}$/;
-const REF_RE = /^(item|held):[A-Za-z0-9_:.@-]{1,200}$/;
+const REF_RE = /^(item|held|promise):[A-Za-z0-9_:.@-]{1,200}$/;
+/** A promise's Keep my word card must re-read what just changed. */
+const freshKmw = () => { try { require('../services/canonical-read').invalidateKeepMyWord(); } catch { /* expires within the minute */ } };
 const by = (req) => { const m = caller(req).machine || (req.apiClient ? String(req.apiClient) : null); return m ? `machine:${m}` : 'nick'; };
 const planner = () => require('../services/prepared-move-planner');
 const pstore = () => require('../services/prepared-move-store');
@@ -62,8 +65,10 @@ async function shown(record) {
 
 // GET /api/prepared-moves/current — prepared move, read only (make ready, SAiM proposal, drafted reply, meeting prep): what SAiM has prepared now — the draft, evidence and freshness, exact writes, any question she needs answered, and `makeReady` when nothing is prepared. Stores and mints nothing. Machines may read; only Nick confirms.
 router.get('/current', async (req, res) => {
+  const { recordId = null } = req.query || {};
+  if (recordId !== null && (typeof recordId !== 'string' || !RECORD_RE.test(recordId))) return res.status(400).json({ ok: false, error: 'recordId must be a prepared move id' });
   try {
-    res.json(await view().currentView());
+    res.json(await view().currentView(recordId ? { recordId } : {}));
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -79,17 +84,26 @@ router.get('/eligible', async (req, res) => {
   }
 });
 
+// GET /api/prepared-moves/promises — held promises SAiM needs an answer on (keep my word, who is it owed to, waiting for you): each Keep my word promise at risk, what is missing (the exact question), its ref for /prepare, and its prepared move (recordId, version, question) if one exists. Answer with /prepare then /answer. Read only.
+router.get('/promises', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await require('../services/promise-moves').list()) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/prepared-moves/prepare — make ready (make this ready, draft the reply, meeting prep, draft note): take ONE Now item (its ref) to the furthest safe point — the real draft, a solo block only if your time is needed, or a question for Nick. Stores a PROPOSAL only; nothing is saved, booked or sent until Nick confirms. Body: { ref }
 router.post('/prepare', async (req, res) => {
   const bad = strict(req.body, ['ref']);
   if (bad) return res.status(400).json({ ok: false, error: bad });
   const { ref } = req.body || {};
-  if (typeof ref !== 'string' || !REF_RE.test(ref)) return res.status(400).json({ ok: false, error: 'ref is required — a Now item reference (item:… or held:…)' });
+  if (typeof ref !== 'string' || !REF_RE.test(ref)) return res.status(400).json({ ok: false, error: 'ref is required — a Now item reference (item:…, held:… or promise:…)' });
   try {
     const r = await planner().planAndStore({ ref, origin: req.apiClient || caller(req).machine ? 'mcp' : 'manual' });
-    // One active prepared move at a time: the open one is named, untouched, and the way to it given.
-    if (r.outcome === 'already-active') return res.status(409).json({ ok: false, outcome: 'already-active', error: r.why, active: { title: r.active.title, headline: r.active.headline }, openOn: 'surface' });
     if (!r.ok) return res.status(409).json({ ok: false, error: r.why, reason: r.reason || null, withheld: r.withheld });
+    if (ref.startsWith('promise:')) freshKmw();
+    if (r.outcome === 'handoff') return res.json({ ok: true, outcome: 'handoff', say: r.why, handoff: r.handoff, move: null });
     if (!r.record) return res.json({ ok: true, outcome: r.outcome, say: r.why || null, move: null });
     res.json({ ok: true, outcome: r.outcome, move: await shown(r.record), confirmWhere: 'Only Nick can confirm it, on his SAiM screen.' });
   } catch (e) {
@@ -126,7 +140,9 @@ router.post('/answer', async (req, res) => {
     const a = pstore().addAnswer({ recordId, version, questionId, text, by: by(req) });
     if (!a.ok) return res.status(a.code || 409).json({ ok: false, error: a.why });
     const s = a.record.packet.selected;
-    const r = await planner().planAndStore({ source: { kind: s.kind, sourceKey: s.sourceKey, source: s.source, ref: s.ref, title: s.title }, origin: 'answer' });
+    const r = await planner().planAndStore({ source: { kind: s.kind, sourceKey: s.sourceKey, source: s.source, ref: s.ref, title: s.title }, origin: 'answer', firstOrigin: a.record.packet.firstOrigin || a.record.packet.origin || null });
+    if ((s.source || {}).promiseKey) freshKmw();
+    if (r.ok && r.outcome === 'handoff') return res.json({ ok: true, answered: true, outcome: 'handoff', say: r.why, handoff: r.handoff, move: null });
     if (!r.ok) return res.status(409).json({ ok: false, error: r.why, answered: true });
     res.json({ ok: true, answered: true, outcome: r.outcome, move: r.record ? await shown(r.record) : null });
   } catch (e) {

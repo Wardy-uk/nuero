@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { promiseMoveResult } from './promiseMove.mjs';
 import './KeepMyWord.css';
 
 // Keep my word — the locked SAiM home scene (timefield.html, 21 Oct 2026).
@@ -15,8 +16,10 @@ import './KeepMyWord.css';
 //   server's. Its controls are hand-offs the SHELL supplies: `onOpen` (the
 //   task) and, for a promise that is a message, `onPrepareDelivery` — which
 //   only PREPARES the governed draft (POST /api/promises/:key/prepare) and
-//   shows what came back. Never a confirm, an approval or a send: a held thread
-//   NAMES what is missing and offers no way round it. No URL lives here, so a
+//   shows what came back; and `onPromiseMove`, which takes a held promise
+//   forward as a prepared move — asking, in place, the one thing SAiM needs
+//   (who it is owed to) and storing a PROPOSAL. Never a confirm, an approval
+//   or a send: a held thread NAMES what is missing and offers no way round it. No URL lives here, so a
 //   shell without a credential path (the kiosk) simply passes no handler.
 
 export function KmwReadout({ readout, compact = false }) {
@@ -98,7 +101,74 @@ function DraftResult({ result, draft, onOpenActions }) {
   );
 }
 
-export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
+/**
+ * Taking the promise forward IN PLACE (24 Oct 2026): one control, then the ONE
+ * question SAiM needs answered (who it is owed to, or the next thing), asked
+ * here — never "go and open the task". The shell's `onPromiseMove` does the
+ * network (prepare / answer through the prepared-move routes); every word
+ * shown is the server's. Nothing here sends, books or confirms anything.
+ */
+export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
+  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(null); // promiseMoveResult()
+  const [text, setText] = useState('');
+  if (!move) return null;
+  const can = Boolean(onPromiseMove) && !readOnly;
+  // The question on screen: one just asked, or the one the move is already asking.
+  const asking = step && step.kind === 'ask' ? step
+    : !step && move.state === 'ask' && move.question ? { kind: 'ask', question: move.question, recordId: move.recordId, version: move.version } : null;
+  const run = async (op, answering) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = promiseMoveResult(await onPromiseMove(op), { answering });
+      if (r.kind === 'refused' && r.keep) setStep({ ...asking, refused: r.message });
+      else { setStep(r); setText(''); }
+    } catch {
+      setStep(answering ? { ...asking, refused: 'NEURO didn’t answer. Your answer was not saved — it is still in the box.' } : { kind: 'refused', message: 'NEURO didn’t answer. Nothing was changed.' });
+    } finally { setBusy(false); }
+  };
+  const press = () => run({ action: 'prepare', ref: move.ref }, false);
+  const submit = (e) => {
+    e.preventDefault();
+    const t = text.trim();
+    if (!t || !asking) return;
+    run({ action: 'answer', recordId: asking.recordId, version: asking.version, questionId: asking.question.id, text: t }, true);
+  };
+  const q = asking && asking.question;
+  return (
+    <div className="kmw__row kmw__row--move">
+      <span className="kmw__rowlabel">Next</span>
+      <div>
+        {move.say && !step && move.state !== 'ask' && <p className="kmw__rowline">{move.say}</p>}
+        {q ? (
+          <form className="kmw__ask" onSubmit={submit}>
+            <label className="kmw__rowline kmw__ask-q" htmlFor={`kmw-q-${move.ref}`}>{q.question}</label>
+            {q.why && <p className="kmw__rowline kmw__ask-why">{q.why}</p>}
+            {can ? (
+              <>
+                {q.choices && q.choices.length > 0 && (
+                  <div className="kmw__choices">
+                    {q.choices.map((c) => <button key={c} type="button" className={`kmw__choice${text === c ? ' kmw__choice--on' : ''}`} onClick={() => setText(c)} disabled={busy}>{c}</button>)}
+                  </div>
+                )}
+                <input id={`kmw-q-${move.ref}`} className="kmw__ask-input" type="text" maxLength={120} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} placeholder="A full name, or a group" autoComplete="off" />
+                <div className="kmw__actions"><button type="submit" className="kmw__open" disabled={busy || !text.trim()}>{busy ? 'Telling SAiM…' : 'Tell SAiM'}</button></div>
+              </>
+            ) : <p className="kmw__rowline">Answer this in SAiM on your phone or desktop.</p>}
+            {asking.refused && <p className="kmw__rowline kmw__draft-error" role="status">{asking.refused}</p>}
+          </form>
+        ) : step ? (
+          <p className={`kmw__rowline${step.kind === 'refused' ? ' kmw__draft-error' : ' kmw__draft-done'}`} role="status">{step.kind === 'refused' ? step.message : step.say}</p>
+        ) : move.state === 'offer' && move.control && can ? (
+          <div className="kmw__actions"><button type="button" className="kmw__open" onClick={press} disabled={busy}>{busy ? 'One moment…' : move.control}</button></div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
   if (!thread) return null;
@@ -119,7 +189,10 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
   // One control per state: where a delivery can be drafted, that IS the control.
   // A HELD thread offers none: opening the task resolves nothing it names (the
   // missing address or authority), so the held sentence stands alone.
-  const open = actions && onOpen && !canDraft && !thread.held
+  // Where SAiM can take the promise forward, that IS the control — opening the
+  // task stays only where nothing else can move it (24 Oct 2026).
+  const moving = Boolean(thread.move);
+  const open = actions && onOpen && !canDraft && !thread.held && !moving
     ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
     : null;
   return (
@@ -151,6 +224,7 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
             </div>
           </div>
         )}
+        {moving && <KmwMove move={thread.move} onPromiseMove={actions ? onPromiseMove : null} readOnly={!actions} />}
         {thread.held && (
           <div className="kmw__row kmw__row--held">
             <span className="kmw__rowlabel">Held</span>
@@ -174,8 +248,8 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
 }
 
 /** The main surface: the receipt when there is one (the thread, if any, folded under it), else the thread. */
-export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
-  const t = { onOpen, actions, onPrepareDelivery, onOpenActions };
+export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null }) {
+  const t = { onOpen, actions, onPrepareDelivery, onPromiseMove, onOpenActions };
   if (!kmw) return null;
   if (kmw.receipt) {
     return (
@@ -194,12 +268,12 @@ export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery
 }
 
 /** The folded entry beneath an urgent lead: recognisable by its title, opened on demand. */
-export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
+export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null }) {
   if (!kmw || !kmw.entry) return null;
   return (
     <details className="kmw__fold kmw__fold--entry">
       <summary>{kmw.entry}</summary>
-      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />
+      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} />
     </details>
   );
 }
