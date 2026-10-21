@@ -24,6 +24,7 @@ export const interactive = {
   // confirmation; confirming writes to Nick's calendar and vault. Both are his.
   get_prepared_moves_current: 'What SAiM has prepared is shown to Nick on his SAiM screen, where he can act on it. An agent cannot read it on his behalf.',
   post_prepared_moves_request: 'Asking to confirm a prepared move is Nick, in NEURO, looking at exactly what it would write. An agent cannot do it.',
+  post_promises_by_key_prepare: 'Drafting an email about a promise is Nick’s press in NEURO; sending it still needs his approval code.',
   post_prepared_moves_confirm: 'Confirming a prepared move writes to Nick\'s calendar and vault. Only Nick can confirm it, in NEURO.',
   // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
   get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',

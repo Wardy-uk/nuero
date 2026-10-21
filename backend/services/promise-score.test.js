@@ -213,7 +213,7 @@ test('the Monday report is judged separately against midday London on its due da
 
 test('the Monday report never enters the promise counts', () => {
   const r = run([]);
-  assert.deepEqual(r.counts, { due: 0, keptOnTime: 0, late: 0, unverified: 0, pending: 0, dropped: 0, reDated: 0, undated: 0 });
+  assert.deepEqual(r.counts, { due: 0, keptOnTime: 0, late: 0, unverified: 0, pending: 0, dropped: 0, reDated: 0, undated: 0, beforeProofSource: 0 });
 });
 
 // ── The proof reader, over the REAL table definitions ────────────────────────
@@ -256,17 +256,36 @@ test('readProofs: only a VERIFIED deliver-email naming the promise, whose latest
   addAction(db, { id: 'pa_exec', status: 'executed', evidence: { promiseKey: 'promise:3', move: 'deliver-email' } });
   addAction(db, { id: 'pa_amb', status: 'verified', evidence: { promiseKey: 'promise:4', move: 'deliver-email' },
     verifications: [{ at: '2026-10-20T09:03:00Z', outcome: 'ambiguous' }] });
-  const { proofs, source } = s.readProofs(db);
+  const { proofs, source } = s.readProofs(db, { executionOn: true });
   assert.equal(source.status, 'connected');
-  assert.equal(source.linkedActions, 4);
+  assert.equal(source.linkedActions, 3, 'a chase is not a delivery link');
+  assert.equal(source.connectedSince, '2026-10-20T08:00:00Z');
   assert.deepEqual([...proofs.keys()], ['promise:1']);
   assert.deepEqual(proofs.get('promise:1'), { actionId: 'pa_ok', provenBy: '2026-10-20T09:03:00Z', sentNotBefore: '2026-10-20T09:00:05Z', messageRef: 'm1' });
+});
+
+test('readProofs: with “Send approved emails” off nothing is connected and NO proof is returned', () => {
+  const db = realActionDb();
+  addAction(db, { id: 'pa_ok', status: 'verified', evidence: { promiseKey: 'promise:1', move: 'deliver-email' }, verifications: [{ at: '2026-10-20T09:03:00Z', outcome: 'verified' }] });
+  const r = s.readProofs(db, { executionOn: false });
+  assert.equal(r.source.status, 'not-connected');
+  assert.equal(r.proofs.size, 0);
+  assert.match(r.source.why, /Send approved emails/);
+});
+
+test('a due point that ended before the proof source existed is excluded and counted, never late', () => {
+  const src = { status: 'connected', connectedSince: '2026-10-21T09:00:00Z' };
+  const r = run([promise({ key: 'promise:1', due: '2026-10-20' }), promise({ key: 'promise:2', taskIds: [2], due: '2026-10-21' })], { proofSource: src });
+  assert.equal(r.counts.beforeProofSource, 1);
+  assert.equal(r.counts.late, 0);
+  assert.equal(r.counts.pending, 1);
+  assert.deepEqual(r.entries.map((e) => e.key), ['promise:2']);
 });
 
 test('readProofs: no action has ever named a promise → not-connected, and an unreadable table → unreadable', () => {
   const db = realActionDb();
   addAction(db, { id: 'pa_other', status: 'verified', evidence: { findingId: 'x' }, verifications: [{ at: '2026-10-20T09:03:00Z', outcome: 'verified' }] });
-  assert.equal(s.readProofs(db).source.status, 'not-connected');
+  assert.equal(s.readProofs(db, { executionOn: true }).source.status, 'not-connected');
   const broken = { all: () => { throw new Error('no such table'); }, get: () => null };
   assert.equal(s.readProofs(broken).source.status, 'unreadable');
 });

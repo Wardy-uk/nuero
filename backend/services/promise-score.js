@@ -30,10 +30,12 @@
  * `provenBy` before the due point; late needs `sentNotBefore` after it; a
  * bracket that straddles the point is UNVERIFIED for timing, and says so.
  *
- * ⚠ The loop that prepares those sends (promise-loop, origin 'saim-promise')
- *   is not on this branch. Until a promise-linked governed delivery exists,
- *   `proofSource.status` is 'not-connected', the ratio is NULL and every count
- *   says why — a score is never fabricated from ticks.
+ * ⚠ Those sends are prepared by services/promise-delivery (the deliver-email
+ *   half of promise-loop). The source counts as CONNECTED only once one has
+ *   been prepared AND "Send approved emails" is on; until then the ratio is
+ *   NULL and every count says why — a score is never fabricated from ticks.
+ *   A due point that passed before the first one is excluded and counted
+ *   (`beforeProofSource`), never scored as late.
  *
  * ── Due point ───────────────────────────────────────────────────────────────
  * The date stated in the promise's own wording, else the task's due date when
@@ -215,7 +217,10 @@ function reDatesIn(promise, week) {
 function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), proofSource = { status: 'not-connected' }, week, now, gaps = [] }) {
   const nowMs = msOf(now);
   const wk = week || londonWeek(nowMs);
-  const counts = { due: 0, keptOnTime: 0, late: 0, unverified: 0, pending: 0, dropped: 0, reDated: 0, undated: 0 };
+  const counts = { due: 0, keptOnTime: 0, late: 0, unverified: 0, pending: 0, dropped: 0, reDated: 0, undated: 0, beforeProofSource: 0 };
+  // A due point that passed before the first promise delivery could exist cannot
+  // be judged by delivery evidence: excluded and counted, never scored as late.
+  const sinceMs = proofSource.status === 'connected' && proofSource.connectedSince ? Date.parse(proofSource.connectedSince) : NaN;
   const reDated = { moved: 0, recommitted: 0 };
   const entries = [];
   const reDatedEntries = [];
@@ -235,6 +240,7 @@ function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), pr
       continue;
     }
     if (due.date < wk.start || due.date > wk.end) continue;
+    if (Number.isFinite(sinceMs) && due.endsMs <= sinceMs && !proofs.has(p.key)) { counts.beforeProofSource += 1; continue; }
     const verdict = classify(p, due, proofs.get(p.key) || null, nowMs);
     entries.push(entryFor(p, due, verdict));
     if (verdict.outcome === 'dropped') { counts.dropped += 1; continue; }
@@ -261,7 +267,7 @@ function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), pr
     proofSource: { rule: PROOF_RULE, ...proofSource },
     why: !readable ? 'NEURO couldn’t read the task list, so nothing is counted as kept.'
       : proofSource.status === 'unreadable' ? 'NEURO couldn’t read its delivery records, so nothing is counted as kept.'
-        : proofSource.status !== 'connected' ? 'Nothing yet records a delivery against your promises — ticks are not delivery, so none is counted as kept.'
+        : proofSource.status !== 'connected' ? `${proofSource.why ? `${proofSource.why.charAt(0).toUpperCase()}${proofSource.why.slice(1)} — ` : ''}ticks are not delivery, so none is counted as kept.`
           : null,
     entries,
     reDatedEntries,
@@ -312,15 +318,28 @@ const parse = (j) => { try { return j ? JSON.parse(j) : null; } catch { return n
  * The verified deliveries that name a promise. Reads prepared_actions,
  * action_attempts and action_verifications only.
  */
-function readProofs(db = _db()) {
+function _executionOn() {
+  try { return require('./feature-flags').isEnabled('governed_execution') === true; } catch { return false; }
+}
+
+/**
+ * The source is CONNECTED only when both are true — otherwise the score stays
+ * unmeasured (fail closed):
+ *   - at least one promise-linked deliver-email has been prepared through the
+ *     governed path (promise-delivery) — the score measures from then on
+ *     (`connectedSince`); and
+ *   - "Send approved emails" (governed_execution) is on, so a delivery CAN be
+ *     sent and read back.
+ */
+function readProofs(db = _db(), { executionOn = _executionOn } = {}) {
   const proofs = new Map();
   let rows;
   try {
-    rows = db.all(`SELECT action_id, status, evidence_json, verified_at FROM prepared_actions WHERE evidence_json LIKE '%promiseKey%'`);
+    rows = db.all(`SELECT action_id, status, evidence_json, verified_at, created_at FROM prepared_actions WHERE evidence_json LIKE '%promiseKey%'`);
   } catch (e) {
     return { proofs, source: { status: 'unreadable', why: e.message } };
   }
-  const linked = rows.map((r) => ({ ...r, ev: parse(r.evidence_json) || {} })).filter((r) => r.ev.promiseKey);
+  const linked = rows.map((r) => ({ ...r, ev: parse(r.evidence_json) || {} })).filter((r) => r.ev.promiseKey && r.ev.move === 'deliver-email');
   for (const r of linked) {
     if (r.status !== 'verified' || r.ev.move !== 'deliver-email') continue;
     let v; let att;
@@ -334,12 +353,11 @@ function readProofs(db = _db()) {
     const prev = proofs.get(r.ev.promiseKey);
     if (!prev || Date.parse(proof.provenBy) < Date.parse(prev.provenBy)) proofs.set(r.ev.promiseKey, proof);
   }
-  return {
-    proofs,
-    source: linked.length
-      ? { status: 'connected', linkedActions: linked.length, verifiedDeliveries: proofs.size }
-      : { status: 'not-connected', why: 'no governed send has ever named a promise — the promise loop that prepares them is not running here' },
-  };
+  if (!linked.length) return { proofs, source: { status: 'not-connected', why: 'no promise delivery has been prepared yet, so the score starts with the first one' } };
+  const on = typeof executionOn === 'function' ? executionOn() : Boolean(executionOn);
+  if (!on) return { proofs: new Map(), source: { status: 'not-connected', why: '“Send approved emails” is off, so no promise delivery can be read back', linkedActions: linked.length } };
+  const connectedSince = linked.map((r) => r.created_at).filter(Boolean).sort()[0] || null;
+  return { proofs, source: { status: 'connected', connectedSince, linkedActions: linked.length, verifiedDeliveries: proofs.size } };
 }
 
 /** due_basis for each promise's lead task, from the world model (commitment:task:<id>). */

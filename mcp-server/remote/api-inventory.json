@@ -5507,7 +5507,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 275,
+    "line": 276,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -12536,6 +12536,27 @@
     "query": [],
     "body": [
       "sphere"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_promises_by_key_prepare",
+    "method": "POST",
+    "route": "/api/promises/:key/prepare",
+    "domain": "promises",
+    "source": "routes/promise-delivery.js",
+    "line": 15,
+    "description": "POST /api/promises/:key/prepare. prepare the governed email that delivers one meeting promise (needs approval in Actions; never sends).",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [
+      "move",
+      "to"
     ],
     "queryOpen": false,
     "bodyOpen": true,

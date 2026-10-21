@@ -152,6 +152,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/waiting-on/:key/chase', 'email.send'),
   R('POST', '/api/weekly-risk/queue-send', 'email.send'),
   R('POST', '/api/soap/:weekFrom/queue-send', 'email.send'),
+  // Meeting promises (21 Oct 2026): drafting the email that delivers a promise is Nick's press; sending still needs his approval code.
+  R('POST', '/api/promises/:key/prepare', 'email.send', { machine: 'refuse' }),
   R('POST', '/api/soap/:weekFrom/test-send', 'email.self'),
   R('POST', '/api/soap/recipients', 'config.security'),
   R('POST', '/api/weekly-risk/test-send', 'email.self'),

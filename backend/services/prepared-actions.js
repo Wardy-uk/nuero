@@ -964,7 +964,7 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
  * never sent here; it goes on his click (origin 'composer') through the same
  * executor, ledger and Sent verification as everything else.
  */
-function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = '', attachments = null, origin = 'composer', now = Date.now() } = {}) {
+function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = '', attachments = null, origin = 'composer', generatedBy = null, evidence: extraEvidence = null, now = Date.now() } = {}) {
   const nowMs = msOf(now);
   const policy = registry.policyFor('compose_email');
   const mailbox = String(from || 'work');
@@ -986,8 +986,8 @@ function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = 
   const id = crypto.randomBytes(8).toString('hex');
   const subjectKey = `compose:${id}`;
   const target = { kind: 'compose', mailbox };
-  const draft = { channel: 'email', voice: 'nick', generatedBy: 'typed by Nick in Personal inbox → Compose', to: toList, cc: ccList, subject: subj, body: text, placeholders: _placeholders(text), ...(refs.length ? { attachments: refs } : {}) };
-  const evidence = { origin, from: mailbox };
+  const draft = { channel: 'email', voice: 'nick', generatedBy: generatedBy || 'typed by Nick in Personal inbox → Compose', to: toList, cc: ccList, subject: subj, body: text, placeholders: _placeholders(text), ...(refs.length ? { attachments: refs } : {}) };
+  const evidence = { origin, from: mailbox, ...(extraEvidence && typeof extraEvidence === 'object' ? extraEvidence : {}) };
   const action = _insertPrepared({
     actionType: 'compose_email', subjectKey, findingId: subjectKey, subjectRef: subjectKey, target, draft, evidence, origin,
     reason: `New email to ${toList.map((r) => r.name || r.email).join(', ')}: "${subj}"`,

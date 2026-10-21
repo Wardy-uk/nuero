@@ -309,9 +309,18 @@ test('excluded features are absent from the branch: no briefing, proposals, goal
   for (const rel of ['saim/policy/briefing.cjs', 'backend/services/goal-proposals.js', 'backend/services/promise-loop.js', 'backend/routes/promises.js']) {
     assert.equal(fs.existsSync(path.join(root, rel)), false, rel);
   }
-  assert.doesNotMatch(fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8'), /promise/i, 'no route mounted');
-  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'authority-matrix.js'), 'utf8'), /promises/);
-  assert.doesNotMatch(fs.readFileSync(path.join(root, 'mcp-server', 'remote', 'api-policy.js'), 'utf8'), /promises/);
+  // 21 Oct 2026 (Keep my word): ONE promise door is permitted — preparing the
+  // governed email that delivers a promise (services/promise-delivery). It
+  // never sends (approval code in Actions), is machine-refused and interactive
+  // in the gateway. Everything else stays excluded, pinned exactly.
+  const server = fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8');
+  assert.deepEqual(server.split('\n').filter((l) => /promise/i.test(l)), ["app.use('/api/promises', require('./routes/promise-delivery'));"], 'only the delivery door is mounted');
+  const door = fs.readFileSync(path.join(root, 'backend', 'routes', 'promise-delivery.js'), 'utf8');
+  assert.deepEqual([...door.matchAll(/router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['post /:key/prepare'], 'the door has exactly one route');
+  const matrixSrc = fs.readFileSync(path.join(__dirname, 'authority-matrix.js'), 'utf8');
+  assert.deepEqual(matrixSrc.split('\n').filter((l) => /R\(.*\/api\/promises/.test(l)).map((l) => l.trim()), ["R('POST', '/api/promises/:key/prepare', 'email.send', { machine: 'refuse' }),"]);
+  const gw = fs.readFileSync(path.join(root, 'mcp-server', 'remote', 'api-policy.js'), 'utf8');
+  assert.deepEqual([...gw.matchAll(/(\w*promises\w*):/g)].map((m) => m[1]), ['post_promises_by_key_prepare']);
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'canonical-read.js'), 'utf8'), /sponsorship|promiseFeed|promise-shadow|promise-observe|goal-proposals|saveGoal\([^)]*sponsor/);
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'task-blocks.js'), 'utf8'), /plannedAfterDue/);
 });
