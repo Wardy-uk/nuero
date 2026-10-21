@@ -124,8 +124,23 @@ const V2_NOTE_RULES = Object.freeze({
   'project-note': (p) => { const m = /^Projects\/([^/]+)\/[^/]+\.md$/.exec(p); return Boolean(m) && !['Archive', 'PIP'].includes(m[1]); },
   'meeting-prep': (p) => /^Meetings\/\d{4}\/\d\d\/[^/]+ Prep\.md$/.test(p),
 });
-/** Where a PRIVATE working draft may be saved: beside its source meeting, or in a project folder. */
-const PRIVATE_NOTE_RULE = (p) => /^Meetings\/\d{4}\/\d\d\/[^/]+ – Private draft\.md$/.test(p) || /^Projects\/(?!Archive\/|PIP\/)[^/]+\/[^/]+ \(private draft\)\.md$/.test(p);
+/**
+ * Where a PRIVATE working draft may be saved (26 Oct 2026): a project folder,
+ * or the fixed holding place Projects/Working — NEVER beside a meeting (the
+ * meeting note is evidence, not a destination).
+ */
+const PRIVATE_NOTE_RULE = (p) => /^Projects\/(?!Archive\/|PIP\/)[^/]+\/[^/]+ \(private draft\)\.md$/.test(p);
+
+/** PURE. Where a private draft's path puts it, in words — read from the PATH, so the confirmation and the receipt cannot claim more than the write. */
+function destinationOf(p) {
+  const folder = path.posix.dirname(String(p || ''));
+  if (folder === require('./private-brief').WORKING_FOLDER) return { folder, project: null, say: 'Working drafts' };
+  const m = /^Projects\/([^/]+)$/.exec(folder);
+  return { folder, project: m ? m[1] : null, say: m ? `Linked to project: ${m[1]}` : folder };
+}
+
+/** PURE. Questions of a private draft's interview that are neither answered nor parked. */
+function openQuestions(s) { return (((s && s.interview) || {}).questions || []).filter((q) => q.state === 'open'); }
 
 /**
  * PURE. Is this v2 packet a PRIVATE working draft that may be carried out
@@ -165,23 +180,41 @@ function writesForV2(packet, option) {
   const d = s.decision || {};
   const slot = (d.slots || []).find((x) => x.id === option);
   if (!slot) return refuse(`"${option}" is not one of the choices this move offered`);
+  // The private-draft interview (26 Oct 2026). While any question is neither
+  // answered nor parked, the ONLY thing that can be confirmed is saving the
+  // draft UNFINISHED — no block is booked. "Save it and protect the time" waits
+  // until every question has an answer or an explicit park.
+  const unfinished = option === 'unfinished';
+  if (unfinished && !privateDraft) return refuse('only a private draft can be saved unfinished');
+  const open = privateDraft ? openQuestions(s) : [];
+  if (privateDraft && open.length && !unfinished) return refuse(`${open.length} question${open.length === 1 ? ' is' : 's are'} still open — answer or park ${open.length === 1 ? 'it' : 'them'} first, or save the draft unfinished (no time booked)`);
+  if (unfinished && !open.length) return refuse('nothing is still open — save it and protect the time instead');
   const writes = d.proposedWrites || [];
   const kinds = writes.map((w) => w.kind);
   if (!writes.length || new Set(kinds).size !== kinds.length || kinds.some((k) => !['vault.note', 'governed.reply', 'calendar.solo'].includes(k))) return refuse('the move must be at most one note, one reply draft and one solo block');
   const draft = ((s.preparation || []).find((x) => x.draft) || {}).draft;
   if (!draft) return refuse('there is no prepared draft');
-  if (require('./promise-ledger').hrSensitivity(`${draft}\n${s.title}`).sensitive) return refuse('the draft reads as an employment matter — routing only, never executed');
+  // A private draft is screened over SAiM's own words; "You said" is Nick's, in his own note.
+  const screened = privateDraft ? require('./private-brief').samText(draft) : draft;
+  if (require('./promise-ledger').hrSensitivity(`${screened}\n${s.title}`).sensitive) return refuse('the draft reads as an employment matter — routing only, never executed');
 
   const moveKey = s.moveKey;
+  let destination = null;
   const steps = []; const lines = [];
   const note = writes.find((w) => w.kind === 'vault.note');
   if (note) {
     const p = String(note.path || '');
     const rule = privateDraft ? PRIVATE_NOTE_RULE : V2_NOTE_RULES[s.kind];
     if (!rule || p.includes('..') || p.includes('\0') || !rule(p)) return refuse('the note path is not one a prepared move may save into');
-    const content = ['---', 'type: draft', ...(privateDraft ? ['private: true'] : []), 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
+    const content = ['---', 'type: draft', ...(privateDraft ? ['private: true'] : []), ...(unfinished ? ['unfinished: true'] : []), 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
     steps.push({ step: 'note', writer: WRITER.note, path: p, content, contentSha: sha(content) });
-    lines.push(`Save the ${s.kind === 'meeting-prep' ? 'meeting prep' : 'draft'} as a new note: ${p}`);
+    if (privateDraft) {
+      destination = destinationOf(p);
+      lines.push(`Save your ${unfinished ? 'unfinished ' : ''}private draft as a new note — ${destination.say}: ${p}`);
+      if (unfinished) lines.push(`No time is booked. ${open.length} question${open.length === 1 ? ' is' : 's are'} still open and listed in the note; SAiM won’t ask ${open.length === 1 ? 'it' : 'them'} again after this.`);
+    } else {
+      lines.push(`Save the ${s.kind === 'meeting-prep' ? 'meeting prep' : 'draft'} as a new note: ${p}`);
+    }
   }
   const reply = writes.find((w) => w.kind === 'governed.reply');
   if (reply) {
@@ -191,7 +224,7 @@ function writesForV2(packet, option) {
     steps.push({ step: 'reply', emailId: reply.emailId, mode: 'reply', body, bodySha: sha(body), to: reply.to || null });
     lines.push(`Put the reply to ${reply.toName || reply.to} in Actions, waiting for your approval code. It is NOT sent.`);
   }
-  const cal = writes.find((w) => w.kind === 'calendar.solo');
+  const cal = unfinished ? null : writes.find((w) => w.kind === 'calendar.solo');
   if (cal) {
     if (!slot.date || !/^\d{4}-\d\d-\d\d$/.test(slot.date) || !/^\d\d:\d\d$/.test(slot.start || '') || !/^\d\d:\d\d$/.test(slot.end || '') || toMin(slot.end) <= toMin(slot.start)) return refuse('the offered time is not a valid block');
     if (!Array.isArray(cal.attendees) || cal.attendees.length !== 0) return refuse('the block has attendees — a block that invites anyone is not this action');
@@ -202,10 +235,10 @@ function writesForV2(packet, option) {
     return refuse('this move offers a time but books no block');
   }
   return {
-    ok: true, contract: 'prepared-move-v2', moveKey, option, slot: cal ? slot : null, steps, writeHash: sha(JSON.stringify(steps)),
+    ok: true, contract: 'prepared-move-v2', moveKey, option, slot: cal ? slot : null, steps, writeHash: sha(JSON.stringify(steps)), destination,
     forum: s.forum || null, verification: s.verification || null, title: s.title,
     confirmation: {
-      question: s.kind === 'email-reply' ? 'Put this reply in Actions for your approval?' : cal ? `Save the draft and reserve ${toMin(slot.end) - toMin(slot.start)} minutes on ${dayLong(slot.date)} (${slot.start}–${slot.end})?` : 'Save this as a note?',
+      question: s.kind === 'email-reply' ? 'Put this reply in Actions for your approval?' : unfinished ? 'Save this unfinished draft? No time will be booked.' : cal ? `Save the draft and reserve ${toMin(slot.end) - toMin(slot.start)} minutes on ${dayLong(slot.date)} (${slot.start}–${slot.end})?` : 'Save this as a note?',
       writes: lines,
       contacts: reply ? 'Nothing is sent: the reply waits in Actions until you approve it with your code. Nobody is invited and no task is created.' : 'Nobody is contacted: no email, invite or message, and no task is created.',
     },
@@ -349,7 +382,14 @@ function liveAdapters() {
       async read(rel) { try { return fs.readFileSync(guard(rel), 'utf8'); } catch { return null; } },
       async writeNew(rel, content) {
         const p = guard(rel);
-        if (!fs.existsSync(path.dirname(p))) throw new Error('HTTP 400 the project folder does not exist — not creating folders');
+        if (!fs.existsSync(path.dirname(p))) {
+          // The ONE folder a save may create (26 Oct 2026): Projects/Working, the fixed
+          // holding place for private drafts with no project home. Never a folder named
+          // by a move, an answer or anyone's words — and only inside an existing Projects/.
+          const working = guard(require('./private-brief').WORKING_FOLDER);
+          if (path.dirname(p) !== working || !fs.existsSync(path.dirname(working))) throw new Error('HTTP 400 the project folder does not exist — not creating folders');
+          fs.mkdirSync(working);
+        }
         fs.writeFileSync(p, content, { flag: 'wx' });
         return { path: rel, syncUncertain: true };
       },
@@ -602,6 +642,7 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
     at: new Date(now).toISOString(), confirmedWith: spent.grant.id, writeHash: w.writeHash,
     steps: results, complete,
     ...(v2 ? { contract: 'prepared-move-v2', sent: false } : {}),
+    ...(w.destination ? { destination: w.destination } : {}),
     plain: complete
       ? (v2 ? results.map((r) => DONE[r.step]).join(' ') : 'Both are in place and checked.')
       : results.filter((r) => !good(r)).map((r) => (r.status === 'removed-since'
@@ -617,6 +658,10 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
     contacted: [],
     forum: w.forum,
   };
+  // Where a private draft actually went — said from the path that was written, only if the note step worked.
+  if (w.destination && results.some((r) => r.step === 'note' && good(r))) {
+    receipt.plain = `${receipt.plain} ${w.destination.project ? `Linked to project: ${w.destination.project}.` : 'Kept in your working drafts (Projects/Working).'}`.trim();
+  }
   // Kept with what SAiM wrote, so a later read can tell Nick's own words from SAiM's.
   const noteW = w.steps.find((x) => x.step === 'note');
   try { db.setState(`saim_move_receipt:${w.moveKey}`, JSON.stringify({ ...receipt, written: noteW ? { path: noteW.path, content: noteW.content } : null })); } catch { /* the ledger still holds the steps */ }
@@ -790,6 +835,6 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
 }
 
 module.exports = {
-  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, V2_NOTE_RULES, PRIVATE_NOTE_RULE, privateDraftAllowed, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
+  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, V2_NOTE_RULES, PRIVATE_NOTE_RULE, privateDraftAllowed, destinationOf, openQuestions, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
   requestConfirmation, execute, requestForMove, confirmMove, londonMs, _setDeps,
 };

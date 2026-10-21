@@ -215,7 +215,7 @@ function addAnswer({ recordId, version, questionId, text, by = 'nick', now = Dat
   const rec = get(recordId);
   if (!rec) return { ok: false, code: 404, why: 'no such prepared move' };
   if (Number(version) !== rec.version) return { ok: false, code: 409, why: 'this move has changed since it was shown' };
-  const qs = ((rec.packet.selected || {}).ask || {}).questions || [];
+  const qs = askedQuestions(rec);
   if (!qs.some((q) => q.id === questionId)) return { ok: false, code: 400, why: 'that is not a question this move asked' };
   const t = String(text || '').replace(/\r\n/g, '\n').trim();
   if (!t) return { ok: false, code: 400, why: 'the answer is empty' };
@@ -239,6 +239,30 @@ function withdrawAnswer({ moveKey, questionId, by = 'nick', now = Date.now() } =
   db.run(`INSERT INTO prepared_move_answers (move_key, record_id, version, question_id, text, by, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [moveKey, last.record_id, last.version, 'withdraw', questionId, String(by || 'nick').slice(0, 80), new Date(now).toISOString()]);
   return { ok: true, withdrawn: { questionId, text: last.text } };
+}
+
+/** The questions a stored move is asking: its ask, or (a private draft) its interview's. */
+function askedQuestions(rec) {
+  const s = (rec && rec.packet && rec.packet.selected) || {};
+  return [...((s.ask || {}).questions || []), ...((s.interview || {}).questions || [])];
+}
+
+/**
+ * Park an interview question (26 Oct 2026) — Nick's explicit "not now".
+ * APPEND-ONLY: a `park` row naming the question, by whom and when; the draft
+ * then states it is unresolved. Answering it later un-parks it (latest wins).
+ */
+function parkQuestion({ recordId, version, questionId, by = 'nick', now = Date.now() } = {}) {
+  const rec = get(recordId);
+  if (!rec) return { ok: false, code: 404, why: 'no such prepared move' };
+  if (Number(version) !== rec.version) return { ok: false, code: 409, why: 'this move has changed since it was shown' };
+  const q = (((rec.packet.selected || {}).interview || {}).questions || []).find((x) => x.id === questionId);
+  if (!q) return { ok: false, code: 400, why: 'that is not a question this draft is asking' };
+  if (q.state === 'parked') return { ok: true, already: true, record: rec };
+  ensureSide();
+  db.run(`INSERT INTO prepared_move_answers (move_key, record_id, version, question_id, text, by, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [rec.moveKey, rec.id, rec.version, 'park', questionId, String(by || 'nick').slice(0, 80), new Date(now).toISOString()]);
+  return { ok: true, record: rec };
 }
 
 function answersFor(moveKey) {
@@ -308,7 +332,7 @@ function isLatest(record) {
   return Boolean(l && l.id === record.id);
 }
 
-module.exports = { withdrawAnswer,
+module.exports = { withdrawAnswer, parkQuestion, askedQuestions,
   CONTRACT, EVIDENCE_LIFETIME_MS, ensure, store, get, latest, isLatest, packetHash,
   markChecked, respond, suppression, addAnswer, answersFor, activeV2, completedMove, scheduledFor, needsBlock, DEFER_DAYS, DEFER_REASONS, DECLINE_REASONS,
 };

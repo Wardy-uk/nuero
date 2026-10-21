@@ -251,7 +251,7 @@ function moveView(m) {
   if (!m) return null;
   return {
     state: m.state, ref: m.ref, control: m.control || null, say: m.say || null,
-    privateDraft: m.privateDraft || null, owedAnswer: m.owedAnswer || null, focusRef: m.focusRef || null,
+    privateDraft: m.privateDraft || null, owedAnswer: m.owedAnswer || null, focusRef: m.focusRef || null, interview: m.interview || null,
     question: m.question ? { id: m.question.id, question: m.question.question, why: m.question.why || null, choices: m.question.choices || [] } : null,
     recordId: m.recordId || null, version: m.version || null, scheduled: m.scheduled || null,
   };

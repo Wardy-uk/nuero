@@ -115,10 +115,7 @@ function shouldSkipPath(relativePath) {
     value.startsWith('Projects/') ||
     value.startsWith('Plaud/') ||
     value.includes('/Archive/') ||
-    value.includes('sync-conflict') ||
-    // A private working draft SAiM prepared for Nick (25 Oct 2026) sits beside
-    // its source meeting; its decisions are his to make, never commitments to raise.
-    / – Private draft\.md$/.test(value)
+    value.includes('sync-conflict')
   );
 }
 

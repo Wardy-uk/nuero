@@ -87,6 +87,15 @@ function moveFor(item, { now = Date.now(), deps = {} } = {}) {
         const q = ((s.ask || {}).questions || [])[0] || null;
         return { ...extra, state: 'ask', ref, moveKey, recordId: rec.id, version: rec.version, question: q, headline: s.headline, say: q ? q.question : s.headline };
       }
+      // A private draft still being worked through (26 Oct 2026): the ONE next question, answerable or parkable.
+      if (s.plan === 'draft' && s.interview && s.interview.next) {
+        const iv = s.interview; const q = iv.next;
+        const n = iv.questions.findIndex((x) => x.id === q.id) + 1;
+        return { ...extra, state: 'interview', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
+          question: { id: q.id, question: q.question, why: q.why || null, choices: [], canPark: true },
+          interview: { done: iv.done, total: iv.total, open: iv.open },
+          say: `Your private draft is ready to work on — decision ${n} of ${iv.total}: “${q.question}” It’s on your SAiM home.` };
+      }
       if (booked) return { ...extra, state: 'scheduled', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: scheduledSay(booked) };
       if (store.needsBlock(rec)) {
         const slot = ((s.decision || {}).slots || [])[0] || {};
@@ -120,13 +129,13 @@ async function list({ now = Date.now() } = {}) {
   })).map((x) => ({
     ...x,
     // What is missing is the MOVE's question when it has one; a private draft never needs owed-to.
-    missing: x.move && x.move.state === 'ask' && x.move.question ? [{ questionId: x.move.question.id, question: x.move.question.question, recordId: x.move.recordId, version: x.move.version }]
+    missing: x.move && ['ask', 'interview'].includes(x.move.state) && x.move.question ? [{ questionId: x.move.question.id, question: x.move.question.question, recordId: x.move.recordId, version: x.move.version, canPark: Boolean(x.move.question.canPark) }]
       : x.move && x.move.privateDraft ? []
         : x.preparation && x.preparation.missing === 'owed-to' ? [{ questionId: 'owed', question: 'Who is this owed to?' }] : [],
   }));
   return {
     contract: 'promise-moves-v1', state: wb.state, why: wb.why, items,
-    how: 'To take one forward: POST /api/prepared-moves/prepare { ref }. If its move asks a question, POST /api/prepared-moves/answer { recordId, version, questionId, text } with Nick’s own words — a full name or a group. To remove an earlier owed-to answer: POST /api/prepared-moves/prepare { ref, withdraw: "owed" }. A promise marked privateDraft is only ever prepared as a PRIVATE working draft for Nick — no employment decision, no contact, nothing sent. SAiM never guesses who it is owed to, and nothing is saved, sent or booked without Nick’s confirmation in SAiM.',
+    how: 'To take one forward: POST /api/prepared-moves/prepare { ref }. If its move asks a question, POST /api/prepared-moves/answer { recordId, version, questionId, text } with Nick’s own words — a full name or a group. A private draft’s interview question may instead be parked: POST /api/prepared-moves/answer { recordId, version, questionId, park: true }. To remove an earlier owed-to answer: POST /api/prepared-moves/prepare { ref, withdraw: "owed" }. A promise marked privateDraft is only ever prepared as a PRIVATE working draft for Nick — no employment decision, no contact, nothing sent. SAiM never guesses who it is owed to, and nothing is saved, sent or booked without Nick’s confirmation in SAiM.',
   };
 }
 

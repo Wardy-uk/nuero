@@ -266,3 +266,10 @@
 /* Private working draft (25 Oct 2026): the label is said before anything else. */
 .pmo2__private { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .02em; color: #e9b46a; overflow-wrap: anywhere; }
 .pmo2__privatewhy { margin-top: 4px; }
+
+/* The private-draft interview (26 Oct 2026): one question, answered or parked in place. */
+.pmo2__iv { margin: 12px 0 14px; padding: 12px 14px; border: 1px solid rgba(233, 180, 106, 0.45); border-radius: 10px; }
+.pmo2__ivprog { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: #e9b46a; }
+.pmo2__iv textarea { width: 100%; box-sizing: border-box; margin-top: 8px; font: inherit; }
+.pmo2__ivquiet { margin: 10px 0 0; font-size: 12px; color: #8b98a8; overflow-wrap: anywhere; }
+.pmo2__ivlink { background: none; border: 0; padding: 0; color: #b7c2d0; text-decoration: underline; font: inherit; cursor: pointer; }

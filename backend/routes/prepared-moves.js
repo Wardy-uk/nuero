@@ -33,7 +33,7 @@ const router = express.Router();
 const exec = () => require('../services/prepared-move-exec');
 const view = () => require('../services/prepared-move-view');
 const HUMAN_ONLY = 'Only Nick, in NEURO, can confirm a prepared move — a machine client cannot.';
-const OPTION_RE = /^(approve|slot-[1-9])$/;
+const OPTION_RE = /^(approve|unfinished|slot-[1-9])$/;
 const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 /** Refuse any field the route does not name — a date or a path sent here is an attempt, not a typo. */
@@ -140,17 +140,19 @@ router.post('/respond', (req, res) => {
   }
 });
 
-// POST /api/prepared-moves/answer — answer SAiM's question about a prepared move (what she needs, more info, which folder, what it should cover): your answer is kept as your own words, a source fact, and the move is planned again as a NEW version. Body: { recordId, version, questionId, text }
+// POST /api/prepared-moves/answer — answer SAiM's question about a prepared move (what she needs, more info, which folder, what it should cover, the private draft interview's next question): your answer is kept as your own words, a source fact, and the move is planned again as a NEW version. park: true instead parks the private draft's question (not now — kept as unresolved). Body: { recordId, version, questionId, text | park: true }
 router.post('/answer', async (req, res) => {
-  const bad = strict(req.body, ['recordId', 'version', 'questionId', 'text']);
+  const bad = strict(req.body, ['recordId', 'version', 'questionId', 'text', 'park']);
   if (bad) return res.status(400).json({ ok: false, error: bad });
-  const { recordId, version, questionId, text } = req.body || {};
+  const { recordId, version, questionId, text, park = false } = req.body || {};
   if (typeof recordId !== 'string' || !RECORD_RE.test(recordId)) return res.status(400).json({ ok: false, error: 'recordId is required' });
   if (!Number.isInteger(version) || version < 1) return res.status(400).json({ ok: false, error: 'version is required' });
   if (typeof questionId !== 'string' || !/^[a-z]{1,20}$/.test(questionId)) return res.status(400).json({ ok: false, error: 'questionId is required' });
-  if (typeof text !== 'string') return res.status(400).json({ ok: false, error: 'text is required' });
+  if (park !== false && park !== true) return res.status(400).json({ ok: false, error: 'park must be true or left out' });
+  if (park && text !== undefined) return res.status(400).json({ ok: false, error: 'park a question OR answer it — not both' });
+  if (!park && typeof text !== 'string') return res.status(400).json({ ok: false, error: 'text is required' });
   try {
-    const a = pstore().addAnswer({ recordId, version, questionId, text, by: by(req) });
+    const a = park ? pstore().parkQuestion({ recordId, version, questionId, by: by(req) }) : pstore().addAnswer({ recordId, version, questionId, text, by: by(req) });
     if (!a.ok) return res.status(a.code || 409).json({ ok: false, error: a.why });
     const s = a.record.packet.selected;
     const r = await planner().planAndStore({ source: { kind: s.kind, sourceKey: s.sourceKey, source: s.source, ref: s.ref, title: s.title }, origin: 'answer', firstOrigin: a.record.packet.firstOrigin || a.record.packet.origin || null });

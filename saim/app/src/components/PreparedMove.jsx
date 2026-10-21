@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
-import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, outstandingOf } from '../preparedMove.mjs';
+import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, park, interviewOf, outstandingOf } from '../preparedMove.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
 import './PreparedMove.css';
@@ -240,7 +240,45 @@ export function Outstanding({ view, busy = false, onShow = null }) {
   );
 }
 
-function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow }) {
+/**
+ * The private-draft interview (26 Oct 2026): ONE question at a time, answered
+ * or parked right here, with progress. Answering re-plans the draft (a new
+ * version) and asks the next one. The only save offered while questions are
+ * open is the quiet "unfinished" one, which plainly books no time.
+ */
+export function Interview({ move, busy = false, readOnly = false, onAnswer = null, onPark = null, onAskOption = null }) {
+  const iv = interviewOf(move);
+  const [text, setText] = useState('');
+  if (!iv || !iv.next) return null;
+  const q = iv.next;
+  const canUnfinished = Boolean(onAskOption) && (move.options || []).some((o) => o.id === 'unfinished');
+  return (
+    <section className="pmo2__iv" aria-label="What only you can decide">
+      <p className="pmo2__ivprog">{iv.progress}</p>
+      <form className="pmo2__q" onSubmit={(e) => { e.preventDefault(); if (!readOnly && text.trim() && onAnswer) { onAnswer(q.id, text); setText(''); } }}>
+        <label htmlFor={`pmiv-${q.id}`} className="pmo__ask">{q.question}</label>
+        {q.why && <p className="pmo__sub">{q.why}</p>}
+        {readOnly ? <p className="pmo__sub">Answer this in SAiM on your phone or desktop.</p> : (
+          <>
+            <textarea id={`pmiv-${q.id}`} rows={3} maxLength={1000} value={text} disabled={busy} onChange={(e) => setText(e.target.value)} placeholder="In your own words" />
+            <div className="pmo__buttons">
+              <button type="submit" className="pmo__btn pmo__btn--yes" disabled={busy || !text.trim()}>Tell SAiM</button>
+              <button type="button" className="pmo__btn" disabled={busy} onClick={() => onPark && onPark(q.id)}>Park this for now</button>
+            </div>
+          </>
+        )}
+      </form>
+      {canUnfinished && !readOnly && (
+        <p className="pmo2__ivquiet">
+          <button type="button" className="pmo2__ivlink" disabled={busy} onClick={() => onAskOption('unfinished')}>Save this unfinished draft instead</button>
+          {' '}— no time will be booked, and SAiM won’t ask the rest.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption }) {
   const { view } = state; const move = view.move;
   const d = move.deliverable || {};
   const [deferDays, setDeferDays] = useState(1);
@@ -248,7 +286,10 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
   const [declineReason, setDeclineReason] = useState('');
   const [draftAnswer, setDraftAnswer] = useState({});
   const held = Boolean(view.held || move.held);
-  const option = (move.options || [])[0] || null;
+  const iv = interviewOf(move);
+  const ivOpen = Boolean(iv && iv.next);
+  // While the interview has open questions the "unfinished" save is not the primary choice.
+  const option = (move.options || []).find((o) => !(ivOpen && o.id === 'unfinished')) || (ivOpen ? null : (move.options || [])[0]) || null;
   const facts = d.sourceFacts || [];
   return (
     <section className="pmo pmo2" aria-label="Something SAiM has prepared">
@@ -256,6 +297,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
       <p className="pmo__say">{move.prepared && move.prepared.headline}</p>
       {move.privateDraft && <p className="pmo__sub pmo2__privatewhy">{move.privateDraft.cannot} {move.privateDraft.can}</p>}
       {move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
+      {!held && move.plan === 'draft' && <Interview move={move} busy={busy} readOnly={readOnly} onAnswer={onAnswer} onPark={onPark} onAskOption={state.kind === 'confirming' ? null : onAskOption} />}
 
       {move.plan === 'ask' ? (
         <div className="pmo__act pmo2__ask">
@@ -286,7 +328,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
               <div className="pmo2__text">{d.suggested.text}</div>
             </section>
           )}
-          {d.gaps && d.gaps.length > 0 && (
+          {!iv && d.gaps && d.gaps.length > 0 && (
             <section className="pmo__sec">
               <p className="pmo__sechead">Still needed from you</p>
               <ul>{d.gaps.map((g, i) => <li key={i} className="pmo__gapline">{g}</li>)}</ul>
@@ -368,6 +410,10 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
         </div>
       );
     }
+    if (!option && ivOpen) {
+      // Nothing to confirm as finished yet — answer or park above. Putting it off or saying no stays possible.
+      return <div className="pmo__act pmo__act--ready"><p className="pmo__sub">Answer or park each question to save it and protect the time.</p>{otherChoices()}</div>;
+    }
     if (!option) {
       return <div className="pmo__act pmo__act--stopped" role="status"><p>I can’t offer this right now.</p><ul className="pmo__sub">{(move.notOffered || []).map((n, i) => <li key={i}>{n.label}: {n.why}</li>)}</ul></div>;
     }
@@ -379,6 +425,16 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
         {move.contacts && <p className="pmo__sub">{move.contacts}</p>}
         <div className="pmo__buttons">
           <button type="button" className="pmo__btn pmo__btn--yes" onClick={onAsk} disabled={busy}>{confirmLabel(move)}</button>
+          {otherChoices(true)}
+        </div>
+      </div>
+    );
+  }
+
+  function otherChoices(inline = false) {
+    const r = move.respond || { defer: { days: [], reasons: [] }, decline: { reasons: [] } };
+    const body = (
+      <>
           <details className="pmo__other pmo2__defer">
             <summary>Not now</summary>
             <div className="pmo2__row">
@@ -394,14 +450,14 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
               <button type="button" className="pmo__btn" disabled={busy} onClick={() => onRespond('decline', { reason: declineReason || null })}>Don’t offer it again</button>
             </div>
           </details>
-        </div>
-      </div>
+      </>
     );
+    return inline ? body : <div className="pmo__buttons">{body}</div>;
   }
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -422,7 +478,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
-  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} />;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -758,6 +814,8 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       onMakeReady={() => run(() => makeReady(call, { offer: state.offer }))}
       onRespond={(response, extra) => run(() => respond(call, { view: state.view, response, ...extra }))}
       onAnswer={(questionId, text) => run(() => answer(call, { view: state.view, questionId, text }))}
+      onPark={(questionId) => run(() => park(call, { view: state.view, questionId }))}
+      onAskOption={(option) => run(() => askToConfirm(call, { view: state.view, option, sessionId }))}
       onChoose={(option) => setState((s) => ({ ...s, option }))}
       onAsk={() => run(() => askToConfirm(call, { view: state.view, option: state.option, sessionId }))}
       onConfirm={() => run(() => confirm(call, { view: state.view, option: state.option, request: state.request }))}

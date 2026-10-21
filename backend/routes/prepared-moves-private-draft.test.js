@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * The private working draft (25 Oct 2026) — the repair of the live dead end.
+ * The private working draft (25 Oct 2026) — the repair of the live dead end —
+ * and its short in-place INTERVIEW and destination rule (26 Oct 2026).
  *
  * Live: Nick pressed "Tell SAiM who it is owed to" on "Define achievable
  * targets for hybrid/WFH incentive; agree plan on 2026-09-02", answered "Me",
@@ -112,6 +113,7 @@ const outward = () => ({
   grants: count('SELECT COUNT(*) n FROM human_action_intents'),
   people: peopleHash(),
   files: fs.readdirSync(path.join(VAULT, 'Meetings/2026/09')).sort().join('|'),
+  projects: fs.readdirSync(path.join(VAULT, 'Projects')).sort().join('|'),
 });
 const moveKey = () => planner.moveKeyFor('project-note', `task:${taskId}`);
 const itemFor = (key, tid, prep = { state: 'waiting-for-Nick', missing: 'owed-to' }, extra = {}) => ({ key, title: TEXT, taskIds: [tid], leadTaskId: tid, preparation: prep, ...extra });
@@ -148,8 +150,13 @@ test('the live trap: an owed question answered "Me" — with the source now empl
   assert.equal(t.move.control, 'Prepare a private working draft');
 });
 
-let recordId; let recordVersion;
-test('pressing prepares the PRIVATE draft straight away — no recipient question, no model call, nothing outward', async () => {
+
+let recordId;
+const latest = () => store.latest(moveKey());
+const ask = async (rec, questionId, text, opts = {}) => call('/api/prepared-moves/answer', { method: 'POST', token: opts.token, body: { recordId: rec.id, version: rec.version, questionId, ...(text === null ? { park: true } : { text }) } });
+const PROJ = (f) => path.join(VAULT, 'Projects', f);
+
+test('pressing prepares the PRIVATE draft straight away — no recipient question, no model call, nothing outward — and NOT beside the meeting', async () => {
   const before = outward(); const calls0 = modelCalls;
   const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:322' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -159,44 +166,51 @@ test('pressing prepares the PRIVATE draft straight away — no recipient questio
   assert.equal(mv.privateDraft.label, 'Private draft for Nick — no decision made, nothing sent.');
   assert.equal(modelCalls, calls0, 'composed, never generated');
   assert.deepEqual(outward(), before, 'no action, ledger row, grant, People change or file');
-  recordId = mv.recordId; recordVersion = mv.recordVersion;
-  const rec = store.get(recordId);
-  const s = rec.packet.selected;
+  recordId = mv.recordId;
+  const s = latest().packet.selected;
   assert.equal(s.screens.employment.sensitive, true, 'the sensitivity is still stated, not hidden');
   assert.equal(s.screens.employment.mode, 'private-draft');
-  assert.deepEqual(s.decision.proposedWrites.map((w) => w.kind).sort(), ['calendar.solo', 'vault.note']);
-  assert.deepEqual(s.decision.proposedWrites.find((w) => w.kind === 'calendar.solo').attendees, []);
-  assert.equal(s.decision.proposedWrites.find((w) => w.kind === 'vault.note').path, `Meetings/2026/09/${planner.safeTitle(TEXT)} – Private draft.md`, 'beside its source meeting');
+  // Meeting-only evidence: the meeting is evidence, not a destination.
+  const note = s.decision.proposedWrites.find((w) => w.kind === 'vault.note').path;
+  assert.equal(note, `Projects/Working/${planner.safeTitle(TEXT)} (private draft).md`);
+  assert.doesNotMatch(note, /^Meetings\//);
+  assert.deepEqual(s.deliverable.destination, { folder: 'Projects/Working', project: null, basis: 'none', candidates: [] });
+  assert.ok(s.observed.some((o) => /No single project is evidenced/.test(o.fact)));
+  assert.equal(fs.existsSync(PROJ('Working')), false, 'nothing created by preparing');
   assert.deepEqual(s.authority.mustNot, planner.MUST_NOT_PRIVATE);
 });
 
-test('the draft is private and non-decisive: labelled, quotes only neutral source lines, invents no target, number or person', () => {
-  const rec = store.get(recordId);
-  const text = rec.packet.selected.deliverable.suggested.text;
-  assert.ok(text.includes('Private draft for Nick — no decision made, nothing sent.'));
-  assert.match(text, /SAiM has not set any targets, judged anyone, or contacted anyone/);
-  assert.ok(text.includes(`“${TEXT}”`), 'the commitment quoted');
-  assert.ok(text.includes('Consider hybrid model (e.g., two days WFH) as incentive tied to achievable targets'), 'a neutral source line quoted, cited');
-  assert.doesNotMatch(text, /Stephen|Heidi|Kerr|Ford/, 'no colleague named');
-  assert.doesNotMatch(text, /dipped|on leave|on hold/i, 'no line about anyone’s employment (the source NOTE’s own title is cited, nothing more)');
-  assert.ok(text.startsWith(`# ${TEXT} — private draft`), 'headed with the commitment as written');
-  assert.match(text, /2 lines naming colleagues or their circumstances were left out/);
-  assert.match(text, /SAiM has not proposed any targets/);
-  assert.match(text, /## Decisions only you can make/);
-  // Every number in the draft is in the sources (the wording or a quoted line) — nothing invented.
-  const sources = `${TEXT}\n${NEUTRAL}\n${SOURCE}`;
-  // (Citations — `_(path:line)_` — are where a line came from, not content.)
-  const content = text.replace(/_\([^)]*\)_/g, '');
-  for (const n of content.match(/\d+/g) || []) assert.ok(sources.includes(n), `“${n}” is not in the sources`);
-  assert.doesNotMatch(text, /- \[ \]/, 'no checkboxes a scanner could raise as commitments');
+test('the initial draft asks ONE answerable question, with progress — and cannot be saved as finished yet', () => {
+  const rec = latest(); const s = rec.packet.selected;
+  assert.equal(s.interview.total, 4);
+  assert.equal(s.interview.next.id, 'achievable');
+  assert.equal(s.interview.next.question, 'What does ‘achievable’ mean here, and how will you measure it?');
+  assert.equal(s.interview.open, 4);
+  assert.deepEqual(Object.keys(rec.options), ['unfinished'], 'the only confirmable choice is saving it unfinished');
+  const approve = exec.writesFor(rec.packet, 'approve');
+  assert.equal(approve.ok, false); assert.match(approve.reasons.join(' '), /4 questions are still open/);
+  const unf = exec.writesFor(rec.packet, 'unfinished');
+  assert.equal(unf.ok, true, JSON.stringify(unf));
+  assert.deepEqual(unf.steps.map((x) => x.step), ['note'], 'no block');
+  assert.equal(unf.confirmation.question, 'Save this unfinished draft? No time will be booked.');
+  assert.ok(unf.confirmation.writes.some((w) => /^Save your unfinished private draft as a new note — Working drafts: Projects\/Working\//.test(w)));
+  assert.ok(unf.confirmation.writes.some((w) => /^No time is booked\. 4 questions are still open/.test(w)));
 });
 
-test('a private draft beside a meeting note is never mined back as commitments', () => {
-  const ac = require('../services/action-candidates');
-  const skip = ac.shouldSkipPath || (ac._internals && ac._internals.shouldSkipPath);
-  assert.equal(typeof skip, 'function');
-  assert.equal(skip('Meetings/2026/09/Define x – Private draft.md'), true);
-  assert.equal(skip(SOURCE), false, 'the source meeting itself is still read');
+test('the draft is private and non-decisive: labelled, neutral source lines only, nothing invented', () => {
+  const text = latest().packet.selected.deliverable.suggested.text;
+  assert.ok(text.includes('Private draft for Nick — no decision made, nothing sent.'));
+  assert.match(text, /SAiM has not set any targets, judged anyone, or contacted anyone/);
+  assert.ok(text.includes(`“${TEXT}”`));
+  assert.ok(text.includes('Consider hybrid model (e.g., two days WFH) as incentive tied to achievable targets'));
+  assert.doesNotMatch(text, /Stephen|Heidi|Kerr|Ford|dipped|on leave|on hold/i);
+  assert.match(text, /2 lines naming colleagues or their circumstances were left out/);
+  assert.match(text, /## Still to decide/);
+  assert.doesNotMatch(text, /## You said/, 'nothing said yet');
+  const content = text.replace(/_\([^)]*\)_/g, '');
+  const sources = `${TEXT}\n${NEUTRAL}\n${SOURCE}`;
+  for (const n of content.match(/\d+/g) || []) assert.ok(sources.includes(n), `“${n}” is not in the sources`);
+  assert.doesNotMatch(text, /- \[ \]/);
 });
 
 test('a repeated press returns the same private draft — no duplicate', async () => {
@@ -206,81 +220,149 @@ test('a repeated press returns the same private draft — no duplicate', async (
   assert.equal(db.get('SELECT COUNT(*) n FROM prepared_moves').n, before);
 });
 
+test('an answer is attached to THIS move only, appears under "You said", makes a fresh version, and the next question is asked', async () => {
+  const before = outward();
+  const v1 = latest();
+  const r = await ask(v1, 'achievable', 'Two days WFH for anyone who hits 90% of their FRT target for the month');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const v2 = latest();
+  assert.ok(v2.version > v1.version, 'a fresh version');
+  assert.equal(r.body.move.recordId, v2.id);
+  const row = db.get('SELECT move_key, record_id, version, by FROM prepared_move_answers WHERE question_id = ? ORDER BY id DESC LIMIT 1', ['achievable']);
+  assert.deepEqual(row, { move_key: moveKey(), record_id: v1.id, version: v1.version, by: 'nick' }, 'against the exact move and version it answered, by Nick');
+  const text = v2.packet.selected.deliverable.suggested.text;
+  assert.match(text, /## You said[\s\S]*_Your own words — not SAiM’s conclusions\._[\s\S]*\*\*What “achievable” means, and how it is measured:\*\* Two days WFH for anyone who hits 90% of their FRT target for the month/);
+  assert.equal(v2.packet.selected.interview.next.id, 'incentive', 'the next question');
+  assert.equal(v2.packet.selected.interview.done, 1);
+  assert.deepEqual(outward(), before, 'still nothing written, sent or booked');
+  // Nick's own words may say anything — they never turn his draft into a routing-only matter.
+  assert.equal((await planner.recheck(v2.packet)).ok, true);
+});
+
+test('park is explicit, auditable and visible in the draft — and the next question follows', async () => {
+  const v = latest();
+  const bad = await call('/api/prepared-moves/answer', { method: 'POST', body: { recordId: v.id, version: v.version, questionId: 'incentive', park: true, text: 'x' } });
+  assert.equal(bad.status, 400, 'park OR answer, never both');
+  const r = await ask(v, 'incentive', null);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const row = db.get('SELECT question_id q, text, by, record_id FROM prepared_move_answers ORDER BY id DESC LIMIT 1');
+  assert.deepEqual(row, { q: 'park', text: 'incentive', by: 'nick', record_id: v.id });
+  const s = latest().packet.selected;
+  assert.match(s.deliverable.suggested.text, /## Parked — still unresolved\n\n- What the incentive is, and what earns it — you parked this; it is not decided\./);
+  assert.equal(s.interview.questions.find((q) => q.id === 'incentive').state, 'parked');
+  assert.equal(s.interview.next.id, 'applies');
+  assert.deepEqual(Object.keys(latest().options), ['unfinished'], 'still not saveable as finished');
+});
+
+test('save-and-protect becomes available only when every question is answered or parked', async () => {
+  // Nick's own words may mention HR or a pay review — they are his, in his own note, and never make his draft routing-only.
+  let r = await ask(latest(), 'applies', 'Everyone on the 1st and 2nd line rota; I will ask the team at the next standup and check the pay review timing with HR');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(!('approve' in latest().options), 'one still open');
+  r = await ask(latest(), 'agree', null);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const rec = latest(); const s = rec.packet.selected;
+  assert.equal(s.interview.open, 0); assert.equal(s.interview.next, null);
+  assert.deepEqual(Object.keys(rec.options), ['approve'], 'save and protect the time — and no unfinished option any more');
+  const w = exec.writesFor(rec.packet, 'approve');
+  assert.equal(w.ok, true, JSON.stringify(w));
+  assert.deepEqual(w.steps.map((x) => x.step).sort(), ['calendar', 'note']);
+  assert.ok(w.confirmation.writes.some((x) => /^Save your private draft as a new note — Working drafts: /.test(x)));
+  assert.match(s.deliverable.suggested.text, /check the pay review timing with HR/, 'his words, verbatim, under You said');
+  assert.equal((await planner.recheck(rec.packet)).ok, true);
+  assert.equal(exec.writesFor(rec.packet, 'unfinished').ok, false);
+  assert.match(s.deliverable.suggested.text, /## Parked — still unresolved[\s\S]*incentive[\s\S]*Who you agree the plan with/);
+  assert.doesNotMatch(s.deliverable.suggested.text, /## Still to decide/);
+});
+
 test('the earlier "Me" answer can be removed — append-only, and the promise is not left in a wrong state', async () => {
   assert.equal(owed.answerFor('promise:322').text, 'Me');
   const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:322', withdraw: 'owed' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.withdrawn, { questionId: 'owed', text: 'Me' });
-  assert.equal(owed.answerFor('promise:322'), null, 'it no longer counts');
-  const rows = db.all('SELECT question_id q, text FROM prepared_move_answers WHERE move_key = ? ORDER BY id', [moveKey()]);
-  assert.deepEqual(rows.map((x) => [x.q, x.text]), [['owed', 'Me'], ['withdraw', 'owed']], 'kept for the record');
-  assert.equal(r.body.move.plan, 'draft', 'still the private draft');
-  // Withdrawing again is harmless.
-  const again = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:322', withdraw: 'owed' } });
-  assert.equal(again.status, 200);
-  // Junk is refused.
+  assert.equal(owed.answerFor('promise:322'), null);
+  const rows = db.all('SELECT question_id q, text FROM prepared_move_answers WHERE move_key = ? AND question_id IN (\'owed\', \'withdraw\') ORDER BY id', [moveKey()]);
+  assert.deepEqual(rows.map((x) => [x.q, x.text]), [['owed', 'Me'], ['withdraw', 'owed']]);
+  assert.equal(r.body.move.plan, 'draft');
   assert.equal((await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:322', withdraw: 'folder' } })).status, 400);
-  assert.equal((await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'held:email-x', withdraw: 'owed' } })).status, 400);
-  // The move now carries no owed answer to show.
-  const m = require('../services/promise-moves').moveFor(itemFor('promise:322', taskId, { state: 'waiting-for-Nick', missing: 'owed-to' }));
-  assert.equal(m.owedAnswer, null);
-  recordId = store.latest(moveKey()).id; recordVersion = store.latest(moveKey()).version;
+  assert.equal(require('../services/promise-moves').moveFor(itemFor('promise:322', taskId)).owedAnswer, null);
 });
 
-test('a missing fact produces ONE precise question (where the private draft is kept), then the draft', async () => {
-  const before = outward();
-  const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:500' } });
+// ── Where a private draft is kept ────────────────────────────────────────────
+
+test('destination: exactly one evidenced project (task origin, or Nick’s explicit link) → that project; none or a conflict → Projects/Working', () => {
+  const D = (task, links = []) => planner.destinationFor(task, { projectLinks: () => links });
+  assert.deepEqual(D({ id: 1, origin_path: 'Projects/Support Hub/Hub.md' }), { folder: 'Projects/Support Hub', project: 'Support Hub', basis: 'task-origin', candidates: ['Support Hub'] });
+  assert.deepEqual(D({ id: 1, origin_path: SOURCE }, ['Projects/Support Hub']), { folder: 'Projects/Support Hub', project: 'Support Hub', basis: 'project-link', candidates: ['Support Hub'] });
+  assert.deepEqual(D({ id: 1, origin_path: 'Projects/Support Hub/x.md' }, ['Projects/Support Hub']).project, 'Support Hub', 'two kinds of evidence, one project');
+  assert.equal(D({ id: 1, origin_path: 'Projects/Support Hub/x.md' }, ['Projects/TOM']).project, 'Support Hub', 'a link to a project whose folder does not exist is not evidence');
+  fs.mkdirSync(PROJ('TOM'), { recursive: true });
+  assert.equal(D({ id: 1, origin_path: 'Projects/Support Hub/x.md' }, ['Projects/TOM']).basis, 'conflict', 'two projects → not demonstrable');
+  assert.equal(D({ id: 1, origin_path: 'Projects/Support Hub/x.md' }, ['Projects/TOM']).folder, 'Projects/Working');
+  assert.deepEqual(D({ id: 1, origin_path: SOURCE }), { folder: 'Projects/Working', project: null, basis: 'none', candidates: [] }, 'meeting-only evidence → working drafts');
+  assert.equal(D({ id: 1, origin_path: 'Projects/Archive/x.md' }).folder, 'Projects/Working', 'Archive is never a home');
+  assert.equal(D({ id: 1, origin_path: 'Projects/Made Up/x.md' }).folder, 'Projects/Working', 'a folder that does not exist is never created or chosen');
+});
+
+test('a uniquely evidenced project: the draft is kept in THAT project, and the confirmation says so', async () => {
+  const T = 'Agree the hybrid WFH incentive targets for the Support Hub rota';
+  fs.writeFileSync(path.join(PROJ('Support Hub'), 'Rota.md'), `# Rota\n- ${T}.\n${PEOPLE_LINES}`);
+  require('../services/task-store').createTask({ text: T, source: 'manual', origin_path: 'Projects/Support Hub/Rota.md' });
+  const tid = db.get('SELECT id FROM tasks WHERE text = ?', [T]).id;
+  promises.set('promise:600', promiseOf('promise:600', T, tid));
+  const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:600' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const rec = store.latest(planner.moveKeyFor('project-note', `task:${tid}`));
+  assert.equal(rec.packet.selected.decision.proposedWrites.find((w) => w.kind === 'vault.note').path, `Projects/Support Hub/${planner.safeTitle(T)} (private draft).md`);
+  const w = exec.writesFor(rec.packet, 'unfinished');
+  assert.ok(w.confirmation.writes.some((x) => x.includes('— Linked to project: Support Hub: Projects/Support Hub/')), JSON.stringify(w.confirmation.writes));
+  assert.deepEqual(w.destination, { folder: 'Projects/Support Hub', project: 'Support Hub', say: 'Linked to project: Support Hub' });
+});
+
+test('missing facts produce one precise question: nothing quotable → what the draft should help decide', async () => {
+  const T = 'Settle the hybrid WFH incentive approach';
+  fs.writeFileSync(path.join(VAULT, 'Areas', 'Quiet.md'), `# Quiet\n- Stephen Kerr to settle the hybrid WFH incentive approach.\n${PEOPLE_LINES}`);
+  require('../services/task-store').createTask({ text: T, source: 'manual', origin_path: 'Areas/Quiet.md' });
+  const tid = db.get('SELECT id FROM tasks WHERE text = ?', [T]).id;
+  promises.set('promise:650', promiseOf('promise:650', T, tid));
+  const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:650' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.move.plan, 'ask');
-  const q = r.body.move.ask.questions;
-  assert.equal(q.length, 1);
-  assert.equal(q[0].id, 'folder'); assert.notEqual(q[0].id, 'owed');
-  assert.match(q[0].why, /private draft/);
-  assert.equal(r.body.move.prepared.headline, 'I can prepare a private draft for you — I need one thing first.');
-  const a = await call('/api/prepared-moves/answer', { method: 'POST', body: { recordId: r.body.move.recordId, version: r.body.move.recordVersion, questionId: 'folder', text: 'Support Hub' } });
+  assert.deepEqual(r.body.move.ask.questions.map((q) => q.id), ['purpose'], 'one question, and never "where" or "who is it owed to"');
+  const a = await call('/api/prepared-moves/answer', { method: 'POST', body: { recordId: r.body.move.recordId, version: r.body.move.recordVersion, questionId: 'purpose', text: 'Whether to run it as a three-month trial' } });
   assert.equal(a.status, 200, JSON.stringify(a.body));
   assert.equal(a.body.move.plan, 'draft');
-  const s = store.latest(planner.moveKeyFor('project-note', `task:${areaTaskId}`)).packet.selected;
-  assert.match(s.decision.proposedWrites.find((w) => w.kind === 'vault.note').path, /^Projects\/Support Hub\/.+ \(private draft\)\.md$/);
-  assert.deepEqual(outward(), before);
+  assert.ok(a.body.move.interview && a.body.move.interview.next, 'then the interview');
 });
 
-test('a source with nothing quotable about it asks what the draft should help decide', () => {
-  const r = brief.sourceLines(`# x\n${PEOPLE_LINES}`, TEXT, { full: ['Stephen Kerr', 'Heidi Ford'] });
-  assert.equal(r.lines.length, 0); assert.equal(r.leftOut, 2);
-});
+// ── Capacity card + MCP ──────────────────────────────────────────────────────
 
-// ── 2. The capacity card's open is not a no-op ───────────────────────────────
-
-test('"Open State of Play" on the capacity card becomes "Open the private draft" and opens it; a card with no promise is untouched', () => {
+test('the capacity card opens the draft at its next question; a card with no promise is untouched', async () => {
+  // A fresh promise still mid-interview.
+  const rec = store.latest(planner.moveKeyFor('project-note', `task:${db.get("SELECT id FROM tasks WHERE text LIKE 'Agree the hybrid WFH incentive targets for the Support Hub%'").id}`));
+  const tid = rec.packet.selected.source.taskId;
+  const m = require('../services/promise-moves').moveFor(itemFor('promise:600', tid, { state: 'needs-a-block' }));
+  assert.equal(m.state, 'interview');
+  assert.equal(m.question.id, 'achievable'); assert.equal(m.question.canPark, true);
+  assert.match(m.say, /decision 1 of 4/);
   const cr = require('../services/canonical-read');
-  const m = require('../services/promise-moves').moveFor(itemFor('promise:322', taskId, { state: 'needs-a-block' }));
-  assert.ok(['needs-decision', 'ready'].includes(m.state), m.state);
-  const card = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', tab: 'surface', meta: { taskId } };
-  const other = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', tab: 'surface', meta: { taskId: 99999 } };
-  cr.linkPromiseOpens([card, other, null], { 'promise:322': m });
-  assert.equal(card.actionHint, 'Open the private draft');
-  assert.deepEqual(card.open, { kind: 'promise', ref: 'promise:promise:322', recordId: m.recordId, state: m.state, show: 'draft', privateDraft: true });
+  const card = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', meta: { taskId: tid } };
+  const other = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', meta: { taskId: 99999 } };
+  cr.linkPromiseOpens([card, other], { 'promise:600': m });
+  assert.equal(card.actionHint, 'Answer SAiM’s question');
+  assert.equal(card.open.show, 'draft'); assert.equal(card.open.recordId, rec.id);
   assert.equal(other.actionHint, 'Open State of Play'); assert.equal(other.open, undefined);
-  // Not yet prepared → the card takes him to the promise to prepare it.
-  const offer = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', meta: { taskId } };
-  cr.linkPromiseOpens([offer], { 'promise:322': { state: 'offer', ref: 'promise:promise:322', moveKey: m.moveKey, privateDraft: m.privateDraft } });
-  assert.equal(offer.actionHint, 'Prepare a private working draft'); assert.equal(offer.open.show, 'promise');
 });
 
 test('the phone shell opens THAT draft, and draws no button that would do nothing', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'views', 'Surface.jsx'), 'utf8');
-  assert.match(src, /if \(o && o\.kind === 'promise'\) \{/);
   assert.match(src, /setShowMove\(\{ recordId: o\.recordId, n: Date\.now\(\) \}\)/);
-  assert.match(src, /function canOpen\(card\)/);
   assert.match(src, /canOpen=\{canOpen\}/);
   const as = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
-  assert.equal((as.match(/\(!canOpen \|\| canOpen\(/g) || []).length, 2, 'both open buttons are guarded');
+  assert.equal((as.match(/\(!canOpen \|\| canOpen\(/g) || []).length, 2);
 });
 
-// ── 3. MCP: read and answer, never confirm ───────────────────────────────────
-
-test('MCP (API token): reads the private-draft state and answers its question with a machine origin; cannot confirm or execute', async () => {
+test('MCP (API token): reads the exact next question, answers and parks it with a machine origin; cannot confirm or execute', async () => {
   const wb = require('../services/promise-workbench');
   const realRead = wb.read;
   const T3 = `Review the hybrid WFH incentive targets ${Date.now()}`;
@@ -292,23 +374,26 @@ test('MCP (API token): reads the private-draft state and answers its question wi
   try {
     const l = await call('/api/prepared-moves/promises', { token: true });
     assert.equal(l.status, 200, JSON.stringify(l.body));
-    const it = l.body.items[0];
-    assert.equal(it.move.privateDraft.label, brief.LABEL);
-    assert.deepEqual(it.missing, [], 'a private draft never needs owed-to');
-    assert.equal(it.move.control, 'Prepare a private working draft');
-    const p = await call('/api/prepared-moves/prepare', { method: 'POST', token: true, body: { ref: it.ref } });
+    assert.equal(l.body.items[0].move.control, 'Prepare a private working draft');
+    assert.deepEqual(l.body.items[0].missing, []);
+    const p = await call('/api/prepared-moves/prepare', { method: 'POST', token: true, body: { ref: l.body.items[0].ref } });
     assert.equal(p.status, 200, JSON.stringify(p.body));
-    const after = await call('/api/prepared-moves/promises', { token: true });
-    const ask = after.body.items[0];
-    assert.equal(ask.move.state, 'ask'); assert.equal(ask.missing[0].questionId, 'folder');
-    const a = await call('/api/prepared-moves/answer', { method: 'POST', token: true, body: { recordId: ask.missing[0].recordId, version: ask.missing[0].version, questionId: 'folder', text: 'Support Hub' } });
+    const read = async () => (await call('/api/prepared-moves/promises', { token: true })).body.items[0];
+    let it = await read();
+    assert.equal(it.move.state, 'interview');
+    assert.deepEqual(it.missing.map((m) => [m.questionId, m.canPark]), [['achievable', true]]);
+    assert.equal(it.missing[0].question, 'What does ‘achievable’ mean here, and how will you measure it?');
+    const a = await call('/api/prepared-moves/answer', { method: 'POST', token: true, body: { recordId: it.missing[0].recordId, version: it.missing[0].version, questionId: 'achievable', text: 'Measured monthly against FRT' } });
     assert.equal(a.status, 200, JSON.stringify(a.body));
-    const row = db.get('SELECT by FROM prepared_move_answers WHERE question_id = ? ORDER BY id DESC LIMIT 1', ['folder']);
-    assert.match(row.by, /^machine:/, 'an auditable machine origin');
-    const req = await call('/api/prepared-moves/request', { method: 'POST', token: true, body: { option: 'approve', surface: 'neuro-web', sessionId: 'session_mcp_00002' } });
-    assert.equal(req.status, 403);
-    const conf = await call('/api/prepared-moves/confirm', { method: 'POST', token: true, body: { recordId: a.body.move.recordId, version: a.body.move.recordVersion, option: 'approve', grantId: 'ig_x' } });
-    assert.equal(conf.status, 403);
+    it = await read();
+    assert.equal(it.missing[0].questionId, 'incentive');
+    const pk = await call('/api/prepared-moves/answer', { method: 'POST', token: true, body: { recordId: it.missing[0].recordId, version: it.missing[0].version, questionId: 'incentive', park: true } });
+    assert.equal(pk.status, 200, JSON.stringify(pk.body));
+    const rows = db.all('SELECT question_id q, by FROM prepared_move_answers WHERE move_key = ? ORDER BY id', [planner.moveKeyFor('project-note', `task:${t3}`)]);
+    assert.ok(rows.length >= 2 && rows.every((x) => /^machine:/.test(x.by)), JSON.stringify(rows));
+    const rec = store.latest(planner.moveKeyFor('project-note', `task:${t3}`));
+    assert.equal((await call('/api/prepared-moves/request', { method: 'POST', token: true, body: { option: 'unfinished', surface: 'neuro-web', sessionId: 'session_mcp_00002', recordId: rec.id } })).status, 403);
+    assert.equal((await call('/api/prepared-moves/confirm', { method: 'POST', token: true, body: { recordId: rec.id, version: rec.version, option: 'unfinished', grantId: 'ig_x' } })).status, 403);
   } finally { wb.read = realRead; }
 });
 
@@ -333,56 +418,95 @@ function fakeGraph() {
   return events;
 }
 
-test('the private block stays behind the allowance and the per-move confirmation; once confirmed, the note is labelled private and the block invites nobody', async () => {
-  const rec = store.latest(moveKey());
-  assert.equal(rec.packet.selected.plan, 'draft');
-  // The executor accepts THIS packet, and only because it is a labelled private draft.
-  const w = exec.writesFor(rec.packet, 'approve');
-  assert.equal(w.ok, true, JSON.stringify(w));
-  assert.deepEqual(w.steps.map((x) => x.step).sort(), ['calendar', 'note']);
-  // No allowance today → not even asked to confirm.
+
+// ── The governed save: allowance + per-move confirmation, then the real write ─
+
+const checksFor = (live) => ({
+  diary: async () => ({ known: true, clashes: [] }), availability: async () => ({ known: true, off: false, working: true }),
+  candidate: async (pk) => planner.recheck(pk), noteState: exec.defaultChecks({ adapters: live }).noteState,
+});
+async function confirmLive(rec, option, { graph = true } = {}) {
+  const ms = require('../services/microsoft'); const realToken = ms.getAccessToken; ms.getAccessToken = async () => 'fake-token';
+  const realFetch = global.fetch; let graphCalls = 0;
+  const events = graph ? fakeGraph() : new Map();
+  if (!graph) global.fetch = async () => { graphCalls += 1; throw new Error('no network expected'); };
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
+  try {
+    const c = exec.requestConfirmation({ recordId: rec.id, option, sessionId: 'session_priv_0001' });
+    assert.equal(c.ok, true, JSON.stringify(c));
+    const live = exec.liveAdapters();
+    const r = await exec.execute({ recordId: rec.id, option, grantId: c.grantId, adapters: live, checks: checksFor(live) });
+    return { r, events, graphCalls };
+  } finally { delete process.env.SAIM_PREPARED_MOVE_EXECUTION; ms.getAccessToken = realToken; global.fetch = realFetch; }
+}
+
+test('saving is still allowance-gated and individually confirmed', async () => {
+  const rec = latest();
   budget._test.reset();
-  const ask = await exec.requestForMove({ recordId: rec.id, sessionId: 'session_priv_0001', now: NOW });
-  assert.equal(ask.ok, false);
-  // No confirmation → nothing runs.
+  const ask0 = await exec.requestForMove({ recordId: rec.id, sessionId: 'session_priv_0001', now: NOW });
+  assert.equal(ask0.ok, false, 'no allowance today → not even asked');
   process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
   try {
     const none = await exec.execute({ recordId: rec.id, option: 'approve', grantId: null, adapters: exec.liveAdapters() });
     assert.equal(none.ok, false); assert.match(none.reasons.join(' '), /confirmation/);
   } finally { delete process.env.SAIM_PREPARED_MOVE_EXECUTION; }
   assert.equal(count('SELECT COUNT(*) n FROM external_write_ledger'), 0);
-  // With today's allowance and Nick's confirmation, it writes exactly the two things.
-  budget._test.grantToday({ now: NOW });
-  const ms = require('../services/microsoft'); const realToken = ms.getAccessToken; ms.getAccessToken = async () => 'fake-token';
-  const realFetch = global.fetch; const events = fakeGraph();
-  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
-  try {
-    const c = exec.requestConfirmation({ recordId: rec.id, option: 'approve', sessionId: 'session_priv_0001' });
-    assert.equal(c.ok, true, JSON.stringify(c));
-    const live = exec.liveAdapters();
-    const r = await exec.execute({ recordId: rec.id, option: 'approve', grantId: c.grantId, adapters: live, checks: {
-      diary: async () => ({ known: true, clashes: [] }), availability: async () => ({ known: true, off: false, working: true }),
-      candidate: async (pk) => planner.recheck(pk), noteState: exec.defaultChecks({ adapters: live }).noteState,
-    } });
-    assert.equal(r.receipt.complete, true, JSON.stringify(r.receipt.steps));
-  } finally { delete process.env.SAIM_PREPARED_MOVE_EXECUTION; ms.getAccessToken = realToken; global.fetch = realFetch; }
-  const [ev] = events.values();
-  assert.deepEqual(ev.attendees, [], 'just Nick');
-  const notePath = rec.packet.selected.decision.proposedWrites.find((x) => x.kind === 'vault.note').path;
-  const saved = fs.readFileSync(path.join(VAULT, notePath), 'utf8');
-  assert.match(saved, /^---\ntype: draft\nprivate: true\n/);
-  assert.ok(saved.includes(brief.LABEL));
-  assert.equal(count('SELECT COUNT(*) n FROM prepared_actions'), 0, 'no governed message, invite or reply');
 });
 
-test('PURE: the executor refuses anything private that is not exactly a labelled note + solo block', () => {
-  const s = { kind: 'project-note', screens: { employment: { sensitive: true, mode: 'private-draft' } }, decision: { proposedWrites: [{ kind: 'vault.note', path: 'Meetings/2026/09/X – Private draft.md' }] } };
+test('an explicitly UNFINISHED save books no time — the note says so, the receipt names its project', async () => {
+  budget._test.reset(); budget._test.grantToday({ now: NOW });
+  const tid = db.get("SELECT id FROM tasks WHERE text LIKE 'Agree the hybrid WFH incentive targets for the Support Hub%'").id;
+  const rec = store.latest(planner.moveKeyFor('project-note', `task:${tid}`));
+  assert.ok(rec.packet.selected.interview.open > 0);
+  const { r, graphCalls } = await confirmLive(rec, 'unfinished', { graph: false });
+  assert.equal(r.receipt.complete, true, JSON.stringify(r.receipt.steps));
+  assert.deepEqual(r.receipt.steps.map((x) => x.step), ['note'], 'no calendar step at all');
+  assert.equal(graphCalls, 0, 'the calendar was never touched');
+  assert.match(r.receipt.plain, /Linked to project: Support Hub\.$/);
+  assert.deepEqual(r.receipt.destination, { folder: 'Projects/Support Hub', project: 'Support Hub', say: 'Linked to project: Support Hub' });
+  const saved = fs.readFileSync(path.join(VAULT, rec.packet.selected.decision.proposedWrites.find((w) => w.kind === 'vault.note').path), 'utf8');
+  assert.match(saved, /^---\ntype: draft\nprivate: true\nunfinished: true\n/);
+  assert.match(saved, /## Still to decide/);
+});
+
+test('all answered/parked → the governed save-and-protect path: Projects/Working is created, the block invites nobody, the receipt says where it went', async () => {
+  const rec = latest();
+  assert.equal(rec.packet.selected.interview.open, 0);
+  assert.equal(fs.existsSync(PROJ('Working')), false);
+  const { r, events } = await confirmLive(rec, 'approve');
+  assert.equal(r.receipt.complete, true, JSON.stringify(r.receipt.steps));
+  assert.deepEqual(r.receipt.steps.map((x) => x.step).sort(), ['calendar', 'note']);
+  const [ev] = events.values();
+  assert.deepEqual(ev.attendees, [], 'just Nick');
+  assert.ok(fs.statSync(PROJ('Working')).isDirectory(), 'the one folder a save may create');
+  const notePath = rec.packet.selected.decision.proposedWrites.find((x) => x.kind === 'vault.note').path;
+  assert.match(notePath, /^Projects\/Working\//);
+  const saved = fs.readFileSync(path.join(VAULT, notePath), 'utf8');
+  assert.match(saved, /^---\ntype: draft\nprivate: true\n/);
+  assert.doesNotMatch(saved, /unfinished: true/);
+  assert.match(saved, /## You said/);
+  assert.match(r.receipt.plain, /Kept in your working drafts \(Projects\/Working\)\.$/);
+  assert.equal(r.receipt.destination.say, 'Working drafts');
+  assert.equal(count('SELECT COUNT(*) n FROM prepared_actions'), 0, 'no governed message, invite or reply');
+  assert.equal(fs.readdirSync(path.join(VAULT, 'Meetings/2026/09')).length, 1, 'nothing saved beside the meeting');
+});
+
+test('the live vault creates ONLY Projects/Working — never a folder a move names', async () => {
+  const live = exec.liveAdapters();
+  await assert.rejects(() => live.vault.writeNew('Projects/Invented/x (private draft).md', 'x'), /not creating folders/);
+  assert.equal(fs.existsSync(PROJ('Invented')), false);
+});
+
+test('PURE: the executor refuses anything private that is not exactly a labelled note + solo block in a project or Working', () => {
+  const s = { kind: 'project-note', screens: { employment: { sensitive: true, mode: 'private-draft' } }, decision: { proposedWrites: [{ kind: 'vault.note', path: 'Projects/Working/X (private draft).md' }] } };
   assert.equal(exec.privateDraftAllowed(s, `# X\n> **${brief.LABEL}**`), true);
-  assert.equal(exec.privateDraftAllowed(s, '# X without the label'), false, 'unlabelled');
-  assert.equal(exec.privateDraftAllowed({ ...s, decision: { proposedWrites: [...s.decision.proposedWrites, { kind: 'governed.reply' }] } }, brief.LABEL), false, 'a reply is never part of a private draft');
-  assert.equal(exec.privateDraftAllowed({ ...s, decision: { proposedWrites: [{ kind: 'vault.note', path: 'Projects/Support Hub/X (draft).md' }] } }, brief.LABEL), false, 'not a private-draft path');
-  assert.equal(exec.privateDraftAllowed({ ...s, kind: 'email-reply' }, brief.LABEL), false);
-  assert.equal(exec.privateDraftAllowed({ ...s, screens: { employment: { sensitive: true } } }, brief.LABEL), false, 'sensitive without the private mode stays routing only');
+  assert.equal(exec.privateDraftAllowed({ ...s, decision: { proposedWrites: [{ kind: 'vault.note', path: 'Meetings/2026/09/X – Private draft.md' }] } }, brief.LABEL), false, 'never beside a meeting');
+  assert.equal(exec.privateDraftAllowed(s, '# X without the label'), false);
+  assert.equal(exec.privateDraftAllowed({ ...s, decision: { proposedWrites: [...s.decision.proposedWrites, { kind: 'governed.reply' }] } }, brief.LABEL), false);
+  assert.equal(exec.privateDraftAllowed({ ...s, decision: { proposedWrites: [{ kind: 'vault.note', path: 'Projects/Support Hub/X (draft).md' }] } }, brief.LABEL), false);
+  assert.equal(exec.privateDraftAllowed({ ...s, screens: { employment: { sensitive: true } } }, brief.LABEL), false);
+  assert.deepEqual(exec.destinationOf('Projects/Working/x.md'), { folder: 'Projects/Working', project: null, say: 'Working drafts' });
+  assert.deepEqual(exec.destinationOf('Projects/TOM/x.md'), { folder: 'Projects/TOM', project: 'TOM', say: 'Linked to project: TOM' });
 });
 
 test('the policy boundary holds: an HR-worded promise, or one the ledger marks sensitive, is still a hard stop', async () => {

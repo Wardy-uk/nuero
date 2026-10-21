@@ -441,7 +441,7 @@ test('source: the routes reach only the view (read), the planner + store (propos
   assert.deepEqual([...routes.matchAll(/exec\(\)\.(\w+)\(/g)].map((m) => m[1]), ['requestForMove', 'confirmMove']);
   assert.deepEqual([...new Set([...routes.matchAll(/view\(\)\.(\w+)\(/g)].map((m) => m[1]))].sort(), ['currentView', 'v2View']);
   assert.deepEqual([...new Set([...routes.matchAll(/planner\(\)\.(\w+)\(/g)].map((m) => m[1]))].sort(), ['eligibleNow', 'moveKeyFor', 'planAndStore'], 'proposals, a PURE key and a read only — the planner writes nothing outside NEURO');
-  assert.deepEqual([...new Set([...routes.matchAll(/pstore\(\)\.(\w+)\(/g)].map((m) => m[1]))].sort(), ['addAnswer', 'respond', 'withdrawAnswer'], 'answers (append-only, incl. a withdrawal) and responses — all inside NEURO');
+  assert.deepEqual([...new Set([...routes.matchAll(/pstore\(\)\.(\w+)\(/g)].map((m) => m[1]))].sort(), ['addAnswer', 'parkQuestion', 'respond', 'withdrawAnswer'], 'answers (append-only, incl. a withdrawal or a park) and responses — all inside NEURO');
   const viewSrc = fs.readFileSync(path.join(__dirname, '..', 'services', 'prepared-move-view.js'), 'utf8');
   assert.doesNotMatch(viewSrc, /\.store\(|mintForPreparedMove|requestConfirmation|\.execute\(|liveAdapters|writeNew|createEvent|setState|db\.run/, 'the view stores, mints and writes nothing');
   const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'prepared-move-exec.js'), 'utf8');

@@ -177,8 +177,39 @@ export async function answer(call, { view, questionId, text }) {
     return { kind: 'refused', view, message: 'I couldn’t reach NEURO. Your answer was not saved — it is still in the box.', keep: true };
   }
   const b = r.body || {};
-  if (r.status === 200 && b.ok) return load(call);
+  // Show the move that was just re-planned — not whichever one is "current".
+  if (r.status === 200 && b.ok) return load(call, b.move && b.move.recordId ? { recordId: b.move.recordId } : {});
   return { kind: 'refused', view, message: `${b.error || 'NEURO refused that.'}${b.answered ? ' Your answer was saved.' : ' Your answer was not saved — it is still in the box.'}`, keep: !b.answered };
+}
+
+/**
+ * Park a private draft's question (26 Oct 2026): Nick's explicit "not now".
+ * Recorded against this exact move and version; the draft then says it is
+ * unresolved, and the next question is asked.
+ */
+export async function park(call, { view, questionId }) {
+  const m = view && view.move;
+  let r;
+  try { r = await call(`${BASE}/answer`, { method: 'POST', body: { recordId: m.recordId, version: m.recordVersion, questionId, park: true } }); } catch {
+    return { kind: 'refused', view, message: 'I couldn’t reach NEURO. Nothing was parked.' };
+  }
+  const b = r.body || {};
+  if (r.status === 200 && b.ok) return load(call, b.move && b.move.recordId ? { recordId: b.move.recordId } : {});
+  return { kind: 'refused', view, message: `${b.error || 'NEURO refused that.'} Nothing was parked.` };
+}
+
+/** PURE. A private draft's interview as the view shows it — or null. */
+export function interviewOf(move) {
+  const iv = move && move.interview;
+  if (!iv || !Array.isArray(iv.questions) || !iv.total) return null;
+  const n = iv.next ? iv.questions.findIndex((q) => q.id === iv.next.id) + 1 : null;
+  return {
+    next: iv.next || null,
+    open: iv.open,
+    total: iv.total,
+    progress: iv.next ? `Decision ${n} of ${iv.total} to make` : `All ${iv.total} decisions answered or parked`,
+    parked: iv.questions.filter((q) => q.state === 'parked').map((q) => q.decision),
+  };
 }
 
 /** The production transport: the app's own auth headers, the raw status kept. */

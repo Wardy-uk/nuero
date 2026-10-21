@@ -95,6 +95,66 @@ test('SAiM Home: the prepared private draft carries its label first, and the can
   assert.ok(h.includes(`${PRIV.cannot} ${PRIV.can}`));
 });
 
+// ── The interview, from the REAL brief (private-brief.compose) ───────────────
+const brief = require('./private-brief');
+const PROMISE_TEXT = 'Define achievable targets for hybrid/WFH incentive; agree plan on 2026-09-02';
+const RESPOND = { defer: { days: [{ days: 1, label: 'Until tomorrow' }], reasons: [{ id: 'not-now', label: 'Not now' }] }, decline: { reasons: [{ id: 'not-useful', label: 'Not useful' }], say: 'x' } };
+function draftView(answers) {
+  const out = brief.compose({ title: PROMISE_TEXT, promiseText: PROMISE_TEXT, source: { path: 'Meetings/2026/09/x.md', title: 'x' }, lines: [], answers, todayYmd: '2026-10-26' });
+  const open = out.interview.open > 0;
+  return { move: {
+    version: 2, recordId: 'pm_9', recordVersion: 3, kind: 'project-note', plan: 'draft', title: PROMISE_TEXT,
+    prepared: { headline: 'I prepared a private draft for you — no decision made, nothing sent.', detail: null },
+    privateDraft: PRIV, interview: out.interview, outcome: { goal: 'Think it through yourself.' }, why: { because: [], willNot: [] },
+    evidence: [], freshness: [], deliverable: { title: 'x — private draft', sourceFacts: [], suggested: { label: PRIV.label, text: out.text }, gaps: out.gaps, path: 'Projects/Working/x (private draft).md' },
+    options: open
+      ? [{ id: 'unfinished', label: 'As drafted', question: 'Save this unfinished draft? No time will be booked.', writes: ['Save your unfinished private draft as a new note — Working drafts: Projects/Working/x (private draft).md', 'No time is booked.'] }]
+      : [{ id: 'approve', label: 'Thursday 22 Oct 09:00–09:30', question: 'Save the draft and reserve 30 minutes?', writes: ['Save your private draft as a new note — Working drafts: Projects/Working/x (private draft).md', 'Add “Finish x” to your calendar, Thursday 22 Oct 09:00–09:30. Just you — nobody is invited.'] }],
+    notOffered: [], respond: RESPOND, moment: { headline: 'x' },
+  } };
+}
+const pm = (view, extra = {}) => text(renderToString(React.createElement(PM.PreparedMoveView, { state: { kind: 'ready', view }, onChoose() {}, onAsk() {}, onConfirm() {}, onCancel() {}, onAgain() {}, onAnswer() {}, onPark() {}, onAskOption() {}, ...extra })));
+
+test('the draft view asks ONE question in place, with progress — and offers no "Save it and protect the time" while it is open', () => {
+  const h = pm(draftView([]));
+  assert.match(h, /Decision 1 of 4 to make/);
+  assert.match(h, /<label[^>]*>What does ‘achievable’ mean here, and how will you measure it\?<\/label>/);
+  assert.equal((h.match(/<textarea/g) || []).length, 1, 'one field');
+  const b = buttons(h);
+  assert.ok(b.includes('Tell SAiM') && b.includes('Park this for now'), JSON.stringify(b));
+  assert.ok(!b.includes('Save it and protect the time') && !b.includes('Save it'), 'nothing that implies the work is complete');
+  assert.ok(b.includes('Save this unfinished draft instead'));
+  assert.match(h, /no time will be booked/);
+  assert.doesNotMatch(h, /Still needed from you/, 'no inert list');
+  const iv = h.slice(h.indexOf('<section class="pmo2__iv"'), h.indexOf('</section>', h.indexOf('<section class="pmo2__iv"')));
+  assert.doesNotMatch(iv, /<select|[Ss]ettings/, 'the interview is a question and a box — not a settings form');
+  assert.ok(h.indexOf('pmo2__iv') < h.indexOf('pmo2__page'), 'the question before the page');
+});
+
+test('after an answer and a park: "You said" and "Parked" in the draft, the next question asked', () => {
+  const h = pm(draftView([{ questionId: 'achievable', text: 'Measured monthly against FRT', by: 'nick' }, { questionId: 'park', text: 'incentive', by: 'nick' }]));
+  assert.match(h, /Decision 3 of 4 to make/);
+  assert.match(h, /Who does it apply to/);
+  assert.match(h, /## You said/); assert.match(h, /Measured monthly against FRT/);
+  assert.match(h, /## Parked — still unresolved/);
+});
+
+test('every question answered or parked → the normal save-and-protect confirmation, no interview', () => {
+  const all = ['achievable', 'incentive', 'applies', 'agree'].map((id) => ({ questionId: id === 'incentive' ? 'park' : id, text: id === 'incentive' ? 'incentive' : `my words on ${id}` }));
+  const h = pm(draftView(all));
+  assert.doesNotMatch(h, /pmo2__iv"/);
+  const b = buttons(h);
+  assert.ok(b.includes('Save it and protect the time'), JSON.stringify(b));
+  assert.ok(!b.includes('Save this unfinished draft instead'));
+});
+
+test('read-only (kiosk): the question shows, nothing can be answered, parked or saved', () => {
+  const h = text(renderToString(React.createElement(PM.PreparedMoveView, { state: { kind: 'ready', view: draftView([]) }, readOnly: true, onChoose() {}, onAsk() {}, onConfirm() {}, onCancel() {}, onAgain() {} })));
+  assert.match(h, /What does ‘achievable’ mean here/);
+  assert.doesNotMatch(h, /<textarea/);
+  assert.ok(!buttons(h).includes('Park this for now'));
+});
+
 function dataWithPrimary(card) {
   const f = FIXTURES.find((x) => x.id === 'many-next');
   const payload = { ...f.payload, primary: card, poolAvailable: true };
