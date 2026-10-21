@@ -221,3 +221,14 @@ test('apply: an incomplete row is refused alone', async (t) => {
   assert.strictEqual(r.ok, false);
   assert.match(r.results[0].error, /incomplete/);
 });
+
+test('plan: a PAST 1-2-1 is never moved — that person gets a new booking instead', async (t) => {
+  const days = cleanWeek();
+  const yesterday = dateStr(addDays(new Date(), -1));
+  stubTeam(t, ['Ann One'], {
+    events: [ev('PAST', yesterday, '14:00', '14:30', '1-2-1 — Nick / Ann', { attendees: [{ email: 'ann@x.test' }] })],
+  });
+  const r = await booking.planWindow(['Ann One'], { from: days[0], to: days[3] });
+  assert.strictEqual(r.planned[0].mode, 'book');
+  assert.strictEqual(r.planned[0].current, null);
+});

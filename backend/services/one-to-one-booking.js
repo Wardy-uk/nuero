@@ -1038,7 +1038,12 @@ async function planWindow(names, { from, to, durationMinutes = DEFAULT_DURATION_
   const rows = [];
   for (const c of candidates) {
     const attendee = await resolveAttendee(c.name);
-    const existing = matchOneToOnes(events, c.name, attendee.email, nowStr)[0] || null;
+    // UPCOMING only. matchOneToOnes falls back to the most recent MISSED one for
+    // the single Move dialog, where Nick is rescuing one he knows slipped; in a
+    // batch that would drag yesterday's (probably HELD) 1-2-1 into next week and
+    // mail an "updated" notice about it. No upcoming one = book a new one.
+    const existing = matchOneToOnes(events, c.name, attendee.email, nowStr)
+      .find(e => String(e.end || e.start) >= nowStr) || null;
     rows.push({ ...c, attendee, existing });
   }
 
