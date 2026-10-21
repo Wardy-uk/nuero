@@ -24,7 +24,7 @@ const esbuild = require('esbuild');
 const PANEL = path.resolve(__dirname, '..', '..', 'frontend', 'src', 'components', 'AdhdPanel.jsx');
 
 const STUBS = {
-  api: "export const apiFetch = async () => ({ ok: true, json: async () => ({}) });\nexport const apiUrl = p => p;\nexport default { apiFetch, apiUrl };",
+  api: "export const apiFetch = async () => ({ ok: true, json: async () => ({}) });\nexport const apiUrl = p => p;\nexport const authHeaders = () => ({});\nexport default { apiFetch, apiUrl };", // authHeaders: saim/app PreparedMove + Authority, mounted in the Keep my word card
   attention: "export default function () { return { loading: false, error: null, primary: null, secondary: [], dropped: [], gaps: [], contextCard: null, poolAvailable: true, act: async () => {}, refresh: () => {} }; }",
   card: 'export default function () { return null; }',
 };
