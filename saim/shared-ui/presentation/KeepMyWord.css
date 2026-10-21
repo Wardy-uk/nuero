@@ -109,33 +109,38 @@
 .sit--scene .sit__label { color: var(--kmw-amber); letter-spacing: .16em; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .sit--scene .sit__object { background: transparent; border: 0; border-left: 2px solid #ffb45c; border-radius: 0; padding: 4px 0 4px 14px; }
 
-/* Wide: readout at left, main surface at right, held together in ONE bounded,
-   centred composition (21 Oct 2026, Nick's first use: the readout and the main
-   surface sat at opposite edges of a 1920 screen with a void between, and the
-   page scrolled at 1440×900). The field is the background, not the gap.
-   ⚠ Fits 1440×900 and 1920×1080 with no page scroll in the normal states, never
-   overflows sideways down to 1024px, and stacks below 1080px. Pinned by
-   saim-scene-layout.test.js (a real Chromium layout). */
+/* Wide and landscape: readout at left, the live situation at right, as ONE
+   composition that USES the screen (21 Oct 2026, Nick's devices).
+   ⚠ The first cut capped it at 1180px with a 620px main column, which read as
+   a narrow cluster in the middle of a 1920 desktop — the "never a narrow
+   centred column" rule. The readout column now grows with the screen
+   (220–340px), the main column takes the rest up to 900px (headlines and rows
+   stay readable; the thread caps its own prose), and the gap is moderate.
+   ⚠ Columns are chosen by ORIENTATION AND WIDTH, never width alone: a raw
+   max-width:1080px rule put the Fire 7 on the desk (1024×552 landscape, DPR 1)
+   into a phone column with the meeting below the fold. Landscape at 760px or
+   more is two columns; portrait, or narrower than 760, is one.
+   Pinned in real Chromium by saim-scene-layout.test.js. */
 .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body {
   display: grid;
-  grid-template-columns: minmax(200px, 250px) minmax(0, 620px);
+  grid-template-columns: clamp(220px, 21vw, 340px) minmax(0, 900px);
   justify-content: center;
   align-content: start;
   align-items: start;
-  column-gap: clamp(40px, 5vw, 88px);
+  column-gap: clamp(32px, 5vw, 96px);
   width: 100%;
-  max-width: 1180px;
+  max-width: 1480px;
   margin: 0 auto;
   box-sizing: border-box;
   min-height: 0;
-  padding: clamp(28px, 6vh, 80px) clamp(24px, 4vw, 56px) 12px;
+  padding: clamp(20px, 6vh, 80px) clamp(20px, 4vw, 64px) 12px;
 }
 .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 2; min-width: 0; }
-.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: clamp(28px, 6vh, 80px); margin: 0; }
+.sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: clamp(20px, 6vh, 80px); margin: 0; max-width: none; }
 .sit--scene:not(.sit--phone) .sit__situation { margin-bottom: 1.5rem; }
 .sit--scene:not(.sit--phone):not(.sit--watch) .sit__headline,
-.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline { font-size: clamp(36px, 3.4vw, 54px); }
-.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline--thread { font-size: clamp(30px, 2.9vw, 44px); }
+.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline { font-size: clamp(36px, 3.6vw, 60px); }
+.sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline--thread { font-size: clamp(30px, 2.9vw, 46px); }
 /* The rest of the main column is CONTEXT, read at a glance: tighter rhythm on
    a wide screen so the scene is one screen, never smaller type. */
 .sit--scene:not(.sit--phone):not(.sit--watch) .sit__objects { margin-bottom: 1rem; }
@@ -149,10 +154,23 @@
 .sit--scene:not(.sit--phone):not(.sit--watch) .sit__foot { margin-bottom: 0.6rem; }
 .sit--scene:not(.sit--phone):not(.sit--watch) .kmw__rows { margin-top: 16px; }
 .sit--scene:not(.sit--phone):not(.sit--watch) .kmw__row { padding: 9px 0; }
-/* Under a comfortable two-column width: one column, readout first, then the
-   main surface, then context — the same order the phone reads in. */
-@media (max-width: 1079px) {
-  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body { grid-template-columns: minmax(0, 640px); }
+/* A SHORT landscape screen (the Fire 7: 1024×552) — still two columns, made
+   compact so the meeting headline and its next step are above the fold. Type
+   follows the HEIGHT here, because height is what runs out. */
+@media (orientation: landscape) and (max-height: 700px) {
+  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body { padding-top: 14px; padding-bottom: 8px; }
+  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { top: 14px; }
+  .sit--scene:not(.sit--phone):not(.sit--watch) .sit__headline,
+  .sit--scene:not(.sit--phone):not(.sit--watch) .kmw__headline { font-size: clamp(30px, 7vh, 44px); }
+  .sit--scene:not(.sit--phone):not(.sit--watch) .kmw__week .kmw__figure { font-size: 40px; }
+  .sit--scene:not(.sit--phone):not(.sit--watch) .kmw__week .kmw__figure--note { font-size: 24px; margin: 6px 0; }
+  .sit--scene:not(.sit--phone):not(.sit--watch) .kmw__rule { margin: 8px 0; }
+  .sit--scene:not(.sit--phone) .sit__situation { margin-bottom: 0.9rem; }
+}
+/* Portrait, or narrower than 760: one column — readout first, then the main
+   surface, then context — the order the phone reads in. */
+@media (orientation: portrait), (max-width: 759px) {
+  .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body { grid-template-columns: minmax(0, 720px); }
   .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 1; }
   .sit.sit--kmw.sit--scene:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-row: auto; position: static; margin: 0 0 1.75rem; }
 }

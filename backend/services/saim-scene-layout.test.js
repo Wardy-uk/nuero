@@ -84,7 +84,7 @@ const CASES = {
 };
 // States that must fit one screen at 1440×900 and 1920×1080 with no page scroll.
 const ONE_SCREEN = ['calm-thread', 'needs-you-folded', 'working-busy', 'receipt', 'degraded', 'unmeasured-week'];
-const SIZES = [[1024, 768], [1280, 800], [1440, 900], [1920, 1080]];
+const SIZES = [[1024, 768], [1280, 800], [1440, 900], [1920, 1080]];  // desktop profile, landscape
 
 // The one next step (21 Oct 2026): in a meeting, the step must be above the
 // fold — measured with the app's own chrome allowed for (top bar ~52px, bottom
@@ -96,11 +96,16 @@ function inMeeting() {
   p.keepMyWord = k.compose({ score: SCORE, workbench: BENCH, authority: OPEN, presentation: p, now: NOW });
   return p;
 }
+// In a meeting, with the step, on every target device (21 Oct 2026). `chrome`
+// is what the shell itself takes: the PWA's top bar and bottom nav; the kiosk
+// in ambient mode hides its nav (corner buttons overlay, no reserved space).
 const STEP_CASES = [
-  { name: 'in-meeting-step-desktop', profile: 'desktop', make: inMeeting, sizes: [[1440, 900]] },
-  { name: 'in-meeting-step-phone', profile: 'phone', make: inMeeting, sizes: [[390, 844]] },
+  { name: 'meeting-desktop', profile: 'desktop', sizes: [[1440, 900], [1920, 1080]], chrome: { top: 52, bottom: 64 }, twoCol: true, oneScreen: true },
+  { name: 'meeting-tablet-landscape', profile: 'kiosk', sizes: [[1280, 800]], chrome: { top: 0, bottom: 0 }, twoCol: true, oneScreen: true },
+  { name: 'meeting-fire7-landscape', profile: 'kiosk', sizes: [[1024, 552]], chrome: { top: 0, bottom: 0 }, twoCol: true, oneScreen: true },
+  { name: 'meeting-tablet-portrait', profile: 'kiosk', sizes: [[800, 1280]], chrome: { top: 0, bottom: 0 }, twoCol: false, oneScreen: false },
+  { name: 'meeting-phone', profile: 'phone', sizes: [[390, 844]], chrome: { top: 52, bottom: 64 }, twoCol: false, oneScreen: false },
 ];
-const CHROME = { top: 52, bottom: 64 };
 
 // ── Build the pages ──────────────────────────────────────────────────────────
 
@@ -133,7 +138,7 @@ function page(Situation, presentation, { profile = 'desktop', step = false } = {
     ['VS Code', 'Teams', 'Outlook'].map((l) => React.createElement('button', { key: l, type: 'button', className: 'sit__chip sit__chip--quiet' }, l)));
   const field = React.createElement('div', { style: { position: 'absolute', inset: 0, background: '#0b1310' } });
   const body = renderToString(React.createElement('div', { className: 'surface surface--situation surface--scene', style: { minHeight: '100vh', display: 'flex', flexDirection: 'column' } },
-    React.createElement(Situation, { presentation, profile, scene: true, field, ask, foot: profile === 'phone' ? null : foot,
+    React.createElement(Situation, { presentation, profile, scene: true, field, ask: profile === 'kiosk' ? null : ask, foot: profile === 'phone' ? null : foot,
       step: step ? React.createElement('div', { className: 'sit__step' },
         React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--yes sit__step-go' }, 'Join in Teams'),
         React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--quiet sit__step-alt' }, 'Open meeting prep')) : null, onOpen: () => {}, onPrepareDelivery: () => {}, onOpenActions: () => {} })));
@@ -191,7 +196,7 @@ test.before(async () => {
   }
   for (const c of STEP_CASES) {
     const file = path.join(dir, `${c.name}.html`);
-    fs.writeFileSync(file, page(Situation, c.make(), { profile: c.profile, step: true }));
+    fs.writeFileSync(file, page(Situation, inMeeting(), { profile: c.profile, step: true }));
     for (const [w, h] of c.sizes) jobs.push({ name: c.name, file, w, h });
   }
   const appDir = path.join(dir, 'app');
@@ -218,20 +223,23 @@ test('no horizontal overflow or clipping at any width from 1024px up', (t) => {
   }
 });
 
-test('wide: readout and main surface sit side by side with a bounded gap (no void)', (t) => {
+test('desktop: a wide composition — readout beside the main surface, moderate gap, NOT a narrow central cluster', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   for (const w of [1280, 1440, 1920]) {
     for (const name of Object.keys(CASES)) {
       const m = get(name, w);
       assert.ok(m.week && m.main, `${name} @${w}: readout and main surface both render`);
       const gap = m.main.left - m.week.right;
-      assert.ok(gap >= 32 && gap <= 120, `${name} @${w}: gap ${Math.round(gap)}px`);
+      assert.ok(gap >= 30 && gap <= 100, `${name} @${w}: gap ${Math.round(gap)}px`);
       assert.ok(Math.abs(m.week.top - m.main.top) < 40, `${name} @${w}: side by side`);
-      // Centred: the composition's left and right margins are within 1px of each other.
-      const left = m.week.left; const right = m.vw - (m.body.right);
-      assert.ok(m.body.right - m.body.left <= 1180 + 1, `${name} @${w}: bounded container`);
-      if (w === 1920) assert.ok(left > 300, `${name} @1920: the scene is centred, not pinned to the left edge (${Math.round(left)}px)`);
-      assert.ok(right >= 0);
+      assert.ok(m.body.right - m.body.left <= 1480 + 1, `${name} @${w}: bounded`);
+      // The composition (readout's left edge to the main column's right edge)
+      // spans most of the screen: ≥ 70% at 1440, ≥ 65% at 1920.
+      const span = m.main.right - m.week.left;
+      const min = w === 1920 ? 0.65 : 0.7;
+      if (w !== 1280) assert.ok(span >= w * min, `${name} @${w}: composition is ${Math.round(span)}px of ${w} — bunched`);
+      // Centred: left and right margins within 2px of each other.
+      assert.ok(Math.abs(m.week.left - (m.vw - m.main.right)) <= 2 || w === 1280, `${name} @${w}: centred`);
     }
   }
 });
@@ -246,23 +254,31 @@ test('one screen: no page scroll at 1440×900 and 1920×1080 in the representati
   }
 });
 
-test('below the two-column width (1024): one column, readout first, main surface beneath', (t) => {
+test('landscape 1024×768 is two columns too — layout follows orientation, not a raw max-width', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   for (const name of Object.keys(CASES)) {
     const m = get(name, 1024);
-    assert.ok(m.week.bottom <= m.main.top + 1, `${name} @1024: readout above the main surface`);
-    assert.ok(Math.abs(m.week.left - m.main.left) < 2, `${name} @1024: one column`);
+    assert.ok(m.week.right <= m.main.left, `${name} @1024×768: readout beside the main surface`);
   }
 });
 
-test('in a meeting the next step is ABOVE THE FOLD at 1440×900 and 390×844, app chrome included', (t) => {
+test('in a meeting, on every device: the right columns, no sideways overflow, and the step ABOVE THE FOLD where it must be', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   for (const c of STEP_CASES) {
     for (const [w, h] of c.sizes) {
       const m = results.find((x) => x.name === c.name && x.w === w);
-      assert.ok(m.step, `${c.name}: the step renders`);
-      assert.ok(m.step.bottom + CHROME.top <= h - CHROME.bottom, `${c.name} @${w}×${h}: step ends at ${Math.round(m.step.bottom + CHROME.top)}px of ${h - CHROME.bottom}`);
-      assert.ok(m.step.right <= m.vw, `${c.name} @${w}: not clipped sideways`);
+      const at = `${c.name} @${w}×${h}`;
+      assert.ok(m.step, `${at}: the step renders`);
+      assert.ok(m.sw <= m.vw, `${at}: ${m.sw}px wide in ${m.vw}`);
+      assert.ok(m.step.right <= m.vw, `${at}: step not clipped sideways`);
+      if (c.twoCol) {
+        assert.ok(m.week.right <= m.main.left && Math.abs(m.week.top - m.main.top) < 40, `${at}: readout BESIDE the meeting`);
+        assert.ok(m.step.bottom + c.chrome.top <= h - c.chrome.bottom, `${at}: step ends at ${Math.round(m.step.bottom + c.chrome.top)} of ${h - c.chrome.bottom}`);
+      } else {
+        assert.ok(m.week.bottom <= m.main.top + 1, `${at}: one column, readout first`);
+      }
+      if (c.name === 'meeting-phone') assert.ok(m.step.bottom + c.chrome.top <= h - c.chrome.bottom, `${at}: step above the fold`);
+      if (c.oneScreen) assert.ok(m.sh <= h + 1, `${at}: page is ${m.sh}px tall — scrolls`);
     }
   }
 });
