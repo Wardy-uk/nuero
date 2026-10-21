@@ -91,6 +91,20 @@ const VOCABULARY = new Map(Object.entries({
   '#b7791f': 'prepared page: still human — an open decision, dashed edge',
   '#e9b46a': 'prepared move, on her ground: still human — what only people can settle (the count, the meeting step, its edge). The paper’s own still-human pair is above; this is the same meaning off the page',
 
+  // ── Keep my word (21 Oct 2026) — the LOCKED timefield.html scene ────────
+  // The readout and the receipt/thread use the locked prototype's own palette:
+  // warm ink and an amber label voice over the living network. Declared as the
+  // baseline it is, not re-tuned here.
+  '#f0eee7': 'keep my word: ink (figure, headline, row titles)',
+  '#d69042': 'keep my word: amber label voice and its live dot',
+  '#f2b95f': 'keep my word: gold — row labels, the trend, the due date, the one button',
+  '#a5a49a': 'keep my word: dim prose under the readout',
+  '#d6904275': 'keep my word: the amber rule between receipt rows',
+  '#d6904266': 'keep my word: the amber rule between readout sections',
+  '#d5d1c7': 'keep my word: lead sentence under the headline',
+  '#b8b3a7': 'keep my word: row detail (read-back lines, the note path)',
+  '#22170d': 'keep my word: ink on the gold button',
+
   // ⚠ The centrepiece surfaces (Approach / Shelf / Dashboard) carry their own
   // near-white and grey ramp. It is DECLARED rather than folded into the four
   // above: Nick tuned these by eye against the live field on a Fire tablet, a

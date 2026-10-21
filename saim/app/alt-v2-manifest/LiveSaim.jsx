@@ -4,7 +4,7 @@ import Dock from '../alt-v2/Dock';
 import ManifestView from './ManifestView.jsx';
 import { manifest, linkHref } from './manifest.mjs';
 import PreparedMove from '../src/components/PreparedMove';
-import { preparedPlacement } from './prepared.mjs';
+import { preparedPlacement, keepWordPlacement } from './prepared.mjs';
 
 // The SAiM page of the Alt A/B release (alt-v3, 16 Oct 2026): the adapter's
 // view-model over the live /api/canonical/now, with every control routed through
@@ -49,6 +49,10 @@ export default function LiveSaim({ canonical, error, at = null, busy, onAct, run
   const prepared = place.show ? <PreparedMove onMoment={setMoment} onOpenAuthority={onOpenAuthority} heldFolded /> : null;
   // Folded behind its entry whenever it does not lead (and once its moment is known).
   const preparedFold = Boolean(moment) && !place.leads;
+  // Keep my word: the same shared scene the phone and desktop draw, from the
+  // same server contract (presentation.keepMyWord); this page decides only its place.
+  const kmw = (canonical.presentation && canonical.presentation.keepMyWord) || null;
+  const kmwPlace = keepWordPlacement(vm, kmw, place.leads);
   const onChoose = (taskId, choice) => run(async () => {
     setChoiceNote(null);
     const res = await apiFetch(`/api/task-activity/${encodeURIComponent(taskId)}`, { method: 'POST', body: JSON.stringify({ choice, via: 'saim' }) });
@@ -65,6 +69,7 @@ export default function LiveSaim({ canonical, error, at = null, busy, onAct, run
         live={{
           onAct, onDeskOpen, deskStates, busy, onChoose, choiceNote, debug,
           prepared, preparedLeads: place.leads, preparedFold, preparedEntry: (moment && moment.entry) || null,
+          keepMyWord: kmwPlace.show ? kmw : null, kmwLeads: kmwPlace.leads, kmwFolded: kmwPlace.folded,
           linkFor: (href) => linkHref(neuroUrl, href),
           dock: <Dock variant="wk" utterances={canonical.utterances} onSay={onAct} />,
         }}

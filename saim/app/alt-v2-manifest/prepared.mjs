@@ -16,6 +16,21 @@
 
 export const CALM_RULES = Object.freeze(['S11 nothing', 'S11c choose']);
 
+/**
+ * Keep my word (21 Oct 2026). The SERVER decides whether the scene leads
+ * (keep-my-word-v1 `leads`, against the presentation's lead rule); Alt adds its
+ * own calm rule on top, exactly as for the prepared move, and an actionable
+ * prepared move that already leads keeps the lead. A blind or refused read
+ * shows no scene at all — the readout included.
+ * → { show, leads, folded }
+ */
+export function keepWordPlacement(vm, kmw, preparedLeads = false) {
+  if (!kmw || !vm || vm.tone === 'blind' || vm.refused || !vm.rule) return { show: false, leads: false, folded: false };
+  const hasMain = Boolean(kmw.receipt || kmw.thread);
+  const leads = hasMain && kmw.leads === true && CALM_RULES.includes(vm.rule) && !preparedLeads;
+  return { show: true, leads, folded: hasMain && !leads };
+}
+
 /** → { show, leads, vm } — `vm` is the adapter view-model to render (the lead possibly restated). */
 export function preparedPlacement(vm, moment) {
   if (!vm || vm.tone === 'blind' || vm.refused || !vm.rule) return { show: false, leads: false, vm };

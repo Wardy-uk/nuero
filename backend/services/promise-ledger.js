@@ -257,13 +257,21 @@ function read({ now = Date.now() } = {}) {
   if (!roster.full || !roster.full.length) gaps.push({ input: 'people', why: 'no People notes could be read — nobody can be named' });
 
   // Due-date moves, per task, from the activity log (every move ever recorded).
+  // A move Nick made on purpose through the promise loop is a RE-COMMIT: kept
+  // apart (never a slip) but still a re-date, which promise-score-v1 counts.
   const moves = new Map();
+  const recommits = new Map();
   try {
     for (const a of db.all(`SELECT event_data, created_at FROM activity_log WHERE event_type = 'task_triaged' AND event_data LIKE '%due_date%'`)) {
       let d; try { d = JSON.parse(a.event_data); } catch { continue; }
       if (!d || !Array.isArray(d.fields) || !d.fields.includes('due_date')) continue;
       // A date Nick set on purpose through the promise loop is a re-commit, not a slip.
-      if (d.reason === 'recommit') continue;
+      if (d.reason === 'recommit') {
+        const rid = Number(d.taskId);
+        if (!recommits.has(rid)) recommits.set(rid, []);
+        recommits.get(rid).push(String(a.created_at).replace(' ', 'T'));
+        continue;
+      }
       const id = Number(d.taskId);
       if (!moves.has(id)) moves.set(id, []);
       moves.get(id).push(String(a.created_at).replace(' ', 'T'));
@@ -273,9 +281,9 @@ function read({ now = Date.now() } = {}) {
   // Lapsed blocks, per task.
   const blocks = new Map();
   try {
-    for (const b of db.all(`SELECT bi.task_id, b.date_key, b.start_time, b.status FROM task_block_items bi JOIN task_blocks b ON b.id = bi.block_id`)) {
+    for (const b of db.all(`SELECT bi.task_id, b.date_key, b.start_time, b.end_time, b.status FROM task_block_items bi JOIN task_blocks b ON b.id = bi.block_id`)) {
       if (!blocks.has(b.task_id)) blocks.set(b.task_id, []);
-      blocks.get(b.task_id).push({ date: b.date_key, start: b.start_time, status: b.status });
+      blocks.get(b.task_id).push({ date: b.date_key, start: b.start_time, end: b.end_time || null, status: b.status });
     }
   } catch (e) { gaps.push({ input: 'task-blocks', why: e.message }); }
 
@@ -305,6 +313,10 @@ function read({ now = Date.now() } = {}) {
       slips: {
         dueMoves: (moves.get(t.id) || []).length,
         dueMovesAt: (moves.get(t.id) || []).slice(-8),
+        allDueMovesAt: (moves.get(t.id) || []).slice(),
+        recommitsAt: (recommits.get(t.id) || []).slice(),
+        // Time still protected for it: an open block (scheduled, or awaiting its write-up).
+        booked: b.filter((x) => x.status === 'scheduled' || x.status === 'awaiting-writeup').map((x) => ({ taskId: t.id, date: x.date, start: x.start, end: x.end, status: x.status })),
         blocks: b.length,
         lapsedBlocks: b.filter((x) => x.status === 'released' || x.status === 'dropped').length,
         lapsedBlockDates: b.filter((x) => x.status === 'released' || x.status === 'dropped').map((x) => x.date),
@@ -348,7 +360,13 @@ function read({ now = Date.now() } = {}) {
         statedDatePassed: Boolean(stated && stated.date < new Date(nowMs).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10)),
         // The most recent observed slip (a date move or a lapsed block), for recency.
         lastSlipAt: recs.flatMap((r) => [...r.slips.dueMovesAt.map((x) => x.slice(0, 10)), ...r.slips.lapsedBlockDates]).sort().pop() || null,
+        // Every recorded date move (UTC, 'YYYY-MM-DDTHH:MM:SS'), and every re-commit, for week scoping.
+        dueMovesAt: recs.flatMap((r) => r.slips.allDueMovesAt).sort(),
+        recommitsAt: recs.flatMap((r) => r.slips.recommitsAt).sort(),
       },
+      // How each record closed, when it did: a tick is 'done', a deliberate abandon is 'dropped'.
+      records: recs.map((r) => ({ taskId: r.taskId, status: r.status, completedAt: r.completedAt })),
+      booked: recs.flatMap((r) => r.slips.booked).sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`)),
       nextMeeting: next,
       sensitivity: sensitive,
     };

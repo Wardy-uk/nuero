@@ -1301,6 +1301,7 @@ function _workMeetingMinutesToday(nowMs, people, ctx = null) {
 let _radarMemo = null;
 let _homeMemo = null;
 let _outdoorMemo = null;
+let _keepWordMemo = null;
 let _leisureMemo = null;
 // `readOnly` (the meeting-promises shadow): passed to attention.build, which then
 // writes no lifecycle record and saves no room visit. Default false = unchanged.
@@ -1402,6 +1403,23 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
     if (!_leisureMemo || _leisureMemo.minute !== minute) _leisureMemo = { minute, l: require('./leisure').nowBlock({ now: nowMs }) };
     payload.leisure = _leisureMemo.l;
   } catch (e) { payload.leisure = null; gaps.push({ input: 'leisure', why: e.message }); }
+  // Keep my word (21 Oct 2026): the week's promise score, the at-risk bench and
+  // today's verified receipt — READ-ONLY, memoised per minute, never allowed to
+  // fail Now. Composed into `presentation.keepMyWord` below.
+  try {
+    const minute = Math.floor(nowMs / 60000);
+    if (!_keepWordMemo || _keepWordMemo.minute !== minute) {
+      const ledger = require('./promise-ledger').read({ now: nowMs });
+      const proofs = require('./promise-score').readProofs();
+      _keepWordMemo = { minute, k: {
+        score: require('./promise-score').read({ now: nowMs, ledger }),
+        workbench: require('./promise-workbench').read({ now: nowMs, ledger, proofs: proofs.proofs }),
+        receipt: require('./keep-my-word').latestVerifiedReceipt({ now: nowMs }),
+        authority: require('./authority-budget').brief({ now: nowMs }),
+      } };
+    }
+    payload.keepMyWord = _keepWordMemo.k;
+  } catch (e) { payload.keepMyWord = null; gaps.push({ input: 'promises', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".

@@ -660,6 +660,13 @@ function composePresentation(p, { now = Date.now() } = {}) {
   } catch (e) {
     out.synthesis = null;
   }
+  // Keep my word (21 Oct 2026): the readout + receipt/thread scene, decided
+  // against THIS presentation's lead. Additive: null draws what it drew before.
+  try {
+    out.keepMyWord = p.keepMyWord ? require('./keep-my-word').compose({ ...p.keepMyWord, presentation: out, now }) : null;
+  } catch (e) {
+    out.keepMyWord = null;
+  }
   return out;
 }
 

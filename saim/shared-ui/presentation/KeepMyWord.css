@@ -1,0 +1,63 @@
+/* Keep my word — the locked scene (timefield.html). The palette and type are
+   the prototype's, scoped to .kmw so nothing else on the surface moves. The
+   field behind stays SAiM's presence; nothing here draws a card, a tab or a
+   grid of tiles: rules and type carry the hierarchy. */
+.kmw__week, .kmw__main, .kmw__fold {
+  --kmw-ink: #f0eee7;
+  --kmw-amber: #d69042;
+  --kmw-gold: #f2b95f;
+  --kmw-dim: #a5a49a;
+  --kmw-line: #d6904275;
+  color: var(--kmw-ink);
+}
+
+/* Readout: the compact left-hand column. */
+.kmw__week { max-width: 230px; margin: 0 0 22px; }
+.kmw__label { margin: 0; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .16em; color: var(--kmw-amber); display: flex; align-items: center; gap: 9px; }
+.kmw__label--live i { width: 7px; height: 7px; border-radius: 50%; background: var(--kmw-amber); box-shadow: 0 0 15px var(--kmw-amber); }
+.kmw__figure { font: 400 54px/.85 Georgia, serif; letter-spacing: -.07em; margin: 12px 0 8px; }
+.kmw__line { font: 12px/1.5 Georgia, serif; color: var(--kmw-dim); margin: 0; }
+.kmw__line--quiet { margin-top: 6px; }
+.kmw__trend { color: var(--kmw-gold); }
+.kmw__strong { display: block; font: 400 17px Georgia, serif; color: var(--kmw-ink); margin: 6px 0 5px; }
+.kmw__rule { border: 0; border-top: 1px solid #d6904266; margin: 22px 0 12px; }
+.kmw__week--compact .kmw__figure { font-size: 40px; }
+
+/* Main: the receipt, or the thread. */
+.kmw__main { max-width: 530px; }
+.kmw__headline { font: 400 clamp(36px, 4.8vw, 62px)/.94 Georgia, serif; letter-spacing: -.06em; margin: 16px 0; color: var(--kmw-ink); }
+.kmw__headline--thread { font-size: clamp(28px, 3.4vw, 44px); line-height: 1.02; letter-spacing: -.04em; }
+.kmw__lead { font: 400 16px/1.55 Georgia, serif; color: #d5d1c7; margin: 0; }
+.kmw__due { color: var(--kmw-gold); }
+.kmw__rows { margin-top: 22px; border-top: 1px solid var(--kmw-line); }
+.kmw__row { display: grid; grid-template-columns: 104px 1fr; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--kmw-line); }
+.kmw__rowlabel { font-size: 9px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; color: var(--kmw-gold); padding-top: 3px; }
+.kmw__rowtitle { display: block; font-size: 13px; line-height: 1.4; }
+.kmw__rowline { font-size: 11px; line-height: 1.45; color: #b8b3a7; margin: 3px 0 0; }
+.kmw__row--held .kmw__rowline { color: var(--kmw-ink); }
+.kmw__path { font-family: ui-monospace, Consolas, monospace; font-size: 10px; word-break: break-word; }
+.kmw__checked { margin: 12px 0 0; font-size: 11px; color: var(--kmw-dim); letter-spacing: .04em; }
+.kmw__more { margin: 12px 0 0; font: 12px/1.5 Georgia, serif; color: var(--kmw-dim); }
+.kmw__actions { margin-top: 20px; display: flex; gap: 18px; align-items: center; }
+.kmw__open { border: 0; background: var(--kmw-gold); color: #22170d; padding: 11px 15px; font-size: 12px; font-weight: 800; cursor: pointer; }
+
+/* The folded thread beneath an urgent lead: a recognisable line, opened on demand. */
+.kmw__fold { margin: 16px 0; }
+.kmw__fold > summary { cursor: pointer; list-style: none; font: 13px/1.5 Georgia, serif; color: var(--kmw-dim); border-left: 2px solid var(--kmw-amber); padding: 4px 0 4px 12px; }
+.kmw__fold > summary::-webkit-details-marker { display: none; }
+.kmw__fold[open] > summary { color: var(--kmw-gold); }
+
+/* Wide surfaces: the readout sits LEFT of everything else (the locked
+   composition); the phone stacks it above. */
+.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) minmax(0, 1fr);
+  column-gap: clamp(28px, 6vw, 96px);
+  align-items: start;
+}
+.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body > * { grid-column: 2; }
+.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: 24px; }
+
+/* Alt (ManifestView): the readout becomes the grid's left column. */
+.wk__grid--kmw { grid-template-columns: minmax(170px, 230px) minmax(0, 7fr) minmax(0, 3fr); }
+@media (max-width: 900px) { .wk__grid--kmw { grid-template-columns: minmax(0, 1fr); } }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { composeForSurface, groupContext } from './budget.mjs';
 import './Situation.css';
+import { KmwReadout, KmwMain, KmwFolded } from './KeepMyWord.jsx';
 
 // Situation — the adaptive SAiM composition (Build 12).
 //
@@ -279,6 +280,16 @@ export default function Situation({
   // right beneath it — never otherwise.
   const showSummary = !momentLeads && s.summary && !(about && drawnAsObject.has(about));
   const headline = momentLeads ? preparedMoment.headline : s.headline;
+  // Keep my word (21 Oct 2026, the locked timefield scene): the readout sits
+  // beside everything; the receipt or the held/calm thread takes the main
+  // surface ONLY when the server says it leads (no urgent lead) and SAiM's
+  // actionable prepared move is not already leading. Otherwise it folds,
+  // recognisably, beneath the last lead. Never on the watch.
+  const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
+  const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
+  const kmwFolded = kmw && !kmwLeads && (kmw.receipt || kmw.thread)
+    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} />
+    : null;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
   const aboutItem = about
@@ -289,7 +300,7 @@ export default function Situation({
 
   return (
     <section
-      className={`sit sit--${plan.profile} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
+      className={`sit sit--${plan.profile}${kmw ? ' sit--kmw' : ''} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
       data-mode={plan.mode}
       data-profile={plan.profile}
     >
@@ -297,18 +308,27 @@ export default function Situation({
       {/* Keyed on the mode so a change of situation recomposes with a fade
           (and nothing at all under reduced motion). */}
       <div className="sit__body" key={plan.mode}>
+        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} />}
         {plan.blocks.map((blk, i) => {
           switch (blk.type) {
             case 'situation':
               return [
-                <header key={i} className={`sit__situation sit__situation--${blk.variant}`} aria-live="polite">
-                  <h2 className="sit__headline">{headline}</h2>
-                  {showSummary && <p className="sit__summary">{s.summary}</p>}
-                  {ambient && aboutItem && aboutItem.summary && <p className="sit__handoff">{aboutItem.summary}</p>}
-                  {lead && <div className="sit__lead">{lead}</div>}
-                </header>,
+                kmwLeads ? (
+                  <header key={i} className={`sit__situation sit__situation--kmw sit__situation--kmw-${kmw.state}`}>
+                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} />
+                    {lead && <div className="sit__lead">{lead}</div>}
+                  </header>
+                ) : (
+                  <header key={i} className={`sit__situation sit__situation--${blk.variant}`} aria-live="polite">
+                    <h2 className="sit__headline">{headline}</h2>
+                    {showSummary && <p className="sit__summary">{s.summary}</p>}
+                    {ambient && aboutItem && aboutItem.summary && <p className="sit__handoff">{aboutItem.summary}</p>}
+                    {lead && <div className="sit__lead">{lead}</div>}
+                  </header>
+                ),
                 // Outside the live region: a whole prepared move must not be re-announced on every poll.
                 i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
+                i === anchorAt ? kmwFolded : null,
               ];
             case 'needsYou':
               return [
@@ -323,6 +343,7 @@ export default function Situation({
                   {blk.overflow > 0 && <p className="sit__more">and {blk.overflow} more</p>}
                 </div>,
                 i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,
+                i === anchorAt ? kmwFolded : null,
               ];
             case 'primary': {
               const it = blk.items[0];
@@ -336,7 +357,7 @@ export default function Situation({
                     </article>
                   )}
                 </div>
-              ), i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null];
+              ), i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null, i === anchorAt ? kmwFolded : null];
             }
             case 'focal':
               return <Focal key={i} item={blk.items[0]} onOpen={onOpen} actions={plan.actions} />;

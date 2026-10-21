@@ -1,6 +1,7 @@
 import { actable } from './manifest.mjs';
 import { deskStateText, deskStateBusy } from '../alt-v2/model.mjs';
 import { unnamedLine, waitingLine } from './manifest.mjs';
+import { KmwReadout, KmwMain, KmwFolded } from '../../shared-ui/presentation/KeepMyWord.jsx';
 
 // The approved `working` desktop composition (wk__* geometry, unchanged) showing
 // ONE adapter view-model. It renders the view-model and decides nothing.
@@ -50,8 +51,10 @@ export default function ManifestView({ v, live = null }) {
     <div className={`wk mf mf--${v.tone}`}>
       {/* Desk state is an operational read, not part of the moment: debug only on the live page. */}
       {(!live || live.debug) && <p className="wk__presence">{v.presence}</p>}
-      <div className="wk__grid">
+      <div className={`wk__grid${live && live.keepMyWord ? ' wk__grid--kmw' : ''}`}>
+        {live && live.keepMyWord && <KmwReadout readout={live.keepMyWord.readout} />}
         <section className={`wk__main${live && live.prepared ? ' mf__main--prep' : ''}`} aria-label="Current work">
+          {live && live.keepMyWord && live.kmwLeads ? <KmwMain kmw={live.keepMyWord} /> : (
           <div className="wk__block">
             <p className="wk__state mf__state"><span className="wk__dot mf__dot" aria-hidden="true" />{v.state.toUpperCase()}</p>
             <h1 className={`wk__title${v.sentence ? '' : ' mf__title--sentence'}`}>{v.title}</h1>
@@ -64,6 +67,7 @@ export default function ManifestView({ v, live = null }) {
               </p>
             )}
           </div>
+          )}
 
           {/* SAiM's prepared move (the shared component). Rendered ONCE, here, so
               it never remounts mid-confirmation; CSS order puts it straight under
@@ -80,6 +84,8 @@ export default function ManifestView({ v, live = null }) {
               {live.prepared}
             </details>
           )}
+          {/* Keep my word, folded under whatever leads — recognisable by its title. */}
+          {live && live.keepMyWord && live.kmwFolded && <KmwFolded kmw={live.keepMyWord} />}
 
           {v.refused && (
             <div className="mf__blind">

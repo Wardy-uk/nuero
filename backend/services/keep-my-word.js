@@ -1,0 +1,261 @@
+'use strict';
+
+/**
+ * keep-my-word-v1 — what SAiM's home shows about Nick keeping his word
+ * (21 Oct 2026). Composed ONCE, here, onto `presentation.keepMyWord`, and drawn
+ * by the shared renderer on the phone, the desktop, the kiosk and Alt — so the
+ * four cannot phrase it, or decide it, differently.
+ *
+ * The locked scene (timefield.html): a compact left-hand READOUT (the week's
+ * promises kept on time, the next protected time, what needs his judgement,
+ * the Monday report) beside ONE main surface — a verified RECEIPT, or the
+ * promise SAiM is holding as a THREAD.
+ *
+ * Four states, decided here and nowhere else:
+ *   receipt  a live prepared move completed AND read back today, nothing leads
+ *   held     the thread needs something SAiM has no authority for — the missing
+ *            authority is NAMED; there is no confirmation path on it
+ *   folded   an urgent lead is on screen: the lead stays first and the thread
+ *            (or receipt) folds beneath it, recognisable by its title
+ *   calm     otherwise: the thread leads, or only the readout shows
+ *
+ * PURE apart from `latestVerifiedReceipt` (a read). It acts on nothing and
+ * offers no action of its own: opening the task is the existing `onOpen`.
+ */
+
+const score = require('./promise-score');
+
+const CONTRACT = 'keep-my-word-v1';
+/** Situation.jsx's own definition of a lead (kept equal by a test). */
+const LEAD_MODES = new Set(['degraded', 'in-meeting', 'needs-attention', 'focus', 'upcoming']);
+
+const PREP_LABEL = {
+  ready: 'Ready',
+  'needs-a-block': 'Needs a block',
+  'needs-a-draft': 'Needs a draft',
+  'waiting-for-Nick': 'Waiting for you',
+  'not-safe-to-prepare': 'Not safe to prepare',
+};
+
+const NUM = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+const num = (n) => (n >= 0 && n < NUM.length ? NUM[n] : String(n));
+
+/** PURE. Is something more urgent on the screen? Mirrors Situation.jsx's lead rule. */
+function leadFrom(presentation) {
+  if (!presentation) return { lead: false, why: null };
+  if ((presentation.needsYou || []).length) return { lead: true, why: 'needs-you' };
+  const pr = presentation.primary;
+  if (pr && (pr.priority === 'P0' || pr.urgency === 'critical' || pr.urgency === 'high')) return { lead: true, why: 'urgent-primary' };
+  if (LEAD_MODES.has(presentation.mode)) return { lead: true, why: `mode:${presentation.mode}` };
+  return { lead: false, why: null };
+}
+
+/** PURE. "Tuesday · 15:30". */
+function shortWhen(date, start) {
+  return `${score.dayLabel(date).split(' ')[0]} · ${start}`;
+}
+
+/** PURE. "Tuesday, 21 October 2026". */
+function longDay(dateKey) {
+  const parts = score.dayLabel(dateKey).split(' ');
+  return `${parts[0]}, ${parts.slice(1).join(' ')} ${dateKey.slice(0, 4)}`;
+}
+
+// ── The verified receipt ─────────────────────────────────────────────────────
+
+const CAL_TARGET = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})–(\d{2}:\d{2}) “(.*)”$/;
+const GOOD = new Set(['done', 'already-done']);
+
+/**
+ * PURE. A receipt event as the home shows it — or null unless it is LIVE,
+ * COMPLETE and every step read back (`done` / `already-done` are only ever
+ * written after the read-back matched; prepared-move-exec).
+ */
+function receiptView(r) {
+  if (!r || r.target === 'sandbox' || !r.complete) return null;
+  const steps = r.steps || [];
+  if (!steps.length || !steps.every((s) => GOOD.has(s.status))) return null;
+  const at = Date.parse(r.at);
+  if (!Number.isFinite(at)) return null;
+  const rows = [];
+  let calendar = null;
+  let notePath = null;
+  for (const s of steps) {
+    if (s.step === 'calendar') {
+      const m = CAL_TARGET.exec(String(s.target || ''));
+      if (!m) return null; // a calendar step we cannot read is not a receipt we can state
+      calendar = { date: m[1], start: m[2], end: m[3], title: m[4] };
+      rows.push({ label: 'Calendar', title: s.status === 'done' ? `${m[4]} — block created` : `${m[4]} — block already in place`,
+        lines: [`${longDay(m[1])} · ${m[2]}–${m[3]}`, 'Calendar read-back verified.'] });
+    } else if (s.step === 'note') {
+      notePath = String(s.target || '') || null;
+      if (!notePath) return null;
+      rows.push({ label: 'Vault note', title: s.status === 'done' ? 'Draft note created' : 'Draft note already in place', lines: ['Vault read-back verified.'] });
+    }
+  }
+  if (notePath) rows.push({ label: 'Find it', path: notePath });
+  const n = steps.length;
+  return {
+    label: 'Receipt · verified',
+    headline: 'Preparation is now real.',
+    title: r.title || null,
+    lead: `SAiM made ${num(n).toLowerCase()} internal change${n === 1 ? '' : 's'}, then read ${n === 2 ? 'both' : n === 1 ? 'it' : 'each'} back. Nothing else was changed — no email, invite or task.`,
+    checkedAt: new Date(at).toISOString(),
+    checkedLabel: `Checked ${score.londonLabel(at)}`,
+    rows,
+    calendar,
+    notePath,
+  };
+}
+
+/** Today's latest LIVE, complete, verified receipt — read from the append-only authority events. */
+function latestVerifiedReceipt({ now = Date.now(), db = null } = {}) {
+  const d = db || require('../db/database');
+  const today = score.londonWall(now).date;
+  let rows = [];
+  try { rows = d.all(`SELECT at, detail FROM saim_authority_events WHERE kind = 'receipt' ORDER BY id DESC LIMIT 10`); } catch { return null; }
+  for (const r of rows) {
+    let detail; try { detail = JSON.parse(r.detail); } catch { continue; }
+    const rec = { at: r.at, ...detail };
+    if (score.londonWall(Date.parse(rec.at)).date !== today) continue;
+    const v = receiptView(rec);
+    if (v) return v;
+  }
+  return null;
+}
+
+// ── The readout ──────────────────────────────────────────────────────────────
+
+const MONDAY_LINE = {
+  'sent-verified-on-time': 'Sent, and read back in Sent Items by the deadline.',
+  'sent-verified-late': 'Sent after the deadline, and read back.',
+  'written-no-send-record': 'Written — no send is recorded.',
+  late: 'Not written or sent, and the deadline has passed.',
+  unknown: 'NEURO couldn’t read the report’s records.',
+};
+
+/** PURE. */
+function mondayLine(m) {
+  if (!m) return null;
+  if (m.state === 'due') return `Due ${m.dueLabel}.`;
+  if (m.state === 'sent-unverified') return `Recorded as sent — ${m.rule}.`;
+  return MONDAY_LINE[m.state] || null;
+}
+
+/** PURE. "One more than last week." / "Two fewer than last week." / "The same as last week." */
+function trendLine(cur, prev) {
+  if (!cur || !prev) return null;
+  const d = cur.kept - prev.kept;
+  if (d === 0) return 'The same as last week.';
+  return d > 0 ? `${num(d)} more than last week.` : `${num(-d)} fewer than last week.`;
+}
+
+/** PURE. The left-hand readout. */
+function readoutFrom({ score: sc, workbench, receipt, now }) {
+  const nowMs = typeof now === 'number' ? now : Date.parse(now);
+  const out = { label: 'Holding the week', figure: null, line: null, trend: null, next: null, judgement: null, monday: null };
+  if (!sc) {
+    out.line = 'NEURO couldn’t read your promises, so nothing is counted.';
+  } else if (!sc.ratio) {
+    out.line = sc.why || 'Not measured yet.';
+  } else if (sc.ratio.of === 0) {
+    out.line = sc.counts.pending ? `Nothing has come due yet — ${num(sc.counts.pending).toLowerCase()} still to come this week.` : 'Nothing was due this week.';
+  } else {
+    out.figure = `${sc.ratio.kept} / ${sc.ratio.of}`;
+    out.line = 'Promises kept on time — each one read back as delivered.';
+    out.trend = sc.previous && sc.previous.ratio ? trendLine(sc.ratio, sc.previous.ratio) : null;
+  }
+  if (sc && sc.counts && sc.counts.reDated) out.reDated = `${num(sc.counts.reDated)} re-dated this week.`;
+  if (sc && sc.mondayReport) out.monday = { label: 'Monday report', line: mondayLine(sc.mondayReport), state: sc.mondayReport.state };
+
+  // Next protected time: the earliest booked block still ahead, from the bench or today's receipt.
+  const ahead = [];
+  for (const it of (workbench && workbench.items) || []) {
+    for (const b of it.booked || []) ahead.push({ date: b.date, start: b.start, title: it.title });
+  }
+  if (receipt && receipt.calendar) ahead.push({ ...receipt.calendar });
+  const future = ahead.filter((b) => b.date && b.start && score.londonInstant(b.date, b.start) > nowMs)
+    .sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`));
+  if (future.length) out.next = { label: 'Next', strong: shortWhen(future[0].date, future[0].start), line: `${future[0].title}. Protected time.` };
+
+  // What only Nick can say: ticked with no delivery evidence, or waiting for him.
+  const keys = new Set();
+  for (const e of (sc && sc.entries) || []) if (e.outcome === 'unverified') keys.add(e.key);
+  for (const it of (workbench && workbench.items) || []) if (it.preparation && it.preparation.state === 'waiting-for-Nick') keys.add(it.key);
+  if (keys.size) out.judgement = { label: 'Needs your judgement', strong: `${num(keys.size)} promise${keys.size === 1 ? '' : 's'}`, line: 'Only you can say whether they were delivered.' };
+  return out;
+}
+
+// ── The thread ───────────────────────────────────────────────────────────────
+
+/** PURE. The held sentence when the thread needs authority SAiM lacks — or null. */
+function heldFor(item, authority) {
+  const prep = item.preparation && item.preparation.state;
+  if (prep === 'needs-a-draft') {
+    // Not an authority gap: governed drafts exist (prepared-actions). What is
+    // missing is the promise-linked draft/delivery loop (promise-loop, on
+    // saim-meeting-promises), so nothing here may prepare one.
+    return `This promise is a message to ${item.owedTo}. Preparing it as a governed draft needs the promise-linked delivery loop, which isn’t connected yet — so nothing has been drafted, and nothing will be sent from here.`;
+  }
+  if (prep === 'needs-a-block' && authority && authority.boundary && authority.boundary.say) return authority.boundary.say;
+  return null;
+}
+
+/** PURE. The promise SAiM is holding, as the scene draws it. */
+function threadFrom(workbench, authority) {
+  const items = (workbench && workbench.items) || [];
+  if (!items.length) return null;
+  const it = items[0];
+  const held = heldFor(it, authority);
+  const sensitiveWithheld = (workbench.withheld && workbench.withheld.sensitive) || 0;
+  return {
+    key: it.key, taskIds: it.taskIds, taskId: it.leadTaskId,
+    label: 'Keeping your word',
+    title: it.title,
+    owedTo: it.owedTo,
+    due: { say: it.due.say, label: `Due ${score.dayLabel(it.due.date)}`, date: it.due.date, endsAt: it.due.endsAt },
+    preparation: { state: it.preparation.state, label: PREP_LABEL[it.preparation.state], why: it.preparation.why },
+    evidence: it.evidence,
+    because: it.because,
+    held: held ? { say: held } : null,
+    more: items.length > 1 ? { count: items.length - 1, titles: items.slice(1).map((x) => x.title) } : null,
+    withheld: sensitiveWithheld ? `${num(sensitiveWithheld)} more involve${sensitiveWithheld === 1 ? 's' : ''} someone’s employment — not shown here.` : null,
+  };
+}
+
+/**
+ * PURE. The whole home contract.
+ *   score         promise-score-v1 (with previous + mondayReport) or null
+ *   workbench     promise-workbench-v1 or null
+ *   receipt       receiptView() or null
+ *   authority     authority-budget.brief() or null
+ *   presentation  the presentation it rides on (for the lead rule)
+ */
+function compose({ score: sc = null, workbench = null, receipt = null, authority = null, presentation = null, now = Date.now() } = {}) {
+  const lead = leadFrom(presentation);
+  const thread = threadFrom(workbench, authority);
+  const readout = readoutFrom({ score: sc, workbench, receipt, now });
+  const hasMain = Boolean(receipt || thread);
+  let state;
+  if (lead.lead && hasMain) state = 'folded';
+  else if (receipt) state = 'receipt';
+  else if (thread && thread.held) state = 'held';
+  else state = 'calm';
+  const entry = receipt
+    ? `Receipt · verified${receipt.title ? ` — ${receipt.title}` : ''}`
+    : thread ? `Keeping your word — ${thread.title} · ${thread.due.say}` : null;
+  return {
+    contract: CONTRACT,
+    state,
+    leads: hasMain && !lead.lead,
+    leadWhy: lead.why,
+    readout,
+    receipt: receipt || null,
+    thread,
+    entry,
+    benchState: workbench ? workbench.state : 'unknown',
+    benchWhy: workbench ? workbench.why : 'NEURO couldn’t read the workbench.',
+  };
+}
+
+module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, compose };
