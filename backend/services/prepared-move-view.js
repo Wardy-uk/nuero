@@ -142,7 +142,7 @@ async function v2View(record, { now = Date.now(), duty = null, checks = null } =
     outcome: s.outcome || null,
     why: { because: [s.why].filter(Boolean), goal: (s.outcome || {}).goal || null, doneWhen: (s.outcome || {}).doneWhen || null, willNot: (s.authority || {}).mustNot || [] },
     evidence, freshness, deliverable: s.deliverable || null, ask: s.ask || null, do: s.do || null,
-    origin: pkt.origin || null, forum: s.forum || null,
+    origin: pkt.origin || null, forum: s.forum || null, privateDraft: s.privateDraft || null,
     respond: _respondChoices(), decidedAt: (pkt.decision || {}).decidedAt || null, evidenceExpiresAt: record.evidenceExpiresAt,
     checkedAt: record.checkedAt || record.createdAt,
   };

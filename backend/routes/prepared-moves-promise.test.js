@@ -112,8 +112,8 @@ test('resolveAnswer: a full name or one-person alias is a person; a first name, 
   assert.equal(owed.resolveAnswer('x'.repeat(121), roster).kind, 'unclear');
   assert.deepEqual(owed.resolveAnswer('Chris Middleton and Ricky Bostock', roster), { kind: 'people', names: ['Chris Middleton', 'Ricky Bostock'] });
   assert.deepEqual(owed.resolveAnswer('the TLO team', roster), { kind: 'stated', text: 'the TLO team' });
-  // Nick himself is never a recipient match.
-  assert.equal(owed.resolveAnswer('Nick Ward', roster).kind, 'stated');
+  // Nick himself is never a recipient: "Me", "myself" or his own name means it is his own.
+  for (const self of ['Nick Ward', 'Me', 'myself', 'just me', 'nobody']) assert.equal(owed.resolveAnswer(self, roster).kind, 'self', self);
   // A group never carries an address.
   const g = owed.owedFromResolution({ kind: 'stated', text: 'the TLO team' }, { by: 'nick', at: 'x', text: 'the TLO team' });
   assert.equal(g.resolved, null); assert.equal(g.group, 'the TLO team'); assert.equal(JSON.stringify(g).includes('@'), false);

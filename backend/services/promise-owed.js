@@ -28,6 +28,15 @@
 
 const QUESTION_ID = 'owed';
 const MAX_LEN = 120;
+/**
+ * Words that mean "nobody else — it's mine" (25 Oct 2026). Nick answered "Me"
+ * to "Who is this owed to?"; recorded as a GROUP called "Me", that trapped the
+ * promise (a recipient nobody can be sent anything). It now means the promise
+ * is his own: no recipient is needed and none is ever invented.
+ */
+const SELF_RE = /^(?:me|myself|just me|only me|me only|mine|i do|for me|my own|nobody|no one|no-one|none|nick|nick ward|me \(nick\))\.?$/i;
+/** An answer withdrawn by Nick (append-only): its row is kept, it no longer counts. */
+const WITHDRAW_ID = 'withdraw';
 
 const norm = (s) => String(s || '').replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
 const lc = (s) => norm(s).toLowerCase();
@@ -48,6 +57,7 @@ function resolveAnswer(text, roster = {}) {
   if (!t) return { kind: 'unclear', why: 'empty' };
   if (t.length > MAX_LEN) return { kind: 'unclear', why: 'too-long' };
   if (/@/.test(t)) return { kind: 'unclear', why: 'address' };
+  if (SELF_RE.test(t)) return { kind: 'self' };
   const full = (roster.full || []).filter((n) => !/^nick ward$/i.test(n));
   const byLower = new Map(full.map((n) => [n.toLowerCase(), n]));
   const aliases = roster.aliases instanceof Map ? roster.aliases : new Map(Object.entries(roster.aliases || {}));
@@ -81,6 +91,16 @@ function resolveAnswer(text, roster = {}) {
   return { kind: 'stated', text: t };
 }
 
+/** PURE. The owed answer that counts among a move's answers (respecting a later withdrawal). */
+function latestOwed(answers) {
+  let last = null;
+  for (const a of answers || []) {
+    if (a.questionId === QUESTION_ID) last = a;
+    else if (a.questionId === WITHDRAW_ID && a.text === QUESTION_ID) last = null;
+  }
+  return last;
+}
+
 /** PURE. The question to ask again, or null when the answer resolved. */
 function nextQuestion(resolution) {
   if (!resolution) return firstQuestion();
@@ -110,6 +130,7 @@ function nextQuestion(resolution) {
 function owedFromResolution(r, answer) {
   if (!r) return null;
   const stated = { by: answer.by, at: answer.at, text: answer.text };
+  if (r.kind === 'self') return { people: [], ambiguous: [], fromNote: null, resolved: null, group: null, self: true, stated };
   if (r.kind === 'person') return { people: [{ name: r.name, basis: 'nick-said' }], ambiguous: [], fromNote: null, resolved: r.name, stated };
   if (r.kind === 'people') return { people: [], ambiguous: [], fromNote: null, resolved: null, group: r.names.join(', '), groupNames: r.names, stated };
   if (r.kind === 'stated') return { people: [], ambiguous: [], fromNote: null, resolved: null, group: r.text, groupNames: [], stated };
@@ -121,10 +142,12 @@ function answerFor(promiseKey, { db = require('../db/database') } = {}) {
   if (!promiseKey) return null;
   try {
     if (!db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='prepared_move_answers'`)) return null;
-    const r = db.get(`SELECT a.text, a.by, a.at, a.record_id, a.version FROM prepared_move_answers a JOIN prepared_moves m ON m.id = a.record_id
-                      WHERE a.question_id = ? AND json_extract(m.packet_json, '$.selected.source.promiseKey') = ?
-                      ORDER BY a.id DESC LIMIT 1`, [QUESTION_ID, promiseKey]);
-    return r ? { text: r.text, by: r.by, at: r.at, recordId: r.record_id, version: r.version } : null;
+    const r = db.get(`SELECT a.question_id, a.text, a.by, a.at, a.record_id, a.version FROM prepared_move_answers a JOIN prepared_moves m ON m.id = a.record_id
+                      WHERE (a.question_id = ? OR (a.question_id = ? AND a.text = ?)) AND json_extract(m.packet_json, '$.selected.source.promiseKey') = ?
+                      ORDER BY a.id DESC LIMIT 1`, [QUESTION_ID, WITHDRAW_ID, QUESTION_ID, promiseKey]);
+    // The latest word is a withdrawal → nothing counts (the earlier row stays, for the record).
+    if (!r || r.question_id === WITHDRAW_ID) return null;
+    return { text: r.text, by: r.by, at: r.at, recordId: r.record_id, version: r.version };
   } catch { return null; }
 }
 
@@ -134,6 +157,8 @@ function answerFor(promiseKey, { db = require('../db/database') } = {}) {
  */
 function stateFor(p, { roster = null, answer = undefined, db } = {}) {
   if (p && p.owedTo && p.owedTo.resolved) return { owedTo: p.owedTo, source: 'notes', question: null, resolution: null };
+  // `answer` may be the move's answer LIST (the planner's view) — take the one that counts.
+  if (Array.isArray(answer)) answer = latestOwed(answer);
   const a = answer === undefined ? answerFor(p && p.key, { db }) : answer;
   if (!a) return { owedTo: null, source: null, question: firstQuestion(), resolution: null, answer: null };
   let r;
@@ -159,4 +184,4 @@ function overlay(promises, { roster = null, db } = {}) {
   });
 }
 
-module.exports = { QUESTION_ID, MAX_LEN, firstQuestion, resolveAnswer, nextQuestion, owedFromResolution, answerFor, stateFor, overlay };
+module.exports = { QUESTION_ID, WITHDRAW_ID, SELF_RE, latestOwed, MAX_LEN, firstQuestion, resolveAnswer, nextQuestion, owedFromResolution, answerFor, stateFor, overlay };

@@ -96,6 +96,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [busy, setBusy] = useState(false);
   const [preparedMoment, setPreparedMoment] = useState(null);
+  // Which prepared record Home should open (a card's "open", or a draft just prepared).
+  const [showMove, setShowMove] = useState(null);
   const [voiceOut, setVoiceOut] = useState(() => isVoiceOutEnabled());
 
   // The passing question. Null most of the time — this is an ambient screen
@@ -427,6 +429,15 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   }
 
   function open(card) {
+    // A card linked to a promise's prepared draft or question (25 Oct 2026):
+    // open THAT — the draft on Home, or the promise card where SAiM asks.
+    const o = card && card.open;
+    if (o && o.kind === 'promise') {
+      if (o.recordId && o.show === 'draft') { setShowMove({ recordId: o.recordId, n: Date.now() }); return; }
+      const el = typeof document !== 'undefined' && o.ref ? document.querySelector(`[data-promise-ref="${String(o.ref).replace(/"/g, '')}"]`) : null;
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
+      return;
+    }
     const tab = tabFor(card);
     // A thing with no tab of its own (an escalation) resolves to 'surface' —
     // the screen it was pressed on — so Open did nothing at all (5 Oct 2026).
@@ -439,6 +450,15 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       return;
     }
     if (tab && tab !== 'surface') onNavigate?.(tab);
+  }
+
+  /** Would `open(card)` do anything? A button that does nothing is not drawn (25 Oct 2026). */
+  function canOpen(card) {
+    if (card && card.open && card.open.kind === 'promise') return true;
+    const tab = tabFor(card);
+    if (tab && tab !== 'surface') return true;
+    const url = card && card.meta && card.meta.url;
+    return platformNow() !== 'kiosk' && typeof url === 'string' && /^https:\/\//i.test(url);
   }
 
   /**
@@ -677,12 +697,18 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       hideSecondary={Boolean(exchange)}
       // SAiM's one prepared decision. It renders nothing unless NEURO says a
       // trustworthy move exists, and writes nothing without Nick's press.
-      prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} />}
+      prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} show={showMove} />}
       preparedMoment={preparedMoment}
       // Keep my word: prepare the governed delivery note; approval stays in Actions on the desktop.
       onPrepareDelivery={(key) => prepareDelivery(key)}
       // Keep my word: take a held promise forward — asks, in place, what SAiM needs; stores a proposal only.
-      onPromiseMove={(op) => promiseMove(op)}
+      onPromiseMove={async (op) => {
+        const r = await promiseMove(op);
+        // A draft just prepared from its card is shown on Home straight away.
+        if (r && r.ok && r.move && r.move.plan === 'draft' && r.move.recordId) setShowMove({ recordId: r.move.recordId, n: Date.now() });
+        return r;
+      }}
+      canOpen={canOpen}
       crownExtra={(
         <button
           type="button"

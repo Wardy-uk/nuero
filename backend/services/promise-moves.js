@@ -19,6 +19,13 @@
  *   ready           drafted; nothing needs booking — waiting for his confirm
  *   scheduled       the private block was WRITTEN and read back (store.scheduledFor)
  *   done            carried out (a complete receipt)
+ *
+ * PRIVATE DRAFT (25 Oct 2026): a promise whose source note discusses people's
+ * employment (planner.promiseMode) is offered ONLY as a private working draft
+ * for Nick — control "Prepare a private working draft", never "who is it owed
+ * to?" — and every state carries `privateDraft` (the label, what SAiM can't do
+ * and what it can). A stored question from before (the owed ask) is not shown:
+ * pressing re-plans it as the private draft.
  */
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -27,6 +34,13 @@ const dayShort = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00
 
 const OWED_CONTROL = 'Tell SAiM who it is owed to';
 const READY_CONTROL = 'Make this ready';
+const PRIVATE_CONTROL = require('./private-brief').CONTROL;
+
+/** PURE. The private-draft label block every surface shows. */
+function privateView() {
+  const b = require('./private-brief');
+  return { label: b.LABEL, cannot: b.CANNOT, can: b.CAN, promise: b.PROMISE };
+}
 
 /** PURE. The schedule sentence for a booked block. */
 function scheduledSay(b) {
@@ -46,34 +60,53 @@ function moveFor(item, { now = Date.now(), deps = {} } = {}) {
   if (!lead) return null;
   const ref = `promise:${item.key}`;
   const moveKey = planner.moveKeyFor('project-note', `task:${lead}`);
+  let mode = { privateDraft: false };
+  try {
+    const task = (deps.task || planner.DEFAULT_DEPS.task)(lead);
+    mode = planner.promiseMode(task, (deps.roster || planner.DEFAULT_DEPS.roster)());
+  } catch { mode = { privateDraft: false }; }
+  const priv = mode.privateDraft ? privateView() : null;
+  const said = item.owedToSaidBy && item.owedToSaidBy.text ? item.owedToSaidBy.text : null;
+  // An earlier owed-to answer is never a trap: shown with a way to remove it.
+  const owedAnswer = said ? (priv
+    ? { text: said, ignored: true, say: `Your earlier answer to “who is it owed to?” (“${said}”) isn’t needed for a private draft, so SAiM doesn’t use it.`, control: 'Remove that answer' }
+    : { text: said, ignored: false, say: `You said it is owed to “${said}”.`, control: 'Change' }) : null;
+  const extra = { privateDraft: priv, owedAnswer, focusRef: ref };
   const rec = store.latest(moveKey);
-  const mine = rec && rec.packet && rec.packet.contract === 'prepared-move-v2' && ((rec.packet.selected || {}).source || {}).promiseKey === item.key;
+  const mine = rec && rec.packet && rec.packet.contract === 'prepared-move-v2' && ((rec.packet.selected || {}).source || {}).promiseKey === item.key
+    // A record planned before this promise became private-draft-only (the old owed ask) is not its move any more.
+    && (!priv || (((rec.packet.selected || {}).screens || {}).employment || {}).mode === 'private-draft');
   if (mine) {
     const s = rec.packet.selected;
     const booked = store.scheduledFor(moveKey);
-    if (store.completedMove(moveKey)) return { state: booked ? 'scheduled' : 'done', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: booked ? scheduledSay(booked) : 'Carried out — every change was read back.' };
+    if (store.completedMove(moveKey)) return { ...extra, state: booked ? 'scheduled' : 'done', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: booked ? scheduledSay(booked) : 'Carried out — every change was read back.' };
     const sup = store.suppression(moveKey, now);
-    if (sup) return { state: sup.response, ref, moveKey, recordId: rec.id, version: rec.version, say: sup.say };
+    if (sup) return { ...extra, state: sup.response, ref, moveKey, recordId: rec.id, version: rec.version, say: sup.say };
     if (Date.parse(rec.evidenceExpiresAt) > now) {
       if (s.plan === 'ask') {
         const q = ((s.ask || {}).questions || [])[0] || null;
-        return { state: 'ask', ref, moveKey, recordId: rec.id, version: rec.version, question: q, headline: s.headline, say: q ? q.question : s.headline };
+        return { ...extra, state: 'ask', ref, moveKey, recordId: rec.id, version: rec.version, question: q, headline: s.headline, say: q ? q.question : s.headline };
       }
-      if (booked) return { state: 'scheduled', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: scheduledSay(booked) };
+      if (booked) return { ...extra, state: 'scheduled', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: scheduledSay(booked) };
       if (store.needsBlock(rec)) {
         const slot = ((s.decision || {}).slots || [])[0] || {};
-        return { state: 'needs-decision', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
+        return { ...extra, state: 'needs-decision', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
           say: `Prepared — it needs your decision before I can schedule it${slot.date ? ` (I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet)` : ''}. It’s on your SAiM home.` };
       }
-      return { state: 'ready', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, say: `${s.headline} It’s on your SAiM home for you to confirm.` };
+      return { ...extra, state: 'ready', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, say: `${s.headline} It’s on your SAiM home for you to confirm.` };
     }
   }
   // Nothing open for this promise: offer the one control that takes it forward.
   const p = item.preparation;
-  if (p.state === 'waiting-for-Nick' && p.missing === 'owed-to') {
-    return { state: 'offer', ref, moveKey, control: OWED_CONTROL, question: owed.firstQuestion(), say: null };
+  if (priv) {
+    // Never on a read that isn't safe, or a promise that may already be done.
+    if (p.state === 'not-safe-to-prepare' || (p.state === 'waiting-for-Nick' && !p.missing)) return null;
+    return { ...extra, state: 'offer', ref, moveKey, control: PRIVATE_CONTROL, question: null, say: priv.promise };
   }
-  if (p.state === 'needs-a-block') return { state: 'offer', ref, moveKey, control: READY_CONTROL, question: null, say: null };
+  if (p.state === 'waiting-for-Nick' && p.missing === 'owed-to') {
+    return { ...extra, state: 'offer', ref, moveKey, control: OWED_CONTROL, question: owed.firstQuestion(), say: null };
+  }
+  if (p.state === 'needs-a-block') return { ...extra, state: 'offer', ref, moveKey, control: READY_CONTROL, question: null, say: null };
   return null;
 }
 
@@ -83,13 +116,18 @@ async function list({ now = Date.now() } = {}) {
   const items = (wb.items || []).map((it) => ({
     key: it.key, ref: `promise:${it.key}`, title: it.title, owedTo: it.owedTo || null, owedToSaidBy: it.owedToSaidBy || null,
     due: it.due, preparation: it.preparation,
-    missing: it.preparation && it.preparation.missing === 'owed-to' ? [{ questionId: 'owed', question: 'Who is this owed to?' }] : [],
     move: moveFor(it, { now }),
+  })).map((x) => ({
+    ...x,
+    // What is missing is the MOVE's question when it has one; a private draft never needs owed-to.
+    missing: x.move && x.move.state === 'ask' && x.move.question ? [{ questionId: x.move.question.id, question: x.move.question.question, recordId: x.move.recordId, version: x.move.version }]
+      : x.move && x.move.privateDraft ? []
+        : x.preparation && x.preparation.missing === 'owed-to' ? [{ questionId: 'owed', question: 'Who is this owed to?' }] : [],
   }));
   return {
     contract: 'promise-moves-v1', state: wb.state, why: wb.why, items,
-    how: 'To take one forward: POST /api/prepared-moves/prepare { ref }. If its move asks a question, POST /api/prepared-moves/answer { recordId, version, questionId, text } with Nick’s own words — a full name or a group. SAiM never guesses who it is owed to, and nothing is sent or booked without Nick’s confirmation in SAiM.',
+    how: 'To take one forward: POST /api/prepared-moves/prepare { ref }. If its move asks a question, POST /api/prepared-moves/answer { recordId, version, questionId, text } with Nick’s own words — a full name or a group. To remove an earlier owed-to answer: POST /api/prepared-moves/prepare { ref, withdraw: "owed" }. A promise marked privateDraft is only ever prepared as a PRIVATE working draft for Nick — no employment decision, no contact, nothing sent. SAiM never guesses who it is owed to, and nothing is saved, sent or booked without Nick’s confirmation in SAiM.',
   };
 }
 
-module.exports = { OWED_CONTROL, READY_CONTROL, moveFor, list, scheduledSay };
+module.exports = { OWED_CONTROL, READY_CONTROL, PRIVATE_CONTROL, moveFor, list, scheduledSay };

@@ -93,19 +93,32 @@ router.get('/promises', async (req, res) => {
   }
 });
 
-// POST /api/prepared-moves/prepare — make ready (make this ready, draft the reply, meeting prep, draft note): take ONE Now item (its ref) to the furthest safe point — the real draft, a solo block only if your time is needed, or a question for Nick. Stores a PROPOSAL only; nothing is saved, booked or sent until Nick confirms. Body: { ref }
+// POST /api/prepared-moves/prepare — make ready (make this ready, draft the reply, meeting prep, draft note, private working draft): take ONE Now item or held promise (its ref) to the furthest safe point — the real draft, a solo block only if your time is needed, or a question for Nick. Stores a PROPOSAL only; nothing is saved, booked or sent until Nick confirms. withdraw: "owed" first removes an earlier answer to who a promise is owed to (kept for the record, no longer used). Body: { ref, withdraw? }
 router.post('/prepare', async (req, res) => {
-  const bad = strict(req.body, ['ref']);
+  const bad = strict(req.body, ['ref', 'withdraw']);
   if (bad) return res.status(400).json({ ok: false, error: bad });
-  const { ref } = req.body || {};
+  const { ref, withdraw = null } = req.body || {};
   if (typeof ref !== 'string' || !REF_RE.test(ref)) return res.status(400).json({ ok: false, error: 'ref is required — a Now item reference (item:…, held:… or promise:…)' });
+  if (withdraw !== null && (withdraw !== 'owed' || !ref.startsWith('promise:'))) return res.status(400).json({ ok: false, error: 'withdraw may only be "owed", on a promise ref' });
   try {
+    let withdrawn = null;
+    if (withdraw) {
+      const key = ref.slice('promise:'.length);
+      let p = null;
+      try { p = planner().DEFAULT_DEPS.promise(key, Date.now()); } catch (e) { return res.status(409).json({ ok: false, error: `NEURO couldn’t read your promises (${e.message}), so nothing was changed.` }); }
+      const lead = p && (p.leadTaskId || (p.taskIds || [])[0]);
+      if (!lead) return res.status(409).json({ ok: false, error: 'That promise is no longer in what NEURO holds — nothing was changed.' });
+      withdrawn = pstore().withdrawAnswer({ moveKey: planner().moveKeyFor('project-note', `task:${lead}`), questionId: 'owed', by: by(req) });
+      if (!withdrawn.ok) return res.status(withdrawn.code || 409).json({ ok: false, error: withdrawn.why });
+      freshKmw();
+    }
     const r = await planner().planAndStore({ ref, origin: req.apiClient || caller(req).machine ? 'mcp' : 'manual' });
+    if (withdrawn && !r.ok) return res.json({ ok: true, outcome: 'withdrawn', withdrawn: withdrawn.withdrawn || null, say: `Your earlier answer was removed. ${r.why || ''}`.trim(), move: null });
     if (!r.ok) return res.status(409).json({ ok: false, error: r.why, reason: r.reason || null, withheld: r.withheld });
     if (ref.startsWith('promise:')) freshKmw();
-    if (r.outcome === 'handoff') return res.json({ ok: true, outcome: 'handoff', say: r.why, handoff: r.handoff, move: null });
-    if (!r.record) return res.json({ ok: true, outcome: r.outcome, say: r.why || null, move: null });
-    res.json({ ok: true, outcome: r.outcome, move: await shown(r.record), confirmWhere: 'Only Nick can confirm it, on his SAiM screen.' });
+    if (r.outcome === 'handoff') return res.json({ ok: true, outcome: 'handoff', say: r.why, handoff: r.handoff, move: null, withdrawn: withdrawn && withdrawn.withdrawn });
+    if (!r.record) return res.json({ ok: true, outcome: r.outcome, say: r.why || null, move: null, withdrawn: withdrawn && withdrawn.withdrawn });
+    res.json({ ok: true, outcome: r.outcome, move: await shown(r.record), confirmWhere: 'Only Nick can confirm it, on his SAiM screen.', ...(withdrawn ? { withdrawn: withdrawn.withdrawn || null } : {}) });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

@@ -19,6 +19,7 @@ export function promiseMoveResult(body, { answering = false } = {}) {
     const saved = answering && b.answered === true;
     return { kind: 'refused', message: `${b.error || 'NEURO refused that.'}${answering ? (saved ? ' Your answer was saved.' : ' Your answer was not saved — it is still in the box.') : ' Nothing was changed.'}`, keep: answering && !saved };
   }
+  if (b.outcome === 'withdrawn') return { kind: 'prepared', say: b.say || 'Your earlier answer was removed.' };
   if (b.outcome === 'handoff') return { kind: 'handoff', say: b.say || 'SAiM can draft the delivery note for your approval. Nothing is sent.' };
   const m = b.move;
   if (m && m.plan === 'ask' && m.ask && (m.ask.questions || []).length) {

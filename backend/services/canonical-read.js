@@ -1339,6 +1339,31 @@ function _promiseMoves(workbench, nowMs) {
 }
 
 /**
+ * PURE. Link each attention card about a task (a capacity warning, meta.taskId)
+ * to the prepared move of the promise behind that task, if there is one: its
+ * `open` names the record and whether Home should show the draft or the
+ * promise card's question, and its action says so. Cards are the payload's own
+ * copies; the memoised moves are not changed.
+ */
+const OPEN_SAY = { offer: 'Go to the promise', ask: 'Answer SAiM’s question', 'needs-decision': 'Open the draft', ready: 'Open the draft', scheduled: 'Open the draft', done: 'Open the draft' };
+function linkPromiseOpens(cards, moves) {
+  if (!moves) return;
+  const byTask = new Map();
+  for (const m of Object.values(moves)) {
+    const t = /:task:(\d+)$/.exec(String((m && m.moveKey) || ''));
+    if (t) byTask.set(Number(t[1]), m);
+  }
+  for (const c of cards || []) {
+    if (!c || c.kind !== 'item' || !c.meta || c.meta.taskId == null) continue;
+    const m = byTask.get(Number(c.meta.taskId));
+    if (!m || !OPEN_SAY[m.state]) continue;
+    const draft = ['needs-decision', 'ready', 'scheduled', 'done'].includes(m.state) && m.recordId;
+    c.open = { kind: 'promise', ref: m.ref, recordId: m.recordId || null, state: m.state, show: draft ? 'draft' : 'promise', privateDraft: Boolean(m.privateDraft) };
+    c.actionHint = m.privateDraft && draft ? 'Open the private draft' : m.privateDraft && m.state === 'offer' ? 'Prepare a private working draft' : OPEN_SAY[m.state];
+  }
+}
+
+/**
  * Drop ONLY the Keep my word memo, so the next Now read sees a promise
  * delivery that was just prepared instead of offering to draft it again.
  * Called by promise-delivery after a SUCCESSFUL prepare, and by the
@@ -1453,6 +1478,9 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
   try {
     payload.keepMyWord = keepWordBlock(nowMs);
   } catch (e) { payload.keepMyWord = null; gaps.push({ input: 'promises', why: e.message }); }
+  // A capacity card about a promise's task opens THAT promise's draft or
+  // question, never a NEURO-only screen the phone cannot show (25 Oct 2026).
+  try { linkPromiseOpens([payload.primary, ...(payload.secondary || [])], payload.keepMyWord && payload.keepMyWord.moves); } catch { /* the card keeps its own action */ }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".
@@ -1525,7 +1553,7 @@ module.exports = {
   shapeCommitment, summariseCommitments, sourceVerdict, shapeSource, sourceMatters, attentionVerdict, shapeFinding,
   commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly, isKnownNonWork, workOnlyPresentation,
   // readers / writers
-  keepWordBlock, invalidateKeepMyWord,
+  keepWordBlock, invalidateKeepMyWord, linkPromiseOpens,
   commitments, commitmentDetail, tasks, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,
   addGoalLink, removeGoalLink, GOAL_LINK_PREFIXES,
 };

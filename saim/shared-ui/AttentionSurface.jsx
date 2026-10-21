@@ -179,6 +179,9 @@ export default function AttentionSurface({
   onPrepareDelivery = null,
   // Keep my word: take a held promise forward as a prepared move (ask / answer). null = no control.
   onPromiseMove = null,
+  // Would the shell's onOpen do anything for this card? Unset = yes (the old behaviour).
+  // A button that does nothing is not drawn — "Open State of Play" on a phone (25 Oct 2026).
+  canOpen = null,
   onOpenActions = null,
   footAside = null,
   footExtra = null,
@@ -521,9 +524,11 @@ export default function AttentionSurface({
         )}
         {primaryCard.say && <p className="sit__object-sub">{primaryCard.say}</p>}
         <div className="sit__object-acts">
-          <button type="button" className="sit__chip sit__chip--yes" onClick={() => onOpen && onOpen(primaryCard)}>
-            {primaryCard.actionHint || 'Open it'}
-          </button>
+          {(!canOpen || canOpen(primaryCard)) && (
+            <button type="button" className="sit__chip sit__chip--yes" onClick={() => onOpen && onOpen(primaryCard)}>
+              {primaryCard.actionHint || 'Open it'}
+            </button>
+          )}
           {canComplete(primaryCard) && (
             <button type="button" className="sit__chip" disabled={busy}
               onClick={() => { act(primaryCard, 'complete'); setDeferring(false); }}>That&rsquo;s done</button>
@@ -826,13 +831,15 @@ export default function AttentionSurface({
               {primary.kind === 'item' && onAct && !speaks && (
                 <>
                   <div className="surface__acts">
-                    <button
-                      type="button"
-                      className="surface__btn surface__btn--go"
-                      onClick={() => onOpen && onOpen(primary)}
-                    >
-                      {primary.actionHint || 'Open it'}
-                    </button>
+                    {(!canOpen || canOpen(primary)) && (
+                      <button
+                        type="button"
+                        className="surface__btn surface__btn--go"
+                        onClick={() => onOpen && onOpen(primary)}
+                      >
+                        {primary.actionHint || 'Open it'}
+                      </button>
+                    )}
                     {/* The sentence he would say, not a UI verb. It is Nick's
                         explicit confirmation — the ONLY action that resolves —
                         and what it closed is reported below, never implied. */}

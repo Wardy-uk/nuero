@@ -320,7 +320,7 @@ test('a partial receipt says exactly what did and did not happen, and offers onl
 
 test('the Surface passes the move into SAiM’s presence, and the copy about the move is never hard-coded', () => {
   const surface = fs.readFileSync(path.join(APP, 'views', 'Surface.jsx'), 'utf8');
-  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} onOpenAuthority=\{\(\) => onNavigate\?\.\('authority'\)\} \/>\}/);
+  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} onOpenAuthority=\{\(\) => onNavigate\?\.\('authority'\)\} show=\{showMove\} \/>\}/);
   const comp = fs.readFileSync(path.join(APP, 'components', 'PreparedMove.jsx'), 'utf8') + fs.readFileSync(path.join(APP, 'preparedMove.mjs'), 'utf8');
   assert.doesNotMatch(comp, /T1|Triage|Support Improvement|Mel\b|acceptance criteria/i, 'no move-specific words in the client');
   assert.doesNotMatch(comp, /localStorage|sessionStorage|indexedDB/, 'nothing about the move is kept on the device');

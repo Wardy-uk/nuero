@@ -226,6 +226,21 @@ function addAnswer({ recordId, version, questionId, text, by = 'nick', now = Dat
   return { ok: true, record: rec };
 }
 
+/**
+ * Withdraw an earlier answer (25 Oct 2026) — APPEND-ONLY: a `withdraw` row
+ * naming the question, so the earlier answer is kept for the record and no
+ * longer counts. Only a question this move's history actually answered.
+ */
+function withdrawAnswer({ moveKey, questionId, by = 'nick', now = Date.now() } = {}) {
+  if (!moveKey || !/^[a-z]{1,20}$/.test(String(questionId || ''))) return { ok: false, code: 400, why: 'which answer to withdraw is required' };
+  if (!_sideExists()) return { ok: true, already: true };
+  const last = db.get(`SELECT id, record_id, version, question_id, text FROM prepared_move_answers WHERE move_key = ? AND (question_id = ? OR (question_id = 'withdraw' AND text = ?)) ORDER BY id DESC LIMIT 1`, [moveKey, questionId, questionId]);
+  if (!last || last.question_id === 'withdraw') return { ok: true, already: true };
+  db.run(`INSERT INTO prepared_move_answers (move_key, record_id, version, question_id, text, by, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [moveKey, last.record_id, last.version, 'withdraw', questionId, String(by || 'nick').slice(0, 80), new Date(now).toISOString()]);
+  return { ok: true, withdrawn: { questionId, text: last.text } };
+}
+
 function answersFor(moveKey) {
   if (!moveKey || !_sideExists()) return [];
   return db.all(`SELECT question_id, text, by, at FROM prepared_move_answers WHERE move_key = ? ORDER BY id`, [moveKey]).map((r) => ({ questionId: r.question_id, text: r.text, by: r.by, at: r.at }));
@@ -293,7 +308,7 @@ function isLatest(record) {
   return Boolean(l && l.id === record.id);
 }
 
-module.exports = {
+module.exports = { withdrawAnswer,
   CONTRACT, EVIDENCE_LIFETIME_MS, ensure, store, get, latest, isLatest, packetHash,
   markChecked, respond, suppression, addAnswer, answersFor, activeV2, completedMove, scheduledFor, needsBlock, DEFER_DAYS, DEFER_REASONS, DECLINE_REASONS,
 };

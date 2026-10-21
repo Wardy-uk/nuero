@@ -124,6 +124,25 @@ const V2_NOTE_RULES = Object.freeze({
   'project-note': (p) => { const m = /^Projects\/([^/]+)\/[^/]+\.md$/.exec(p); return Boolean(m) && !['Archive', 'PIP'].includes(m[1]); },
   'meeting-prep': (p) => /^Meetings\/\d{4}\/\d\d\/[^/]+ Prep\.md$/.test(p),
 });
+/** Where a PRIVATE working draft may be saved: beside its source meeting, or in a project folder. */
+const PRIVATE_NOTE_RULE = (p) => /^Meetings\/\d{4}\/\d\d\/[^/]+ – Private draft\.md$/.test(p) || /^Projects\/(?!Archive\/|PIP\/)[^/]+\/[^/]+ \(private draft\)\.md$/.test(p);
+
+/**
+ * PURE. Is this v2 packet a PRIVATE working draft that may be carried out
+ * despite its employment-sensitive source (25 Oct 2026)? Only a project-note
+ * the planner marked private-draft, whose draft carries the private label,
+ * whose writes are a note and/or a solo block (never a reply), and whose note
+ * path is a private-draft path. Anything else stays routing only.
+ */
+function privateDraftAllowed(s, draft) {
+  const sc = (s && s.screens) || {};
+  if (!sc.employment || sc.employment.mode !== 'private-draft' || s.kind !== 'project-note') return false;
+  if (!require('./private-brief').isPrivateDraft(draft)) return false;
+  const writes = ((s.decision || {}).proposedWrites || []);
+  if (!writes.length || writes.some((w) => !['vault.note', 'calendar.solo'].includes(w.kind))) return false;
+  const note = writes.find((w) => w.kind === 'vault.note');
+  return Boolean(note && PRIVATE_NOTE_RULE(String(note.path || '')));
+}
 
 /**
  * PURE. A v2 packet's exact writes for one option (21 Oct 2026). At most ONE
@@ -136,7 +155,9 @@ function writesForV2(packet, option) {
   if (s.plan === 'ask') return refuse('SAiM needs your answer before there is anything to confirm');
   if (s.plan !== 'draft') return refuse('this move has nothing to confirm');
   const sc = s.screens || {};
-  if (!sc.employment || sc.employment.sensitive) return refuse('employment matter — routing only, never executed');
+  const draft0 = ((s.preparation || []).find((x) => x.draft) || {}).draft;
+  const privateDraft = privateDraftAllowed(s, draft0);
+  if (!sc.employment || (sc.employment.sensitive && !privateDraft)) return refuse('employment matter — routing only, never executed');
   if (sc.freshnessOk !== true) return refuse('a source this move rests on was stale when it was prepared');
   if (sc.recordUnique !== true) return refuse('the move is not tied to exactly one record');
   const planner = require('./prepared-move-planner');
@@ -156,9 +177,9 @@ function writesForV2(packet, option) {
   const note = writes.find((w) => w.kind === 'vault.note');
   if (note) {
     const p = String(note.path || '');
-    const rule = V2_NOTE_RULES[s.kind];
+    const rule = privateDraft ? PRIVATE_NOTE_RULE : V2_NOTE_RULES[s.kind];
     if (!rule || p.includes('..') || p.includes('\0') || !rule(p)) return refuse('the note path is not one a prepared move may save into');
-    const content = ['---', 'type: draft', 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
+    const content = ['---', 'type: draft', ...(privateDraft ? ['private: true'] : []), 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
     steps.push({ step: 'note', writer: WRITER.note, path: p, content, contentSha: sha(content) });
     lines.push(`Save the ${s.kind === 'meeting-prep' ? 'meeting prep' : 'draft'} as a new note: ${p}`);
   }
@@ -769,6 +790,6 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
 }
 
 module.exports = {
-  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, V2_NOTE_RULES, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
+  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, V2_NOTE_RULES, PRIVATE_NOTE_RULE, privateDraftAllowed, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
   requestConfirmation, execute, requestForMove, confirmMove, londonMs, _setDeps,
 };

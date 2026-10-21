@@ -110,9 +110,11 @@ function preparationFor(p, { due, progress, booked }) {
   // Nick's own answer counts here too (promise-owed's read-time overlay): a
   // person, or a group kept exactly as he wrote it — never with a guessed address.
   const recipient = p.owedTo ? (p.owedTo.resolved || p.owedTo.group || null) : null;
-  if (!recipient) return { state: 'waiting-for-Nick', missing: 'owed-to', why: 'Your notes don’t name who it is owed to, so only you can say who should get it.' };
+  // "It's mine" (Nick said so): no recipient is needed, and none is invented.
+  const own = Boolean(p.owedTo && p.owedTo.self);
+  if (!recipient && !own) return { state: 'waiting-for-Nick', missing: 'owed-to', why: 'Your notes don’t name who it is owed to, so only you can say who should get it.' };
   if (booked.length) return { state: 'ready', why: PREP_SAY.ready };
-  if (MESSAGE_ACT.test(p.text || '')) return { state: 'needs-a-draft', why: PREP_SAY['needs-a-draft'] };
+  if (!own && MESSAGE_ACT.test(p.text || '')) return { state: 'needs-a-draft', why: PREP_SAY['needs-a-draft'] };
   return { state: 'needs-a-block', why: PREP_SAY['needs-a-block'] };
 }
 
@@ -182,7 +184,8 @@ function select({ promises = [], proofs = new Map(), dueBases = new Map(), progr
       key: c.p.key, taskIds: c.p.taskIds, leadTaskId: c.p.leadTaskId || c.p.taskIds[0],
       title: c.p.text,
       owedTo: c.p.owedTo.resolved || c.p.owedTo.group || null,
-      owedToSaidBy: c.p.owedTo.stated ? { by: c.p.owedTo.stated.by, at: c.p.owedTo.stated.at } : null,
+      owedToSaidBy: c.p.owedTo.stated ? { by: c.p.owedTo.stated.by, at: c.p.owedTo.stated.at, text: c.p.owedTo.stated.text } : null,
+      owedToSelf: Boolean(c.p.owedTo.self),
       due: { date: c.due.date, basis: c.due.basis, endsAt: new Date(c.due.endsMs).toISOString(), tier: ['overdue', 'today', 'soon', 'this-week'][c.tier], say: TIER_SAY[c.tier] },
       nextMeeting: c.meeting ? { title: c.meeting.title, start: c.meeting.start } : null,
       booked: c.booked,

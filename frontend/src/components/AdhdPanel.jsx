@@ -12,6 +12,7 @@ import { useWorkOnly } from '../workOnly';
 // Build 12M: the same adaptive composition the phone and the kiosk draw, in the
 // DESKTOP profile — richer, but one presentation from NEURO, never re-ranked.
 import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
+import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
@@ -805,8 +806,9 @@ export default function AdhdPanel({ onNavigate }) {
             // Keep my word: take a held promise forward as a prepared move — asks, in place,
             // the one thing SAiM needs (who it is owed to); stores a proposal or the answer only.
             onPromiseMove={async (op) => {
-              const path = op && op.action === 'answer' ? '/api/prepared-moves/answer' : '/api/prepared-moves/prepare';
-              const body = op && op.action === 'answer' ? { recordId: op.recordId, version: op.version, questionId: op.questionId, text: op.text } : { ref: op && op.ref };
+              const req = promiseMoveRequest(op);
+              if (!req) return { ok: false, error: 'That isn’t something this card can do.' };
+              const { path, body } = req;
               try {
                 const res = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 const b = await res.json().catch(() => null);

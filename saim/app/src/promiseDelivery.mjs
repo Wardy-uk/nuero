@@ -5,6 +5,7 @@
 // employment routing sentence must not be cut), so the thread can show the
 // server's own reason.
 import { apiUrl, authHeaders } from './api';
+import { promiseMoveRequest } from './promiseMoveRequest.mjs';
 
 export const deliveryPath = (key) => `/api/promises/${encodeURIComponent(key)}/prepare`;
 
@@ -28,10 +29,9 @@ export async function prepareDelivery(key, { fetchImpl = fetch } = {}) {
  *   { action: 'prepare', ref } | { action: 'answer', recordId, version, questionId, text }
  */
 export async function promiseMove(op, { fetchImpl = fetch } = {}) {
-  const path = op && op.action === 'answer' ? '/api/prepared-moves/answer' : '/api/prepared-moves/prepare';
-  const body = op && op.action === 'answer'
-    ? { recordId: op.recordId, version: op.version, questionId: op.questionId, text: op.text }
-    : { ref: op && op.ref };
+  const req = promiseMoveRequest(op);
+  if (!req) return { ok: false, error: 'That isn’t something this card can do.' };
+  const { path, body } = req;
   try {
     const res = await fetchImpl(apiUrl(path), { method: 'POST', headers: authHeaders(path, { 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
     const b = await res.json().catch(() => null);

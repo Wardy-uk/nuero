@@ -252,7 +252,9 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
   const facts = d.sourceFacts || [];
   return (
     <section className="pmo pmo2" aria-label="Something SAiM has prepared">
+      {move.privateDraft && <p className="pmo2__private" role="note">{move.privateDraft.label}</p>}
       <p className="pmo__say">{move.prepared && move.prepared.headline}</p>
+      {move.privateDraft && <p className="pmo__sub pmo2__privatewhy">{move.privateDraft.cannot} {move.privateDraft.can}</p>}
       {move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
 
       {move.plan === 'ask' ? (
@@ -701,7 +703,7 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   // The kiosk can SHOW a prepared move but never confirm or write (its shell
   // declares the platform; no device sniffing).
@@ -735,6 +737,12 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
   const run = async (fn) => { setBusy(true); try { const next = await fn(); setState((s) => ({ ...next, drill: s.drill || null })); } finally { setBusy(false); } };
   const root = useRef(null);
   const first = useRef(true);
+  // The Surface asks for ONE record (25 Oct 2026): a card's "open" for a
+  // promise's prepared draft, or the draft just prepared from its card.
+  useEffect(() => {
+    if (!show || !show.recordId) return;
+    run(() => load(call, { recordId: show.recordId })).then(() => { if (root.current && root.current.scrollIntoView) root.current.scrollIntoView({ block: 'start' }); });
+  }, [show && show.n]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     if (root.current && root.current.scrollIntoView) root.current.scrollIntoView({ block: 'start' });

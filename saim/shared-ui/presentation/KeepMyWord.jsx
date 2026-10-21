@@ -129,6 +129,7 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
     } finally { setBusy(false); }
   };
   const press = () => run({ action: 'prepare', ref: move.ref }, false);
+  const withdraw = () => run({ action: 'withdraw', ref: move.ref }, false);
   const submit = (e) => {
     e.preventDefault();
     const t = text.trim();
@@ -136,10 +137,13 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
     run({ action: 'answer', recordId: asking.recordId, version: asking.version, questionId: asking.question.id, text: t }, true);
   };
   const q = asking && asking.question;
+  const pd = move.privateDraft || null;
+  const oa = move.owedAnswer || null;
   return (
-    <div className="kmw__row kmw__row--move">
+    <div className={`kmw__row kmw__row--move${pd ? ' kmw__row--private' : ''}`}>
       <span className="kmw__rowlabel">Next</span>
       <div>
+        {pd && <p className="kmw__rowline kmw__private">{pd.label}</p>}
         {move.say && !step && move.state !== 'ask' && <p className="kmw__rowline">{move.say}</p>}
         {q ? (
           <form className="kmw__ask" onSubmit={submit}>
@@ -163,6 +167,12 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
         ) : move.state === 'offer' && move.control && can ? (
           <div className="kmw__actions"><button type="button" className="kmw__open" onClick={press} disabled={busy}>{busy ? 'One moment…' : move.control}</button></div>
         ) : null}
+        {oa && !step && (
+          <div className="kmw__owed">
+            <p className="kmw__rowline">{oa.say}</p>
+            {can && <button type="button" className="kmw__choice" onClick={withdraw} disabled={busy}>{oa.control}</button>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -196,7 +206,7 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
     ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
     : null;
   return (
-    <section className={`kmw__thread kmw__thread--${thread.preparation.state}${thread.held ? ' kmw__thread--held' : ''}`} aria-label="Keeping your word">
+    <section className={`kmw__thread kmw__thread--${thread.preparation.state}${thread.held ? ' kmw__thread--held' : ''}`} aria-label="Keeping your word" data-promise-ref={thread.move ? thread.move.ref : undefined}>
       <p className="kmw__label kmw__label--live"><i aria-hidden="true" />{thread.label}</p>
       <h2 className="kmw__headline kmw__headline--thread">{thread.title}</h2>
       <p className="kmw__lead">

@@ -251,6 +251,7 @@ function moveView(m) {
   if (!m) return null;
   return {
     state: m.state, ref: m.ref, control: m.control || null, say: m.say || null,
+    privateDraft: m.privateDraft || null, owedAnswer: m.owedAnswer || null, focusRef: m.focusRef || null,
     question: m.question ? { id: m.question.id, question: m.question.question, why: m.question.why || null, choices: m.question.choices || [] } : null,
     recordId: m.recordId || null, version: m.version || null, scheduled: m.scheduled || null,
   };
@@ -264,16 +265,22 @@ function threadFrom(workbench, authority, delivery = null, moves = null) {
   const move = moveView(moves ? moves[it.key] : null);
   // A needs-a-block promise SAiM can PREPARE is not held: the allowance only
   // matters when a prepared move is confirmed, and that confirm names it.
-  const held = move && it.preparation.state === 'needs-a-block' ? null : heldFor(it, authority, delivery);
-  const draft = held ? null : draftFor(it, delivery);
+  // A promise SAiM can only take forward as a PRIVATE draft is not held either:
+  // the card says what SAiM can't do and what it can, and offers the draft —
+  // never a delivery note, never "who is it owed to?" (25 Oct 2026).
+  const privateDraft = Boolean(move && move.privateDraft);
+  const held = move && (privateDraft || it.preparation.state === 'needs-a-block') ? null : heldFor(it, authority, delivery);
+  const draft = held || privateDraft ? null : draftFor(it, delivery);
   const sensitiveWithheld = (workbench.withheld && workbench.withheld.sensitive) || 0;
   return {
     key: it.key, taskIds: it.taskIds, taskId: it.leadTaskId,
     label: 'Keeping your word',
     title: it.title,
-    owedTo: it.owedTo,
+    owedTo: privateDraft || it.owedToSelf ? null : it.owedTo,
     due: { say: it.due.say, label: `Due ${score.dayLabel(it.due.date)}`, date: it.due.date, endsAt: it.due.endsAt },
-    preparation: { state: it.preparation.state, label: PREP_LABEL[it.preparation.state], why: it.preparation.why },
+    preparation: privateDraft
+      ? { state: 'private-draft', label: 'Private draft', why: `${move.privateDraft.cannot} ${move.privateDraft.can}` }
+      : { state: it.preparation.state, label: PREP_LABEL[it.preparation.state], why: it.preparation.why },
     evidence: it.evidence,
     because: it.because,
     held: held ? { say: held } : null,

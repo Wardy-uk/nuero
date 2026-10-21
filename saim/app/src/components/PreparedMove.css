@@ -262,3 +262,7 @@
 .pmo2__alsotitle { grid-column: 1; overflow-wrap: anywhere; }
 .pmo2__alsoitem .pmo__sub { grid-column: 1; }
 .pmo2__alsoshow { grid-column: 2; grid-row: 1 / span 2; }
+
+/* Private working draft (25 Oct 2026): the label is said before anything else. */
+.pmo2__private { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .02em; color: #e9b46a; overflow-wrap: anywhere; }
+.pmo2__privatewhy { margin-top: 4px; }

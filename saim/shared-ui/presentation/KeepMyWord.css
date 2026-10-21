@@ -203,3 +203,8 @@
 /* The scene's next step wears the scene's one control colour (= .kmw__open). */
 .sit--scene .sit__step .sit__step-go { border: 0; border-radius: 0; background: var(--kmw-gold); color: #22170d; padding: 11px 15px; font-size: 12px; font-weight: 800; }
 .sit--scene .sit__step .sit__step-alt { font-size: 12px; }
+
+/* Private working draft (25 Oct 2026). */
+.kmw__private { font-weight: 700; color: var(--kmw-gold); }
+.kmw__owed { margin-top: 10px; }
+.kmw__owed .kmw__choice { margin-top: 6px; }
