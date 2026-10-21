@@ -89,10 +89,10 @@ function stateOf(rec, { now = Date.now(), store, extra = {}, ref, moveKey }) {
   if (store.needsBlock(rec)) {
     const slot = ((s.decision || {}).slots || [])[0] || {};
     return { ...extra, state: 'needs-decision', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, interview: ivView, destinationSay,
-      say: iv ? `Every decision is answered or parked. Save it and protect the time from the draft on your SAiM home${slot.date ? ` — I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet` : ''}.`
-        : `Prepared — it needs your decision before I can schedule it${slot.date ? ` (I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet)` : ''}. It’s on your SAiM home.` };
+      say: iv ? `Every decision is answered or parked — it’s ready to save${slot.date ? ` and protect the time (I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet)` : ''}.`
+        : `Prepared — it needs your decision before I can schedule it${slot.date ? ` (I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet)` : ''}.` };
   }
-  return { ...extra, state: 'ready', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, interview: ivView, destinationSay, say: `${s.headline} It’s on your SAiM home for you to confirm.` };
+  return { ...extra, state: 'ready', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, interview: ivView, destinationSay, say: `${s.headline} Ready for you to confirm.` };
 }
 
 /**

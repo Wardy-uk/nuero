@@ -13,8 +13,39 @@ import { useWorkOnly } from '../workOnly';
 // DESKTOP profile — richer, but one presentation from NEURO, never re-ranked.
 import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
 import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs';
+// The governed save step for a private draft, drawn IN the Keep my word card:
+// the SAME component, record, authority check, confirmation and executor as
+// SAiM Home — never a second save path (26 Oct 2026).
+import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
+import Authority from '../../../saim/app/src/views/Authority.jsx';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
+
+// The prepared-move client's `call` shape ({status, body}) over NEURO's own
+// authenticated fetch, so the shared component talks to the routes it already uses.
+async function desktopCall(path, { method = 'GET', body } = {}) {
+  const res = await apiFetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  let parsed = null;
+  try { parsed = await res.json(); } catch { parsed = null; }
+  return { status: res.status, body: parsed };
+}
+
+/** The save step in the card, with "What SAiM may do" opened in place when Nick needs to change it. */
+function PromiseSave({ recordId, onChanged }) {
+  const [authority, setAuthority] = useState(false);
+  const [n, setN] = useState(0); // re-read the record (and its boundary) after "What SAiM may do" is changed
+  return (
+    <div className="adhd__promise-save">
+      <PreparedMove key={n} call={desktopCall} recordId={recordId} embedded readOnly={false} onOpenAuthority={() => setAuthority(true)} onChanged={onChanged} />
+      {authority && (
+        <div className="adhd__promise-authority">
+          <Authority call={desktopCall} />
+          <button type="button" className="kmw__choice" onClick={() => { setAuthority(false); setN((x) => x + 1); }}>Done — back to the draft</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // apiFetch hands back a raw Response and sets no Content-Type, so every JSON
 // call needs this wrapper. Throwing on non-2xx keeps a failed load from
@@ -818,6 +849,7 @@ export default function AdhdPanel({ onNavigate }) {
               } catch { return { ok: false, error: 'NEURO didn’t answer.' }; }
             }}
             onOpenActions={onNavigate ? () => onNavigate('actions') : null}
+            renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} onChanged={() => attention.refresh()} />}
           />
         </section>
       ) : (

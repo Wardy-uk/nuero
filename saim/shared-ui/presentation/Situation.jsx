@@ -220,6 +220,9 @@ export default function Situation({
   // Keep my word: take a held promise forward as a prepared move. Absent → no control.
   onPromiseMove = null,
   onOpenActions = null,
+  // Keep my word: the shell's governed save step for a private draft, drawn IN the card
+  // ({ recordId } → element). Absent (the SAiM shells) → the card points nowhere else.
+  renderPromiseSave = null,
   // The locked Keep my word scene (dark amber network, readout left, main
   // surface right). The SAiM shells opt in; NEURO's own Now does not.
   scene = false,
@@ -300,7 +303,7 @@ export default function Situation({
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
   const kmwFolded = kmw && !kmwLeads && (kmw.receipt || kmw.thread)
-    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} />
+    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
     : null;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
@@ -331,7 +334,7 @@ export default function Situation({
               return [
                 kmwLeads ? (
                   <header key={i} className={`sit__situation sit__situation--kmw sit__situation--kmw-${kmw.state}`}>
-                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} />
+                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>
                 ) : (

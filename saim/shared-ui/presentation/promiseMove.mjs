@@ -38,6 +38,6 @@ export function promiseMoveResult(body, { answering = false } = {}) {
     const q = m.ask.questions[0];
     return { kind: 'ask', question: { id: q.id, question: q.question, why: q.why || null, choices: q.choices || [] }, recordId: m.recordId, version: m.recordVersion, headline: (m.prepared && m.prepared.headline) || null };
   }
-  if (m) return { kind: 'prepared', say: `${(m.prepared && m.prepared.headline) || 'It’s prepared.'} It’s on your SAiM home — review it there; nothing is saved, booked or sent until you confirm.` };
+  if (m) return { kind: 'prepared', say: `${(m.prepared && m.prepared.headline) || 'It’s prepared.'} Nothing is saved, booked or sent until you confirm.` };
   return { kind: 'note', say: b.say || 'SAiM couldn’t take this further just now. Nothing was saved, booked or sent.' };
 }

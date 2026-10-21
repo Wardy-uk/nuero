@@ -737,3 +737,7 @@
 
 .adhd__desk-note { margin: 0.6rem 0 0; font-size: 0.82rem; opacity: 0.6; }
 .adhd__now-workonly { font-size: 12px; color: var(--accent); margin: 0 0 8px; }
+
+/* The governed save step inside the Keep my word card (26 Oct 2026). */
+.adhd__promise-save { margin-top: 8px; }
+.adhd__promise-authority { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border, #2a3340); }

@@ -108,8 +108,9 @@ function DraftResult({ result, draft, onOpenActions }) {
  * network (prepare / answer through the prepared-move routes); every word
  * shown is the server's. Nothing here sends, books or confirms anything.
  */
-export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
+export function KmwMove({ move, onPromiseMove = null, readOnly = false, renderSave = null }) {
   const [busy, setBusy] = useState(false);
+  const [savedId, setSavedId] = useState(null); // the record whose save step is showing — kept through its receipt
   const [local, setLocal] = useState(null); // the move a press or an answer just returned (promiseMove)
   const [note, setNote] = useState(null);   // { message, error } — a sentence, never a state
   const [text, setText] = useState('');
@@ -145,6 +146,14 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
   const oa = cur.owedAnswer || null;
   const iv = cur.interview || null;
   const id = `kmw-q-${String(cur.ref || 'p').replace(/[^A-Za-z0-9_-]/g, '-')}`;
+  // The governed save step, IN this card (26 Oct 2026): a slot the SHELL fills with
+  // the same prepared-move record, version, authority check, route and executor
+  // SAiM Home uses — this card itself writes nothing. While questions are open it
+  // offers only the unfinished save; once every decision is answered or parked,
+  // the full save. It stays mounted through its own receipt.
+  const saveable = Boolean(renderSave && can && pd && cur.recordId && ['interview', 'needs-decision', 'ready'].includes(cur.state));
+  const saveId = saveable ? cur.recordId : (savedId && ['done', 'scheduled'].includes(cur.state) ? savedId : null);
+  if (saveable && savedId !== cur.recordId) setSavedId(cur.recordId);
   return (
     <div className={`kmw__row kmw__row--move${pd ? ' kmw__row--private' : ''}`}>
       <span className="kmw__rowlabel">Next</span>
@@ -186,6 +195,7 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
           <div className="kmw__actions"><button type="button" className="kmw__open" onClick={press} disabled={busy}>{busy ? 'One moment…' : cur.control}</button></div>
         ) : null}
         {cur.destinationSay && <p className="kmw__rowline kmw__dest">{cur.destinationSay}</p>}
+        {saveId && <div className="kmw__save" key={saveId}>{renderSave({ recordId: saveId, state: cur.state })}</div>}
         {note && <p className={`kmw__rowline${note.error ? ' kmw__draft-error' : ' kmw__draft-done'}`} role="status">{note.message}</p>}
         {oa && cur.state === 'offer' && (
           <div className="kmw__owed">
@@ -198,7 +208,7 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
   );
 }
 
-export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null }) {
+export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
   if (!thread) return null;
@@ -254,7 +264,7 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
             </div>
           </div>
         )}
-        {moving && <KmwMove move={thread.move} onPromiseMove={actions ? onPromiseMove : null} readOnly={!actions} />}
+        {moving && <KmwMove move={thread.move} onPromiseMove={actions ? onPromiseMove : null} readOnly={!actions} renderSave={actions ? renderPromiseSave : null} />}
         {thread.held && (
           <div className="kmw__row kmw__row--held">
             <span className="kmw__rowlabel">Held</span>
@@ -278,8 +288,8 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
 }
 
 /** The main surface: the receipt when there is one (the thread, if any, folded under it), else the thread. */
-export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null }) {
-  const t = { onOpen, actions, onPrepareDelivery, onPromiseMove, onOpenActions };
+export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
+  const t = { onOpen, actions, onPrepareDelivery, onPromiseMove, onOpenActions, renderPromiseSave };
   if (!kmw) return null;
   if (kmw.receipt) {
     return (
@@ -298,12 +308,12 @@ export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery
 }
 
 /** The folded entry beneath an urgent lead: recognisable by its title, opened on demand. */
-export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null }) {
+export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
   if (!kmw || !kmw.entry) return null;
   return (
     <details className="kmw__fold kmw__fold--entry">
       <summary>{kmw.entry}</summary>
-      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} />
+      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
     </details>
   );
 }

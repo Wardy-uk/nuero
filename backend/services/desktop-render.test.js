@@ -50,6 +50,8 @@ const TODOS = {
 const STUBS = {
   api: [
     'export const apiUrl = (p) => p;',
+    // saim/app's PreparedMove + Authority (mounted in the Keep my word card) read these.
+    'export const authHeaders = () => ({});',
     "export const apiFetch = async () => ({ ok: true, status: 200, statusText: 'OK', json: async () => ({}) });",
     'export const setPin = () => {};',
     'export const getPin = () => null;',

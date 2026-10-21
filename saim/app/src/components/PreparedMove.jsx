@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
-import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, park, interviewOf, outstandingOf } from '../preparedMove.mjs';
+import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, park, interviewOf, outstandingOf, boundaryOf } from '../preparedMove.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
 import './PreparedMove.css';
@@ -278,7 +278,27 @@ export function Interview({ move, busy = false, readOnly = false, onAnswer = nul
   );
 }
 
-function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption }) {
+/**
+ * `embedded` (26 Oct 2026): the SAME governed save step, shown inside a promise
+ * card on NEURO desktop for one pinned record. The card already shows the label
+ * and runs the interview, so here: the draft folded, the real writes, and the
+ * one choice — or, where a boundary stands, that boundary and the way to change
+ * it, never a button that cannot work.
+ */
+function EmbeddedBoundary({ boundary, onOpenAuthority, onAgain = null, busy = false }) {
+  // Only the allowance and the stop can be changed from "What SAiM may do"; the server switch cannot.
+  const route = onOpenAuthority && ['allowance', 'stop', 'used'].includes(boundary.gate);
+  return (
+    <div className="pmo__act pmo__act--boundary" role="status">
+      <p className="pmo__boundary">{boundary.say}</p>
+      {route && <div className="pmo__buttons"><button type="button" className="pmo__btn pmo__btn--yes" onClick={onOpenAuthority}>Open what SAiM may do</button></div>}
+      {boundary.gate === 'device' && <p className="pmo__sub">That switch is on NEURO’s server; nothing here can turn it on. The draft stays prepared and nothing is saved.</p>}
+      {boundary.gate === 'unreadable' && onAgain && <div className="pmo__buttons"><button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Look again</button></div>}
+    </div>
+  );
+}
+
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false }) {
   const { view } = state; const move = view.move;
   const d = move.deliverable || {};
   const [deferDays, setDeferDays] = useState(1);
@@ -293,11 +313,11 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
   const facts = d.sourceFacts || [];
   return (
     <section className="pmo pmo2" aria-label="Something SAiM has prepared">
-      {move.privateDraft && <p className="pmo2__private" role="note">{move.privateDraft.label}</p>}
-      <p className="pmo__say">{move.prepared && move.prepared.headline}</p>
-      {move.privateDraft && <p className="pmo__sub pmo2__privatewhy">{move.privateDraft.cannot} {move.privateDraft.can}</p>}
-      {move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
-      {!held && move.plan === 'draft' && <Interview move={move} busy={busy} readOnly={readOnly} onAnswer={onAnswer} onPark={onPark} onAskOption={state.kind === 'confirming' ? null : onAskOption} />}
+      {!embedded && move.privateDraft && <p className="pmo2__private" role="note">{move.privateDraft.label}</p>}
+      {!embedded && <p className="pmo__say">{move.prepared && move.prepared.headline}</p>}
+      {!embedded && move.privateDraft && <p className="pmo__sub pmo2__privatewhy">{move.privateDraft.cannot} {move.privateDraft.can}</p>}
+      {!embedded && move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
+      {!embedded && !held && move.plan === 'draft' && <Interview move={move} busy={busy} readOnly={readOnly} onAnswer={onAnswer} onPark={onPark} onAskOption={state.kind === 'confirming' ? null : onAskOption} />}
 
       {move.plan === 'ask' ? (
         <div className="pmo__act pmo2__ask">
@@ -317,6 +337,13 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
             </form>
           ))}
         </div>
+      ) : embedded ? (
+        <details className="pmo2__embedpage">
+          <summary>The draft so far — not saved yet</summary>
+          <article className="pmo__page pmo2__page" aria-label="What SAiM drafted">
+            {d.suggested && <div className="pmo2__text">{d.suggested.text}</div>}
+          </article>
+        </details>
       ) : (
         <article className="pmo__page pmo2__page" aria-label="What SAiM drafted">
           <p className="pmo__pagetag">{move.kind === 'email-reply' ? 'Reply · not sent' : 'Draft · not saved yet'}</p>
@@ -337,7 +364,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
         </article>
       )}
 
-      {facts.length > 0 && (
+      {!embedded && facts.length > 0 && (
         <details className="pmo__proof pmo2__facts">
           <summary>What your sources say ({facts.length})</summary>
           <ul className="pmo__evidence">{facts.map((f, i) => <li key={i}>{f.text} <span className="pmo__sub">— {f.kind === 'you' ? 'you said' : f.cite}</span></li>)}</ul>
@@ -357,7 +384,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
         {(move.freshness || []).length > 0 && <ul className="pmo__sub">{move.freshness.map((f, i) => <li key={i}>{f.ref}: {f.ageHours == null ? 'unreadable' : `${f.ageHours}h old`} (limit {f.maxHours}h)</li>)}</ul>}
         {move.why && move.why.willNot && move.why.willNot.length > 0 && <><p className="pmo__prooflabel">SAiM will not</p><ul>{move.why.willNot.map((b, i) => <li key={i}>{b}</li>)}</ul></>}
       </details>
-      <Outstanding view={view} busy={busy} onShow={onShow} />
+      {!embedded && <Outstanding view={view} busy={busy} onShow={onShow} />}
     </section>
   );
 
@@ -376,6 +403,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
       );
     }
     if (state.kind === 'responded') return <p className="pmo__sub" role="status">{state.message}</p>;
+    if (state.kind === 'boundary' && embedded) return <EmbeddedBoundary boundary={state.boundary} onOpenAuthority={onOpenAuthority} onAgain={onAgain} busy={busy} />;
     if (state.kind === 'boundary') {
       return (
         <div className="pmo__act pmo__act--boundary" role="status">
@@ -407,6 +435,19 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
               : <button type="button" className="pmo__btn pmo__btn--yes" onClick={onConfirm} disabled={busy || !state.request.executionEnabled}>Confirm</button>}
             <button type="button" className="pmo__btn" onClick={onCancel} disabled={busy}>Not now</button>
           </div>
+        </div>
+      );
+    }
+    // Embedded: a standing boundary is shown FIRST, with its route — never a save button that cannot work.
+    const standing = embedded ? boundaryOf(view) : null;
+    if (standing && standing.gate !== 'used') return <EmbeddedBoundary boundary={standing} onOpenAuthority={onOpenAuthority} onAgain={onAgain} busy={busy} />;
+    if (embedded && ivOpen) {
+      const unf = (move.options || []).find((o) => o.id === 'unfinished');
+      return (
+        <div className="pmo__act pmo__act--ready">
+          {unf && onAskOption
+            ? <p className="pmo2__ivquiet"><button type="button" className="pmo2__ivlink" disabled={busy} onClick={() => onAskOption('unfinished')}>Save this unfinished draft instead</button> — no time will be booked, and SAiM won’t ask the rest.</p>
+            : <p className="pmo__sub">Answer or park each decision above to save it and protect the time.</p>}
         </div>
       );
     }
@@ -457,7 +498,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -478,7 +519,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
-  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} />;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -759,7 +800,7 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, onChanged = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   // The kiosk can SHOW a prepared move but never confirm or write (its shell
   // declares the platform; no device sniffing).
@@ -779,9 +820,10 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
   // times, quietly. Never a write — the read stores and mints nothing.
   useEffect(() => {
     let live = true;
-    loadWithRetry(call, { onState: (s) => { if (live) setState(s); }, alive: () => live }).then((s) => { if (live) setState(s); });
+    // A pinned record (the desktop promise card) is read BY ID — never "whatever is current".
+    (pinned ? load(call, { recordId: pinned }) : loadWithRetry(call, { onState: (s) => { if (live) setState(s); }, alive: () => live })).then((s) => { if (live) setState(s); });
     return () => { live = false; };
-  }, [call]);
+  }, [call, pinned]);
   // Re-render once a second while a confirmation is open, so its expiry shows.
   useEffect(() => {
     if (state.kind !== 'confirming') return undefined;
@@ -790,7 +832,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
   }, [state.kind]);
 
   // A drill-in survives a press: the boundary or receipt shows where he is.
-  const run = async (fn) => { setBusy(true); try { const next = await fn(); setState((s) => ({ ...next, drill: s.drill || null })); } finally { setBusy(false); } };
+  const run = async (fn) => { setBusy(true); try { const next = await fn(); setState((s) => ({ ...next, drill: s.drill || null })); if (next && (next.kind === 'receipt' || next.kind === 'responded') && onChanged) onChanged(next); } finally { setBusy(false); } };
   const root = useRef(null);
   const first = useRef(true);
   // The Surface asks for ONE record (25 Oct 2026): a card's "open" for a
@@ -811,6 +853,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       debug={debug}
       heldFolded={heldFolded}
       readOnly={readOnly}
+      embedded={embedded}
       onMakeReady={() => run(() => makeReady(call, { offer: state.offer }))}
       onRespond={(response, extra) => run(() => respond(call, { view: state.view, response, ...extra }))}
       onAnswer={(questionId, text) => run(() => answer(call, { view: state.view, questionId, text }))}
@@ -820,7 +863,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       onAsk={() => run(() => askToConfirm(call, { view: state.view, option: state.option, sessionId }))}
       onConfirm={() => run(() => confirm(call, { view: state.view, option: state.option, request: state.request }))}
       onCancel={() => setState((s) => ({ kind: 'ready', view: s.view, option: s.option }))}
-      onAgain={() => run(() => loadWithRetry(call))}
+      onAgain={() => run(() => (pinned ? load(call, { recordId: pinned }) : loadWithRetry(call)))}
       onShow={(recordId) => run(() => load(call, { recordId }))}
       onOpenAuthority={onOpenAuthority}
       onDrill={(drill) => setState((s) => ({ ...s, drill }))}

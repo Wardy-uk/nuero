@@ -114,15 +114,16 @@ test.before(async () => {
   if (!bin) { skipWhy = 'no Electron binary here (set ELECTRON_PATH) — the real shells were NOT driven'; return; }
   await db.init();
   const ts = require('./task-store');
-  for (const shell of ['desktop', 'phone']) {
+  for (const shell of ['desktop', 'phone', 'desktop2']) {
     const r = ts.createTask({ text: TEXT, source: 'meeting-promotion', origin_path: SOURCE, distinct: true });
     TASKS[shell] = (r && (r.id || (r.task && r.task.id))) || db.get('SELECT id FROM tasks WHERE text LIKE ? ORDER BY id DESC LIMIT 1', [`${TEXT}%`]).id;
   }
   assert.notEqual(TASKS.desktop, TASKS.phone, 'two separate copies of the promise');
-  const keyOf = (shell) => (shell === 'desktop' ? 'promise:322' : 'promise:323');
+  const KEYS = { desktop: 'promise:322', phone: 'promise:323', desktop2: 'promise:324' };
+  const keyOf = (shell) => KEYS[shell];
   Object.assign(planner.DEFAULT_DEPS, {
     promise: (key) => {
-      const shell = key === 'promise:322' ? 'desktop' : key === 'promise:323' ? 'phone' : null;
+      const shell = Object.keys(KEYS).find((k) => KEYS[k] === key) || null;
       return shell ? { key, text: TEXT, open: true, taskIds: [TASKS[shell]], leadTaskId: TASKS[shell], owedTo: { people: [], ambiguous: [], fromNote: null, resolved: null }, sensitivity: { sensitive: false }, source: { path: SOURCE, title: 'Weekly Meeting' } } : null;
     },
     promiseDelivered: () => false,
@@ -138,6 +139,8 @@ test.before(async () => {
   app.use('/api', require('./api-auth'));
   app.use('/api', require('./authority-guard').guard);
   app.use('/api/prepared-moves', require('../routes/prepared-moves'));
+  // "What SAiM may do", opened in place from the desktop card's boundary.
+  app.use('/api/saim-authority', require('../routes/saim-authority'));
   // The desktop page's own read, as production mounts it (over the temp DB/vault): without it the page shows its error state.
   app.use('/api/adhd', require('../routes/adhd'));
   app.get('/api/canonical/now', (req, res) => { try { res.json(canonicalNow()); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -157,7 +160,9 @@ test.before(async () => {
   const appDir = path.join(tmp, 'driver'); fs.mkdirSync(appDir);
   fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify({ name: 'shell-driver', main: 'main.js', private: true }));
   fs.writeFileSync(path.join(appDir, 'main.js'), DRIVER);
-  const jobs = [{ shell: 'desktop', url: `${base}/desktop.html`, w: 1440, h: 900 }, { shell: 'phone', url: `${base}/phone.html`, w: 390, h: 844 }];
+  // The desktop goes through ALL four decisions (Nick primarily uses NEURO desktop); the phone keeps its own run.
+  // The phone runs FIRST: once the desktop's draft is fully decided it is (rightly) the move SAiM Home shows.
+  const jobs = [{ name: 'phone', shell: 'phone', url: `${base}/phone.html`, w: 390, h: 844 }, { name: 'desktop', shell: 'desktop', url: `${base}/desktop.html`, w: 1440, h: 900, full: true }];
   fs.writeFileSync(path.join(tmp, 'jobs.json'), JSON.stringify({ jobs, answer: ANSWER, shots: SHOTS }));
   const env = { ...process.env, J: path.join(tmp, 'jobs.json'), O: path.join(tmp, 'out.json') };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -175,10 +180,25 @@ test.before(async () => {
     taskId = TASKS[job.shell]; promiseKey = keyOf(job.shell);
     require('./prepared-move-store').ensure();
     assert.equal(db.get('SELECT COUNT(*) n FROM prepared_moves WHERE move_key = ?', [planner.moveKeyFor('project-note', `task:${taskId}`)]).n, 0);
-    results[job.shell] = await run(job);
+    results[job.name] = await run(job);
   }
   results.after = { vault: vaultTree(), ledger: count('external_write_ledger'), actions: count('prepared_actions'), grants: count('human_action_intents'), authority: count('saim_authority_grants'), reservations: count('saim_authority_reservations') };
   results.before = before;
+
+  // ── The save step IN the desktop card, through each real boundary (temp DB only; nothing is confirmed) ──
+  taskId = TASKS.desktop; promiseKey = keyOf('desktop');
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true'; // the server switch open, but no allowance granted
+  // Nick's leave, read (the offline test has no People HR feed; the check otherwise refuses honestly).
+  require('./team-availability').selfAbsenceOn = () => ({ known: true, off: false });
+  // A diary that has just synced (the save step re-checks the slot against it before offering it).
+  db.run(`INSERT INTO calendar_cache (event_id, subject, start_time, end_time, show_as, source, fetched_at) VALUES ('sync-marker', 'Sync marker', '2020-01-01T09:00:00', '2020-01-01T09:30:00', 'busy', 'graph', CURRENT_TIMESTAMP)`);
+  results.allow = await run({ name: 'allow', shell: 'desktop', mode: 'allow', url: `${base}/desktop.html`, w: 1440, h: 900 });
+  require('./authority-budget')._test.grantToday();   // today's allowance, as Nick would grant it
+  results.save = await run({ name: 'save', shell: 'desktop', mode: 'save', url: `${base}/desktop.html`, w: 1440, h: 900 });
+  taskId = TASKS.desktop2; promiseKey = keyOf('desktop2');
+  results.unfinished = await run({ name: 'unfinished', shell: 'desktop', mode: 'unfinished', url: `${base}/desktop.html`, w: 1440, h: 900 });
+  delete process.env.SAIM_PREPARED_MOVE_EXECUTION;
+  results.afterSave = { vault: vaultTree(), ledger: count('external_write_ledger'), actions: count('prepared_actions'), reservations: count('saim_authority_reservations') };
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.SHELL_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 function count(table) { try { return db.get(`SELECT COUNT(*) n FROM ${table}`).n; } catch { return 0; } }
@@ -204,8 +224,43 @@ app.whenReady().then(async () => {
     const body = () => js('document.body.innerText');
     const btn = (label) => '[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === ' + JSON.stringify(label) + ' && !b.disabled)';
     const scrollTo = (sel) => js('(() => { const el = ' + sel + '; if (el) el.scrollIntoView({ block: "center" }); return !!el; })()');
+    const openCard = 'document.querySelectorAll("details").forEach((d) => { if (d.querySelector(".kmw__thread")) d.open = true; })';
+    const setField = (prefix, value) => js('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes(' + JSON.stringify(prefix) + ')); const f = document.getElementById(l.htmlFor); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set; set.call(f, ' + JSON.stringify(value) + '); f.dispatchEvent(new Event("input", { bubbles: true })); return true; })()');
+    const saveBox = () => js('(() => { const b = document.querySelector(".kmw__save"); return b ? { text: b.innerText, buttons: [...b.querySelectorAll("button")].map((x) => ({ t: x.textContent.trim(), disabled: x.disabled })) } : null; })()');
+    const allButtons = () => js('[...document.querySelectorAll("button")].map((x) => x.textContent.trim())');
     try {
       await win.loadURL(j.url);
+      if (j.mode === 'allow') {
+        r.allowBox = await waitFor('(() => { ' + openCard + '; const b = document.querySelector(".kmw__save"); return b && /allowed me/.test(b.innerText) ? b.innerText : null; })()', 25000);
+        r.allowBody = await body(); r.allowButtons = await allButtons();
+        await scrollTo('document.querySelector(".kmw__save")'); await shot('5-boundary-allowance');
+        r.route = !!(await js('!!(' + btn('Open what SAiM may do') + ')'));
+        if (r.route) await js('(' + btn('Open what SAiM may do') + ').click()');
+        r.authority = await waitFor('(() => { const a = document.querySelector(".adhd__promise-authority .auth"); return a ? a.innerText : null; })()');
+        await scrollTo('document.querySelector(".adhd__promise-authority")'); await shot('6-what-saim-may-do');
+      } else if (j.mode === 'save') {
+        r.saveReady = await waitFor('(() => { ' + openCard + '; return !!(' + btn('Save it and protect the time') + '); })()', 25000);
+        r.saveBody = await body(); r.saveBox = await saveBox();
+        if (!r.saveReady) throw new Error('no save button; card shows: ' + JSON.stringify(r.saveBox));
+        await scrollTo(btn('Save it and protect the time')); await shot('7-save-it');
+        await js('(' + btn('Save it and protect the time') + ').click()');
+        r.confirmReady = await waitFor('!!(' + btn('Confirm') + ')');
+        r.confirmBody = await body(); r.confirmBox = await saveBox();
+        await scrollTo(btn('Confirm')); await shot('8-confirmation');
+      } else if (j.mode === 'unfinished') {
+        r.offer = await waitFor('(() => { ' + openCard + '; return !!(' + btn('Prepare a private working draft') + '); })()', 25000);
+        await js('(' + btn('Prepare a private working draft') + ').click()');
+        await waitFor('!!([...document.querySelectorAll("label")].find((x) => x.textContent.includes("What does ‘achievable’")))');
+        await setField('What does ‘achievable’', cfg.answer);
+        await waitFor('!!(' + btn('Tell SAiM') + ')'); await js('(' + btn('Tell SAiM') + ').click()');
+        r.unfReady = await waitFor('!!(' + btn('Save this unfinished draft instead') + ')');
+        r.unfBody = await body(); r.unfBox = await saveBox();
+        await scrollTo(btn('Save this unfinished draft instead')); await shot('9-unfinished-offer');
+        await js('(' + btn('Save this unfinished draft instead') + ').click()');
+        r.unfConfirmReady = await waitFor('!!(' + btn('Confirm') + ')');
+        r.unfConfirm = await body(); r.unfConfirmBox = await saveBox();
+        await scrollTo(btn('Confirm')); await shot('10-unfinished-confirmation');
+      } else {
       // Details wrappers (folded promise) are opened so the card is reachable as Nick would open it.
       r.offer = await waitFor('(() => { document.querySelectorAll("details").forEach((d) => { if (d.querySelector(".kmw__thread")) d.open = true; }); return !!(' + btn('Prepare a private working draft') + '); })()', 25000);
       await scrollTo(btn('Prepare a private working draft')); await shot('1-offer');
@@ -229,6 +284,17 @@ app.whenReady().then(async () => {
       r.afterPark = await body();
       r.width = await js('(() => { const vw = document.documentElement.clientWidth; const over = [...document.querySelectorAll("body *")].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).slice(0, 6).map((e) => (e.className && String(e.className)) || e.tagName); const kmw = [...document.querySelectorAll(".kmw__thread, .kmw__thread *")].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).map((e) => (e.className && String(e.className)) || e.tagName).slice(0, 6); return { vw, sw: document.documentElement.scrollWidth, over, kmw }; })()');
       await scrollTo('[...document.querySelectorAll("label")].find((x) => x.textContent.includes("Who does it apply to"))'); await shot('4-question-3');
+      if (j.full) {
+        // The rest of the interview, as Nick would: answer the third, park the fourth.
+        await setField('Who does it apply to', 'Everyone on the service desk; each team lead gathers views in their 1-2-1s before it is agreed');
+        await waitFor('!!(' + btn('Tell SAiM') + ')'); await js('(' + btn('Tell SAiM') + ').click()');
+        r.q4 = await waitFor('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes("Who will you agree the plan with")); return l ? l.textContent : null; })()');
+        await waitFor('!!(' + btn('Park this for now') + ')'); await js('(' + btn('Park this for now') + ').click()');
+        r.done = await waitFor('(() => /Every decision is answered or parked/.test(document.body.innerText) && document.querySelector(".kmw__save") && /switched off/.test(document.querySelector(".kmw__save").innerText) ? document.body.innerText : null)()');
+        r.doneBox = await saveBox(); r.doneButtons = await allButtons();
+        await scrollTo('document.querySelector(".kmw__save")'); await shot('4b-all-decided-server-switch-off');
+      }
+      }
     } catch (e) { r.error = String(e && e.stack || e); }
     out.push(r);
     win.destroy();
@@ -276,7 +342,67 @@ test('both shells: prepare / answer / park created no note, block, allowance, co
   assert.deepEqual(results.after, results.before);
   for (const shell of ['desktop', 'phone']) {
     const rows = db.all('SELECT question_id q, text, by FROM prepared_move_answers WHERE move_key = ? ORDER BY id', [planner.moveKeyFor('project-note', `task:${TASKS[shell]}`)]);
-    assert.deepEqual(rows.map((x) => [x.q, x.by]), [['achievable', 'nick'], ['park', 'nick']], `${shell}: one answer and one park, by Nick, against this promise’s move only`);
+    const want = shell === 'desktop' ? [['achievable', 'nick'], ['park', 'nick'], ['applies', 'nick'], ['park', 'nick']] : [['achievable', 'nick'], ['park', 'nick']];
+    assert.deepEqual(rows.map((x) => [x.q, x.by]), want, `${shell}: what Nick answered and parked, by Nick, against this promise’s move only`);
     assert.equal(rows[0].text, ANSWER);
   }
+});
+
+// ── NEURO desktop: the whole path ends IN the card, never on "your SAiM home" ──
+const HOME = /SAiM home/i;
+test('desktop: all four decisions answered or parked → the save step is IN the card; with the server switch off it says so and offers no dead button', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  const r = results.desktop;
+  assert.ok(!r.error, r.error);
+  assert.equal(r.q4, 'Who will you agree the plan with, and by when?');
+  assert.ok(r.done, `the card reaches "every decision answered or parked" with its save step showing (${JSON.stringify(r.doneBox)})`);
+  assert.match(r.done, /Every decision is answered or parked — it’s ready to save and protect the time/);
+  assert.match(r.done, /Not saved yet\. When you choose to save it, this draft will go in Working drafts\./);
+  assert.match(r.doneBox.text, /Carrying out moves is switched off on NEURO’s server/);
+  assert.match(r.doneBox.text, /nothing here can turn it on/);
+  assert.deepEqual(r.doneBox.buttons.filter((b) => !b.disabled).map((b) => b.t), [], 'no button that cannot work (the server switch has no route here)');
+  assert.ok(!r.doneButtons.includes('Save it and protect the time'), 'no save button over a closed switch');
+  for (const step of [r.afterPrepare, r.afterAnswer, r.afterPark, r.done]) assert.doesNotMatch(String(step), HOME, 'never sent to "your SAiM home"');
+});
+test('desktop: switch on, no allowance → the real boundary and "What SAiM may do" opens IN NEURO', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  const r = results.allow;
+  assert.ok(!r.error, r.error);
+  assert.match(String(r.allowBox), /You haven’t allowed me to carry out prepared moves today/);
+  assert.ok(r.route, 'the usable route');
+  assert.ok(!r.allowButtons.includes('Save it and protect the time'), 'no save button the allowance would refuse');
+  assert.match(String(r.authority), /What SAiM may do/, 'the allowance screen renders in place');
+  assert.doesNotMatch(r.allowBody, HOME);
+});
+test('desktop: allowance granted → "Save it and protect the time" → the governed confirmation, with the real writes and Working drafts — not confirmed', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  const r = results.save;
+  assert.ok(!r.error, r.error);
+  assert.ok(r.saveReady, `the save button in the card (${JSON.stringify(r.saveBox)})`);
+  assert.match(r.saveBox.text, /Save your private draft as a new note — Working drafts: Projects\/Working\//);
+  assert.match(r.saveBox.text, /to your calendar, .* Just you — nobody is invited\./);
+  assert.ok(r.confirmReady, `the confirmation minted by the same /request route (${JSON.stringify(r.confirmBox)})`);
+  assert.match(r.confirmBox.text, /Working drafts: Projects\/Working\//);
+  assert.ok(r.confirmBox.buttons.some((b) => b.t === 'Confirm' && !b.disabled), 'Confirm is live (and was NOT pressed)');
+  assert.doesNotMatch(r.saveBody + r.confirmBody, HOME);
+});
+test('desktop: mid-interview → "Save this unfinished draft instead", plainly no time booked', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  const r = results.unfinished;
+  assert.ok(!r.error, r.error);
+  assert.ok(r.unfReady, `offered while questions are open (${JSON.stringify(r.unfBox)})`);
+  assert.match(r.unfBox.text, /no time will be booked/);
+  assert.ok(!r.unfBox.buttons.some((b) => b.t === 'Save it and protect the time'), 'the full save is not offered mid-interview');
+  assert.ok(r.unfConfirmReady, `its confirmation (${JSON.stringify(r.unfConfirmBox)})`);
+  assert.match(r.unfConfirmBox.text, /Save your unfinished private draft as a new note — Working drafts/);
+  assert.match(r.unfConfirmBox.text, /No time is booked\./);
+  assert.doesNotMatch(r.unfConfirmBox.text, /to your calendar/);
+  assert.doesNotMatch(r.unfBody + r.unfConfirm, HOME);
+});
+test('desktop save phases wrote nothing: no note, no block, no ledger, no reservation — only a confirmation was asked for', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  assert.equal(results.afterSave.vault, results.before.vault, 'the vault is byte-identical');
+  assert.equal(results.afterSave.ledger, results.before.ledger, 'no external write');
+  assert.equal(results.afterSave.actions, results.before.actions, 'nothing queued to send');
+  assert.equal(results.afterSave.reservations, results.before.reservations, 'no allowance spent');
 });

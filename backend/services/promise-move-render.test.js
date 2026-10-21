@@ -107,7 +107,7 @@ test('read-only (kiosk): the question shows, the box does not, and it says where
 });
 
 test('needs-decision on the card says nothing is booked; scheduled says when', () => {
-  const nd = render(React.createElement(K.KmwMove, { move: { state: 'needs-decision', say: 'Prepared — it needs your decision before I can schedule it (I’d suggest Thursday 22 Oct, 09:00–09:30; nothing is booked yet). It’s on your SAiM home.' }, onPromiseMove: async () => ({}) }));
+  const nd = render(React.createElement(K.KmwMove, { move: { state: 'needs-decision', say: 'Prepared — it needs your decision before I can schedule it (I’d suggest Thursday 22 Oct, 09:00–09:30; nothing is booked yet).' }, onPromiseMove: async () => ({}) }));
   assert.match(nd, /needs your decision before I can schedule it/); assert.match(nd, /nothing is booked yet/);
   assert.doesNotMatch(nd, /<button/);
   const sc = render(React.createElement(K.KmwMove, { move: { state: 'scheduled', say: 'Scheduled for Thursday 22 Oct, 09:00–09:30 — your time to finish it is booked.' } }));
@@ -129,7 +129,7 @@ test('promiseMoveResult: ask / prepared / handoff / refused — a refused answer
   const ask = promiseMoveResult({ ok: true, move: { plan: 'ask', recordId: 'pm_a', recordVersion: 2, ask: { questions: [OWED_Q] }, prepared: { headline: 'I can take this forward — I need to know who it is owed to.' } } });
   assert.equal(ask.kind, 'ask'); assert.equal(ask.question.id, 'owed'); assert.equal(ask.version, 2);
   const prep = promiseMoveResult({ ok: true, move: { plan: 'draft', prepared: { headline: 'I drafted “Targets”.' } } });
-  assert.equal(prep.kind, 'prepared'); assert.match(prep.say, /nothing is saved, booked or sent until you confirm/);
+  assert.equal(prep.kind, 'prepared'); assert.match(prep.say, /Nothing is saved, booked or sent until you confirm/);
   const ho = promiseMoveResult({ ok: true, outcome: 'handoff', say: 'It is a message to Chris Middleton — SAiM can draft the delivery note for your approval instead. Nothing is sent.' });
   assert.equal(ho.kind, 'handoff'); assert.match(ho.say, /Nothing is sent/);
   const bad = promiseMoveResult({ ok: false, error: 'This move has changed.' }, { answering: true });
