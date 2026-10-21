@@ -1,0 +1,639 @@
+'use strict';
+
+/**
+ * THE PREPARED-MOVE PLANNER (21 Oct 2026) — SAiM tries to COMPLETE the work,
+ * not merely to prepare a note about it. For one candidate it takes the work
+ * to the furthest safe, truthful, reviewable point, in this order:
+ *
+ *   1. DO       — an explicitly allow-listed adapter completes the work.
+ *                 ⚠ The allow-list is EMPTY in this MVP: nothing NEURO holds
+ *                 today can finish a task without inventing a fact or making
+ *                 an unapproved commitment. `DO_ADAPTERS` is where one goes.
+ *   2. DRAFT    — the real deliverable: the email reply itself (a governed
+ *                 reply_email, sent only after Nick's approval code), the
+ *                 meeting preparation itself, or the project note itself.
+ *   3. SCHEDULE — one attendee-free block, ONLY when Nick's own judgement or
+ *                 authorship is needed to finish (the draft has open gaps).
+ *   4. ASK      — when SAiM cannot safely do or draft it, the exact blocker
+ *                 and what Nick must supply, as a question he can answer. His
+ *                 answer becomes a source fact ("you said") and the move is
+ *                 planned again as a NEW version.
+ *
+ * TWO ENTRY ROUTES, ONE PIPELINE: the automatic scan (prepared-move-scan) and
+ * the manual "Make this ready" on a Now item (routes/prepared-moves /prepare)
+ * both call `planAndStore()`. There is no second screening, builder, store or
+ * confirmation path.
+ *
+ * WHERE CANDIDATES COME FROM: production's own decision, read-only, through
+ * the existing prepared-move `prepare()` (canonical Now's lead and what it
+ * held, in that order). That slice still owns the Planner-register case; this
+ * planner never prepares a candidate it already selected.
+ *
+ * NOTHING EXTERNAL IS WRITTEN HERE. Planning reads (and, for a draft, asks the
+ * model and reads the email it answers); storing writes one immutable NEURO
+ * row. Every external change happens only in prepared-move-exec, after Nick
+ * confirms the exact stored version.
+ */
+
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const CONTRACT = 'prepared-move-v2';
+const KINDS = Object.freeze(['email-reply', 'meeting-prep', 'project-note']);
+/** Completing adapters (step 1). Deliberately empty in the MVP — see header. */
+const DO_ADAPTERS = Object.freeze([]);
+/** Project folders never written into, whatever a task's source says. */
+const DENY_FOLDERS = Object.freeze(['Archive', 'PIP', '_about.md']);
+/** A meeting this soon cannot be prepared for in time; one already started is not prepared at all. */
+const MIN_MEETING_LEAD_MIN = 15;
+const BLOCK_MINUTES = 30;
+const ANSWER_MAX = 1000;
+const ONE_TO_ONE = /\b1\s*[-:]?\s*(?:2\s*[-:]?\s*1|to\s*1|on\s*1)\b|\bone[- ]to[- ]one\b|\b1:1\b/i;
+const AUTOMATED = /(^|[._-])(no-?reply|do-?not-?reply|notifications?|mailer-daemon|postmaster|bounces?|alerts?)([._-]|@)/i;
+
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const DAY = 86400000;
+const ymdLondon = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10);
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const dayLong = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00Z`); return `${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]}`; };
+const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || null;
+
+const moveKeyFor = (kind, sourceKey) => `saim-move:v2:${kind}:${sourceKey}`;
+
+// ── Pure screens ─────────────────────────────────────────────────────────────
+
+/**
+ * PURE. Could this Now item be made ready at all? Read from the item alone —
+ * used to OFFER "Make this ready"; the full screen still decides.
+ */
+function quickEligible(item) {
+  if (!item || typeof item !== 'object') return null;
+  const m = item.meta || {};
+  if (item.type === 'email' && item.id === 'email-urgent' && m.emailId) return { kind: 'email-reply', label: 'Draft the reply' };
+  if (item.type === 'meeting' && m.withOthers === true && Number(m.minutesAway) >= MIN_MEETING_LEAD_MIN && !ONE_TO_ONE.test(String(item.title || ''))) return { kind: 'meeting-prep', label: 'Make the meeting prep ready' };
+  if (item.type === 'todo') return { kind: 'project-note', label: 'Make this ready' };
+  return null;
+}
+
+/** PURE. A safe note title from a task's own words: one line, plain characters, bounded. */
+function safeTitle(text) {
+  const t = String(text || '').replace(/[^A-Za-z0-9 ,'&()-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t.length < 3) return null;
+  return t.length > 60 ? t.slice(0, 60).replace(/\s+\S*$/, '').trim() : t;
+}
+
+/**
+ * PURE. Does a drafted text bring in a FACT its sources do not hold? Every
+ * email address, URL, number/date token and proper-name-looking word (a
+ * capitalised word that does not start a sentence) must appear in the source
+ * text. A short vocabulary of greetings and sign-offs is allowed. Errs towards
+ * refusing: a refused draft is asked for again; an invented fact reaches Nick.
+ */
+const ALLOWED_WORDS = new Set(['I', 'Nick', 'Hi', 'Hello', 'Thanks', 'Thank', 'Best', 'Regards', 'Cheers', 'Kind', 'Many', 'OK', 'Ok', 'Yes', 'No', 'SAiM', 'NEURO', 'Draft', 'Suggested']);
+function ungrounded(text, sources) {
+  const src = String(sources || '').toLowerCase();
+  const out = new Set();
+  const draft = String(text || '');
+  for (const m of draft.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []) if (!src.includes(m.toLowerCase())) out.add(m);
+  for (const m of draft.match(/https?:\/\/\S+/g) || []) if (!src.includes(m.toLowerCase())) out.add(m);
+  for (const m of draft.match(/\d[\w:/.,%£$-]*/g) || []) { const t = m.replace(/[.,]+$/, ''); if (t && !src.includes(t.toLowerCase())) out.add(t); }
+  for (const sentence of draft.split(/(?<=[.!?:\n])\s+|\n+/)) {
+    const words = sentence.replace(/^[\s\-*>#"'“‘(]+/, '').split(/\s+/);
+    words.forEach((w, i) => {
+      const clean = w.replace(/^[("'“‘]+|[)"'”’.,;:!?]+$/g, '').replace(/['’]s$/, '');
+      if (i === 0 || !/^[A-Z][a-zA-Z'’-]+$/.test(clean) || ALLOWED_WORDS.has(clean)) return;
+      if (!src.includes(clean.toLowerCase())) out.add(clean);
+    });
+  }
+  return [...out];
+}
+
+/** PURE. The default questions when SAiM lacks what it needs, by blocker. */
+function questionFor(blocker, ctx = {}) {
+  if (blocker === 'no-folder') return { id: 'folder', question: 'Which project folder should this note go in?', why: 'The task does not come from a project note, so SAiM does not know where the work lives.', choices: ctx.folders || [] };
+  if (blocker === 'no-content') return { id: 'purpose', question: 'What should this cover? A sentence or two is enough.', why: 'Your notes say nothing about it yet beyond the task itself, so a draft would be invented.' };
+  if (blocker === 'no-meeting-facts') return { id: 'aim', question: `What do you want out of ${ctx.title || 'this meeting'}?`, why: 'SAiM found nothing in your notes about the people in it or what is open with them.' };
+  return null;
+}
+
+// ── Readers (read-only) ──────────────────────────────────────────────────────
+
+const _db = () => require('../db/database');
+const vaultRoot = () => process.env.OBSIDIAN_VAULT_PATH || '';
+
+function projectFolders() {
+  try {
+    return fs.readdirSync(path.join(vaultRoot(), 'Projects'), { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !DENY_FOLDERS.includes(e.name)).map((e) => e.name).sort();
+  } catch { return []; }
+}
+const _exists = (rel) => { try { return fs.existsSync(path.join(vaultRoot(), rel)); } catch { return false; } };
+const _read = (rel) => { try { return fs.readFileSync(path.join(vaultRoot(), rel), 'utf8'); } catch { return null; } };
+
+/** Default dependencies; tests swap any of them. */
+const DEFAULT_DEPS = {
+  prepareV1: (o) => require('./prepared-move').prepare(o),
+  roster: () => { try { return require('./entities').getRoster(); } catch { return { full: [] }; } },
+  triageEntry: (id) => { try { return (require('./email-triage').getStoredTriage() || []).find((e) => e.id === id) || null; } catch { return null; } },
+  emailBody: async (id) => {
+    try {
+      if (require('./gmail-intake').isGmailId(id)) { const g = await require('./gmail-intake').readMessage(id); return g && g.ok && g.exists ? String(g.body || '') : null; }
+      const m = await require('./microsoft').fetchEmailById(id);
+      return m ? String(m.body || m.preview || '') : null;
+    } catch { return null; }
+  },
+  liveReply: (id) => require('./prepared-actions').liveReplyFor(id),
+  task: (id) => { try { return _db().get(`SELECT id, text, status, due_date, origin_path, source, domain, estimate_minutes FROM tasks WHERE id = ?`, [id]) || null; } catch { return null; } },
+  meetingEvent: (eventId) => {
+    try { return _db().get(`SELECT event_id, subject, start_time, end_time, is_all_day, show_as, attendees_other, fetched_at FROM calendar_cache WHERE event_id = ? ORDER BY fetched_at DESC LIMIT 1`, [eventId]) || null; } catch { return null; }
+  },
+  meetingPeople: (eventId) => {
+    try { return _db().all(`SELECT p.name, p.email FROM wm_meeting_participants p WHERE p.meeting_id = ?`, [`graph:${eventId}`]); } catch { return []; }
+  },
+  meetingPrep: (meeting) => { try { return require('../routes/meeting-prep-view')._buildPrep(meeting); } catch (e) { return { attendees: [], recentDecisions: [], vaultContext: [], gaps: [{ input: 'prep', why: e.message }] }; } },
+  evidenceLines: (text, { roster, folder }) => _projectLines(text, { roster, folder }),
+  diary: (fromYmd, days) => _diary(fromYmd, days),
+  findSlot: (opts) => require('./task-blocks').findSlot(opts),
+  holidays: () => { try { return require('./working-days').holidaySet(); } catch { return new Set(); } },
+  draft: (kind, input) => require('./prepared-move-drafter').draft(kind, input),
+  answers: (moveKey) => require('./prepared-move-store').answersFor(moveKey),
+  suppression: (moveKey, now) => require('./prepared-move-store').suppression(moveKey, now),
+  latest: (moveKey) => require('./prepared-move-store').latest(moveKey),
+  store: (packet, o) => require('./prepared-move-store').store(packet, o),
+  markChecked: (id, now) => require('./prepared-move-store').markChecked(id, now),
+};
+
+/** Lines in ONE project folder (and nowhere else) that share 3+ words with the task. */
+function _projectLines(text, { roster, folder }) {
+  const pm = require('./prepared-move');
+  const want = new Set(pm.tokens(text));
+  const out = [];
+  const dir = path.join(vaultRoot(), 'Projects', folder);
+  let files = [];
+  const walk = (d, rel, depth) => {
+    if (depth > 3) return;
+    let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (e.name.startsWith('.')) continue;
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) { if (e.name !== 'Archive') walk(path.join(d, e.name), r, depth + 1); } else if (e.name.endsWith('.md')) files.push(r);
+    }
+  };
+  walk(dir, `Projects/${folder}`, 0);
+  files = files.slice(0, 400);
+  for (const rel of files) {
+    const body = _read(rel); if (!body) continue;
+    if (pm.employmentScreen({ sourceText: body, roster, sourceTitle: path.basename(rel, '.md') }).sensitive) continue;
+    const lines = body.replace(/\r\n/g, '\n').split('\n');
+    lines.forEach((l, i) => {
+      const clean = l.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      if (clean.length < 25 || clean.length > 600 || /^\|?\s*[-:]+\s*\|/.test(clean)) return;
+      const shared = pm.tokens(clean).filter((w) => want.has(w));
+      if (shared.length >= 3) out.push({ text: clean, cite: `${rel}:${i + 1}`, score: shared.length });
+    });
+  }
+  return out.sort((a, b) => b.score - a.score || a.cite.localeCompare(b.cite)).slice(0, 8);
+}
+
+function _diary(fromYmd, days) {
+  const db = _db();
+  const to = ymdLondon(Date.parse(`${fromYmd}T12:00:00Z`) + days * DAY);
+  try {
+    const rows = db.all(`SELECT subject, start_time, end_time, is_all_day, show_as, attendees_other, is_organizer FROM calendar_cache WHERE start_time >= ? AND start_time <= ? ORDER BY start_time`, [`${fromYmd}T00:00:00`, `${to}T23:59:59`]);
+    const f = db.get(`SELECT MAX(fetched_at) m FROM calendar_cache WHERE source = 'graph'`);
+    const fetchedAt = f && f.m ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(String(f.m)) ? f.m : `${String(f.m).replace(' ', 'T')}Z`).toISOString() : null;
+    const { heldDespiteFree } = require('./context-state');
+    const events = rows.map((r) => {
+      const ev = { date: String(r.start_time).slice(0, 10), start: r.start_time, end: r.end_time, subject: r.subject, isAllDay: Boolean(r.is_all_day), showAs: r.show_as || 'busy', attendeesOther: r.attendees_other === 1 ? true : r.attendees_other === 0 ? false : null, isOrganizer: r.is_organizer === 1 ? true : r.is_organizer === 0 ? false : null };
+      return heldDespiteFree(ev) ? { ...ev, showAs: 'busy' } : ev;
+    });
+    return { known: true, events, fetchedAt };
+  } catch (e) { return { known: false, why: e.message, events: [], fetchedAt: null }; }
+}
+
+// ── Normalising a production candidate to one SOURCE ─────────────────────────
+
+/**
+ * A production-order candidate → { kind, sourceKey, source, ref, title } or a
+ * withhold. A todo is tied to exactly one NEURO task (v1's resolver); an email
+ * to its id; a meeting to its calendar event id.
+ */
+function normalise(c, deps) {
+  const item = c.item;
+  if (!item) return { withhold: 'unresolvable', why: 'The item behind this could not be read.' };
+  const q = quickEligible(item);
+  if (!q) {
+    if (item.type === 'weekly_risk') return { withhold: 'employment-route', why: 'A deliverable of your own performance plan — routing only.' };
+    if (item.type === 'meeting' && ONE_TO_ONE.test(String(item.title || ''))) return { withhold: 'employment-route', why: '1-2-1 preparation is NOVA’s, and a 1-2-1 is an employment conversation — SAiM does not draft it.' };
+    if (item.type === 'meeting' && item.meta && item.meta.withOthers !== true) return { withhold: 'not-a-commitment', why: 'A block with nobody else in it has nothing to prepare for others.' };
+    if (item.type === 'meeting') return { withhold: 'too-soon', why: `It starts in under ${MIN_MEETING_LEAD_MIN} minutes — too soon to prepare well.` };
+    return { withhold: 'unsupported-kind', why: `SAiM has no safe way to take “${item.type}” items forward yet — it can draft email replies, meeting preparation and project notes.` };
+  }
+  if (q.kind === 'email-reply') return { kind: q.kind, sourceKey: `email:${item.meta.emailId}`, source: { emailId: item.meta.emailId }, ref: c.ref, title: item.title };
+  if (q.kind === 'meeting-prep') {
+    const eventId = String(item.id).replace(/^cal-/, '');
+    return { kind: q.kind, sourceKey: `meeting:${eventId}@${String(item.meta.start || '').slice(0, 16)}`, source: { eventId, start: item.meta.start || null }, ref: c.ref, title: item.title };
+  }
+  const res = require('./prepared-move').resolveTodoCard(item);
+  if (!res.unique) return { withhold: res.hits.length ? 'ambiguous' : 'unresolvable', why: res.hits.length ? `${res.hits.length} records carry exactly this wording, so SAiM cannot tell which one this is.` : 'No open task carries exactly this wording.' };
+  if (res.unique.system !== 'neuro') return { withhold: 'unsupported-kind', why: 'A Microsoft task — the existing prepared move covers board cards with a project register row; this one has none SAiM can use.' };
+  if (res.unique.domain === 'personal') return { withhold: 'personal-domain', why: 'A personal task — outside work preparation.' };
+  return { kind: 'project-note', sourceKey: `task:${res.unique.taskId}`, source: { taskId: res.unique.taskId }, ref: c.ref, title: item.title };
+}
+
+// ── Building one candidate ───────────────────────────────────────────────────
+
+/**
+ * Screen and gather ONE normalised candidate. Returns either
+ *   { ok: false, withhold, why }                     — nothing to offer, said why;
+ *   { ok: true, plan: 'ask', ... }                   — needs something from Nick;
+ *   { ok: true, plan: 'draft', ..., needsDraft }     — ready for the drafter.
+ * Reads only. `evidenceHash` identifies the inputs, so an unchanged candidate
+ * can be recognised BEFORE paying for a model call.
+ */
+async function gather(n, ctx) {
+  const { deps, roster, nowMs, answers } = ctx;
+  const pm = require('./prepared-move');
+  const ledger = require('./promise-ledger');
+  const said = (id) => { const a = (answers || []).filter((x) => x.questionId === id).pop(); return a ? a.text : null; };
+  const facts = []; // { text, cite, kind:'source'|'you' }
+  const observed = [];
+  const freshness = [];
+  for (const a of answers || []) facts.push({ text: a.text, cite: `you, ${String(a.at).slice(0, 16).replace('T', ' ')}`, kind: 'you' });
+
+  if (n.kind === 'email-reply') {
+    const e = deps.triageEntry(n.source.emailId);
+    if (!e || e.dismissed) return { ok: false, withhold: 'gone', why: 'That email is no longer waiting in your inbox triage.' };
+    const from = String(e.fromEmail || '').toLowerCase();
+    if (!from) return { ok: false, withhold: 'unresolvable', why: 'The email has no sender address to reply to.' };
+    if (AUTOMATED.test(from)) return { ok: false, withhold: 'not-a-commitment', why: 'It comes from an automated address — there is nobody to reply to.' };
+    if (ledger.hrSensitivity(e.subject || '', e.subject || '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-wording'], why: 'It reads as an employment matter — SAiM does not draft those.' };
+    const live = deps.liveReply(n.source.emailId);
+    if (live) return { ok: false, withhold: 'already-in-progress', why: `A reply to it is already ${live.status} in Actions.` };
+    const body = await deps.emailBody(n.source.emailId);
+    if (!body || body.trim().length < 20) return { ok: false, withhold: 'unreadable', why: 'SAiM could not read the email itself, so it will not guess at a reply. Open it in your inbox.' };
+    const emp = pm.employmentScreen({ wording: `${e.subject || ''}\n${body}`, sourceTitle: e.subject || '', sourceText: body, roster });
+    if (emp.sensitive) return { ok: false, withhold: 'employment-route', categories: emp.categories, why: 'It discusses named people’s employment — SAiM does not draft those.' };
+    const receivedAt = e.received || e.receivedAt || null;
+    const triagedAt = e.triagedAt || null;
+    freshness.push({ kind: 'triage', ref: 'email triage', observedAt: triagedAt, maxHours: 26 });
+    observed.push({ fact: `${e.from || from} wrote “${e.subject || '(no subject)'}”${receivedAt ? ` on ${dayLong(receivedAt)}` : ''}.`, source: { kind: 'email', ref: `email ${String(n.source.emailId).slice(0, 12)}…`, observedAt: receivedAt } });
+    if (e.reason) observed.push({ fact: `Triage put it in your action lane: ${e.reason}.`, source: { kind: 'triage', ref: 'email triage', observedAt: triagedAt } });
+    const quoted = body.replace(/\r\n/g, '\n').split('\n').map((l) => l.trim()).filter((l) => l.length > 20 && !/^(>|from:|sent:|to:|subject:)/i.test(l)).slice(0, 4);
+    for (const q of quoted) facts.push({ text: q.length > 240 ? `${q.slice(0, 239)}…` : q, cite: 'the email', kind: 'source' });
+    return {
+      ok: true, plan: 'draft', needsDraft: true,
+      title: e.subject || n.title, who: e.from || from, whoFirst: firstName(e.from) || from,
+      email: { id: n.source.emailId, subject: e.subject || '', from, fromName: e.from || null, body: body.slice(0, 6000) },
+      observed, facts, freshness,
+      evidenceHash: sha(JSON.stringify([n.sourceKey, sha(body), e.subject, answers || []])),
+      employment: emp,
+    };
+  }
+
+  if (n.kind === 'meeting-prep') {
+    const ev = deps.meetingEvent(n.source.eventId);
+    if (!ev) return { ok: false, withhold: 'gone', why: 'That meeting is no longer in your calendar.' };
+    if (ev.show_as === 'cancelled') return { ok: false, withhold: 'gone', why: 'That meeting has been cancelled.' };
+    if (ev.attendees_other !== 1) return { ok: false, withhold: 'not-a-commitment', why: 'Nobody else is in it.' };
+    if (ONE_TO_ONE.test(ev.subject || '')) return { ok: false, withhold: 'employment-route', why: '1-2-1 preparation is NOVA’s.' };
+    if (ledger.hrSensitivity(ev.subject || '', ev.subject || '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-meeting-title'], why: 'Its title reads as an employment matter.' };
+    const startLocal = String(ev.start_time).slice(0, 16);
+    const startMs = require('./prepared-move-exec').londonMs(startLocal.slice(0, 10), startLocal.slice(11, 16));
+    if (startMs - nowMs < MIN_MEETING_LEAD_MIN * 60000) return { ok: false, withhold: 'too-soon', why: 'It starts too soon to prepare for.' };
+    const fetchedAt = ev.fetched_at ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(String(ev.fetched_at)) ? ev.fetched_at : `${String(ev.fetched_at).replace(' ', 'T')}Z`).toISOString() : null;
+    freshness.push({ kind: 'calendar', ref: 'calendar_cache', observedAt: fetchedAt, maxHours: 2 });
+    const people = (deps.meetingPeople(n.source.eventId) || []).filter((p) => !/nickw@|nick\.ward@/i.test(String(p.email || '')));
+    observed.push({ fact: `“${ev.subject}” is ${dayLong(startLocal)} ${startLocal.slice(11, 16)}–${String(ev.end_time).slice(11, 16)}${people.length ? ` with ${people.map((p) => p.name || p.email).join(', ')}` : ''}.`, source: { kind: 'calendar', ref: 'calendar_cache', observedAt: fetchedAt } });
+    const prep = deps.meetingPrep({ subject: ev.subject, attendees: people.map((p) => ({ name: p.name, email: p.email })), organizer: null, location: null });
+    for (const a of prep.attendees || []) {
+      for (const w of (Array.isArray(a.waitingOn) ? a.waitingOn : []).slice(0, 3)) {
+        facts.push({ text: `${a.name}: noted as outstanding — “${w.text}”`, cite: w.sourcePath || 'waiting-on (no source recorded — check it before raising it)', kind: 'source' });
+      }
+      if (a.role) facts.push({ text: `${a.name} — ${a.role}`, cite: `People/${a.name}.md`, kind: 'source' });
+    }
+    for (const d of (prep.recentDecisions || []).slice(0, 3)) facts.push({ text: d.text, cite: `Decision Log ${d.date || ''}`.trim(), kind: 'source' });
+    for (const v of (prep.vaultContext || []).slice(0, 3)) facts.push({ text: `Recent note mentioning ${v.person}: ${v.label}`, cite: v.source, kind: 'source' });
+    const realFacts = facts.filter((f) => f.kind === 'source');
+    if (!realFacts.length && !said('aim')) {
+      return { ok: true, plan: 'ask', title: ev.subject, observed, facts, freshness, questions: [questionFor('no-meeting-facts', { title: ev.subject })], meeting: { start: startLocal, end: String(ev.end_time).slice(0, 16), title: ev.subject }, evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask', answers || []])) };
+    }
+    const folder = `Meetings/${startLocal.slice(0, 4)}/${startLocal.slice(5, 7)}`;
+    const t = safeTitle(ev.subject);
+    if (!t) return { ok: false, withhold: 'unresolvable', why: 'The meeting title cannot be made into a note name.' };
+    return {
+      ok: true, plan: 'draft', needsDraft: true, title: ev.subject,
+      meeting: { start: startLocal, end: String(ev.end_time).slice(0, 16), title: ev.subject, people: people.map((p) => p.name || p.email) },
+      notePath: `${folder}/${startLocal.slice(0, 10)} – ${t} Prep.md`, folderExists: _exists(folder),
+      observed, facts, freshness,
+      evidenceHash: sha(JSON.stringify([n.sourceKey, facts.map((f) => f.text), answers || []])),
+      employment: { sensitive: false, categories: [] },
+    };
+  }
+
+  // project-note
+  const task = deps.task(n.source.taskId);
+  if (!task || !['open', 'in-progress'].includes(task.status)) return { ok: false, withhold: 'gone', why: 'That task is no longer open.' };
+  if (task.domain === 'personal') return { ok: false, withhold: 'personal-domain', why: 'A personal task.' };
+  if (ledger.hrSensitivity(task.text, '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-wording'], why: 'It reads as an employment matter — routing only.' };
+  const folders = projectFolders();
+  const fromOrigin = (/^Projects\/([^/]+)\//.exec(String(task.origin_path || '')) || [])[1] || null;
+  const answeredFolder = said('folder');
+  const folder = fromOrigin && folders.includes(fromOrigin) ? fromOrigin : (answeredFolder && folders.includes(answeredFolder.trim()) ? answeredFolder.trim() : null);
+  observed.push({ fact: `Task #${task.id} is open: “${task.text}”${task.due_date ? `, due ${dayLong(task.due_date)}` : ''}.`, source: { kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString() } });
+  if (task.origin_path) {
+    const note = _read(task.origin_path);
+    const emp = pm.employmentScreen({ wording: task.text, sourceTitle: path.basename(task.origin_path, '.md'), sourceText: note || '', roster });
+    if (emp.sensitive) return { ok: false, withhold: 'employment-route', categories: emp.categories, why: 'Its source note discusses named colleagues’ employment — routing only.' };
+  }
+  if (!folder) {
+    return { ok: true, plan: 'ask', title: task.text, observed, facts, freshness, questions: [questionFor('no-folder', { folders })], evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask-folder', answers || []])) };
+  }
+  if (DENY_FOLDERS.includes(folder)) return { ok: false, withhold: 'employment-route', why: 'That folder is never written into.' };
+  const lines = deps.evidenceLines(task.text, { roster, folder });
+  for (const l of lines) facts.push({ text: l.text, cite: l.cite, kind: 'source' });
+  if (!lines.length && !said('purpose')) {
+    return { ok: true, plan: 'ask', title: task.text, observed, facts, freshness, questions: [questionFor('no-content')], evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask-purpose', answers || []])) };
+  }
+  const t = safeTitle(task.text);
+  if (!t) return { ok: false, withhold: 'unresolvable', why: 'The task’s wording cannot be made into a note name.' };
+  const notePath = `Projects/${folder}/${t} (draft).md`;
+  if (_exists(notePath)) return { ok: false, withhold: 'already-in-progress', why: `A draft already exists: ${notePath}.` };
+  return {
+    ok: true, plan: 'draft', needsDraft: true, title: task.text, task: { id: task.id, text: task.text, due: task.due_date || null },
+    notePath, folder, folderExists: _exists(`Projects/${folder}`), observed, facts, freshness,
+    evidenceHash: sha(JSON.stringify([n.sourceKey, task.text, lines.map((l) => l.cite + l.text), answers || []])),
+    employment: { sensitive: false, categories: [] },
+  };
+}
+
+/** PURE. Freshness rows → { ok, rows }. A source with no stamp is stale. */
+function freshnessOf(rows, nowMs) {
+  const out = rows.map((r) => {
+    const t = Date.parse(r.observedAt || '');
+    const ageHours = Number.isFinite(t) ? Math.round(((nowMs - t) / 3600000) * 10) / 10 : null;
+    return { ...r, ageHours, stale: ageHours == null || ageHours > r.maxHours };
+  });
+  return { ok: out.every((r) => !r.stale), rows: out };
+}
+
+/**
+ * PURE. The proposal packet. Every sentence comes from the gathered evidence,
+ * the draft, and the slot — nothing from the model is a fact.
+ */
+function composeV2({ n, g, draft, slot, alternatives = [], decision, duty, nowMs, origin }) {
+  const kind = n.kind;
+  const moveKey = moveKeyFor(kind, n.sourceKey);
+  const fresh = freshnessOf(g.freshness || [], nowMs);
+  const base = {
+    ref: n.ref, title: g.title || n.title, kind, sourceKey: n.sourceKey, source: n.source, moveKey,
+    evidenceHash: g.evidenceHash, observed: g.observed || [], freshness: fresh.rows,
+    screens: { employment: g.employment || { sensitive: false, categories: [] }, freshnessOk: fresh.ok, recordUnique: true },
+    do: { considered: DO_ADAPTERS.length ? DO_ADAPTERS : [], why: 'Nothing NEURO can do today completes this without inventing a fact or committing you to something, so SAiM goes as far as a draft.' },
+  };
+  if (g.plan === 'ask') {
+    return {
+      ...base, plan: 'ask',
+      headline: kind === 'project-note' ? 'I can start this — I need one thing from you first.' : kind === 'meeting-prep' ? `I can prepare for ${g.title} — tell me what you want from it.` : 'I need one thing from you before I can draft this.',
+      outcome: { goal: kind === 'meeting-prep' ? `Walk into ${g.title} prepared.` : `Get “${g.title}” started.`, firstStep: 'Answer the question below.' },
+      ask: { questions: g.questions },
+      deliverable: { kind, title: g.title, sourceFacts: g.facts || [], suggested: null, gaps: [] },
+      preparation: [{ did: 'Screened it and gathered what your notes say.', sideEffect: 'none' }],
+      decision: { slots: [], proposedWrites: [] },
+      authority: { needsApproval: [], mustNot: MUST_NOT[kind] },
+      verification: { checks: [] },
+    };
+  }
+  const writes = [];
+  const sourceFacts = g.facts || [];
+  const gaps = (draft && draft.gaps) || [];
+  let headline; let goal; let firstStep; let doneWhen; let deliverableTitle; let noteContent = null;
+  if (kind === 'email-reply') {
+    headline = `I drafted the reply to ${g.whoFirst}.`;
+    goal = `Answer ${g.who} about “${g.email.subject || g.title}”.`;
+    firstStep = 'Read the reply; if it is right, confirm and it goes to Actions for your approval — nothing is sent until you approve it there.';
+    doneWhen = 'The reply is sent from Actions after your approval and found in Sent Items.';
+    deliverableTitle = `Reply: ${g.email.subject || g.title}`;
+    writes.push({ kind: 'governed.reply', emailId: g.email.id, mode: 'reply', to: g.email.from, toName: g.email.fromName, subject: g.email.subject, body: draft.text });
+  } else {
+    const isPrep = kind === 'meeting-prep';
+    headline = isPrep ? `I made the prep for ${g.title} ready.` : `I drafted “${safeTitle(g.title)}”.`;
+    goal = isPrep ? `Walk into ${g.title} on ${dayLong(g.meeting.start)} ${g.meeting.start.slice(11, 16)} with what is open in front of you.` : `Get “${g.title}” from a task to a first draft.`;
+    firstStep = gaps.length ? `Fill in what only you know: ${gaps[0]}` : 'Read the draft and save it.';
+    doneWhen = isPrep ? 'The prep note is saved and the meeting happens with it to hand.' : 'The draft is saved and your own words go past what SAiM wrote.';
+    deliverableTitle = isPrep ? `${g.title} — prep` : `${safeTitle(g.title)} (draft)`;
+    noteContent = noteMarkdown({ title: deliverableTitle, kind, sourceFacts, suggested: draft.text, gaps, why: isPrep ? `Prepared for ${g.title}, ${dayLong(g.meeting.start)} ${g.meeting.start.slice(11, 16)}.` : `Prepared from task #${g.task.id}: “${g.task.text}”.` });
+    writes.push({ kind: 'vault.note', path: g.notePath });
+  }
+  const slots = [{ id: 'approve', ...(slot ? { date: slot.date, start: slot.startTime, end: slot.endTime } : {}) },
+    ...alternatives.map((a, i) => ({ id: `slot-${i + 1}`, date: a.date, start: a.startTime, end: a.endTime }))];
+  if (slot) writes.push({ kind: 'calendar.solo', title: blockTitle(deliverableTitle), attendees: [], body: `Prepared by SAiM. Finish: ${g.notePath || deliverableTitle}` });
+  return {
+    ...base, plan: 'draft', headline,
+    outcome: { goal, firstStep, doneWhen },
+    deliverable: {
+      kind, title: deliverableTitle, sourceFacts,
+      suggested: { label: 'Suggested wording — SAiM wrote this from the sources above; check it before you use it.', text: draft.text },
+      gaps, path: g.notePath || null, to: g.email ? { email: g.email.from, name: g.email.fromName } : null,
+    },
+    forum: kind === 'meeting-prep' ? { title: g.title, start: g.meeting.start } : null,
+    preparation: [{ did: `Drafted the ${kind === 'email-reply' ? 'reply' : 'note'} from ${sourceFacts.length} source line${sourceFacts.length === 1 ? '' : 's'}${slot ? ` and found ${BLOCK_MINUTES} free minutes to finish it` : ''}.`, sideEffect: 'none — nothing saved, booked or sent', draft: noteContent || draft.text }],
+    decision: { slots, proposedWrites: writes, forum: kind === 'meeting-prep' ? { title: g.title, start: g.meeting.start } : null },
+    why: slot ? `A block is proposed because the draft leaves ${gaps.length} thing${gaps.length === 1 ? '' : 's'} only you can supply.` : null,
+    authority: { needsApproval: writes.map((w) => w.kind), mustNot: MUST_NOT[kind] },
+    verification: { checks: writes.map((w) => ({ what: w.kind === 'governed.reply' ? 'The reply waits in Actions, not sent' : w.kind === 'vault.note' ? 'The note exists with exactly the confirmed text' : 'The block exists, just you', how: 'read back after writing' })) },
+    origin,
+  };
+}
+
+const MUST_NOT = Object.freeze({
+  'email-reply': ['Send the reply — it waits in Actions for your approval code', 'Choose who it goes to — it answers the original sender only', 'Create a task, chase anyone or change a commitment'],
+  'meeting-prep': ['Message, invite or email anyone in the meeting', 'Accept, decline or move the meeting', 'Create a task or change a commitment'],
+  'project-note': ['Overwrite an existing note', 'Email, invite or message anyone', 'Create a task, move a deadline or tick the task'],
+});
+
+function blockTitle(t) {
+  const s = `Finish ${String(t).replace(/[^A-Za-z0-9 ,'&()–-]+/g, ' ').replace(/\s+/g, ' ').trim()}`;
+  const cut = s.length > 70 ? s.slice(0, 70).replace(/\s+\S*$/, '') : s;
+  return cut.replace(/[^A-Za-z0-9)]+$/, '');
+}
+
+/** PURE. The note as saved: source facts and SAiM's wording kept visibly apart. */
+function noteMarkdown({ title, sourceFacts, suggested, gaps, why }) {
+  return [
+    `# ${title}`, '',
+    `> ${why} Prepared by SAiM. Nothing here is agreed.`, '',
+    '## What your sources say', '',
+    ...(sourceFacts.length ? sourceFacts.map((f) => `- ${f.text} _(${f.kind === 'you' ? 'you said' : f.cite})_`) : ['- _(nothing found)_']), '',
+    '## Suggested draft (SAiM wrote this — check it)', '',
+    String(suggested || '').trim(), '',
+    ...(gaps.length ? ['## Still needed from you', '', ...gaps.map((x) => `- [ ] ${x}`), ''] : []),
+  ].join('\n');
+}
+
+/** Find one free block in the next 5 working days (same rule time-fit and task-blocks use). */
+function _slotFor(deps, nowMs) {
+  const today = ymdLondon(nowMs);
+  const diary = deps.diary(today, 7);
+  if (!diary.known) return { known: false, why: 'the calendar could not be read' };
+  const nonWorking = deps.holidays();
+  const first = deps.findSlot({ minutes: BLOCK_MINUTES, events: diary.events, now: new Date(nowMs), nonWorking });
+  if (!first || !first.date) return { known: true, slot: null, why: (first && first.reason) || 'no free time found' };
+  if (first.date > ymdLondon(nowMs + 7 * DAY)) return { known: true, slot: null, why: 'no free time in the next week' };
+  return { known: true, slot: first, diaryFetchedAt: diary.fetchedAt };
+}
+
+// ── The one pipeline ─────────────────────────────────────────────────────────
+
+/**
+ * Plan ONE move and store it. `ref` (manual "Make this ready") forces that
+ * candidate; without it (the scan) the first candidate in production's order
+ * that passes every screen is taken. `source` re-plans a stored move from its
+ * own source (after Nick answers a question) without production's order.
+ *
+ * → { ok, outcome: 'stored'|'unchanged'|'covered-by-v1'|'none'|'withheld', record?, withheld[], why? }
+ */
+async function planAndStore({ now = Date.now(), ref = null, source = null, origin = 'scan', deps: over = {} } = {}) {
+  const deps = { ...DEFAULT_DEPS, ...over };
+  const nowMs = typeof now === 'number' ? now : Date.parse(now);
+  const v1 = await deps.prepareV1({ now: nowMs });
+  const duty = (v1 && v1.duty) || { onDuty: false, why: 'unknown' };
+  const decision = { decidedAt: (v1 && v1.decision && v1.decision.decidedAt) || new Date(nowMs).toISOString(), rule: v1 && v1.decision && v1.decision.rule, lead: v1 && v1.decision && v1.decision.lead };
+  const roster = deps.roster();
+  const withheld = [];
+
+  let list;
+  if (source) list = [{ n: source }];
+  else {
+    const cands = (v1 && v1.candidates) || [];
+    list = (ref ? cands.filter((c) => c.ref === ref) : cands).map((c) => ({ c }));
+    if (ref && !list.length) return { ok: false, outcome: 'none', why: 'That item is no longer in what SAiM is weighing up right now.', withheld };
+  }
+
+  for (const entry of list) {
+    const c = entry.c;
+    if (c && v1 && v1.selected && v1.selected.ref === c.ref) {
+      // The register slice already prepared this one — one move, one pipeline.
+      return { ok: true, outcome: 'covered-by-v1', why: 'SAiM has already prepared this — it is on your SAiM home.', withheld };
+    }
+    const n = entry.n || normalise(c, deps);
+    if (n.withhold) { withheld.push({ ref: c && c.ref, title: c && c.title, reason: n.withhold, why: n.why }); continue; }
+    const moveKey = moveKeyFor(n.kind, n.sourceKey);
+    const sup = deps.suppression(moveKey, nowMs);
+    if (sup && !source) {
+      withheld.push({ ref: n.ref, title: n.title, reason: sup.response, why: sup.say });
+      if (ref) return { ok: false, outcome: 'withheld', why: sup.say, withheld };
+      continue;
+    }
+    const answers = deps.answers(moveKey) || [];
+    let g;
+    try { g = await gather(n, { deps, roster, nowMs, answers }); } catch (e) { g = { ok: false, withhold: 'unreadable', why: `SAiM could not read what this rests on (${e.message}).` }; }
+    if (!g.ok) {
+      withheld.push({ ref: n.ref, title: n.title, reason: g.withhold, why: g.why, categories: g.categories });
+      if (ref || source) return { ok: false, outcome: 'withheld', why: g.why, reason: g.withhold, withheld };
+      continue;
+    }
+    // Unchanged evidence → the stored proposal stands; no model call is bought.
+    const prior = deps.latest(moveKey);
+    if (prior && prior.packet && prior.packet.selected && prior.packet.selected.evidenceHash === g.evidenceHash) {
+      deps.markChecked(prior.id, nowMs);
+      return { ok: true, outcome: 'unchanged', record: prior, withheld };
+    }
+    let draft = null; let slot = null; let alternatives = [];
+    if (g.plan === 'draft') {
+      if (g.notePath && g.folderExists === false) {
+        const why = `The folder ${path.posix.dirname(g.notePath)} does not exist, and SAiM never creates folders.`;
+        withheld.push({ ref: n.ref, title: n.title, reason: 'no-location', why });
+        if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
+        continue;
+      }
+      const sourcesText = [g.title, ...(g.facts || []).map((f) => f.text), g.email ? g.email.body : '', g.email ? g.email.fromName || '' : '', g.meeting ? (g.meeting.people || []).join(' ') : ''].join('\n');
+      const d = await deps.draft(n.kind, { title: g.title, facts: g.facts, email: g.email || null, meeting: g.meeting || null, task: g.task || null });
+      if (!d || !d.ok || !String(d.text || '').trim()) {
+        const why = `SAiM could not draft it just now${d && d.why ? ` (${d.why})` : ''} — it will try again later.`;
+        withheld.push({ ref: n.ref, title: n.title, reason: 'no-draft', why });
+        if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
+        continue;
+      }
+      const bad = ungrounded([d.text, ...(d.gaps || [])].join('\n'), sourcesText);
+      if (bad.length) {
+        const why = `The draft brought in things your sources do not say (${bad.slice(0, 3).join(', ')}), so SAiM did not keep it.`;
+        withheld.push({ ref: n.ref, title: n.title, reason: 'ungrounded', why });
+        if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
+        continue;
+      }
+      draft = { text: String(d.text).trim(), gaps: (d.gaps || []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 5) };
+      // SCHEDULE — only when the draft needs Nick's own authorship to finish.
+      if (n.kind === 'project-note' && draft.gaps.length) {
+        const s = _slotFor(deps, nowMs);
+        if (!s.known || !s.slot) {
+          const why = `It needs your own time to finish, and ${s.why || 'no safe slot was found'} — so nothing is offered.`;
+          withheld.push({ ref: n.ref, title: n.title, reason: 'no-safe-slot', why });
+          if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
+          continue;
+        }
+        slot = s.slot;
+        g.freshness = [...(g.freshness || []), { kind: 'calendar', ref: 'calendar_cache', observedAt: s.diaryFetchedAt, maxHours: 2 }];
+      }
+    }
+    const selected = composeV2({ n, g, draft, slot, alternatives, decision, duty, nowMs, origin });
+    if (!selected.screens.freshnessOk) {
+      const stale = selected.freshness.filter((r) => r.stale).map((r) => `${r.ref} (${r.ageHours == null ? 'unreadable' : `${r.ageHours}h old`})`);
+      const why = `A source it rests on is stale: ${stale.join(', ')}.`;
+      withheld.push({ ref: n.ref, title: n.title, reason: 'stale', why });
+      if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
+      continue;
+    }
+    const packet = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), origin, decision, duty, selected, withheld };
+    const st = deps.store(packet, { now: nowMs });
+    if (!st.ok) {
+      withheld.push({ ref: n.ref, title: n.title, reason: 'refused', why: st.why });
+      if (ref || source) return { ok: false, outcome: 'withheld', why: st.why, withheld };
+      continue;
+    }
+    return { ok: true, outcome: st.created ? 'stored' : 'unchanged', record: st.record, withheld };
+  }
+  return { ok: true, outcome: 'none', why: 'Nothing in today’s list passed every check.', withheld };
+}
+
+/**
+ * Re-check a stored v2 proposal against the world NOW (read-only): the source
+ * still exists and is still owed, nothing else has taken it forward, and the
+ * draft still screens clean. Used by the fresh checks before any write.
+ */
+async function recheck(packet, { deps: over = {} } = {}) {
+  const deps = { ...DEFAULT_DEPS, ...over };
+  const s = packet && packet.selected;
+  if (!s) return { ok: false, why: 'there is no prepared move' };
+  const ledger = require('./promise-ledger');
+  const draft = ((s.preparation || []).find((p) => p.draft) || {}).draft || '';
+  if (ledger.hrSensitivity(`${s.title}\n${draft}`).sensitive) return { ok: false, why: 'it now reads as an employment matter' };
+  if (s.kind === 'email-reply') {
+    const e = deps.triageEntry(s.source.emailId);
+    if (!e || e.dismissed) return { ok: false, why: 'the email is no longer waiting in triage — it may already be answered' };
+    const live = deps.liveReply(s.source.emailId);
+    // Our own draft, already in Actions from an earlier confirm, is not "someone else's".
+    const ours = ((s.decision || {}).proposedWrites || []).find((w) => w.kind === 'governed.reply');
+    const same = live && ours && live.draft && String(live.draft.body || '').trim() === String(ours.body || '').trim();
+    if (live && !same) return { ok: false, why: `a different reply to that email is already ${live.status} in Actions` };
+    return { ok: true };
+  }
+  if (s.kind === 'meeting-prep') {
+    const ev = deps.meetingEvent(s.source.eventId);
+    if (!ev || ev.show_as === 'cancelled') return { ok: false, why: 'the meeting is no longer in your calendar' };
+    if (String(ev.start_time).slice(0, 16) !== String(s.forum && s.forum.start)) return { ok: false, why: 'the meeting has moved since this was prepared' };
+    return { ok: true };
+  }
+  const t = deps.task(s.source.taskId);
+  if (!t || !['open', 'in-progress'].includes(t.status)) return { ok: false, why: 'the task is no longer open' };
+  if (t.text !== s.title) return { ok: false, why: 'the task’s wording has changed since this was prepared' };
+  return { ok: true };
+}
+
+module.exports = {
+  CONTRACT, KINDS, DO_ADAPTERS, DENY_FOLDERS, BLOCK_MINUTES, ANSWER_MAX, MIN_MEETING_LEAD_MIN,
+  moveKeyFor, quickEligible, safeTitle, ungrounded, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
+  planAndStore, recheck, projectFolders, DEFAULT_DEPS,
+};

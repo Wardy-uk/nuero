@@ -32,6 +32,8 @@ export async function load(call) {
   const view = r.body;
   // Not finished in time is NOT "nothing prepared" — the answer is unknown yet.
   if (!view.move && view.pending) return { kind: 'pending', why: 'not-ready-in-time' };
+  // Nothing prepared, but one Now item SAiM could take forward: offer it (one action).
+  if (!view.move && view.makeReady && view.makeReady.ref) return { kind: 'offer', view, offer: view.makeReady };
   if (!view.move) return { kind: 'hidden', why: 'nothing-prepared', reason: (view.unavailable && view.unavailable.reason) || null };
   const first = (view.move.options || [])[0];
   return { kind: 'ready', view, option: first ? first.id : null };
@@ -79,7 +81,9 @@ export async function askToConfirm(call, { view, option, sessionId }) {
   if (known && known.gate !== 'used') return { kind: 'boundary', view, option, boundary: known };
   let r;
   try {
-    r = await call(`${BASE}/request`, { method: 'POST', body: { option, sessionId } });
+    // A stored v2 proposal is confirmed by ITS record — never re-prepared on the way.
+    const recordId = view && view.move && view.move.version === 2 ? view.move.recordId : null;
+    r = await call(`${BASE}/request`, { method: 'POST', body: recordId ? { option, sessionId, recordId } : { option, sessionId } });
   } catch (e) {
     return { kind: 'refused', view, option, message: 'I couldn’t reach NEURO to prepare the confirmation. Nothing was changed.', again: true };
   }
@@ -113,7 +117,7 @@ export async function confirm(call, { view, option, request, now = Date.now() })
   return { kind: 'refused', view, option, message: b.error || 'NEURO refused the confirmation. Nothing was changed.', again: true };
 }
 
-const STEP_NAME = { calendar: 'Calendar block', note: 'Draft note' };
+const STEP_NAME = { calendar: 'Calendar block', note: 'Draft note', reply: 'Reply draft' };
 const STATUS_WORDS = {
   done: 'done and read back',
   'already-done': 'already in place — not repeated',
@@ -128,11 +132,53 @@ const STATUS_WORDS = {
 export function receiptLines(receipt) {
   return (receipt.steps || []).map((s) => ({
     step: STEP_NAME[s.step] || s.step,
-    status: s.status === 'failed' && s.provablyNotApplied === false ? 'may not have been saved' : (STATUS_WORDS[s.status] || s.status),
+    status: s.step === 'reply' && (s.status === 'done' || s.status === 'already-done')
+      ? (s.status === 'done' ? 'in Actions, waiting for your approval — not sent' : 'already in Actions — not repeated, not sent')
+      : s.status === 'failed' && s.provablyNotApplied === false ? 'may not have been saved' : (STATUS_WORDS[s.status] || s.status),
     ok: s.status === 'done' || s.status === 'already-done',
     target: s.target,
     note: s.note || s.unconfirmed || s.error || null,
   }));
+}
+
+/**
+ * "Make this ready" — Nick pressed it on a Now item. The SAME planner the scan
+ * uses; it stores a proposal and writes nothing else. → a ready/offer/refused state.
+ */
+export async function makeReady(call, { offer }) {
+  let r;
+  try { r = await call(`${BASE}/prepare`, { method: 'POST', body: { ref: offer.ref } }); } catch {
+    return { kind: 'refused', message: 'I couldn’t reach NEURO. Nothing was changed.', again: true };
+  }
+  const b = r.body || {};
+  if (r.status === 200 && b.ok && b.move) return load(call);
+  if (r.status === 200 && b.ok) return { kind: 'note', message: b.say || 'Nothing to prepare for that right now.' };
+  return { kind: 'note', message: b.error || 'SAiM couldn’t prepare that. Nothing was changed.' };
+}
+
+/** Defer (bounded), decline or restore — NEURO's own record only. */
+export async function respond(call, { view, response, days = null, reason = null }) {
+  const m = view && view.move;
+  if (!m || m.version !== 2) return { kind: 'refused', view, message: 'There is nothing to respond to.' };
+  let r;
+  try { r = await call(`${BASE}/respond`, { method: 'POST', body: { recordId: m.recordId, version: m.recordVersion, response, ...(reason ? { reason } : {}), ...(days ? { days } : {}) } }); } catch {
+    return { kind: 'refused', view, message: 'I couldn’t reach NEURO. Nothing was changed.', again: true };
+  }
+  const b = r.body || {};
+  if (r.status === 200 && b.ok) return { kind: 'responded', view, response, message: response === 'decline' ? 'Understood — I won’t offer this one again.' : `Put off until ${String(b.until || '').slice(0, 10)}.` };
+  return { kind: 'refused', view, message: b.error || 'NEURO refused that. Nothing was changed.', again: true };
+}
+
+/** Answer SAiM's question; the move is planned again as a new version. */
+export async function answer(call, { view, questionId, text }) {
+  const m = view && view.move;
+  let r;
+  try { r = await call(`${BASE}/answer`, { method: 'POST', body: { recordId: m.recordId, version: m.recordVersion, questionId, text } }); } catch {
+    return { kind: 'refused', view, message: 'I couldn’t reach NEURO. Your answer was not saved — it is still in the box.', keep: true };
+  }
+  const b = r.body || {};
+  if (r.status === 200 && b.ok) return load(call);
+  return { kind: 'refused', view, message: `${b.error || 'NEURO refused that.'}${b.answered ? ' Your answer was saved.' : ' Your answer was not saved — it is still in the box.'}`, keep: !b.answered };
 }
 
 /** The production transport: the app's own auth headers, the raw status kept. */

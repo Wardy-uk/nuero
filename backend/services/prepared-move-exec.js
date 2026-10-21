@@ -66,6 +66,7 @@ const refuse = (reasons, extra = {}) => ({ ok: false, refused: true, reasons: []
  * depends on the clock or the world is a fresh check, below.
  */
 function writesFor(packet, option) {
+  if (packet && packet.contract === 'prepared-move-v2') return writesForV2(packet, option);
   if (!packet || packet.contract !== 'prepared-move-v1') return refuse('not a prepared-move packet');
   const s = packet.selected;
   if (!s) return refuse('there is no prepared move in this packet');
@@ -109,6 +110,83 @@ function writesFor(packet, option) {
   };
 }
 
+/**
+ * Where a v2 note may be saved, by kind — EXISTING folders only (the writer
+ * refuses to create one): a project note inside an existing Projects/<Folder>
+ * (never Archive or PIP), a meeting prep beside the meeting notes it belongs
+ * with (Meetings/YYYY/MM, the convention the vault's prep notes already use).
+ */
+const V2_NOTE_RULES = Object.freeze({
+  'project-note': (p) => { const m = /^Projects\/([^/]+)\/[^/]+\.md$/.exec(p); return Boolean(m) && !['Archive', 'PIP'].includes(m[1]); },
+  'meeting-prep': (p) => /^Meetings\/\d{4}\/\d\d\/[^/]+ Prep\.md$/.test(p),
+});
+
+/**
+ * PURE. A v2 packet's exact writes for one option (21 Oct 2026). At most ONE
+ * of each: a new note, a governed reply DRAFT (which sends nothing — it waits
+ * in Actions for Nick's approval code), a solo block. Anything else refuses.
+ */
+function writesForV2(packet, option) {
+  const s = packet.selected;
+  if (!s) return refuse('there is no prepared move in this packet');
+  if (s.plan === 'ask') return refuse('SAiM needs your answer before there is anything to confirm');
+  if (s.plan !== 'draft') return refuse('this move has nothing to confirm');
+  const sc = s.screens || {};
+  if (!sc.employment || sc.employment.sensitive) return refuse('employment matter — routing only, never executed');
+  if (sc.freshnessOk !== true) return refuse('a source this move rests on was stale when it was prepared');
+  if (sc.recordUnique !== true) return refuse('the move is not tied to exactly one record');
+  const planner = require('./prepared-move-planner');
+  if (!planner.KINDS.includes(s.kind) || s.moveKey !== planner.moveKeyFor(s.kind, s.sourceKey)) return refuse('the move does not name its own source');
+  const d = s.decision || {};
+  const slot = (d.slots || []).find((x) => x.id === option);
+  if (!slot) return refuse(`"${option}" is not one of the choices this move offered`);
+  const writes = d.proposedWrites || [];
+  const kinds = writes.map((w) => w.kind);
+  if (!writes.length || new Set(kinds).size !== kinds.length || kinds.some((k) => !['vault.note', 'governed.reply', 'calendar.solo'].includes(k))) return refuse('the move must be at most one note, one reply draft and one solo block');
+  const draft = ((s.preparation || []).find((x) => x.draft) || {}).draft;
+  if (!draft) return refuse('there is no prepared draft');
+  if (require('./promise-ledger').hrSensitivity(`${draft}\n${s.title}`).sensitive) return refuse('the draft reads as an employment matter — routing only, never executed');
+
+  const moveKey = s.moveKey;
+  const steps = []; const lines = [];
+  const note = writes.find((w) => w.kind === 'vault.note');
+  if (note) {
+    const p = String(note.path || '');
+    const rule = V2_NOTE_RULES[s.kind];
+    if (!rule || p.includes('..') || p.includes('\0') || !rule(p)) return refuse('the note path is not one a prepared move may save into');
+    const content = ['---', 'type: draft', 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
+    steps.push({ step: 'note', writer: WRITER.note, path: p, content, contentSha: sha(content) });
+    lines.push(`Save the ${s.kind === 'meeting-prep' ? 'meeting prep' : 'draft'} as a new note: ${p}`);
+  }
+  const reply = writes.find((w) => w.kind === 'governed.reply');
+  if (reply) {
+    if (s.kind !== 'email-reply' || reply.mode !== 'reply' || !reply.emailId || reply.emailId !== (s.source || {}).emailId) return refuse('the reply does not answer the email this move is about');
+    const body = String(reply.body || '').trim();
+    if (!body || body !== String(draft).trim()) return refuse('the reply is not the draft that was shown');
+    steps.push({ step: 'reply', emailId: reply.emailId, mode: 'reply', body, bodySha: sha(body), to: reply.to || null });
+    lines.push(`Put the reply to ${reply.toName || reply.to} in Actions, waiting for your approval code. It is NOT sent.`);
+  }
+  const cal = writes.find((w) => w.kind === 'calendar.solo');
+  if (cal) {
+    if (!slot.date || !/^\d{4}-\d\d-\d\d$/.test(slot.date) || !/^\d\d:\d\d$/.test(slot.start || '') || !/^\d\d:\d\d$/.test(slot.end || '') || toMin(slot.end) <= toMin(slot.start)) return refuse('the offered time is not a valid block');
+    if (!Array.isArray(cal.attendees) || cal.attendees.length !== 0) return refuse('the block has attendees — a block that invites anyone is not this action');
+    if (!TITLE_RE.test(String(cal.title || ''))) return refuse('the block title is not a single plain line');
+    steps.push({ step: 'calendar', writer: WRITER.calendar, title: cal.title, date: slot.date, start: slot.start, end: slot.end, attendees: [], body: cal.body, marker: moveKey });
+    lines.push(`Add “${cal.title}” to your calendar, ${dayLong(slot.date)} ${slot.start}–${slot.end}. Just you — nobody is invited.`);
+  } else if (slot.date) {
+    return refuse('this move offers a time but books no block');
+  }
+  return {
+    ok: true, contract: 'prepared-move-v2', moveKey, option, slot: cal ? slot : null, steps, writeHash: sha(JSON.stringify(steps)),
+    forum: s.forum || null, verification: s.verification || null, title: s.title,
+    confirmation: {
+      question: s.kind === 'email-reply' ? 'Put this reply in Actions for your approval?' : cal ? `Save the draft and reserve ${toMin(slot.end) - toMin(slot.start)} minutes on ${dayLong(slot.date)} (${slot.start}–${slot.end})?` : 'Save this as a note?',
+      writes: lines,
+      contacts: reply ? 'Nothing is sent: the reply waits in Actions until you approve it with your code. Nobody is invited and no task is created.' : 'Nobody is contacted: no email, invite or message, and no task is created.',
+    },
+  };
+}
+
 // ── Fresh checks, immediately before execution ───────────────────────────────
 
 /**
@@ -120,25 +198,32 @@ async function freshChecks({ record, w, checks, now }) {
   const no = (why) => refuse(why, { rePrepare: true, recordId: record.id, packet: record.packet });
   if (now > Date.parse(record.evidenceExpiresAt)) return no(`the evidence behind this move expired at ${record.evidenceExpiresAt} — it needs preparing again`);
   if (!record.options[w.option]) return no('that time was not one this move offered');
-  if (londonMs(w.slot.date, w.slot.start) <= now) return no('that time has already passed');
+  const calStep = w.steps.find((x) => x.step === 'calendar');
+  const noteStep = w.steps.find((x) => x.step === 'note');
+  if (calStep && londonMs(w.slot.date, w.slot.start) <= now) return no('that time has already passed');
   if (w.forum && londonMs(w.forum.start.slice(0, 10), w.forum.start.slice(11, 16)) <= now) return no('the meeting it was prepared for has already started');
   if (!checks) return no('no fresh checks were available — refusing rather than writing blind');
 
-  const diary = await checks.diary(w.slot, { title: w.steps[0].title, marker: w.moveKey });
-  if (!diary || !diary.known) return no(`I couldn’t confirm ${w.slot.start}–${w.slot.end} is still free${diary && diary.why ? ` (${diary.why})` : ''}`);
-  if (diary.clashes && diary.clashes.length) return no(`${dayLong(w.slot.date)} ${w.slot.start}–${w.slot.end} is no longer free`);
+  // The diary and leave matter only when a block is to be booked.
+  if (calStep) {
+    const diary = await checks.diary(w.slot, { title: calStep.title, marker: w.moveKey });
+    if (!diary || !diary.known) return no(`I couldn’t confirm ${w.slot.start}–${w.slot.end} is still free${diary && diary.why ? ` (${diary.why})` : ''}`);
+    if (diary.clashes && diary.clashes.length) return no(`${dayLong(w.slot.date)} ${w.slot.start}–${w.slot.end} is no longer free`);
 
-  const away = await checks.availability(w.slot.date);
-  if (!away || !away.known) return no(`I couldn’t check your leave for ${dayLong(w.slot.date)}${away && away.why ? ` (${away.why})` : ''}`);
-  if (away.off) return no(`you’re now booked off on ${dayLong(w.slot.date)}`);
-  if (away.working === false) return no(`${dayLong(w.slot.date)} is not a working day`);
+    const away = await checks.availability(w.slot.date);
+    if (!away || !away.known) return no(`I couldn’t check your leave for ${dayLong(w.slot.date)}${away && away.why ? ` (${away.why})` : ''}`);
+    if (away.off) return no(`you’re now booked off on ${dayLong(w.slot.date)}`);
+    if (away.working === false) return no(`${dayLong(w.slot.date)} is not a working day`);
+  }
 
   const cand = await checks.candidate(record.packet);
   if (!cand || !cand.ok) return no(cand && cand.why ? cand.why : 'I couldn’t re-check the commitment this move is about');
 
-  const note = await checks.noteState(w.steps[1].path, w.steps[1].contentSha);
-  if (!note || note.known === false) return no('I couldn’t check the note location');
-  if (note.exists && !note.ours) return no('a note already exists at that path — I won’t overwrite it');
+  if (noteStep) {
+    const note = await checks.noteState(noteStep.path, noteStep.contentSha);
+    if (!note || note.known === false) return no('I couldn’t check the note location');
+    if (note.exists && !note.ours) return no('a note already exists at that path — I won’t overwrite it');
+  }
   return { ok: true };
 }
 
@@ -180,6 +265,7 @@ function defaultChecks({ adapters, now = Date.now() } = {}) {
       return { known: off.known, off: off.off, working, why: off.known ? null : off.reason };
     },
     async candidate(packet) {
+      if (packet && packet.contract === 'prepared-move-v2') return require('./prepared-move-planner').recheck(packet);
       const pm = require('./prepared-move');
       const s = packet.selected;
       const res = pm.resolveTodoCard({ title: s.title });
@@ -244,7 +330,41 @@ function liveAdapters() {
       },
       syncUncertain: true,
     },
+    // A governed reply DRAFT (21 Oct 2026). prepared-actions.prepareReply with
+    // origin 'saim-move' — not a human origin, so sending it needs Nick's
+    // approval code in Actions; nothing here can send. Recipients come from the
+    // original email, never from the move.
+    governed: {
+      async live(emailId) { return require('./prepared-actions').liveReplyFor(emailId); },
+      async prepareReply({ emailId, body }) {
+        const r = await require('./prepared-actions').prepareReply({ emailId, body, mode: 'reply', origin: 'saim-move' });
+        if (!r.ok) throw new Error(`HTTP ${r.code && r.code < 500 ? r.code : 503} ${r.error}`);
+        return r.action;
+      },
+      async get(actionId) { return require('./prepared-actions').get(actionId); },
+    },
   };
+}
+
+/**
+ * The governed reply step: put the confirmed words in Actions as a draft and
+ * read it back. Never supersedes a DIFFERENT live reply (that may be Nick's
+ * own); an identical one already there is found, not repeated.
+ */
+async function _replyStep(step, gov, { verifyOnly = false } = {}) {
+  const live = await gov.live(step.emailId);
+  const same = live && live.draft && sha(String(live.draft.body || '').trim()) === step.bodySha;
+  if (live && !same) throw new Error(`HTTP 409 a different reply to this email is already ${live.status} in Actions — not replaced`);
+  if (!live && verifyOnly) return { created: false, gone: true, id: null, checks: [['the reply drafted earlier is still in Actions', false]] };
+  const action = live || await gov.prepareReply({ emailId: step.emailId, body: step.body, to: step.to });
+  const back = action && action.actionId ? await gov.get(action.actionId) : null;
+  const checks = [
+    ['the reply is in Actions', Boolean(back)],
+    ['its words are exactly what was confirmed', Boolean(back && back.draft && sha(String(back.draft.body || '').trim()) === step.bodySha)],
+    ['it is waiting for your approval, not sent', Boolean(back && back.status === 'prepared')],
+    ['it answers the original sender only', Boolean(back && back.draft && (back.draft.to || []).length === 1 && (!step.to || String(back.draft.to[0].email).toLowerCase() === String(step.to).toLowerCase()) && (back.draft.cc || []).length === 0)],
+  ];
+  return { created: !live, id: back ? back.actionId : null, checks };
 }
 
 // ── Confirmation ─────────────────────────────────────────────────────────────
@@ -370,7 +490,9 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
   const stepKey = (step) => `${w.moveKey}:${step.step}`;
   const res = budget.reserve({
     action: budget.ACTION, moveKey: w.moveKey, title: w.title, now,
-    steps: w.steps.map((s) => (s.step === 'calendar'
+    // A governed reply DRAFT writes nothing outside NEURO (it waits in Actions for
+    // the approval code), so it is not an allowance step; the note and the block are.
+    steps: w.steps.filter((s) => s.step !== 'reply').map((s) => (s.step === 'calendar'
       ? { key: stepKey(s), kind: 'calendar.solo', minutes: toMin(s.end) - toMin(s.start), contacts: (s.attendees || []).length, spendPence: 0 }
       : { key: stepKey(s), kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 })),
   });
@@ -393,6 +515,19 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
   const results = [];
   for (const step of w.steps) {
     const key = stepKey(step);
+    if (step.step === 'reply') {
+      const tgtR = `reply draft in Actions (email ${String(step.emailId).slice(0, 12)}…)`;
+      if (budget.stopState().stopped) { results.push({ step: 'reply', target: tgtR, status: 'stopped' }); continue; }
+      if (!ad.governed) { results.push({ step: 'reply', target: tgtR, status: 'refused', why: 'this target cannot draft a governed reply' }); continue; }
+      try {
+        const r = await _replyStep(step, ad.governed);
+        const verified = r.checks.every(([, ok]) => ok);
+        results.push({ step: 'reply', target: tgtR, status: r.gone ? 'removed-since' : !verified ? 'unverified' : r.created ? 'done' : 'already-done', id: r.id || null, sent: false, verified: r.checks.map(([what, ok]) => ({ what, ok: Boolean(ok) })) });
+      } catch (e) {
+        results.push({ step: 'reply', target: tgtR, status: 'failed', provablyNotApplied: /^HTTP 4\d\d/.test(e.message), error: e.message.replace(/^HTTP \d+ /, ''), sent: false });
+      }
+      continue;
+    }
     const tgt = step.step === 'calendar' ? `${step.date} ${step.start}–${step.end} “${step.title}”` : step.path;
     // The emergency stop is honoured between steps: a stopped step is never attempted.
     if (budget.stopState().stopped) {
@@ -431,19 +566,23 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
 
   const good = (r) => r.status === 'done' || r.status === 'already-done';
   const complete = results.every(good);
-  const label = (r) => (r.step === 'calendar' ? 'The calendar block' : 'The note');
+  const label = (r) => (r.step === 'calendar' ? 'The calendar block' : r.step === 'reply' ? 'The reply draft' : 'The note');
+  const STAYS = { calendar: 'The calendar block is in place and stays.', note: 'The note is saved and stays.', reply: 'The reply draft is in Actions and stays — it has not been sent.' };
+  const DONE = { calendar: 'The block is in your calendar, just you.', note: 'The note is saved and read back.', reply: 'The reply is in Actions waiting for your approval code — it has NOT been sent.' };
+  const v2 = w.contract === 'prepared-move-v2';
   const receipt = {
     recordId: record.id, version: record.version, option, moveKey: w.moveKey, target: kind,
     at: new Date(now).toISOString(), confirmedWith: spent.grant.id, writeHash: w.writeHash,
     steps: results, complete,
+    ...(v2 ? { contract: 'prepared-move-v2', sent: false } : {}),
     plain: complete
-      ? 'Both are in place and checked.'
+      ? (v2 ? results.map((r) => DONE[r.step]).join(' ') : 'Both are in place and checked.')
       : results.filter((r) => !good(r)).map((r) => (r.status === 'removed-since'
         ? `${label(r)} was made earlier and has since been removed — I haven’t recreated it.`
         : r.status === 'stopped'
           ? `${label(r)} was not attempted — SAiM’s actions were stopped.`
           : `${label(r)} ${r.status === 'failed' ? (r.provablyNotApplied ? 'was not saved' : 'may not have been saved') : 'was saved but did not read back as confirmed'}: ${r.error || 'the check did not match'}.`)).join(' ')
-        + ` ${results.filter(good).map((r) => (r.step === 'calendar' ? 'The calendar block is in place and stays.' : 'The note is saved and stays.')).join(' ')}`.trimEnd(),
+        + ` ${results.filter(good).map((r) => STAYS[r.step]).join(' ')}`.trimEnd(),
     next: complete ? 'Nothing else will be done.'
       : results.every((r) => good(r) || r.status === 'removed-since') ? 'Nothing else will be done.'
         : results.some((r) => r.status === 'stopped') ? 'Nothing more will happen while SAiM’s actions are stopped.'
@@ -452,7 +591,8 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
     forum: w.forum,
   };
   // Kept with what SAiM wrote, so a later read can tell Nick's own words from SAiM's.
-  try { db.setState(`saim_move_receipt:${w.moveKey}`, JSON.stringify({ ...receipt, written: { path: w.steps[1].path, content: w.steps[1].content } })); } catch { /* the ledger still holds the steps */ }
+  const noteW = w.steps.find((x) => x.step === 'note');
+  try { db.setState(`saim_move_receipt:${w.moveKey}`, JSON.stringify({ ...receipt, written: noteW ? { path: noteW.path, content: noteW.content } : null })); } catch { /* the ledger still holds the steps */ }
   budget.recordReceipt(receipt, { title: w.title, now });
   return { ok: true, receipt };
 }
@@ -491,10 +631,11 @@ const MACHINE = 'Only Nick, in NEURO, can confirm a prepared move — a machine 
  * writes nothing outside NEURO's own database, and says that confirming will
  * not write anything.
  */
-async function requestForMove({ option = 'approve', surface = 'neuro-web', sessionId, caller = {}, now = Date.now() } = {}) {
+async function requestForMove({ option = 'approve', recordId = null, surface = 'neuro-web', sessionId, caller = {}, now = Date.now() } = {}) {
   if (caller.machine) return refuse(MACHINE, { code: 403 });
   const budget = require('./authority-budget');
   if (budget.stopState().stopped) return refuse(`${budget.STOPPED_SAY} Nothing will be prepared for confirmation until you resume them.`, { code: 409, gate: 'stop' });
+  if (recordId) return _requestStored({ recordId, option, surface, sessionId, caller, now, budget });
   const packet = await deps.prepare({ now });
   if (!packet || !packet.selected) {
     const why = (packet && (packet.noneBecause || (packet.withheld || []).map((x) => `${x.title}: ${x.reason}`).join('; '))) || 'nothing could be prepared';
@@ -555,6 +696,48 @@ async function requestForMove({ option = 'approve', surface = 'neuro-web', sessi
 }
 
 /**
+ * Step 1 for a STORED v2 proposal (21 Oct 2026): the record Nick is looking
+ * at — never re-prepared here, so what he confirms is exactly what was shown.
+ * Same gates as the v1 path, in the same order: duty, the allowance boundary
+ * and fit, the fresh checks (read-only vault), then the one-use confirmation.
+ */
+async function _requestStored({ recordId, option, surface, sessionId, caller, now, budget }) {
+  const store = require('./prepared-move-store');
+  const record = store.get(recordId);
+  if (!record || !record.packet || record.packet.contract !== 'prepared-move-v2') return refuse('no such prepared move', { code: 404 });
+  if (!store.isLatest(record)) return refuse('this move has changed since it was shown — look again', { code: 409, rePrepare: true });
+  const sup = store.suppression(record.moveKey, now);
+  if (sup) return refuse(sup.say, { code: 409 });
+  const w = writesFor(record.packet, option);
+  if (!w.ok) return { ...w, code: 409 };
+  const duty = await deps.readDuty(now);
+  if (!duty || duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
+  const budgetSteps = w.steps.filter((s) => s.step !== 'reply').map((s) => (s.step === 'calendar' ? { kind: 'calendar.solo', minutes: toMin(s.end) - toMin(s.start), contacts: 0, spendPence: 0 } : { kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 }));
+  const b = budget.brief({ now }).boundary;
+  let begun = false;
+  try { begun = budget.usage(budget.londonDay(now)).moveKeys.includes(w.moveKey); } catch { begun = false; }
+  if (b && !(begun && b.gate === 'used')) return refuse(b.say, { code: 409, gate: b.gate, boundary: b });
+  const fit = budgetSteps.length && !begun ? budget.wouldFit({ action: budget.ACTION, now, steps: budgetSteps }) : { ok: true };
+  if (!fit.ok) return refuse(fit.say, { code: 409, gate: 'allowance', boundary: { gate: 'fit', say: fit.say } });
+  const fresh = await freshChecks({ record, w, checks: deps.defaultChecks({ adapters: { vault: readOnlyVault() }, now }), now });
+  if (!fresh.ok) return { ...fresh, packet: undefined, code: 409 };
+  store.markChecked(record.id, now);
+  const c = requestConfirmation({ recordId: record.id, option, sessionId, caller, surface, now });
+  if (!c.ok) return { ...c, code: 409 };
+  const enabled = executionEnabled();
+  return {
+    ok: true, recordId: record.id, moveKey: record.moveKey, version: record.version, option, writeHash: c.writeHash,
+    grantId: c.grantId, expiresAt: c.expiresAt, executionEnabled: enabled,
+    authority: { ...budget.brief({ now }), fits: fit.ok },
+    confirmation: {
+      question: w.confirmation.question, writes: w.confirmation.writes, contacts: w.confirmation.contacts,
+      nothingElse: 'Nothing else changes: nothing is sent, nobody is invited, and no task, board card, goal or notification is created.',
+      ...(enabled ? {} : { off: 'Carrying out prepared moves is switched off, so confirming will not write anything.' }),
+    },
+  };
+}
+
+/**
  * Step 2 — "yes". With the switch off this refuses FIRST: no record read, no
  * adapter built, no confirmation spent. With it on, execute() spends the grant,
  * re-runs every fresh check and makes exactly the stored writes.
@@ -571,6 +754,8 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
   const record = store.get(recordId);
   if (!record) return refuse('no such prepared move', { code: 404 });
   if (Number(version) !== record.version || !store.isLatest(record)) return refuse('this move has changed since it was shown — it needs confirming again', { code: 409, rePrepare: true });
+  const sup = store.suppression(record.moveKey, now);
+  if (sup) return refuse(`${sup.say} Nothing was written and your confirmation was not used.`, { code: 409 });
   // The live adapters are a FACTORY: execute() builds them only after every
   // gate — lock, stop, duty, budget, confirmation — has passed.
   const r = await execute({ recordId, option, grantId, adapters: () => deps.liveAdapters(), target: 'live', checks: (ad) => deps.defaultChecks({ adapters: ad, now }), now });
@@ -578,6 +763,6 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
 }
 
 module.exports = {
-  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, writesFor, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
+  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, V2_NOTE_RULES, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
   requestConfirmation, execute, requestForMove, confirmMove, londonMs, _setDeps,
 };

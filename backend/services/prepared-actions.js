@@ -933,7 +933,9 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
   };
   const draft = {
     channel: 'email', voice: 'nick', mode,
-    generatedBy: origin === 'composer' ? 'typed by Nick in the Inbox composer' : 'model draft (draft_reply), shown before approval',
+    generatedBy: origin === 'composer' ? 'typed by Nick in the Inbox composer'
+      : origin === 'saim-move' ? 'drafted by SAiM in a prepared move Nick confirmed — still needs his approval to send'
+        : 'model draft (draft_reply), shown before approval',
     to: toList, cc: ccList, subject, body: text, placeholders: _placeholders(text),
     ...(refs.length ? { attachments: refs } : {}),
   };
@@ -1403,7 +1405,14 @@ function prepareFromRisk({ now = Date.now(), deps = {} } = {}) {
   return out;
 }
 
+/** The live (not yet sent, not abandoned) governed reply to one email, or null. Read only. */
+function liveReplyFor(emailId) {
+  if (!emailId) return null;
+  try { return shape(_liveFor('reply_email', `email:${emailId}`)); } catch { return null; }
+}
+
 module.exports = {
+  liveReplyFor,
   MIN_CONFIDENCE, RECENT_CHASE_DAYS, EXPIRY_HOURS, STATUSES, TERMINAL, LIVE,
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,

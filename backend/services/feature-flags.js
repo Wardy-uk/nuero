@@ -208,10 +208,26 @@ const FLAGS = [
     envOnly: true,
     default: false,
     label: 'Let SAiM carry out a prepared move you confirm',
-    description: 'When you confirm a prepared move, SAiM adds ONE solo block to your calendar (nobody invited) '
-      + 'and saves ONE new note in a project folder, then reads both back. It never overwrites a note, '
-      + 'contacts anyone, changes a shared board or answers an invite. While off, nothing is written.',
-    impact: 'writes one solo calendar block and one new vault note, only after you confirm',
+    description: 'When you confirm a prepared move, SAiM makes exactly the writes it showed you: at most ONE new note '
+      + '(in an existing project folder, or a meeting prep beside your meeting notes), ONE reply DRAFT in Actions '
+      + '(still sent only after your approval code) and ONE solo block (nobody invited), then reads each back. '
+      + 'It never overwrites a note, sends anything, contacts anyone, changes a shared board or answers an invite. '
+      + 'While off, nothing is written.',
+    impact: 'writes one note, one reply draft and/or one solo block, only after you confirm',
+  },
+  {
+    // 21 Oct 2026: the automatic prepared-move scan. It writes ONLY NEURO's own
+    // proposal rows and may spend one model call per changed candidate; it
+    // never books, saves, sends, creates or notifies. Off = no scan; the manual
+    // "Make this ready" still works.
+    key: 'saim_prepared_move_scan',
+    env: 'SAIM_PREPARED_MOVE_SCAN',
+    default: true,
+    label: 'Let SAiM look for one thing to make ready',
+    description: 'Every half hour in working hours SAiM looks at what is waiting for you and, at most once, drafts the '
+      + 'real thing — a reply, meeting prep or a project note — for you to review. Nothing is saved, booked or sent '
+      + 'until you confirm it. Off: she only does this when you press “Make this ready”.',
+    impact: 'one AI draft per changed candidate; no external writes',
   },
 ];
 

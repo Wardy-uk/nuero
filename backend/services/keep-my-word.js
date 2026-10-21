@@ -80,6 +80,7 @@ function receiptView(r) {
   const rows = [];
   let calendar = null;
   let notePath = null;
+  let hasReply = false;
   for (const s of steps) {
     if (s.step === 'calendar') {
       const m = CAL_TARGET.exec(String(s.target || ''));
@@ -91,6 +92,9 @@ function receiptView(r) {
       notePath = String(s.target || '') || null;
       if (!notePath) return null;
       rows.push({ label: 'Vault note', title: s.status === 'done' ? 'Draft note created' : 'Draft note already in place', lines: ['Vault read-back verified.'] });
+    } else if (s.step === 'reply') {
+      hasReply = true;
+      rows.push({ label: 'Reply', title: s.status === 'done' ? 'Reply drafted in Actions' : 'Reply draft already in Actions', lines: ['Waiting for your approval code — not sent.'] });
     }
   }
   if (notePath) rows.push({ label: 'Find it', path: notePath });
@@ -99,7 +103,7 @@ function receiptView(r) {
     label: 'Receipt · verified',
     headline: 'Preparation is now real.',
     title: r.title || null,
-    lead: `SAiM made ${num(n).toLowerCase()} internal change${n === 1 ? '' : 's'}, then read ${n === 2 ? 'both' : n === 1 ? 'it' : 'each'} back. Nothing else was changed — no email, invite or task.`,
+    lead: `SAiM made ${num(n).toLowerCase()} internal change${n === 1 ? '' : 's'}, then read ${n === 2 ? 'both' : n === 1 ? 'it' : 'each'} back. ${hasReply ? 'Nothing was sent — the reply waits in Actions for your approval; no invite or task.' : 'Nothing else was changed — no email, invite or task.'}`,
     checkedAt: new Date(at).toISOString(),
     checkedLabel: `Checked ${score.londonLabel(at)}`,
     rows,

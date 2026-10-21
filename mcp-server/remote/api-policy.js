@@ -22,7 +22,8 @@ export const interactive = {
   post_prepared_actions_by_id_execute_direct: 'Making a change Nick confirmed is done from the NEURO screen he pressed it on. An agent cannot do it.',
   // 19 Oct 2026: SAiM's prepared move. Asking to confirm mints a one-use
   // confirmation; confirming writes to Nick's calendar and vault. Both are his.
-  get_prepared_moves_current: 'What SAiM has prepared is shown to Nick on his SAiM screen, where he can act on it. An agent cannot read it on his behalf.',
+  // 21 Oct 2026 (Nick): reading, making ready, deferring/declining and answering
+  // SAiM's question are open to desktop chats; asking to confirm and confirming stay his.
   post_prepared_moves_request: 'Asking to confirm a prepared move is Nick, in NEURO, looking at exactly what it would write. An agent cannot do it.',
   post_promises_by_key_prepare: 'Drafting an email about a promise is Nick’s press in NEURO; sending it still needs his approval code.',
   post_prepared_moves_confirm: 'Confirming a prepared move writes to Nick\'s calendar and vault. Only Nick can confirm it, in NEURO.',

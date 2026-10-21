@@ -1369,6 +1369,15 @@ function start() {
     console.warn('[PromiseShadow] could not start (backend unaffected):', e.message);
   }
 
+  // Prepared moves (21 Oct 2026): at most one proposal per half hour in working
+  // hours, only when its evidence changed. Writes NEURO's own proposal rows
+  // only; the switch saim_prepared_move_scan is checked inside each tick.
+  try {
+    require('./prepared-move-scan').register();
+  } catch (e) {
+    console.warn('[PreparedMoveScan] could not start (backend unaffected):', e.message);
+  }
+
   // The durable runtime (Build 3A). Never allowed to stop startup.
   try {
     registerDurableJobs();

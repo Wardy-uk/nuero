@@ -205,10 +205,16 @@ test('nothing trustworthy → move: null — no candidate, employment, stale, am
   S.packet = () => fixture();
 });
 
-test('machine callers are refused the read too', async () => {
-  assert.equal((await get({ 'X-NEURO-API-TOKEN': 'tok-5678' })).status, 403);
-  assert.equal((await get({ 'X-NEURO-PIN': 'pin-1234', 'X-Neuro-Machine-Client': 'mcp-local' })).status, 403);
-  assert.equal(require('../services/authority-matrix').resolve('GET', '/api/prepared-moves/current').capability, 'saim.prepared-move');
+// 21 Oct 2026 (Nick: "make sure this is built into the MCP"): desktop chats may
+// READ what SAiM prepared. The read stores and mints nothing; asking to confirm
+// and confirming stay his (prepared-moves-routing pins those refusals).
+test('machine callers may read what SAiM prepared — the read stores and mints nothing', async () => {
+  const before = db.get('SELECT COUNT(*) n FROM human_action_intents').n;
+  assert.equal((await get({ 'X-NEURO-API-TOKEN': 'tok-5678' })).status, 200);
+  assert.equal((await get({ 'X-NEURO-PIN': 'pin-1234', 'X-Neuro-Machine-Client': 'mcp-local' })).status, 200);
+  assert.equal(db.get('SELECT COUNT(*) n FROM human_action_intents').n, before, 'no confirmation minted');
+  assert.equal(require('../services/authority-matrix').resolve('GET', '/api/prepared-moves/current').capability, 'read');
+  assert.equal(require('../services/authority-matrix').resolve('POST', '/api/prepared-moves/request').capability, 'saim.prepared-move');
 });
 
 // ── The 1.5 s budget ─────────────────────────────────────────────────────────

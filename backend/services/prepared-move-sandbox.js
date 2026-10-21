@@ -79,7 +79,26 @@ function createSandbox(root, { seed = [], realVault = process.env.OBSIDIAN_VAULT
     },
   };
 
-  return { kind: 'sandbox', root, calendar, vault, faults, marker: MARKER };
+  // A stand-in for NEURO's Actions queue: a governed reply DRAFT, never a send.
+  const draftsFile = path.join(root, 'actions.json');
+  if (!fs.existsSync(draftsFile)) fs.writeFileSync(draftsFile, '[]');
+  const governed = {
+    _all() { return JSON.parse(fs.readFileSync(draftsFile, 'utf8')); },
+    async live(emailId) { return this._all().find((a) => a.target.emailId === emailId && a.status === 'prepared') || null; },
+    async get(actionId) { return this._all().find((a) => a.actionId === actionId) || null; },
+    async prepareReply({ emailId, body, to = 'sender@example.test' }) {
+      guard();
+      const f = take('governed');
+      if (f === 'fail-next') throw new Error('HTTP 503 sandbox Actions queue unavailable');
+      const rows = this._all();
+      const row = { actionId: `sbx-pa-${crypto.randomBytes(6).toString('hex')}`, actionType: 'reply_email', status: 'prepared', target: { emailId }, draft: { to: [{ email: to }], cc: [], body: f === 'mangle-next' ? `${body} (changed)` : body } };
+      rows.push(row); fs.writeFileSync(draftsFile, JSON.stringify(rows, null, 2));
+      return row;
+    },
+  };
+  faults.governed = null;
+
+  return { kind: 'sandbox', root, calendar, vault, governed, faults, marker: MARKER };
 }
 
 module.exports = { createSandbox, MARKER };

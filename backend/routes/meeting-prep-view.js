@@ -714,3 +714,5 @@ function _readPersonNote(name) {
 }
 
 module.exports = router;
+// The prepared-move planner reuses the same prep facts (read-only) rather than a second copy.
+module.exports._buildPrep = _buildPrep;

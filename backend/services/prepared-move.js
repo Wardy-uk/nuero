@@ -670,7 +670,8 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     if (!/^att_/.test(id)) continue;
     try { const rec = (deps.getRecord || ((x) => _db().getAttentionRecord(x)))(id); if (rec && rec.dedupe_key) recordKeys[id] = rec.dedupe_key; } catch { /* unresolved — withheld below */ }
   }
-  for (const c of productionOrder(saim, pool, recordKeys)) {
+  const order = productionOrder(saim, pool, recordKeys);
+  for (const c of order) {
     _overBudget(budgetBy);
     const item = c.item;
     if (c.role === 'lead' && c.kind === 'meeting') {
@@ -824,6 +825,10 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     withheld,
     findings,
     gaps: [...gaps, ...((nowView.gaps || []).map((g) => ({ input: g.input, why: g.why })))],
+    // Production's order, as data, for the general planner (prepared-move-planner):
+    // every candidate it screened, with the pool item behind it. Not part of
+    // the packet's hash — what a confirmation binds is the selected move.
+    candidates: order.map((c) => ({ ref: c.ref, role: c.role, rule: c.rule || null, title: c.title, kind: c.kind || null, item: c.item ? { type: c.item.type, id: c.item.id, title: c.item.title, reason: c.item.reason || null, urgency: c.item.urgency || null, meta: c.item.meta || null } : null })),
     noneBecause: selected ? null : 'No candidate in production\'s decision passed every screen — each is listed under withheld with what is missing.',
   };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
-import { loadWithRetry, askToConfirm, confirm, receiptLines, newSessionId, makeCall } from '../preparedMove.mjs';
+import { loadWithRetry, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer } from '../preparedMove.mjs';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
 import './PreparedMove.css';
 
@@ -201,16 +202,200 @@ function gateLine(view, request) {
   return null;
 }
 
+/** The words on the one confirm button, by what the move makes. */
+export function confirmLabel(move) {
+  const writes = (move && move.options && move.options[0] && move.options[0].writes) || [];
+  if (move && move.kind === 'email-reply') return 'Put the reply in Actions';
+  if (writes.some((w) => /calendar/i.test(w))) return 'Save it and protect the time';
+  return 'Save it';
+}
+
+/**
+ * A v2 proposal (21 Oct 2026): the OUTCOME first ("I drafted the reply"), the
+ * deliverable with its source facts kept apart from SAiM's wording, the exact
+ * writes, then one choice — confirm, put off, or say no. A question SAiM needs
+ * answered is drawn as one. On the kiosk it is read-only.
+ */
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority }) {
+  const { view } = state; const move = view.move;
+  const d = move.deliverable || {};
+  const [deferDays, setDeferDays] = useState(1);
+  const [deferReason, setDeferReason] = useState('not-now');
+  const [declineReason, setDeclineReason] = useState('');
+  const [draftAnswer, setDraftAnswer] = useState({});
+  const held = Boolean(view.held || move.held);
+  const option = (move.options || [])[0] || null;
+  const facts = d.sourceFacts || [];
+  return (
+    <section className="pmo pmo2" aria-label="Something SAiM has prepared">
+      <p className="pmo__say">{move.prepared && move.prepared.headline}</p>
+      {move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
+
+      {move.plan === 'ask' ? (
+        <div className="pmo__act pmo2__ask">
+          {(move.ask.questions || []).map((q) => (
+            <form key={q.id} className="pmo2__q" onSubmit={(e) => { e.preventDefault(); if (!readOnly) onAnswer(q.id, draftAnswer[q.id] || ''); }}>
+              <label htmlFor={`pmq-${q.id}`} className="pmo__ask">{q.question}</label>
+              <p className="pmo__sub">{q.why}</p>
+              {q.choices && q.choices.length > 0 ? (
+                <select id={`pmq-${q.id}`} value={draftAnswer[q.id] || ''} disabled={readOnly || busy} onChange={(e) => setDraftAnswer((a) => ({ ...a, [q.id]: e.target.value }))}>
+                  <option value="">Choose…</option>
+                  {q.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              ) : (
+                <textarea id={`pmq-${q.id}`} rows={3} maxLength={1000} value={draftAnswer[q.id] || ''} disabled={readOnly || busy} onChange={(e) => setDraftAnswer((a) => ({ ...a, [q.id]: e.target.value }))} />
+              )}
+              {!readOnly && <div className="pmo__buttons"><button type="submit" className="pmo__btn pmo__btn--yes" disabled={busy || !(draftAnswer[q.id] || '').trim()}>Tell SAiM</button></div>}
+            </form>
+          ))}
+        </div>
+      ) : (
+        <article className="pmo__page pmo2__page" aria-label="What SAiM drafted">
+          <p className="pmo__pagetag">{move.kind === 'email-reply' ? 'Reply · not sent' : 'Draft · not saved yet'}</p>
+          <h3 className="pmo__pagetitle">{d.title || move.title}</h3>
+          {d.to && <p className="pmo2__to">To {d.to.name ? `${d.to.name} <${d.to.email}>` : d.to.email} — the original sender only</p>}
+          {d.suggested && (
+            <section className="pmo__sec">
+              <p className="pmo__sechead">{d.suggested.label}</p>
+              <div className="pmo2__text">{d.suggested.text}</div>
+            </section>
+          )}
+          {d.gaps && d.gaps.length > 0 && (
+            <section className="pmo__sec">
+              <p className="pmo__sechead">Still needed from you</p>
+              <ul>{d.gaps.map((g, i) => <li key={i} className="pmo__gapline">{g}</li>)}</ul>
+            </section>
+          )}
+        </article>
+      )}
+
+      {facts.length > 0 && (
+        <details className="pmo__proof pmo2__facts">
+          <summary>What your sources say ({facts.length})</summary>
+          <ul className="pmo__evidence">{facts.map((f, i) => <li key={i}>{f.text} <span className="pmo__sub">— {f.kind === 'you' ? 'you said' : f.cite}</span></li>)}</ul>
+        </details>
+      )}
+
+      {!held && move.plan !== 'ask' && <div className="pmo__choice">{choice()}</div>}
+      {held && <p className="pmo__sub">{(view.held && view.held.say) || 'Prepared for your next working morning.'}</p>}
+
+      <details className="pmo__proof">
+        <summary>Proof — how this was made</summary>
+        {move.why && move.why.because && move.why.because.length > 0 && <ul>{move.why.because.map((b, i) => <li key={i}>{b}</li>)}</ul>}
+        {move.prepared && move.prepared.detail && <p>{move.prepared.detail}</p>}
+        {move.do && move.do.why && <p>{move.do.why}</p>}
+        <p className="pmo__prooflabel">What this is based on</p>
+        <ul className="pmo__evidence">{(move.evidence || []).map((e, i) => <li key={i}>{e.fact}</li>)}</ul>
+        {(move.freshness || []).length > 0 && <ul className="pmo__sub">{move.freshness.map((f, i) => <li key={i}>{f.ref}: {f.ageHours == null ? 'unreadable' : `${f.ageHours}h old`} (limit {f.maxHours}h)</li>)}</ul>}
+        {move.why && move.why.willNot && move.why.willNot.length > 0 && <><p className="pmo__prooflabel">SAiM will not</p><ul>{move.why.willNot.map((b, i) => <li key={i}>{b}</li>)}</ul></>}
+      </details>
+    </section>
+  );
+
+  function choice() {
+    if (readOnly) return <p className="pmo__sub">Confirm this in SAiM on your phone or desktop — this screen can only show it.</p>;
+    if (state.kind === 'receipt') {
+      const r = state.receipt;
+      return (
+        <div className={`pmo__act pmo__act--${r.complete ? 'done' : 'partial'}`} role="status">
+          <p className="pmo__actlead">{r.complete ? 'Done' : 'Partly done'}</p>
+          <p>{r.plain}</p>
+          <ul className="pmo__receipt">{receiptLines(r).map((l, i) => <li key={i} className={l.ok ? 'pmo__ok' : 'pmo__notok'}><strong>{l.step}</strong>: {l.status}{l.note && <span className="pmo__sub"> {l.note}</span>}</li>)}</ul>
+          <p className="pmo__sub">{r.next}</p>
+          {!r.complete && /retry/i.test(r.next || '') && <button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Ask again to finish it</button>}
+        </div>
+      );
+    }
+    if (state.kind === 'responded') return <p className="pmo__sub" role="status">{state.message}</p>;
+    if (state.kind === 'boundary') {
+      return (
+        <div className="pmo__act pmo__act--boundary" role="status">
+          <p className="pmo__boundary">{state.boundary.say}</p>
+          <div className="pmo__buttons">
+            {onOpenAuthority && <button type="button" className="pmo__btn pmo__btn--yes" onClick={onOpenAuthority}>Open what SAiM may do</button>}
+            <button type="button" className="pmo__btn" onClick={onCancel} disabled={busy}>Not now</button>
+          </div>
+        </div>
+      );
+    }
+    if (state.kind === 'locked') return <div className="pmo__act pmo__act--stopped" role="status"><p>Nothing was changed. {NOT_ENABLED}</p></div>;
+    if (state.kind === 'needs-again' || state.kind === 'refused' || state.kind === 'unknown') {
+      return <div className="pmo__act pmo__act--stopped" role="status"><p>{state.message}</p><button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Look again</button></div>;
+    }
+    if (state.kind === 'confirming') {
+      const c = state.request.confirmation;
+      const expired = state.request.expiresAt && Date.parse(state.request.expiresAt) <= now;
+      const line = gateLine(view, state.request);
+      return (
+        <div className="pmo__act pmo__act--confirm">
+          <p className="pmo__ask">{c.question}</p>
+          <ul className="pmo__writes">{c.writes.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          <p className="pmo__sub">{c.contacts}</p>
+          {line ? <p className="pmo__locked">{line}</p> : (state.request.authority && state.request.authority.summary && <p className="pmo__allow">{state.request.authority.summary}</p>)}
+          {expired && <p className="pmo__locked">This confirmation has expired. Nothing was changed.</p>}
+          <div className="pmo__buttons">
+            {expired ? <button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Ask again</button>
+              : <button type="button" className="pmo__btn pmo__btn--yes" onClick={onConfirm} disabled={busy || !state.request.executionEnabled}>Confirm</button>}
+            <button type="button" className="pmo__btn" onClick={onCancel} disabled={busy}>Not now</button>
+          </div>
+        </div>
+      );
+    }
+    if (!option) {
+      return <div className="pmo__act pmo__act--stopped" role="status"><p>I can’t offer this right now.</p><ul className="pmo__sub">{(move.notOffered || []).map((n, i) => <li key={i}>{n.label}: {n.why}</li>)}</ul></div>;
+    }
+    const r = move.respond || { defer: { days: [], reasons: [] }, decline: { reasons: [] } };
+    return (
+      <div className="pmo__act pmo__act--ready">
+        <p className="pmo__kick">If you say yes</p>
+        <ul className="pmo__writes">{option.writes.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        {move.contacts && <p className="pmo__sub">{move.contacts}</p>}
+        <div className="pmo__buttons">
+          <button type="button" className="pmo__btn pmo__btn--yes" onClick={onAsk} disabled={busy}>{confirmLabel(move)}</button>
+          <details className="pmo__other pmo2__defer">
+            <summary>Not now</summary>
+            <div className="pmo2__row">
+              <select aria-label="How long" value={deferDays} onChange={(e) => setDeferDays(Number(e.target.value))}>{r.defer.days.map((x) => <option key={x.days} value={x.days}>{x.label}</option>)}</select>
+              <select aria-label="Why" value={deferReason} onChange={(e) => setDeferReason(e.target.value)}>{r.defer.reasons.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+              <button type="button" className="pmo__btn" disabled={busy} onClick={() => onRespond('defer', { days: deferDays, reason: deferReason })}>Put it off</button>
+            </div>
+          </details>
+          <details className="pmo__other pmo2__decline">
+            <summary>No, not this</summary>
+            <div className="pmo2__row">
+              <select aria-label="Why not" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)}><option value="">No reason</option>{r.decline.reasons.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+              <button type="button" className="pmo__btn" disabled={busy} onClick={() => onRespond('decline', { reason: declineReason || null })}>Don’t offer it again</button>
+            </div>
+          </details>
+        </div>
+      </div>
+    );
+  }
+}
+
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, busy = false, now = Date.now(), debug = false, heldFolded = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
     return debug ? <p className="pm__dev">prepared move: none ({state.why}{state.reason ? ` — ${state.reason}` : ''})</p> : null;
   }
+  // One Now item SAiM could take forward — offered, never done for him.
+  if (state.kind === 'offer') {
+    return (
+      <section className="pmo pmo2 pmo2--offer" aria-label="Something SAiM could make ready">
+        <p className="pmo__sub">{state.offer.title}</p>
+        {readOnly ? <p className="pmo__sub">Ask SAiM on your phone or desktop to make this ready.</p>
+          : <div className="pmo__buttons"><button type="button" className="pmo__btn pmo__btn--yes" onClick={onMakeReady} disabled={busy}>{state.offer.label || 'Make this ready'}</button></div>}
+        <p className="pmo__sub">SAiM drafts the real thing for you to review. Nothing is saved, booked or sent until you say yes.</p>
+      </section>
+    );
+  }
+  if (state.kind === 'note') return <p className="pmo__sub pmo2__note" role="status">{state.message}</p>;
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -478,8 +663,12 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
 /** Container: owns the clicks. Reads once on mount; writes only on a press. */
 /** PURE. What the Surface's situation should know about the move: actionable (with the state headline), held, or nothing. */
 export function momentOf(state) {
+  // An OFFER is never a moment that leads — it folds behind a real lead (a
+  // meeting, a P0) like a held move, so it can never interrupt.
+  if (state && state.kind === 'offer') return { kind: 'held', entry: 'Something SAiM could make ready' };
   const v = state && state.view; const m = v && v.move;
   if (!m || state.kind === 'hidden' || state.kind === 'pending' || state.kind === 'loading') return null;
+  if (m.version === 2 && !(v.held || m.held)) return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry: m.plan === 'ask' ? 'SAiM needs one thing from you' : 'Prepared work' };
   if (v.held || m.held) return { kind: 'held', entry: 'Prepared for your next working morning' };
   const f = m.forum && m.forum.start ? parts(m.forum.start.slice(0, 10)) : null;
   // When something else leads, the move is reached through this entry instead.
@@ -487,8 +676,11 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
+  // The kiosk can SHOW a prepared move but never confirm or write (its shell
+  // declares the platform; no device sniffing).
+  const readOnly = useMemo(() => (readOnlyProp != null ? readOnlyProp : platformNow() === 'kiosk'), [readOnlyProp]);
   const sessionId = useMemo(() => newSessionId(), []);
   const debug = useMemo(() => isDebugView(), []);
   const [state, setState] = useState({ kind: 'loading' });
@@ -529,6 +721,10 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       now={tick}
       debug={debug}
       heldFolded={heldFolded}
+      readOnly={readOnly}
+      onMakeReady={() => run(() => makeReady(call, { offer: state.offer }))}
+      onRespond={(response, extra) => run(() => respond(call, { view: state.view, response, ...extra }))}
+      onAnswer={(questionId, text) => run(() => answer(call, { view: state.view, questionId, text }))}
       onChoose={(option) => setState((s) => ({ ...s, option }))}
       onAsk={() => run(() => askToConfirm(call, { view: state.view, option: state.option, sessionId }))}
       onConfirm={() => run(() => confirm(call, { view: state.view, option: state.option, request: state.request }))}

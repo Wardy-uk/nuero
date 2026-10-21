@@ -108,11 +108,102 @@ async function currentView(opts = {}) {
   return { ...p.result, readOnlyPass: { writesRefused: p.writesRefused, refused: p.refused } };
 }
 
+/** The defer and decline choices, as the store accepts them — one list, not a copy. */
+function _respondChoices() {
+  const st = require('./prepared-move-store');
+  const DEFER = { 1: 'Until tomorrow', 3: 'For 3 days', 7: 'For a week' };
+  const REASONS = { 'not-now': 'Not now', 'waiting-on-someone': 'Waiting on someone', 'need-more-info': 'Need more information', other: 'Another reason', 'not-mine': 'Not mine to do', 'already-done': 'Already done', 'not-useful': 'Not useful' };
+  return {
+    defer: { days: st.DEFER_DAYS.map((d) => ({ days: d, label: DEFER[d] })), reasons: st.DEFER_REASONS.map((r) => ({ id: r, label: REASONS[r] })) },
+    decline: { reasons: st.DECLINE_REASONS.map((r) => ({ id: r, label: REASONS[r] })), say: 'SAiM won’t offer this one again.' },
+  };
+}
+
+const KIND_DETAIL = {
+  'email-reply': 'The reply goes to Actions, where it waits for your approval code. Nothing is sent from here.',
+  'meeting-prep': 'Arranged from what your notes already hold about the people in it. Nothing in it is agreed.',
+  'project-note': 'Arranged from what your notes already say. Nothing in it is agreed.',
+};
+
+/**
+ * The view of a STORED v2 proposal (21 Oct 2026). READ-ONLY. Every word is
+ * the stored packet's; an option is offered only if it passes the fresh checks
+ * NOW; off duty it is held (nothing to press); a question is shown as one.
+ */
+async function v2View(record, { now = Date.now(), duty = null, checks = null } = {}) {
+  const pkt = record.packet; const s = pkt.selected;
+  const cand = await require('./prepared-move-planner').recheck(pkt);
+  if (!cand.ok) return { move: null, why: cand.why };
+  const evidence = (s.observed || []).map((o) => ({ fact: o.fact, kind: (o.source || {}).kind || null, observedAt: (o.source || {}).observedAt || null }));
+  const freshness = (s.freshness || []).map((r) => ({ ref: r.ref, ageHours: r.ageHours, maxHours: r.maxHours, stale: r.stale }));
+  const common = {
+    version: 2, recordId: record.id, recordVersion: record.version, kind: s.kind, plan: s.plan, title: s.title,
+    prepared: { headline: s.headline, detail: s.plan === 'ask' ? (s.ask.questions[0] || {}).why || null : KIND_DETAIL[s.kind] },
+    outcome: s.outcome || null,
+    why: { because: [s.why].filter(Boolean), goal: (s.outcome || {}).goal || null, doneWhen: (s.outcome || {}).doneWhen || null, willNot: (s.authority || {}).mustNot || [] },
+    evidence, freshness, deliverable: s.deliverable || null, ask: s.ask || null, do: s.do || null,
+    origin: pkt.origin || null, forum: s.forum || null,
+    respond: _respondChoices(), decidedAt: (pkt.decision || {}).decidedAt || null, evidenceExpiresAt: record.evidenceExpiresAt,
+    checkedAt: record.checkedAt || record.createdAt,
+  };
+  const d = duty || { onDuty: false, why: 'unknown' };
+  if (d.onDuty !== true) return { held: { reason: d.why, say: require('./prepared-move').HELD_SAY }, move: { ...common, held: true, options: [], prepared: { headline: require('./prepared-move').HELD_SAY, detail: s.headline } } };
+  if (s.plan === 'ask') return { move: { ...common, options: [], moment: { headline: s.headline } } };
+  const offered = []; const notOffered = [];
+  const ck = checks || exec.defaultChecks({ adapters: { vault: exec.readOnlyVault() }, now });
+  for (const slot of (s.decision || {}).slots || []) {
+    const w = exec.writesFor(pkt, slot.id);
+    if (!w.ok || !record.options[slot.id]) continue;
+    const r = await exec.freshChecks({ record, w, checks: ck, now });
+    const label = slot.date ? `${dayLong(slot.date)} ${slot.start}–${slot.end}` : 'As drafted';
+    if (r.ok) offered.push({ id: slot.id, ...(slot.date ? { date: slot.date, start: slot.start, end: slot.end } : {}), label, question: w.confirmation.question, writes: w.confirmation.writes });
+    else notOffered.push({ id: slot.id, label, why: r.reasons.join(' ') });
+  }
+  const first = offered.length ? exec.writesFor(pkt, offered[0].id) : null;
+  return {
+    move: {
+      ...common, options: offered, notOffered,
+      contacts: first ? first.confirmation.contacts : null,
+      nothingElse: 'Nothing else changes: nothing is sent, nobody is invited, and no task, board card, goal or notification is created.',
+      moment: { headline: s.headline },
+    },
+  };
+}
+
+/** PURE-ish (reads suppression). The one Now item SAiM could make ready, or null. */
+function makeReadyFrom(packet, now) {
+  const planner = require('./prepared-move-planner');
+  const st = require('./prepared-move-store');
+  if (!packet || !packet.duty || packet.duty.onDuty !== true) return null;
+  for (const c of packet.candidates || []) {
+    if (packet.selected && packet.selected.ref === c.ref) continue;
+    const q = planner.quickEligible(c.item);
+    if (!q) continue;
+    // A todo's source key needs the task id; an email/meeting's is on the item.
+    const m = (c.item && c.item.meta) || {};
+    const key = q.kind === 'email-reply' ? `email:${m.emailId}` : q.kind === 'meeting-prep' ? `meeting:${String(c.item.id).replace(/^cal-/, '')}@${String(m.start || '').slice(0, 16)}` : null;
+    if (key && st.suppression(planner.moveKeyFor(q.kind, key), now)) continue;
+    return { ref: c.ref, title: c.item.title || c.title, kind: q.kind, label: q.label };
+  }
+  return null;
+}
+
 async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS, clock = Date.now } = {}) {
   deps = { ..._deps, ...Object.fromEntries(Object.entries(deps).filter(([, v]) => v)) };
   const started = clock();
   const execution = _execution();
   const base = { ok: true, contract: CONTRACT, generatedAt: new Date(now).toISOString(), execution, authority: _authority(now), budgetMs };
+  // A STORED v2 proposal (the scan's, or one Nick asked for) is shown first —
+  // one prepared move at a time.
+  if (!deps.prepare) {
+    let active = [];
+    try { active = require('./prepared-move-store').activeV2({ now }); } catch { active = []; }
+    for (const rec of active) {
+      const duty = await (deps.readDuty || ((t) => require('./prepared-move').readDuty(t)))(now);
+      const v = await v2View(rec, { now, duty, checks: deps.checks ? deps.checks({ now }) : null });
+      if (v.move) return { ...base, elapsedMs: clock() - started, withheldCount: 0, ...(v.held ? { held: v.held } : {}), move: v.move };
+    }
+  }
   // ⚠ `pending` is NOT "no move": the check did not finish in time (a cold
   // start, a busy moment), so the answer is unknown — the client may ask again.
   // `nothing-prepared` is a real answer and is never retried.
@@ -129,7 +220,10 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
   if (clock() - started > budgetMs) return none('not-ready-in-time', `SAiM couldn’t check everything within ${budgetMs} ms, so nothing is offered.`);
   const withheldCount = (packet && Array.isArray(packet.withheld)) ? packet.withheld.length : 0;
   const s = packet && packet.selected;
-  if (!s) return none('nothing-prepared', 'Nothing passed every check, so there is nothing to offer.', { withheldCount });
+  // Nothing prepared: offer to make the first eligible Now item ready (one action).
+  let makeReady = null;
+  try { makeReady = makeReadyFrom(packet, now); } catch { makeReady = null; }
+  if (!s) return none('nothing-prepared', 'Nothing passed every check, so there is nothing to offer.', { withheldCount, makeReady });
 
   const slots = ((s.decision || {}).slots) || [];
   const first = slots.length ? exec.writesFor(packet, slots[0].id) : null;
@@ -238,4 +332,4 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
   };
 }
 
-module.exports = { CONTRACT, BUDGET_MS, currentView, humanTitle, questionFor, unresolvedFrom, artefactFrom, _setDeps };
+module.exports = { CONTRACT, BUDGET_MS, currentView, v2View, makeReadyFrom, humanTitle, questionFor, unresolvedFrom, artefactFrom, _setDeps };
