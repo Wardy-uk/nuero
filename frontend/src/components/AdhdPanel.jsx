@@ -754,8 +754,6 @@ export default function AdhdPanel({ onNavigate }) {
         </section>
       )}
 
-      {/* Renders nothing unless something already booked sits on Nick's leave. */}
-      <LeaveClashes />
       <WhileHere data={cohort} onNavigate={onNavigate} />
       <DeskLaunch work={work} onOpen={openOnDesk} states={deskStates} />
 
@@ -1059,6 +1057,10 @@ export default function AdhdPanel({ onNavigate }) {
           </ul>
         )}
       </section>
+
+      {/* Leave clashes — below the quick wins (Nick, 21 Oct 2026: not at the top).
+          Renders nothing unless something already booked sits on his leave. */}
+      <LeaveClashes />
 
       {/* ── Wins today ── */}
       <section className="adhd__card">
