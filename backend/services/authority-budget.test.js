@@ -59,7 +59,8 @@ function stored({ msId = 'PLANNER-ID-1', minutes = 30, decidedAgoMin = 10 } = {}
         slots: [{ id: 'approve', date: SLOT_DAY, start: '10:25', end }],
         proposedWrites: [
           { kind: 'calendar.solo', title: 'Triage and escalation criteria draft', slot: 'chosen', attendees: [], body: 'Prepared by SAiM' },
-          { kind: 'vault.note', path: NOTE },
+          // One note path per move, so several moves in a day never collide on a file.
+          { kind: 'vault.note', path: msId === 'PLANNER-ID-1' ? NOTE : `Projects/Support Improvement Plan/SIP - ${msId} (draft).md` },
         ],
         forum: { title: 'Support Improvement Plan', start: `${FORUM_DAY}T16:00` },
       },
@@ -103,7 +104,7 @@ test('zero by default: no allowance, nothing can act, and the executor refuses b
   for (const k of ['blocks', 'minutes', 'notes', 'moves']) assert.equal(s.allowance[k].granted, 0, k);
   assert.equal(s.allowance.spendPence, 0); assert.equal(s.allowance.contacts, 0);
   assert.equal(s.canAct, false);
-  assert.equal(s.gates.allowance.say, 'SAiM has no allowance to act today.');
+  assert.equal(s.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves today.');
   assert.equal(budget.reserve({ moveKey: 'm', steps: [{ key: 'm:calendar', kind: 'calendar.solo', minutes: 10 }] }).limit, 'no-allowance');
 
   const rec = stored(); const grantId = confirmation(rec);
@@ -144,7 +145,7 @@ test('a fresh install: viewing the allowance inside a read-only pass creates no 
 
 test('grant: only the day and block length may be chosen; ceilings refused, never clamped', () => {
   fresh({ grant: false });
-  for (const body of [{ spendPence: 100 }, { contacts: 1 }, { blocks: 2 }, { notes: 3 }, { action: 'email.send' }, { attendees: ['x'] }]) {
+  for (const body of [{ spendPence: 100 }, { contacts: 1 }, { blocks: 4 }, { notes: 4 }, { moves: 4 }, { action: 'email.send' }, { attendees: ['x'] }]) {
     const p = budget.previewGrant(body);
     assert.equal(p.ok, false, JSON.stringify(body)); assert.equal(p.code, 400); assert.match(p.why, /not something SAiM can be allowed/);
   }
@@ -154,8 +155,11 @@ test('grant: only the day and block length may be chosen; ceilings refused, neve
   assert.match(budget.previewGrant({ day: ymd(NOW + 9 * DAY) }).why, /at most 7 days ahead/);
   const p = budget.previewGrant({ blockMinutes: 30 });
   assert.equal(p.ok, true);
-  assert.equal(p.terms.spendPence, 0); assert.equal(p.terms.contacts, 0); assert.equal(p.terms.blocks, 1); assert.equal(p.terms.notes, 1); assert.equal(p.terms.moves, 1);
-  assert.match(p.statement.join(' '), /No money, no messages, no invites, no task or board changes, and no follow-up afterwards/);
+  assert.equal(p.terms.spendPence, 0); assert.equal(p.terms.contacts, 0); assert.equal(p.terms.blocks, 3); assert.equal(p.terms.notes, 3); assert.equal(p.terms.moves, 3);
+  assert.match(p.statement[0], /^Allow SAiM to carry out up to three prepared moves on /);
+  assert.match(p.statement.join(' '), /waits for you to confirm it before it writes anything/);
+  assert.match(p.statement.join(' '), /No sending, no contacting anyone, no meeting invitations, no tasks, no shared-board changes, and no changes to what SAiM may do/);
+  assert.doesNotMatch(p.statement.join(' '), /\bPi\b|\benv\b|SAIM_|\block\b/i, 'no implementation words');
 });
 
 test('grant: the confirmation is one-use, expires, and grants exactly what was shown', () => {
@@ -175,12 +179,12 @@ test('the database itself refuses anything past the ceiling, and a grant is neve
   fresh();
   const ins = (cols) => db.run(`INSERT INTO saim_authority_grants (id, day, action, blocks, block_minutes, notes, moves, spend_pence, contacts, statement, granted_at, granted_by)
     VALUES (?, ?, 'prepared-move.block-and-note', ?, ?, ?, ?, ?, ?, '[]', 'x', 'test')`, cols);
-  assert.throws(() => ins(['g1', '2099-01-01', 2, 30, 1, 1, 0, 0]), /CHECK/);
-  assert.throws(() => ins(['g2', '2099-01-01', 1, 31, 1, 1, 0, 0]), /CHECK/);
-  assert.throws(() => ins(['g3', '2099-01-01', 1, 30, 2, 1, 0, 0]), /CHECK/);
-  assert.throws(() => ins(['g4', '2099-01-01', 1, 30, 1, 2, 0, 0]), /CHECK/);
-  assert.throws(() => ins(['g5', '2099-01-01', 1, 30, 1, 1, 1, 0]), /CHECK/);
-  assert.throws(() => ins(['g6', '2099-01-01', 1, 30, 1, 1, 0, 1]), /CHECK/);
+  assert.throws(() => ins(['g1', '2099-01-01', 4, 30, 3, 3, 0, 0]), /CHECK/);
+  assert.throws(() => ins(['g2', '2099-01-01', 3, 31, 3, 3, 0, 0]), /CHECK/);
+  assert.throws(() => ins(['g3', '2099-01-01', 3, 30, 4, 3, 0, 0]), /CHECK/);
+  assert.throws(() => ins(['g4', '2099-01-01', 3, 30, 3, 4, 0, 0]), /CHECK/);
+  assert.throws(() => ins(['g5', '2099-01-01', 3, 30, 3, 3, 1, 0]), /CHECK/);
+  assert.throws(() => ins(['g6', '2099-01-01', 3, 30, 3, 3, 0, 1]), /CHECK/);
   const g = db.get(`SELECT id FROM saim_authority_grants WHERE day = ?`, [today()]);
   assert.throws(() => db.run(`UPDATE saim_authority_grants SET blocks = 1, block_minutes = 25 WHERE id = ?`, [g.id]), /immutable/);
   assert.throws(() => db.run(`DELETE FROM saim_authority_grants WHERE id = ?`, [g.id]), /never deleted/);
@@ -196,12 +200,12 @@ test('both gates are required, and neither creates the other', async () => {
   fresh({ lock: false, grant: true });
   let rec = stored(); let sb = sandbox(); let grantId = confirmation(rec);
   let r = await run(rec, sb, grantId);
-  assert.equal(r.ok, false); assert.equal(r.gate, 'device'); assert.match(r.reasons[0], /technically locked on this device/);
+  assert.equal(r.ok, false); assert.equal(r.gate, 'device'); assert.match(r.reasons[0], /switched off on NEURO’s server/);
   assert.equal(ig.get(grantId).consumed_at, null);
   assert.equal(budget.status().allowance.blocks.used, 0, 'locked: nothing reserved');
   assert.equal(require('./feature-flags').isEnabled('saim_prepared_move_execution'), false, 'granting did not open the lock');
-  assert.equal(budget.status().gates.device.say, 'SAiM is technically locked on this device.');
-  assert.match(budget.status().grant.statement.join(' '), /until that lock is changed on the Pi, this allowance alone lets SAiM do nothing/);
+  assert.equal(budget.status().gates.device.say, 'Carrying out moves is switched off on NEURO’s server.');
+  assert.match(budget.status().grant.statement.join(' '), /switched off on NEURO’s server right now, so until that is switched on SAiM can prepare moves but not do them/);
 
   // Device open, but no allowance.
   fresh({ lock: true, grant: false });
@@ -217,8 +221,10 @@ test('both gates are required, and neither creates the other', async () => {
   r = await run(rec, sb);
   assert.equal(r.ok, true); assert.equal(r.receipt.complete, true);
   const s = budget.status();
-  assert.equal(s.allowance.blocks.left, 0); assert.equal(s.allowance.notes.left, 0); assert.equal(s.allowance.moves.left, 0);
-  assert.equal(s.canAct, false, 'used up');
+  assert.equal(s.gates.device.say, 'SAiM is ready.');
+  assert.equal(s.allowance.blocks.left, 2); assert.equal(s.allowance.notes.left, 2); assert.equal(s.allowance.moves.left, 2);
+  assert.equal(s.canAct, true, 'two of three moves left');
+  assert.equal(s.leftToday, 'two of three prepared moves left today · 2 calendar blocks · 2 notes or reply drafts');
 });
 
 // ── Every dimension ──────────────────────────────────────────────────────────
@@ -239,27 +245,40 @@ test('dimensions: block minutes — a 30-minute move against a 20-minute allowan
   const rec = stored({ minutes: 30 }); const sb = sandbox(); const grantId = confirmation(rec);
   const r = await run(rec, sb, grantId);
   assert.equal(r.ok, false); assert.equal(r.budget, 'minutes');
-  assert.match(r.reasons[0], /This block is 30 minutes; today’s allowance has 20 minutes left\./);
+  assert.match(r.reasons[0], /This block is 30 minutes; a block may be at most 20\./);
   assert.equal(ig.get(grantId).consumed_at, null);
   assert.equal(budget.status().allowance.minutes.used, 0);
   const smaller = stored({ minutes: 20, msId: 'PLANNER-ID-1' });
   assert.equal((await run(smaller, sandbox())).ok, true, 'a 20-minute version fits');
 });
 
-test('dimensions: one block, one note, one move — a second move the same day is refused', async () => {
+test('dimensions: three moves a day — each confirmed on its own; a fourth is refused, unspent', async () => {
   fresh();
-  assert.equal((await run(stored({ msId: 'A' }), sandbox())).ok, true);
-  const second = stored({ msId: 'B' }); const grantId = confirmation(second); const sb = sandbox();
-  const r = await run(second, sb, grantId);
+  for (const id of ['A', 'B', 'C']) {
+    // Every move needs ITS OWN confirmation: one grant never covers another.
+    const rec = stored({ msId: id });
+    const other = stored({ msId: `${id}-other` });
+    const g = confirmation(rec);
+    const wrong = await exec.execute({ recordId: other.id, option: 'approve', grantId: g, adapters: sandbox(), checks: okChecks(null) });
+    assert.equal(wrong.ok, false, `${id}: a confirmation for one move cannot run another`);
+    assert.equal((await run(rec, sandbox(), confirmation(rec))).ok, true, id);
+  }
+  const fourth = stored({ msId: 'D' }); const grantId = confirmation(fourth); const sb = sandbox();
+  const r = await run(fourth, sb, grantId);
   assert.equal(r.ok, false); assert.equal(r.budget, 'moves');
-  assert.match(r.reasons[0], /covers 1 prepared move, and it has been used/);
+  assert.match(r.reasons[0], /covers 3 prepared moves, and it has been used/);
   assert.equal(ig.get(grantId).consumed_at, null);
   assert.deepEqual(await sb.calendar._all(), []);
+  assert.equal(budget.status().canAct, false, 'used up');
+  assert.equal(budget.status().summary, 'Today’s prepared moves are used up. It starts again tomorrow.');
   // The block and note limits are each enforced on their own too.
   const u = budget.usage(today());
-  assert.deepEqual([u.blocks, u.notes, u.moves], [1, 1, 1]);
-  assert.equal(budget.judge({ stopped: false, g: { action: budget.ACTION, blocks: 1, block_minutes: 30, notes: 1, moves: 2, spend_pence: 0, contacts: 0 }, action: budget.ACTION, steps: [{ kind: 'calendar.solo', minutes: 5 }], fresh: [{ kind: 'calendar.solo', minutes: 5 }], u, isNewMove: true }).limit, 'blocks');
-  assert.equal(budget.judge({ stopped: false, g: { action: budget.ACTION, blocks: 1, block_minutes: 30, notes: 1, moves: 2, spend_pence: 0, contacts: 0 }, action: budget.ACTION, steps: [{ kind: 'vault.note' }], fresh: [{ kind: 'vault.note' }], u, isNewMove: true }).limit, 'notes');
+  assert.deepEqual([u.blocks, u.notes, u.moves], [3, 3, 3]);
+  const g9 = (over) => ({ action: budget.ACTION, blocks: 3, block_minutes: 30, notes: 3, moves: 9, spend_pence: 0, contacts: 0, ...over });
+  assert.equal(budget.judge({ stopped: false, g: g9({ notes: 9 }), action: budget.ACTION, steps: [{ kind: 'calendar.solo', minutes: 5 }], fresh: [{ kind: 'calendar.solo', minutes: 5 }], u, isNewMove: true }).limit, 'blocks');
+  assert.equal(budget.judge({ stopped: false, g: g9({ blocks: 9 }), action: budget.ACTION, steps: [{ kind: 'vault.note' }], fresh: [{ kind: 'vault.note' }], u, isNewMove: true }).limit, 'notes');
+  assert.equal(budget.judge({ stopped: false, g: g9({ blocks: 9 }), action: budget.ACTION, steps: [{ kind: 'reply.draft' }], fresh: [{ kind: 'reply.draft' }], u, isNewMove: true }).limit, 'notes', 'a reply draft counts as a written output');
+  assert.equal(budget.judge({ stopped: false, g: g9({ blocks: 9, notes: 9 }), action: budget.ACTION, steps: [{ kind: 'calendar.solo', minutes: 31 }], fresh: [{ kind: 'calendar.solo', minutes: 31 }], u, isNewMove: true }).limit, 'minutes', 'no single block past 30 minutes');
 });
 
 test('off duty and stale evidence: refused before anything is reserved or spent', async () => {
@@ -277,26 +296,24 @@ test('off duty and stale evidence: refused before anything is reserved or spent'
   const sb = sandbox();
   r = await run(rec, sb, grantId);
   assert.equal(r.ok, false); assert.match(r.reasons[0], /expired/);
-  assert.equal(budget.status().allowance.blocks.left, 1, 'a fresh-check refusal hands the allowance back');
+  assert.equal(budget.status().allowance.blocks.left, 3, 'a fresh-check refusal hands the allowance back');
   assert.equal(db.get(`SELECT state FROM saim_authority_reservations LIMIT 1`).state, 'released');
   assert.deepEqual(await sb.calendar._all(), []);
 });
 
 // ── Concurrency, retries and partial actions ─────────────────────────────────
 
-test('concurrent confirms for two different moves: exactly one runs, the other is refused at the limit', async () => {
+test('concurrent confirms for four different moves: exactly three run, the fourth is refused at the limit', async () => {
   fresh();
-  const a = stored({ msId: 'RACE-A' }); const b = stored({ msId: 'RACE-B' });
-  const sa = sandbox(); const sbb = sandbox();
-  const [ra, rb] = await Promise.all([run(a, sa), run(b, sbb)]);
-  const oks = [ra, rb].filter((r) => r.ok);
-  assert.equal(oks.length, 1, JSON.stringify([ra.reasons, rb.reasons]));
-  const refused = [ra, rb].find((r) => !r.ok);
-  assert.equal(refused.budget, 'moves');
-  const events = (await sa.calendar._all()).length + (await sbb.calendar._all()).length;
-  assert.equal(events, 1, 'one calendar block in total');
+  const recs = ['RACE-A', 'RACE-B', 'RACE-C', 'RACE-D'].map((msId) => stored({ msId }));
+  const sbs = recs.map(() => sandbox());
+  const rs = await Promise.all(recs.map((r, i) => run(r, sbs[i])));
+  assert.equal(rs.filter((r) => r.ok).length, 3, JSON.stringify(rs.map((r) => r.reasons)));
+  assert.equal(rs.find((r) => !r.ok).budget, 'moves');
+  let events = 0; for (const sb of sbs) events += (await sb.calendar._all()).length;
+  assert.equal(events, 3, 'three calendar blocks in total');
   const u = budget.usage(today());
-  assert.deepEqual([u.blocks, u.notes, u.moves], [1, 1, 1]);
+  assert.deepEqual([u.blocks, u.notes, u.moves], [3, 3, 3]);
 });
 
 test('concurrent confirms of the SAME move: one runs, the other is turned away unspent; one block, budget spent once', async () => {
@@ -331,7 +348,7 @@ test('partial: the note provably failed — its allowance comes back, the block 
   const first = await run(rec, sb);
   assert.deepEqual(first.receipt.steps.map((s) => s.status), ['done', 'failed']);
   let s = budget.status();
-  assert.equal(s.allowance.blocks.left, 0); assert.equal(s.allowance.notes.left, 1, 'a write that provably did not happen is not charged');
+  assert.equal(s.allowance.blocks.left, 2); assert.equal(s.allowance.notes.left, 3, 'a write that provably did not happen is not charged');
   assert.equal(s.active.state, 'partly-done');
   const retry = await run(rec, sb);
   assert.deepEqual(retry.receipt.steps.map((s2) => s2.status), ['already-done', 'done']);
@@ -347,7 +364,7 @@ test('partial: an uncertain write stays charged (unknown counts as used) and is 
   const first = await run(rec, sb);
   assert.equal(first.receipt.steps[0].status, 'failed');
   assert.equal(db.get(`SELECT state FROM saim_authority_reservations WHERE kind = 'calendar.solo'`).state, 'unknown');
-  assert.equal(budget.status().allowance.blocks.left, 0);
+  assert.equal(budget.status().allowance.blocks.left, 2, 'the uncertain block stays charged');
   const retry = await run(rec, sb);
   assert.equal(retry.receipt.steps[0].status, 'already-done');
   assert.equal(budget.usage(today()).blocks, 1);
@@ -400,7 +417,7 @@ test('status claims nothing without a receipt: no run = "Nothing has been carrie
   fresh();
   let s = budget.status();
   assert.equal(s.active.state, 'none'); assert.deepEqual(s.receipts, []);
-  assert.equal(s.summary, 'SAiM can carry out one prepared move today, after you confirm it.');
+  assert.equal(s.summary, 'SAiM can carry out three more prepared moves today, each after you confirm it.');
   await run(stored(), sandbox());
   s = budget.status();
   assert.equal(s.receipts.length, 1); assert.equal(s.receipts[0].complete, true);

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
-import { apiFetch } from '../api';
+import { apiFetch, apiUrl, authHeaders } from '../api';
 import Readiness from '../../../shared-ui/Readiness.jsx';
 import Exertion from '../../../shared-ui/Exertion.jsx';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import { enqueue, flush, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
+import MakeReady from '../components/MakeReady';
+import { loadEligible } from '../makeReady.mjs';
+import { makeCall } from '../preparedMove.mjs';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Now.css';
 
 // NOW — one current action and the next transition.
@@ -662,6 +666,17 @@ export default function Now({ onNavigate }) {
   // only this card. Swallowed for the same reason as readiness: the card renders
   // nothing without data, which is the correct outcome of a failed read.
   const [exertion, setExertion] = useState(null);
+  // "Make this ready" (22 Oct 2026): which rows SAiM can genuinely take forward,
+  // decided by the server. A row without an entry gets no button.
+  const prepCall = useMemo(() => makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), []);
+  const readOnly = useMemo(() => platformNow() === 'kiosk', []);
+  const [ready, setReady] = useState(() => new Map());
+  useEffect(() => {
+    let alive = true;
+    if (!readOnly) loadEligible(prepCall).then((m) => { if (alive) setReady(m); });
+    return () => { alive = false; };
+  }, [prepCall, readOnly, fetchedAt]);
+  const mr = (id) => (ready.get(id) ? <MakeReady item={ready.get(id)} call={prepCall} readOnly={readOnly} onNavigate={onNavigate} /> : null);
   useEffect(() => {
     let live = true;
     apiFetch('/api/performance/today').then((d) => { if (live) setExertion(d); }).catch(() => {});
@@ -847,6 +862,7 @@ export default function Now({ onNavigate }) {
                     Open →
                   </button>
                 )}
+                {mr(s.focus.item.id)}
               </Lit>
             ) : (
               <Lit tone="statement" className="now__calm">
@@ -883,6 +899,7 @@ export default function Now({ onNavigate }) {
                     <Countdown minutesAway={e.minutesAway} running={e.running} allDay={e.allDay} />
                   </div>
                   {e.withOthers === true && <div className="now__meta">with other people</div>}
+                  {mr(e.id)}
                 </Lit>
               ))
             )}
@@ -902,6 +919,7 @@ export default function Now({ onNavigate }) {
                   {f.tab && onNavigate && (
                     <button type="button" className="now__go" onClick={() => onNavigate(f.tab)}>Open →</button>
                   )}
+                  {mr(f.id)}
                 </Lit>
               ))
             )}
@@ -951,6 +969,7 @@ export default function Now({ onNavigate }) {
                       {!t.completableOffline && (
                         <div className="now__meta">Owned elsewhere — open it online to tick it.</div>
                       )}
+                      {mr(t.id)}
                     </div>
                   </Lit>
                 ))}

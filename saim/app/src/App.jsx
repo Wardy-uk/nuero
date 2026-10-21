@@ -126,20 +126,6 @@ function readLaunchIntent() {
   };
 }
 
-/** Is this a wide (desktop) window? The same breakpoint App.css uses for the one bar. */
-const WIDE_QUERY = '(min-width: 900px)';
-function useWide() {
-  const read = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(WIDE_QUERY).matches : false);
-  const [wide, setWide] = useState(read);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mq = window.matchMedia(WIDE_QUERY);
-    const on = () => setWide(mq.matches);
-    mq.addEventListener ? mq.addEventListener('change', on) : mq.addListener(on);
-    return () => (mq.removeEventListener ? mq.removeEventListener('change', on) : mq.removeListener(on));
-  }, []);
-  return wide;
-}
 
 function clearLaunchIntentFromUrl() {
   if (typeof window === 'undefined') return;
@@ -171,7 +157,6 @@ export default function App() {
   // screen is a pushed view with its own Back, so the strip is only ever a
   // transient menu — never a second persistent bar above Capture/Now/Review.
   const [navOpen, setNavOpen] = useState(false);
-  const wide = useWide();
   // Where Back goes from a pushed secondary screen on the phone.
   const [backTo, setBackTo] = useState(null);
   // What SAiM said when she pinged him, carried onto the Surface so tapping a
@@ -248,8 +233,6 @@ export default function App() {
     setIntentKind(null);
     setArrivedFrom(null);
     // Choosing ANY screen puts the menu away: it is a menu, not a second bar.
-    // (On a wide screen the row stays visible while on a secondary screen —
-    // that is `wide && isSecondary` below, not this flag.)
     setNavOpen(false);
     // The phone's own back gesture / browser Back returns through the same path.
     if (!fromHistory && tab !== active) { try { window.history.pushState({ saimTab: tab }, ''); } catch { /* no history */ } }
@@ -312,15 +295,17 @@ export default function App() {
   // ⚠ It keys on `active`, so it fires on ARRIVING somewhere, never on the More
   // button itself. Opening the menu does not change the tab, so the menu opens
   // and stays; choosing a screen that does not reveal it closes it.
-  useEffect(() => {
-    if (!revealsSecondary(active)) setNavOpen(false);
-  }, [active]);
+  // ⚠ 22 Oct 2026 (Nick): THE NAVIGATION IS EXACTLY Capture · Now · Review ·
+  // More, on every width. The wide "one bar" layout put the whole secondary
+  // row into the bar beside the three modes and HID More — the long bottom
+  // strip he photographed. Now the secondary screens live ONLY in the More
+  // menu, which closes whenever a screen is chosen; a secondary screen is
+  // pushed with its own Back on every width, and More is always there.
+  useEffect(() => { setNavOpen(false); }, [active]);
 
   const isSecondary = revealsSecondary(active);
-  // Wide: one bar, the row part of it while off the Surface. Phone: the row is
-  // a transient menu only; a secondary screen carries its own Back instead.
-  const moreVisible = navOpen || (wide && isSecondary);
-  const pushed = !wide && isSecondary;
+  const moreVisible = navOpen;
+  const pushed = isSecondary;
   const labelOf = (id) => (TABS.find((t) => t.id === id) || {}).label || 'SAiM';
 
   if (runtime.deploymentIssue) return <DeploymentGuard />;
@@ -434,7 +419,7 @@ export default function App() {
           the secondary row renders permanently open. */}
       <nav
         id="saim-more"
-        className={`app__nav app__nav--more${wide ? '' : ' app__nav--menu'}`}
+        className="app__nav app__nav--more app__nav--menu"
         aria-label="Everything else"
         hidden={!moreVisible}
         onKeyDown={(e) => { if (e.key === 'Escape' && navOpen) setNavOpen(false); }}

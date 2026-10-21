@@ -4,16 +4,21 @@ import { makeCall } from '../preparedMove.mjs';
 import { loadStatus, previewGrant, grant, revoke, stopAll, previewResume, resume, receiptSummary } from '../authority.mjs';
 import './Authority.css';
 
-// What SAiM may do (20 Oct 2026) — the one place Nick sees and changes SAiM's
-// authority. Two gates, both of which must be open, shown as two separate
-// facts; what is left today; the move in progress; past receipts; and a stop.
+// What SAiM may do (22 Oct 2026) — ONE plain control. Nick allows SAiM to carry
+// out up to three prepared moves today; each move still shows exactly what it
+// will do and waits for his own confirmation. Then what is left today, today's
+// activity, and Stop all SAiM actions. No implementation words: the server-side
+// switch reads as "SAiM is ready" (or that carrying out is switched off).
 //
-// ⚠ Every sentence is the server's (saim-authority-v1). This screen never opens
-//   the device lock — that only changes on the Pi — and never claims something
-//   happened without the receipt that says it did.
+// ⚠ Every sentence is the server's (saim-authority-v1). This screen never
+//   changes the server switch, and never claims something happened without
+//   the receipt that says it did.
 
-const money = (p) => `£${(p / 100).toFixed(0)}`;
 const when = (iso) => { try { return new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+const onDay = (iso, day) => { try { return new Date(iso).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10) === day; } catch { return false; } };
+
+/** The words on the one control. Pinned by a test. */
+export const ALLOW_LABEL = 'Allow SAiM to carry out up to three prepared moves today';
 
 /** PURE view: everything comes from `state` and `ui`. */
 export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAllow, onGrant, onRevoke, onStop, onAskResume, onResume, onCancel }) {
@@ -27,11 +32,12 @@ export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAl
     );
   }
   const s = state.status;
-  const a = s.allowance;
+  const todays = (s.receipts || []).filter((r) => onDay(r.at, s.day));
   return (
     <section className="auth" aria-label="What SAiM may do">
       <header className="auth__head">
         <h1 className="auth__title">What SAiM may do</h1>
+        <p className={`auth__ready auth__ready--${s.gates.device.open ? 'on' : 'off'}`}>{s.gates.device.say}</p>
         <p className="auth__summary">{s.summary}</p>
       </header>
 
@@ -50,71 +56,39 @@ export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAl
         </div>
       )}
 
-      <ol className="auth__gates" aria-label="Both must be open before SAiM can act">
-        <li className={`auth__gate auth__gate--${s.gates.device.open ? 'open' : 'shut'}`}>
-          <span className="auth__gatemark" aria-hidden="true">{s.gates.device.open ? '○' : '●'}</span>
-          <div>
-            <p className="auth__gatesay">{s.gates.device.say}</p>
-            <p className="auth__gatesub">{s.gates.device.open ? 'Changed on the Pi.' : 'Only you can change this, on the Pi. Nothing on this screen opens it.'}</p>
+      <section className="auth__control" aria-label="Today’s allowance">
+        {s.grant ? (
+          <>
+            <p className="auth__left">{s.leftToday}</p>
+            <p className="auth__sub">Each move still waits for you to confirm it. The allowance ends at midnight.</p>
+            <button type="button" className="auth__btn auth__btn--quiet" onClick={onRevoke} disabled={busy}>Take today’s allowance away</button>
+          </>
+        ) : ui.kind === 'granting' ? (
+          <div className="auth__confirm" role="group" aria-label="What you would allow">
+            <ul>{ui.preview.statement.map((l, i) => <li key={i}>{l}</li>)}</ul>
+            <div className="auth__buttons">
+              <button type="button" className="auth__btn auth__btn--yes" onClick={onGrant} disabled={busy}>Allow this</button>
+              <button type="button" className="auth__btn" onClick={onCancel} disabled={busy}>Cancel</button>
+            </div>
           </div>
-        </li>
-        <li className={`auth__gate auth__gate--${s.grant ? 'open' : 'shut'}`}>
-          <span className="auth__gatemark" aria-hidden="true">{s.grant ? '○' : '●'}</span>
-          <div>
-            <p className="auth__gatesay">{s.gates.allowance.say}</p>
-            {s.grant
-              ? <p className="auth__gatesub">Given {when(s.grant.grantedAt)}. It ends at midnight.</p>
-              : <p className="auth__gatesub">Giving an allowance does not unlock the device.</p>}
-            {!s.grant && ui.kind !== 'granting' && !s.stopped && (
-              <button type="button" className="auth__btn" onClick={onAllow} disabled={busy}>Allow one block and one note today…</button>
-            )}
-            {s.grant && <button type="button" className="auth__btn auth__btn--quiet" onClick={onRevoke} disabled={busy}>Take today’s allowance away</button>}
-          </div>
-        </li>
-      </ol>
-
-      {ui.kind === 'granting' && (
-        <div className="auth__confirm" role="group" aria-label="The allowance you would give">
-          <p className="auth__confirmhead">You would allow exactly this:</p>
-          <ul>{ui.preview.statement.map((l, i) => <li key={i}>{l}</li>)}</ul>
-          <div className="auth__buttons">
-            <button type="button" className="auth__btn auth__btn--yes" onClick={onGrant} disabled={busy}>Give this allowance</button>
-            <button type="button" className="auth__btn" onClick={onCancel} disabled={busy}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      <section className="auth__left" aria-label="Left today">
-        <p className="auth__label">Left today · {s.dayLabel}</p>
-        <dl className="auth__tiles">
-          <div><dt>Calendar blocks</dt><dd>{a.blocks.left}<small> of {a.blocks.granted}</small></dd></div>
-          <div><dt>Minutes</dt><dd>{a.minutes.left}<small> of {a.minutes.granted}</small></dd></div>
-          <div><dt>New notes</dt><dd>{a.notes.left}<small> of {a.notes.granted}</small></dd></div>
-          <div><dt>Money</dt><dd>{money(a.spendPence)}</dd></div>
-          <div><dt>People contacted</dt><dd>{a.contacts}</dd></div>
-        </dl>
+        ) : (
+          !s.stopped && <button type="button" className="auth__btn auth__btn--yes auth__allow" onClick={onAllow} disabled={busy}>{ALLOW_LABEL}</button>
+        )}
       </section>
 
-      <section className="auth__active" aria-label="Today’s move">
-        <p className="auth__label">Today’s move</p>
+      <section className="auth__today" aria-label="Today">
+        <p className="auth__label">Today · {s.dayLabel}</p>
         <p>{s.active.say}</p>
-      </section>
-
-      <section className="auth__receipts" aria-label="Receipts">
-        <p className="auth__label">Receipts</p>
-        {s.receipts.length === 0
-          ? <p className="auth__muted">None yet. A receipt appears here only after SAiM has carried something out and read it back.</p>
-          : (
-            <ul>
-              {s.receipts.map((r, i) => (
-                <li key={i} className={r.complete ? 'auth__rc auth__rc--done' : 'auth__rc auth__rc--partial'}>
-                  <p className="auth__rcwhen">{when(r.at)}{r.target === 'sandbox' ? ' · practice run' : ''}</p>
-                  <p>{r.plain}</p>
-                  <ul className="auth__rcsteps">{receiptSummary(r).map((l, j) => <li key={j}>{l}</li>)}</ul>
-                </li>
-              ))}
-            </ul>
-          )}
+        {todays.length > 0 && (
+          <ul className="auth__rcs">
+            {todays.map((r, i) => (
+              <li key={i} className={r.complete ? 'auth__rc auth__rc--done' : 'auth__rc auth__rc--partial'}>
+                <p className="auth__rcwhen">{when(r.at)}{r.target === 'sandbox' ? ' · practice run' : ''}{r.title ? ` · ${r.title}` : ''}</p>
+                <ul className="auth__rcsteps">{receiptSummary(r).map((l, j) => <li key={j}>{l}</li>)}</ul>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {ui.kind === 'error' && <p className="auth__gap" role="alert">{ui.message}</p>}
@@ -144,7 +118,7 @@ export default function Authority({ call: injectedCall = null }) {
       state={state}
       ui={ui}
       busy={busy}
-      onAllow={() => act(() => previewGrant(call, { blockMinutes: 30 }))}
+      onAllow={() => act(() => previewGrant(call))}
       onGrant={() => act(() => grant(call, ui.preview))}
       onRevoke={() => act(() => revoke(call))}
       onStop={() => act(() => stopAll(call))}

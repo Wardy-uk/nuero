@@ -62,7 +62,7 @@ export const SECONDARY = [
   { id: 'controls', label: 'Controls', icon: '⚙', Component: Controls },
   // What SAiM may do (20 Oct 2026): the two gates, today's allowance and the
   // stop. Its own screen — never a setting inside Controls.
-  { id: 'authority', label: 'May do', icon: '⛉', Component: Authority },
+  { id: 'authority', label: 'What SAiM may do', icon: '⛉', Component: Authority },
 ];
 
 export const TABS = [...PRIMARY, ...SECONDARY];

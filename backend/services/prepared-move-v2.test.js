@@ -162,9 +162,12 @@ test('withheld, with a human reason: stale, employment, already in Actions, ungr
     assert.equal(store.latest(planner.moveKeyFor('email-reply', `email:${id}`)), null, `${name}: nothing stored`);
   }
   const t = mkTask({ text: `Draft the Support Hub escalation guide ${uniq()}`, source: 'manual', origin_path: 'Projects/Support Hub/Support Hub.md' });
-  const { d } = deps([todoItem(t.text)], { draft: async () => ({ ok: true, text: '## Guide\n- Support Hub triage notes', gaps: ['who approves the guide'] }), findSlot: () => ({ reason: 'no gap' }) });
+  // A diary full, 09:00–17:30, every day for the next five weeks: no valid time in ten working days.
+  const full = [];
+  for (let i = 0; i < 35; i++) { const day = ymd(NOW + i * DAY); full.push({ date: day, start: `${day}T08:00:00`, end: `${day}T18:00:00`, subject: 'busy', isAllDay: false, showAs: 'busy' }); }
+  const { d } = deps([todoItem(t.text)], { draft: async () => ({ ok: true, text: '## Guide\n- Support Hub triage notes', gaps: ['who approves the guide'] }), diary: () => ({ known: true, events: full, fetchedAt: new Date(NOW - 60000).toISOString() }) });
   const r = await planner.planAndStore({ now: NOW, ref: todoItem(t.text).ref, origin: 'manual', deps: d });
-  assert.equal(r.ok, false); assert.match(r.why, /needs your own time/);
+  assert.equal(r.ok, false); assert.match(r.why, /needs your own time to finish, and no free 30 minutes in the next 10 working days/);
 });
 
 test('draft → schedule only when Nick is needed: a gap proposes one solo block; no gap proposes none', async () => {
@@ -288,12 +291,15 @@ test('confirm: execution switched off, expired grant, duplicate confirm and part
   assert.equal(ad.calendar._all().length, 1, 'one block, however many confirms');
   const reuse = await exec.execute({ recordId: rec.id, grantId: c2.grantId, adapters: ad, checks: okChecks(ad), now: NOW });
   assert.equal(reuse.ok, false, 'a spent confirmation is never reused');
-  // Today's allowance covers ONE move — a second move is refused before anything is written.
+  // Today's allowance covers THREE moves, each confirmed on its own — a fourth
+  // is refused before anything is written, its confirmation unspent.
+  for (let i = 0; i < 2; i++) { const r2 = await proposal('gap'); assert.equal((await run(r2, sandbox())).ok, true, `move ${i + 2}`); }
   const recX = await proposal('gap');
   const adX = sandbox();
   const cX = exec.requestConfirmation({ recordId: recX.id, sessionId: SESSION });
   const over = await exec.execute({ recordId: recX.id, grantId: cX.grantId, adapters: adX, checks: okChecks(adX), now: NOW });
-  assert.equal(over.ok, false); assert.equal(adX.calendar._all().length, 0);
+  assert.equal(over.ok, false); assert.equal(over.budget, 'moves'); assert.equal(adX.calendar._all().length, 0);
+  assert.equal(require('./intent-grants').get(cX.grantId).consumed_at, null, 'the fourth confirmation is not spent');
   // Partial: the block fails, the note stays, the receipt says exactly that.
   open();
   const rec2 = await proposal('gap');

@@ -54,38 +54,43 @@ test.after(() => { delete process.env.SAIM_PREPARED_MOVE_EXECUTION; try { fs.rmS
 const text = (h) => h.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/&#x27;|&#39;/g, '\'').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const render = (status, ui) => renderToString(React.createElement(View, { state: { kind: 'ready', status }, ui, onAllow() {}, onGrant() {}, onRevoke() {}, onStop() {}, onAskResume() {}, onResume() {}, onCancel() {} }));
 
-test('before any allowance: both gates shut, zero left, no receipts, and the stop is there', () => {
+test('before any allowance: ONE plain control, nothing left today, no receipts, and the stop is there', () => {
   budget._test.reset();
-  const t = text(render(budget.status()));
-  assert.match(t, /SAiM is technically locked on this device\./);
-  assert.match(t, /SAiM has no allowance to act today\./);
-  assert.match(t, /Nothing on this screen opens it\./);
-  assert.match(t, /Calendar blocks 0 of 0/); assert.match(t, /New notes 0 of 0/); assert.match(t, /Money £0/); assert.match(t, /People contacted 0/);
-  assert.match(t, /None yet\. A receipt appears here only after SAiM has carried something out and read it back\./);
-  assert.match(t, /Allow one block and one note today…/);
-  assert.match(render(budget.status()), /class="auth__stop"[^>]*>Stop all SAiM actions</);
+  const h = render(budget.status());
+  const t = text(h);
+  assert.match(t, /Carrying out moves is switched off on NEURO’s server\./);
+  assert.match(t, /SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any today\./);
+  assert.equal((h.match(/<button/g) || []).length, 2, 'two controls only: allow, and stop');
+  assert.match(t, /Allow SAiM to carry out up to three prepared moves today/);
+  assert.match(t, /Nothing has been carried out today\./);
+  assert.doesNotMatch(t, /Pi|device lock|SAIM_|env|Money|People contacted|Minutes \d/, 'no implementation words, no sprawling tiles');
+  assert.match(h, /class="auth__stop"[^>]*>Stop all SAiM actions</);
 });
 
-test('the grant step shows exactly the server’s terms before anything is given', () => {
+test('the allow step shows exactly the server’s terms before anything is given', () => {
   budget._test.reset();
-  const p = budget.previewGrant({ blockMinutes: 30 });
+  const p = budget.previewGrant({});
   const t = text(render(budget.status(), { kind: 'granting', preview: p }));
-  assert.match(t, /You would allow exactly this:/);
   for (const line of p.statement) assert.ok(t.includes(line.replace(/\s+/g, ' ')), line);
-  assert.match(t, /Give this allowance/);
+  assert.match(t, /Allow this/);
   assert.equal(budget.status().grant, null, 'rendering the preview granted nothing');
 });
 
-test('after granting: the allowance gate opens, the device gate does NOT; still nothing claimed done', () => {
+test('after allowing: what is left today in one line; the server switch still reads as off; nothing claimed done', () => {
   budget._test.reset(); budget._test.grantToday();
   const t = text(render(budget.status()));
-  assert.match(t, /SAiM is allowed to make one calendar block \(up to 30 minutes\) and one note today\./);
-  assert.match(t, /SAiM is technically locked on this device\./);
-  assert.match(t, /SAiM can’t act yet: the device is still locked\./);
-  assert.match(t, /Calendar blocks 1 of 1/); assert.match(t, /Minutes 30 of 30/);
+  assert.match(t, /three of three prepared moves left today · 3 calendar blocks · 3 notes or reply drafts/);
+  assert.match(t, /Each move still waits for you to confirm it\./);
+  assert.match(t, /SAiM can prepare moves, but carrying them out is switched off on NEURO’s server\./);
   assert.match(t, /Nothing has been carried out today\./);
-  assert.doesNotMatch(t, /Both are in place|read back ·|done and read back/);
+  assert.doesNotMatch(t, /done and read back/);
   assert.match(t, /Take today’s allowance away/);
+  process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
+  try {
+    const on = text(render(budget.status()));
+    assert.match(on, /SAiM is ready\./);
+    assert.match(on, /SAiM can carry out three more prepared moves today, each after you confirm it\./);
+  } finally { delete process.env.SAIM_PREPARED_MOVE_EXECUTION; }
 });
 
 test('stopped: the stop banner, a two-step resume, and no stop button repeated', () => {
@@ -94,7 +99,7 @@ test('stopped: the stop banner, a two-step resume, and no stop button repeated',
   assert.match(text(h), /All SAiM actions are stopped\./);
   assert.match(text(h), /Resume…/);
   assert.doesNotMatch(h, /auth__stop"/);
-  assert.doesNotMatch(text(h), /Allow one block/, 'no granting while stopped');
+  assert.doesNotMatch(text(h), /Allow SAiM to carry out/, 'no granting while stopped');
 });
 
 test('a receipt is rendered only from a receipt — and a practice run says so', () => {
@@ -105,9 +110,9 @@ test('a receipt is rendered only from a receipt — and a practice run says so',
   assert.match(t, /Calendar block: done and read back/); assert.match(t, /Note: done and read back/);
 });
 
-test('it is its own screen in the shared tab list, and the flow speaks only to /api/saim-authority', () => {
+test('it lives in More (the secondary list), and the flow speaks only to /api/saim-authority — and the flow speaks only to /api/saim-authority', () => {
   const tabs = fs.readFileSync(path.join(APP, '..', '..', 'shared-ui', 'tabs.jsx'), 'utf8');
-  assert.match(tabs, /\{ id: 'authority', label: 'May do'.*Component: Authority \}/);
+  assert.match(tabs, /\{ id: 'authority', label: 'What SAiM may do'.*Component: Authority \}/);
   const src = fs.readFileSync(path.join(APP, 'authority.mjs'), 'utf8');
   const paths = [...src.matchAll(/`\$\{BASE\}\/([a-z/]+)`/g)].map((m) => m[1]);
   assert.deepEqual(paths.sort(), ['status']);

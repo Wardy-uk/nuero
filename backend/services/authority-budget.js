@@ -40,11 +40,18 @@ const db = require('../db/database');
 
 const ACTION = 'prepared-move.block-and-note';
 const ALLOWED_ACTIONS = Object.freeze([ACTION]);
-/** The most a grant may ever say, for the first action. */
-const CEILING = Object.freeze({ blocks: 1, blockMinutes: 30, notes: 1, moves: 1, spendPence: 0, contacts: 0 });
+/**
+ * The most a grant may ever say (22 Oct 2026: three moves a day). `blockMinutes`
+ * is the most ONE block may be; `notes` counts every new written thing a move
+ * makes — a new note OR a governed reply draft (which still waits for the
+ * approval code; nothing is ever sent from here).
+ */
+const CEILING = Object.freeze({ blocks: 3, blockMinutes: 30, notes: 3, moves: 3, spendPence: 0, contacts: 0 });
+/** The step kinds a move may reserve. A reply DRAFT is a written output, never a send. */
+const STEP_KINDS = Object.freeze(['calendar.solo', 'vault.note', 'reply.draft']);
+const OUTPUT_KINDS = Object.freeze(['vault.note', 'reply.draft']);
 const CONFIRM_TTL_MS = 2 * 60000;
 const GRANT_AHEAD_DAYS = 7;
-const NOTE_FOLDER = 'Projects/Support Improvement Plan';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -65,18 +72,10 @@ function has() {
   if (ready) return true;
   try { return db.get(`SELECT COUNT(*) n FROM sqlite_master WHERE type = 'table' AND name IN (${TABLES.map(() => '?').join(',')})`, TABLES).n === TABLES.length; } catch { return false; }
 }
-/**
- * Create the schema — called ONLY by an intentional state change (grant
- * preview/grant, stop, resume, revoke of a real grant, reserve/settle/receipt
- * during a confirmed move). Never inside a read-only pass. The whole schema is
- * created in ONE IMMEDIATE transaction with IF NOT EXISTS, so it lands whole or
- * not at all, and a second caller racing the first waits and then finds it.
- */
-function ensure() {
-  if (ready) return;
-  if (require('./read-only-scope').active()) { ready = has(); return; }
-  const g = db.getDb();
-  g.transaction(() => g.exec(`
+
+/** The grants table, with the current ceilings as CHECK constraints. */
+function grantsDDL() {
+  return `
     CREATE TABLE IF NOT EXISTS saim_authority_grants (
       id TEXT PRIMARY KEY,
       day TEXT NOT NULL,
@@ -93,7 +92,10 @@ function ensure() {
       revoked_at TEXT,
       revoked_by TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_saim_authority_grants_day ON saim_authority_grants(day);
+    CREATE INDEX IF NOT EXISTS idx_saim_authority_grants_day ON saim_authority_grants(day);`;
+}
+function grantsTriggers() {
+  return `
     CREATE TRIGGER IF NOT EXISTS saim_authority_grants_immutable
       BEFORE UPDATE ON saim_authority_grants
       WHEN NEW.id IS NOT OLD.id OR NEW.day IS NOT OLD.day OR NEW.action IS NOT OLD.action
@@ -104,22 +106,41 @@ function ensure() {
       BEGIN SELECT RAISE(ABORT, 'an authority grant is immutable; it can only be revoked, once'); END;
     CREATE TRIGGER IF NOT EXISTS saim_authority_grants_no_delete
       BEFORE DELETE ON saim_authority_grants
-      BEGIN SELECT RAISE(ABORT, 'an authority grant is never deleted'); END;
-
+      BEGIN SELECT RAISE(ABORT, 'an authority grant is never deleted'); END;`;
+}
+function reservationsDDL() {
+  return `
     CREATE TABLE IF NOT EXISTS saim_authority_reservations (
       id TEXT PRIMARY KEY,
       idem_key TEXT NOT NULL UNIQUE,
       day TEXT NOT NULL,
       grant_id TEXT NOT NULL,
       move_key TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK (kind IN ('calendar.solo', 'vault.note')),
+      kind TEXT NOT NULL CHECK (kind IN ('calendar.solo', 'vault.note', 'reply.draft')),
       minutes INTEGER NOT NULL DEFAULT 0,
       state TEXT NOT NULL CHECK (state IN ('reserved', 'used', 'released', 'unknown')),
       title TEXT,
       created_at TEXT NOT NULL,
       settled_at TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_saim_authority_res_day ON saim_authority_reservations(day, state);
+    CREATE INDEX IF NOT EXISTS idx_saim_authority_res_day ON saim_authority_reservations(day, state);`;
+}
+
+/**
+ * Create the schema — called ONLY by an intentional state change (grant
+ * preview/grant, stop, resume, revoke of a real grant, reserve/settle/receipt
+ * during a confirmed move). Never inside a read-only pass. The whole schema is
+ * created in ONE IMMEDIATE transaction with IF NOT EXISTS, so it lands whole or
+ * not at all, and a second caller racing the first waits and then finds it.
+ */
+function ensure() {
+  if (ready) return;
+  if (require('./read-only-scope').active()) { ready = has(); return; }
+  const g = db.getDb();
+  g.transaction(() => g.exec(`
+    ${grantsDDL()}
+    ${grantsTriggers()}
+    ${reservationsDDL()}
 
     CREATE TABLE IF NOT EXISTS saim_authority_controls (
       key TEXT PRIMARY KEY,
@@ -149,7 +170,44 @@ function ensure() {
     CREATE TRIGGER IF NOT EXISTS saim_authority_events_append_only_d
       BEFORE DELETE ON saim_authority_events BEGIN SELECT RAISE(ABORT, 'the authority log is append-only'); END;
   `)).immediate();
+  _migrateCeilings();
   ready = true;
+}
+
+/**
+ * 22 Oct 2026: the one-move ceilings were CHECK constraints, which SQLite
+ * cannot alter — so a table created before the three-move allowance is
+ * REBUILT, rows carried over unchanged, inside ONE transaction, with its
+ * immutability and no-delete triggers dropped and re-installed in the same
+ * transaction. Only the ceilings and the new reservation kind change; no row
+ * is altered. Runs once per process, only from ensure() (a state change).
+ */
+function _migrateCeilings() {
+  const g = db.getDb();
+  const sqlOf = (t) => (g.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`).get(t) || {}).sql || '';
+  const grants = sqlOf('saim_authority_grants');
+  const res = sqlOf('saim_authority_reservations');
+  const oldGrants = /moves INTEGER NOT NULL CHECK \(moves BETWEEN 0 AND 1\)/.test(grants);
+  const oldRes = res && !res.includes("'reply.draft'");
+  if (!oldGrants && !oldRes) return;
+  g.transaction(() => {
+    if (oldGrants) {
+      g.exec(`DROP TRIGGER IF EXISTS saim_authority_grants_immutable; DROP TRIGGER IF EXISTS saim_authority_grants_no_delete;
+        ALTER TABLE saim_authority_grants RENAME TO saim_authority_grants_v1;`);
+      g.exec(grantsDDL());
+      // The index moved with the renamed table, so it is re-made after the old one goes.
+      g.exec(`INSERT INTO saim_authority_grants SELECT * FROM saim_authority_grants_v1; DROP TABLE saim_authority_grants_v1;
+        CREATE INDEX IF NOT EXISTS idx_saim_authority_grants_day ON saim_authority_grants(day);`);
+      g.exec(grantsTriggers());
+    }
+    if (oldRes) {
+      g.exec(`ALTER TABLE saim_authority_reservations RENAME TO saim_authority_reservations_v1;`);
+      g.exec(reservationsDDL());
+      g.exec(`INSERT INTO saim_authority_reservations SELECT * FROM saim_authority_reservations_v1; DROP TABLE saim_authority_reservations_v1;
+        CREATE INDEX IF NOT EXISTS idx_saim_authority_res_day ON saim_authority_reservations(day, state);`);
+    }
+  }).immediate();
+  console.log(`[AuthorityBudget] rebuilt ${[oldGrants && 'grants', oldRes && 'reservations'].filter(Boolean).join(' + ')} for the three-move allowance (rows carried over unchanged)`);
 }
 
 const iso = (ms) => new Date(ms).toISOString();
@@ -201,22 +259,25 @@ function _grantFor(day) {
 /** What the grant for `day` would say, in Nick's words. PURE. */
 function statementFor(terms, lock) {
   const lines = [
-    `On ${dayLong(terms.day)} SAiM may add one block to your calendar — up to ${terms.blockMinutes} minutes, just you, nobody invited.`,
-    `On ${dayLong(terms.day)} SAiM may save one new note in ${NOTE_FOLDER}. It never changes or deletes a note.`,
-    'Only for a prepared move you confirm yourself, one move only.',
-    'No money, no messages, no invites, no task or board changes, and no follow-up afterwards.',
-    `The allowance ends at midnight on ${dayLong(terms.day)}.`,
+    `Allow SAiM to carry out up to ${words(terms.moves)} prepared ${terms.moves === 1 ? 'move' : 'moves'} on ${dayLong(terms.day)}.`,
+    'Each one still shows you exactly what it will do, and waits for you to confirm it before it writes anything.',
+    `Altogether: up to ${words(terms.blocks)} private calendar ${terms.blocks === 1 ? 'block' : 'blocks'} of up to ${terms.blockMinutes} minutes each (just you, nobody invited), and up to ${words(terms.notes)} new ${terms.notes === 1 ? 'note or reply draft' : 'notes or reply drafts'}.`,
+    'A reply draft waits in Actions for your approval — nothing is ever sent.',
+    'No sending, no contacting anyone, no meeting invitations, no tasks, no shared-board changes, and no changes to what SAiM may do.',
+    `It ends at midnight on ${dayLong(terms.day)}.`,
   ];
-  if (lock && !lock.open) lines.push('SAiM is still technically locked on this device: until that lock is changed on the Pi, this allowance alone lets SAiM do nothing.');
+  if (lock && !lock.open) lines.push('Carrying out moves is switched off on NEURO’s server right now, so until that is switched on SAiM can prepare moves but not do them.');
   return lines;
 }
 
 const GRANT_KEYS = new Set(['day', 'blockMinutes']);
+const WORDS = ['no', 'one', 'two', 'three'];
+const words = (n) => WORDS[n] || String(n);
 
 /** Validate the only terms a grant may carry. Refused, never clamped. */
 function validateTerms(body = {}, now = Date.now()) {
   const extra = Object.keys(body || {}).filter((k) => !GRANT_KEYS.has(k));
-  if (extra.length) return { ok: false, why: `${extra.join(', ')} ${extra.length === 1 ? 'is' : 'are'} not something SAiM can be allowed — the first action is one calendar block and one note` };
+  if (extra.length) return { ok: false, why: `${extra.join(', ')} ${extra.length === 1 ? 'is' : 'are'} not something SAiM can be allowed — the allowance is up to three prepared moves` };
   const today = londonDay(now);
   const day = body.day == null ? today : String(body.day);
   if (!/^\d{4}-\d\d-\d\d$/.test(day) || Number.isNaN(Date.parse(`${day}T12:00:00Z`))) return { ok: false, why: 'the day must be a date' };
@@ -225,7 +286,7 @@ function validateTerms(body = {}, now = Date.now()) {
   if (day > last) return { ok: false, why: `an allowance can be given at most ${GRANT_AHEAD_DAYS} days ahead` };
   const minutes = body.blockMinutes == null ? CEILING.blockMinutes : Number(body.blockMinutes);
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > CEILING.blockMinutes) return { ok: false, why: `a block can be at most ${CEILING.blockMinutes} minutes` };
-  return { ok: true, terms: { day, action: ACTION, blocks: 1, blockMinutes: minutes, notes: 1, moves: 1, spendPence: 0, contacts: 0 } };
+  return { ok: true, terms: { day, action: ACTION, blocks: CEILING.blocks, blockMinutes: minutes, notes: CEILING.notes, moves: CEILING.moves, spendPence: 0, contacts: 0 } };
 }
 
 function _mint(purpose, terms, now) {
@@ -309,12 +370,13 @@ function resume({ confirmToken, by = 'nick', now = Date.now() } = {}) {
 const COUNTS = `state IN ('reserved', 'used', 'unknown')`;
 function usage(day) {
   // read only: never creates the schema (see has())
-  if (!has()) return { blocks: 0, minutes: 0, notes: 0, moves: 0, moveKeys: [] };
+  if (!has()) return { blocks: 0, minutes: 0, notes: 0, replies: 0, moves: 0, moveKeys: [] };
   const rows = db.all(`SELECT kind, minutes, move_key FROM saim_authority_reservations WHERE day = ? AND ${COUNTS}`, [day]);
   return {
     blocks: rows.filter((r) => r.kind === 'calendar.solo').length,
     minutes: rows.filter((r) => r.kind === 'calendar.solo').reduce((a, r) => a + (r.minutes || 0), 0),
-    notes: rows.filter((r) => r.kind === 'vault.note').length,
+    notes: rows.filter((r) => OUTPUT_KINDS.includes(r.kind)).length,
+    replies: rows.filter((r) => r.kind === 'reply.draft').length,
     moves: new Set(rows.map((r) => r.move_key)).size,
     moveKeys: [...new Set(rows.map((r) => r.move_key))],
   };
@@ -341,20 +403,16 @@ function judge({ stopped, g, action, steps, fresh, u, isNewMove }) {
   for (const s of steps) {
     if ((s.spendPence || 0) > g.spend_pence) return { ok: false, limit: 'spend', say: 'This would spend money, and today’s allowance is £0.' };
     if ((s.contacts || 0) > g.contacts) return { ok: false, limit: 'contacts', say: 'This would contact or invite someone, and today’s allowance allows nobody.' };
-    if (!['calendar.solo', 'vault.note'].includes(s.kind)) return { ok: false, limit: 'action', say: 'This kind of action isn’t on today’s allowance.' };
+    if (!STEP_KINDS.includes(s.kind)) return { ok: false, limit: 'action', say: 'This kind of action isn’t on today’s allowance.' };
+    if (s.kind === 'calendar.solo' && (s.minutes || 0) > g.block_minutes) return { ok: false, limit: 'minutes', say: `This block is ${s.minutes} minutes; a block may be at most ${g.block_minutes}.` };
   }
   if (fresh.length && isNewMove && u.moves + 1 > g.moves) {
     return { ok: false, limit: 'moves', say: g.moves === 0 ? 'Today’s allowance covers no prepared moves.' : `Today’s allowance covers ${plural(g.moves, 'prepared move', 'prepared moves')}, and it has been used.` };
   }
   const addBlocks = fresh.filter((s) => s.kind === 'calendar.solo');
-  const addMinutes = addBlocks.reduce((a, s) => a + (s.minutes || 0), 0);
-  const addNotes = fresh.filter((s) => s.kind === 'vault.note').length;
+  const addNotes = fresh.filter((s) => OUTPUT_KINDS.includes(s.kind)).length;
   if (addBlocks.length && u.blocks + addBlocks.length > g.blocks) return { ok: false, limit: 'blocks', say: `Today’s allowance has no calendar blocks left (${u.blocks} of ${g.blocks} used).` };
-  if (addBlocks.length && u.minutes + addMinutes > g.block_minutes) {
-    const left = Math.max(0, g.block_minutes - u.minutes);
-    return { ok: false, limit: 'minutes', say: `This block is ${addMinutes} minutes; today’s allowance has ${left} ${left === 1 ? 'minute' : 'minutes'} left.` };
-  }
-  if (addNotes && u.notes + addNotes > g.notes) return { ok: false, limit: 'notes', say: `Today’s allowance has no new notes left (${u.notes} of ${g.notes} used).` };
+  if (addNotes && u.notes + addNotes > g.notes) return { ok: false, limit: 'notes', say: `Today’s allowance has no new notes or reply drafts left (${u.notes} of ${g.notes} used).` };
   return { ok: true };
 }
 
@@ -433,9 +491,9 @@ function status({ now = Date.now() } = {}) {
   const u = usage(day);
   const left = (granted, used) => ({ granted, used, left: Math.max(0, granted - used) });
   const allowance = g ? {
-    blocks: left(g.blocks, u.blocks), minutes: left(g.block_minutes, u.minutes),
+    blocks: left(g.blocks, u.blocks), minutes: left(g.blocks * g.block_minutes, u.minutes), blockMinutes: g.block_minutes,
     notes: left(g.notes, u.notes), moves: left(g.moves, u.moves), spendPence: 0, contacts: 0,
-  } : { blocks: left(0, u.blocks), minutes: left(0, u.minutes), notes: left(0, u.notes), moves: left(0, u.moves), spendPence: 0, contacts: 0 };
+  } : { blocks: left(0, u.blocks), minutes: left(0, u.minutes), blockMinutes: 0, notes: left(0, u.notes), moves: left(0, u.moves), spendPence: 0, contacts: 0 };
 
   const tables = has();
   const resRows = !tables ? [] : db.all(`SELECT move_key, kind, state, title, created_at, settled_at FROM saim_authority_reservations WHERE day = ? ORDER BY created_at`, [day]);
@@ -450,26 +508,32 @@ function status({ now = Date.now() } = {}) {
       : { state: 'none', title: null, say: 'Nothing has been carried out today.' };
 
   const granted = Boolean(g);
-  const canAct = lock.open && !st.stopped && granted && allowance.blocks.left > 0 && allowance.notes.left > 0;
+  // A move may still go ahead while there is a move left AND something it could
+  // write (a block or a note/reply draft) left.
+  const canAct = lock.open && !st.stopped && granted && allowance.moves.left > 0 && (allowance.blocks.left > 0 || allowance.notes.left > 0);
+  const movesLeft = allowance.moves.left;
+  const leftToday = granted
+    ? `${words(movesLeft)} of ${words(g.moves)} prepared ${g.moves === 1 ? 'move' : 'moves'} left today · ${allowance.blocks.left} calendar ${allowance.blocks.left === 1 ? 'block' : 'blocks'} · ${allowance.notes.left} ${allowance.notes.left === 1 ? 'note or reply draft' : 'notes or reply drafts'}`
+    : null;
   const gates = {
     device: lock.open
-      ? { open: true, say: 'The device lock on the Pi is open.' }
-      : { open: false, say: 'SAiM is technically locked on this device.' },
+      ? { open: true, say: 'SAiM is ready.' }
+      : { open: false, say: 'Carrying out moves is switched off on NEURO’s server.' },
     allowance: granted
-      ? { open: allowance.blocks.left > 0 || allowance.notes.left > 0, say: `SAiM is allowed to make one calendar block (up to ${g.block_minutes} minutes) and one note today.` }
-      : { open: false, say: 'SAiM has no allowance to act today.' },
+      ? { open: canAct || (allowance.moves.left > 0), say: `Today SAiM may carry out up to ${words(g.moves)} prepared ${g.moves === 1 ? 'move' : 'moves'}, each only after you confirm it.` }
+      : { open: false, say: 'You haven’t allowed SAiM to carry out any prepared moves today.' },
   };
   return {
     ok: true, contract: 'saim-authority-v1', day, dayLabel: dayLong(day),
     gates, stopped: st.stopped, stoppedSince: st.since,
-    grant: g ? { day: g.day, blockMinutes: g.block_minutes, statement: JSON.parse(g.statement), grantedAt: g.granted_at } : null,
-    allowance, active, receipts, canAct,
+    grant: g ? { day: g.day, blockMinutes: g.block_minutes, moves: g.moves, statement: JSON.parse(g.statement), grantedAt: g.granted_at } : null,
+    allowance, active, receipts, canAct, leftToday,
     summary: st.stopped ? 'All SAiM actions are stopped.'
-      : canAct ? 'SAiM can carry out one prepared move today, after you confirm it.'
-        : !lock.open && !granted ? 'SAiM can’t act: the device is locked and there is no allowance today.'
-          : !lock.open ? 'SAiM can’t act yet: the device is still locked.'
-            : !granted ? 'SAiM can’t act: there is no allowance today.'
-              : 'Today’s allowance has been used.',
+      : canAct ? `SAiM can carry out ${words(movesLeft)} more prepared ${movesLeft === 1 ? 'move' : 'moves'} today, each after you confirm it.`
+        : !lock.open && !granted ? 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any today.'
+          : !lock.open ? 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server.'
+            : !granted ? 'You haven’t allowed SAiM to carry out any prepared moves today.'
+              : 'Today’s prepared moves are used up. It starts again tomorrow.',
   };
 }
 
@@ -480,10 +544,10 @@ function status({ now = Date.now() } = {}) {
  * while it is closed), then the stop, then today's allowance. Read only.
  */
 const BOUNDARY = {
-  device: 'This device is locked for SAiM, so I can prepare this but not do it. The lock is set on the Pi.',
+  device: 'Carrying out moves is switched off on NEURO’s server, so I can prepare this but not do it.',
   stop: 'You’ve stopped all SAiM actions. Resume them in “What SAiM may do” and I can do this.',
-  allowance: 'I don’t have your go-ahead for today. Give me today’s allowance in “What SAiM may do” — I’ll still ask before I change anything.',
-  used: 'Today’s allowance is already used. It is fresh again tomorrow; “What SAiM may do” shows what was done.',
+  allowance: 'You haven’t allowed me to carry out prepared moves today. Allow up to three in “What SAiM may do” — I’ll still ask before each one.',
+  used: 'Today’s prepared moves are used up. It starts again tomorrow; “What SAiM may do” shows what was done.',
   unreadable: 'I couldn’t check what I’m allowed to do, so I won’t do anything yet.',
 };
 function boundaryOf(s) {
@@ -498,7 +562,7 @@ function boundaryOf(s) {
 function brief({ now = Date.now() } = {}) {
   try {
     const s = status({ now });
-    return { canAct: s.canAct, stopped: s.stopped, deviceOpen: s.gates.device.open, granted: Boolean(s.grant), summary: s.summary, boundary: boundaryOf(s) };
+    return { canAct: s.canAct, stopped: s.stopped, deviceOpen: s.gates.device.open, granted: Boolean(s.grant), summary: s.summary, leftToday: s.leftToday, boundary: boundaryOf(s) };
   } catch {
     return { canAct: false, stopped: true, deviceOpen: false, granted: false, summary: 'SAiM couldn’t read its allowance.', boundary: { gate: 'unreadable', say: BOUNDARY.unreadable } };
   }
@@ -524,7 +588,7 @@ const _test = {
 };
 
 module.exports = {
-  ACTION, CEILING, CONFIRM_TTL_MS, STOPPED_SAY, BOUNDARY, boundaryOf, londonDay, masterLock, stopState, stop, previewResume, resume,
+  ACTION, CEILING, STEP_KINDS, OUTPUT_KINDS, CONFIRM_TTL_MS, STOPPED_SAY, BOUNDARY, boundaryOf, londonDay, masterLock, stopState, stop, previewResume, resume,
   validateTerms, statementFor, previewGrant, grant, revoke, usage, judge, wouldFit, reserve, settle, releaseUnstarted, recordReceipt,
   status, brief, _test,
 };

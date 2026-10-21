@@ -171,7 +171,7 @@ test('default off: execution is refused inside the executor and no adapter is to
   let touched = 0;
   const trap = new Proxy({}, { get: () => { touched += 1; throw new Error('adapter touched'); } });
   const r = await exec.execute({ recordId: rec.id, grantId: c.grantId, adapters: { kind: 'live', calendar: trap, vault: trap }, checks: okChecks() });
-  assert.equal(r.ok, false); assert.match(r.reasons[0], /locked on this device \(saim_prepared_move_execution\)/);
+  assert.equal(r.ok, false); assert.match(r.reasons[0], /^Carrying out moves is switched off on NEURO’s server — nothing was written and your confirmation was not used\.$/);
   assert.equal(touched, 0);
   assert.equal(ig.get(c.grantId).consumed_at, null, 'refused before the confirmation was even spent');
   assert.equal(require('./feature-flags').isEnabled('saim_prepared_move_execution'), false);

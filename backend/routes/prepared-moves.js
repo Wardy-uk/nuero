@@ -69,6 +69,16 @@ router.get('/current', async (req, res) => {
   }
 });
 
+// GET /api/prepared-moves/eligible — which Now items SAiM can make ready (make this ready, draft the reply, meeting prep): each with its exact ref for /prepare and the Now row ids it is drawn as. Held, personal, employment and ineligible items are left out. Read only.
+router.get('/eligible', async (req, res) => {
+  try {
+    const p = await require('../services/read-only-scope').run(() => planner().eligibleNow());
+    res.json({ ok: true, ...p.result });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/prepared-moves/prepare — make ready (make this ready, draft the reply, meeting prep, draft note): take ONE Now item (its ref) to the furthest safe point — the real draft, a solo block only if your time is needed, or a question for Nick. Stores a PROPOSAL only; nothing is saved, booked or sent until Nick confirms. Body: { ref }
 router.post('/prepare', async (req, res) => {
   const bad = strict(req.body, ['ref']);

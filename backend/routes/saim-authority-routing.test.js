@@ -71,10 +71,10 @@ test('zero by default, and the status names both gates in Nick’s words', async
   const s = await call('GET', 'status');
   assert.equal(s.status, 200);
   assert.equal(s.json.contract, 'saim-authority-v1');
-  assert.equal(s.json.gates.device.say, 'SAiM is technically locked on this device.');
-  assert.equal(s.json.gates.allowance.say, 'SAiM has no allowance to act today.');
+  assert.equal(s.json.gates.device.say, 'Carrying out moves is switched off on NEURO’s server.');
+  assert.equal(s.json.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves today.');
   assert.equal(s.json.canAct, false);
-  assert.equal(s.json.summary, 'SAiM can’t act: the device is locked and there is no allowance today.');
+  assert.equal(s.json.summary, 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any today.');
 });
 
 test('grant: strict body, exact preview, one-use confirmation — and the device stays locked', async () => {
@@ -86,18 +86,18 @@ test('grant: strict body, exact preview, one-use confirmation — and the device
   assert.equal((await call('POST', 'grant/preview', { blockMinutes: 45 })).status, 400);
   const p = await call('POST', 'grant/preview', { blockMinutes: 30 });
   assert.equal(p.status, 200);
-  assert.match(p.json.statement.join('\n'), /one block to your calendar — up to 30 minutes, just you, nobody invited/);
-  assert.match(p.json.statement.join('\n'), /until that lock is changed on the Pi, this allowance alone lets SAiM do nothing/);
+  assert.match(p.json.statement.join('\n'), /up to three private calendar blocks of up to 30 minutes each \(just you, nobody invited\)/);
+  assert.match(p.json.statement.join('\n'), /switched off on NEURO’s server right now/);
   assert.equal(budget.status().grant, null, 'a preview grants nothing');
   assert.equal((await call('POST', 'grant', { confirmToken: p.json.confirmToken, blockMinutes: 30 })).status, 400, 'terms cannot be re-sent with the confirmation');
   const g = await call('POST', 'grant', { confirmToken: p.json.confirmToken });
   assert.equal(g.status, 200, JSON.stringify(g.json));
   assert.equal((await call('POST', 'grant', { confirmToken: p.json.confirmToken })).status, 409, 'one use');
   const s = (await call('GET', 'status')).json;
-  assert.equal(s.gates.allowance.say, 'SAiM is allowed to make one calendar block (up to 30 minutes) and one note today.');
+  assert.equal(s.gates.allowance.say, 'Today SAiM may carry out up to three prepared moves, each only after you confirm it.');
   assert.equal(s.gates.device.open, false, 'granting never opens the device lock');
   assert.equal(s.canAct, false);
-  assert.equal(s.summary, 'SAiM can’t act yet: the device is still locked.');
+  assert.equal(s.summary, 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server.');
   assert.equal(require('../services/feature-flags').isEnabled('saim_prepared_move_execution'), false);
   const rv = await call('POST', 'revoke', {});
   assert.equal(rv.status, 200); assert.equal(rv.json.revoked, true);

@@ -127,6 +127,7 @@ const ROUTE_RULES = Object.freeze([
   // 19 Oct 2026: SAiM's prepared move — asking to confirm and confirming are
   // both Nick's. Machine clients are refused; the gateway marks both interactive.
   R('GET', '/api/prepared-moves/current', 'read'),
+  R('GET', '/api/prepared-moves/eligible', 'read'),
   R('POST', '/api/prepared-moves/prepare', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/respond', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/answer', 'saim.prepared-move.propose'),

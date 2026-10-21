@@ -231,6 +231,12 @@ function answersFor(moveKey) {
   return db.all(`SELECT question_id, text, by, at FROM prepared_move_answers WHERE move_key = ? ORDER BY id`, [moveKey]).map((r) => ({ questionId: r.question_id, text: r.text, by: r.by, at: r.at }));
 }
 
+/** Was this move carried out — a COMPLETE receipt on record? Read only. */
+function completedMove(moveKey) {
+  if (!moveKey) return false;
+  try { const r = JSON.parse(db.getState(`saim_move_receipt:${moveKey}`) || 'null'); return Boolean(r && r.complete === true && r.target !== 'sandbox'); } catch { return false; }
+}
+
 /**
  * The v2 proposals that could be shown now: each move's NEWEST version, not
  * deferred or declined, evidence still within its lifetime, newest check first.
@@ -239,7 +245,7 @@ function activeV2({ now = Date.now(), limit = 5 } = {}) {
   if (!_exists()) return [];
   const rows = db.all(`SELECT m.* FROM prepared_moves m JOIN (SELECT move_key, MAX(version) v FROM prepared_moves WHERE move_key LIKE 'saim-move:v2:%' GROUP BY move_key) x ON x.move_key = m.move_key AND x.v = m.version ORDER BY m.created_at DESC LIMIT 50`);
   return rows.map(_shape).map(_withCheck)
-    .filter((r) => !suppression(r.moveKey, now) && Date.parse(r.evidenceExpiresAt) > now)
+    .filter((r) => !suppression(r.moveKey, now) && !completedMove(r.moveKey) && Date.parse(r.evidenceExpiresAt) > now)
     .sort((a, b) => Date.parse(b.checkedAt || b.createdAt) - Date.parse(a.checkedAt || a.createdAt))
     .slice(0, limit);
 }
@@ -262,5 +268,5 @@ function isLatest(record) {
 
 module.exports = {
   CONTRACT, EVIDENCE_LIFETIME_MS, ensure, store, get, latest, isLatest, packetHash,
-  markChecked, respond, suppression, addAnswer, answersFor, activeV2, DEFER_DAYS, DEFER_REASONS, DECLINE_REASONS,
+  markChecked, respond, suppression, addAnswer, answersFor, activeV2, completedMove, DEFER_DAYS, DEFER_REASONS, DECLINE_REASONS,
 };

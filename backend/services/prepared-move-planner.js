@@ -157,6 +157,10 @@ const DEFAULT_DEPS = {
   diary: (fromYmd, days) => _diary(fromYmd, days),
   findSlot: (opts) => require('./task-blocks').findSlot(opts),
   holidays: () => { try { return require('./working-days').holidaySet(); } catch { return new Set(); } },
+  // Booked off on that day (People HR via NOVA). Unknown is NOT off — the
+  // fresh checks re-read leave before anything is written.
+  leaveOn: (day) => { try { const ta = require('./team-availability'); const r = ta.selfAbsenceOn(day, ta.snapshot(new Date())); return Boolean(r && r.known && r.off); } catch { return false; } },
+  completed: (moveKey) => require('./prepared-move-store').completedMove(moveKey),
   draft: (kind, input) => require('./prepared-move-drafter').draft(kind, input),
   answers: (moveKey) => require('./prepared-move-store').answersFor(moveKey),
   suppression: (moveKey, now) => require('./prepared-move-store').suppression(moveKey, now),
@@ -473,16 +477,55 @@ function noteMarkdown({ title, sourceFacts, suggested, gaps, why }) {
   ].join('\n');
 }
 
-/** Find one free block in the next 5 working days (same rule time-fit and task-blocks use). */
+/** The working window a block may sit in — task-blocks' own (09:00–17:30). */
+const DUTY = Object.freeze({ start: 9 * 60, end: 17 * 60 + 30 });
+const LEAD_MIN = 10;          // time to confirm before a block starts
+const SLOT_WORKING_DAYS = 10; // how far ahead to look, in WORKING days, today included
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const toMins = (t) => { const x = /T(\d\d):(\d\d)/.exec(String(t || '')); return x ? Number(x[1]) * 60 + Number(x[2]) : null; };
+
+/**
+ * PURE. The next genuinely available slot (22 Oct 2026): today if a free
+ * `minutes` window remains inside the working window (after now + a lead to
+ * confirm), else the earliest on the next working day — looking through
+ * `workingDays` working days in all. A day that is a weekend, a bank holiday
+ * (`nonWorking`) or booked off (`isOff(day)` true) is skipped and does not use
+ * up the window. Busy = any timed event that is not free or cancelled (the
+ * diary already turns "free but held" meetings into busy). Every slot keeps
+ * a buffer either side of a meeting.
+ * → { slot: {date,startTime,endTime}|null, searched: [dates], why }
+ */
+function nextSlot({ events = [], nowMs, nonWorking = new Set(), isOff = () => false, minutes = BLOCK_MINUTES, buffer = 5, workingDays = SLOT_WORKING_DAYS } = {}) {
+  const wd = require('../../shared/working-days.cjs');
+  const today = ymdLondon(nowMs);
+  const nowLocal = new Date(nowMs).toLocaleString('sv-SE', { timeZone: 'Europe/London' });
+  const nowMin = Number(nowLocal.slice(11, 13)) * 60 + Number(nowLocal.slice(14, 16));
+  const searched = []; const skipped = [];
+  for (let i = 0; i < 40 && searched.length < workingDays; i++) {
+    const day = ymdLondon(Date.parse(`${today}T12:00:00Z`) + i * DAY);
+    if (!wd.isWorkingDay(new Date(`${day}T12:00:00`), nonWorking)) continue;
+    searched.push(day);
+    if (isOff(day)) { skipped.push(day); continue; }
+    let cursor = DUTY.start;
+    if (day === today) cursor = Math.max(cursor, Math.ceil((nowMin + LEAD_MIN) / 5) * 5);
+    const busy = (events || []).filter((e) => e && !e.isAllDay && e.showAs !== 'free' && e.showAs !== 'cancelled' && String(e.start).slice(0, 10) === day)
+      .map((e) => [toMins(e.start), toMins(e.end)]).filter(([x, y]) => x != null && y != null).sort((x, y) => x[0] - y[0]);
+    for (const [st, en] of busy) {
+      if (st - buffer - cursor >= minutes) break;
+      cursor = Math.max(cursor, en + buffer);
+    }
+    if (cursor + minutes <= DUTY.end) return { slot: { date: day, startTime: hhmm(cursor), endTime: hhmm(cursor + minutes) }, searched, skipped };
+  }
+  return { slot: null, searched, skipped, why: `no free ${minutes} minutes in the next ${workingDays} working days` };
+}
+
 function _slotFor(deps, nowMs) {
   const today = ymdLondon(nowMs);
-  const diary = deps.diary(today, 7);
+  const diary = deps.diary(today, 21);
   if (!diary.known) return { known: false, why: 'the calendar could not be read' };
-  const nonWorking = deps.holidays();
-  const first = deps.findSlot({ minutes: BLOCK_MINUTES, events: diary.events, now: new Date(nowMs), nonWorking });
-  if (!first || !first.date) return { known: true, slot: null, why: (first && first.reason) || 'no free time found' };
-  if (first.date > ymdLondon(nowMs + 7 * DAY)) return { known: true, slot: null, why: 'no free time in the next week' };
-  return { known: true, slot: first, diaryFetchedAt: diary.fetchedAt };
+  const r = nextSlot({ events: diary.events, nowMs, nonWorking: deps.holidays(), isOff: (d) => { try { return deps.leaveOn(d) === true; } catch { return false; } } });
+  if (!r.slot) return { known: true, slot: null, why: r.why };
+  return { known: true, slot: r.slot, diaryFetchedAt: diary.fetchedAt, today: r.slot.date === today };
 }
 
 // ── The one pipeline ─────────────────────────────────────────────────────────
@@ -525,6 +568,12 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
     if (sup && !source) {
       withheld.push({ ref: n.ref, title: n.title, reason: sup.response, why: sup.say });
       if (ref) return { ok: false, outcome: 'withheld', why: sup.say, withheld };
+      continue;
+    }
+    // Already carried out (a complete receipt): done — never offered again.
+    if (!source && deps.completed(moveKey)) {
+      withheld.push({ ref: n.ref, title: n.title, reason: 'done', why: 'You confirmed this one and it was carried out.' });
+      if (ref) return { ok: false, outcome: 'withheld', why: 'You already confirmed this one and it was carried out.', withheld };
       continue;
     }
     const answers = deps.answers(moveKey) || [];
@@ -599,6 +648,74 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
 }
 
 /**
+ * PURE-ish (reads only; no model call, no network). Would the planner take this
+ * normalised candidate forward? The cheap half of `gather` — enough to OFFER
+ * "Make this ready" only where pressing it can do something real. The full
+ * screen still runs when he presses it.
+ */
+function prescreen(n, deps, nowMs) {
+  const ledger = require('./promise-ledger');
+  if (n.kind === 'email-reply') {
+    const e = deps.triageEntry(n.source.emailId);
+    if (!e || e.dismissed) return 'gone';
+    const from = String(e.fromEmail || '').toLowerCase();
+    if (!from || AUTOMATED.test(from)) return 'not-a-commitment';
+    if (ledger.hrSensitivity(e.subject || '', e.subject || '').sensitive) return 'employment-route';
+    if (deps.liveReply(n.source.emailId)) return 'already-in-progress';
+    return null;
+  }
+  if (n.kind === 'meeting-prep') {
+    const ev = deps.meetingEvent(n.source.eventId);
+    if (!ev || ev.show_as === 'cancelled' || ev.attendees_other !== 1) return 'not-a-commitment';
+    if (ONE_TO_ONE.test(ev.subject || '') || ledger.hrSensitivity(ev.subject || '', ev.subject || '').sensitive) return 'employment-route';
+    const st = String(ev.start_time).slice(0, 16);
+    if (require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16)) - nowMs < MIN_MEETING_LEAD_MIN * 60000) return 'too-soon';
+    return null;
+  }
+  const t = deps.task(n.source.taskId);
+  if (!t || !['open', 'in-progress'].includes(t.status)) return 'gone';
+  if (t.domain === 'personal') return 'personal-domain';
+  if (ledger.hrSensitivity(t.text, '').sensitive) return 'employment-route';
+  return null;
+}
+
+/** The Now rows a candidate is drawn as (mobile-snapshot's ids). */
+function rowIdsFor(c, n) {
+  const ids = [];
+  if (c.item && c.item.id) ids.push(`attention:${c.item.id}`);
+  if (n.kind === 'meeting-prep' && c.item.meta && c.item.meta.start) ids.push(`event:derived:${c.item.meta.start}:${String(c.item.title || '').slice(0, 60)}`);
+  if (n.kind === 'project-note') ids.push(`task:${n.source.taskId}`);
+  return ids;
+}
+
+/**
+ * The Now items SAiM can genuinely take forward right now, each with its EXACT
+ * production ref (what /prepare takes) and the Now row ids it is drawn as.
+ * READ-ONLY — runs inside a read-only pass. Held, personal, employment, gone,
+ * deferred, declined, done and already-prepared-elsewhere items are left out:
+ * no dead buttons.
+ */
+async function eligibleNow({ now = Date.now(), deps: over = {} } = {}) {
+  const deps = { ...DEFAULT_DEPS, ...over };
+  const nowMs = typeof now === 'number' ? now : Date.parse(now);
+  const v1 = await deps.prepareV1({ now: nowMs });
+  const out = [];
+  if (!v1 || !v1.duty || v1.duty.onDuty !== true) return { onDuty: false, items: out };
+  for (const c of v1.candidates || []) {
+    if (v1.selected && v1.selected.ref === c.ref) continue;
+    const n = normalise(c, deps);
+    if (n.withhold) continue;
+    const moveKey = moveKeyFor(n.kind, n.sourceKey);
+    if (deps.suppression(moveKey, nowMs) || deps.completed(moveKey)) continue;
+    if (prescreen(n, deps, nowMs)) continue;
+    const q = quickEligible(c.item);
+    const prior = deps.latest(moveKey);
+    out.push({ ref: c.ref, kind: n.kind, label: q.label, title: n.title, rowIds: rowIdsFor(c, n), prepared: Boolean(prior && Date.parse(prior.evidenceExpiresAt) > nowMs) });
+  }
+  return { onDuty: true, items: out };
+}
+
+/**
  * Re-check a stored v2 proposal against the world NOW (read-only): the source
  * still exists and is still owed, nothing else has taken it forward, and the
  * draft still screens clean. Used by the fresh checks before any write.
@@ -635,5 +752,5 @@ async function recheck(packet, { deps: over = {} } = {}) {
 module.exports = {
   CONTRACT, KINDS, DO_ADAPTERS, DENY_FOLDERS, BLOCK_MINUTES, ANSWER_MAX, MIN_MEETING_LEAD_MIN,
   moveKeyFor, quickEligible, safeTitle, ungrounded, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
-  planAndStore, recheck, projectFolders, DEFAULT_DEPS,
+  planAndStore, recheck, prescreen, eligibleNow, rowIdsFor, projectFolders, nextSlot, SLOT_WORKING_DAYS, DEFAULT_DEPS,
 };

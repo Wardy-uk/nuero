@@ -38,7 +38,7 @@ function strict(body, allowed) {
 const machine = (req) => Boolean(req.apiClient) || Boolean(require('../services/intent-grants').callerOf(req).machine);
 const send = (res, r) => (r.ok ? res.json(r) : res.status(r.code || 409).json({ ...r, code: undefined, error: r.why || r.error }));
 
-// GET /api/saim-authority/status — what SAiM may do (human only, interactive): whether SAiM is technically locked on this device, today's allowance (one calendar block and one note, or none), what is left, the active prepared move, past receipts, and whether all SAiM actions are stopped. Refuses machine clients.
+// GET /api/saim-authority/status — what SAiM may do (human only, interactive): whether carrying out moves is switched on (SAiM is ready), today's allowance (up to three prepared moves, or none), what is left, the active prepared move, past receipts, and whether all SAiM actions are stopped. Refuses machine clients.
 router.get('/status', (req, res) => {
   if (machine(req)) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
   try { res.json(budget().status()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

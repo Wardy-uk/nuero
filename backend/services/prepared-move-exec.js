@@ -56,6 +56,10 @@ function londonMs(date, hhmm) {
   const shown = new Date(guess).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).replace(' ', 'T').slice(0, 16);
   return guess - (Date.parse(`${shown}:00Z`) - guess);
 }
+/** One write step as the authority budget counts it. */
+const budgetStep = (s) => (s.step === 'calendar'
+  ? { kind: 'calendar.solo', minutes: toMin(s.end) - toMin(s.start), contacts: (s.attendees || []).length, spendPence: 0 }
+  : { kind: s.step === 'reply' ? 'reply.draft' : 'vault.note', minutes: 0, contacts: 0, spendPence: 0 });
 const refuse = (reasons, extra = {}) => ({ ok: false, refused: true, reasons: [].concat(reasons), ...extra });
 
 // ── The write set (PURE, no clock) ───────────────────────────────────────────
@@ -449,7 +453,7 @@ async function execute({ recordId, option = 'approve', grantId, adapters, target
   const kind = typeof adapters === 'function' ? target : (adapters && adapters.kind);
   // 1. The gates, before anything else is read — and before any adapter exists.
   if (!adapters || !['sandbox', 'live'].includes(kind)) return refuse('unknown execution target');
-  if (!require('./feature-flags').isEnabled(FLAG)) return refuse(`SAiM is technically locked on this device (${FLAG}) — nothing was written and your confirmation was not used.`, { gate: 'device' });
+  if (!require('./feature-flags').isEnabled(FLAG)) return refuse('Carrying out moves is switched off on NEURO’s server — nothing was written and your confirmation was not used.', { gate: 'device' });
   if (budget.stopState().stopped) return refuse(`${budget.STOPPED_SAY} Nothing was written and your confirmation was not used.`, { gate: 'stop' });
   if (!grantId) return refuse('nothing runs without your confirmation');
 
@@ -490,11 +494,10 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
   const stepKey = (step) => `${w.moveKey}:${step.step}`;
   const res = budget.reserve({
     action: budget.ACTION, moveKey: w.moveKey, title: w.title, now,
-    // A governed reply DRAFT writes nothing outside NEURO (it waits in Actions for
-    // the approval code), so it is not an allowance step; the note and the block are.
-    steps: w.steps.filter((s) => s.step !== 'reply').map((s) => (s.step === 'calendar'
-      ? { key: stepKey(s), kind: 'calendar.solo', minutes: toMin(s.end) - toMin(s.start), contacts: (s.attendees || []).length, spendPence: 0 }
-      : { key: stepKey(s), kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 })),
+    // 22 Oct 2026: every written output counts — a block, a note, or a governed
+    // reply DRAFT (which still waits in Actions for the approval code; nothing
+    // is sent). The day's allowance is three moves; each is confirmed alone.
+    steps: w.steps.map((s) => ({ key: stepKey(s), ...budgetStep(s) })),
   });
   if (!res.ok) return refuse(`${res.say} Nothing was written and your confirmation was not used.`, { budget: res.limit });
 
@@ -517,14 +520,17 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
     const key = stepKey(step);
     if (step.step === 'reply') {
       const tgtR = `reply draft in Actions (email ${String(step.emailId).slice(0, 12)}…)`;
-      if (budget.stopState().stopped) { results.push({ step: 'reply', target: tgtR, status: 'stopped' }); continue; }
-      if (!ad.governed) { results.push({ step: 'reply', target: tgtR, status: 'refused', why: 'this target cannot draft a governed reply' }); continue; }
+      if (budget.stopState().stopped) { budget.releaseUnstarted([key], { now }); results.push({ step: 'reply', target: tgtR, status: 'stopped' }); continue; }
+      if (!ad.governed) { budget.releaseUnstarted([key], { now }); results.push({ step: 'reply', target: tgtR, status: 'refused', why: 'this target cannot draft a governed reply' }); continue; }
       try {
         const r = await _replyStep(step, ad.governed);
         const verified = r.checks.every(([, ok]) => ok);
+        budget.settle(key, verified || r.gone || r.created ? 'used' : 'unknown', { now });
         results.push({ step: 'reply', target: tgtR, status: r.gone ? 'removed-since' : !verified ? 'unverified' : r.created ? 'done' : 'already-done', id: r.id || null, sent: false, verified: r.checks.map(([what, ok]) => ({ what, ok: Boolean(ok) })) });
       } catch (e) {
-        results.push({ step: 'reply', target: tgtR, status: 'failed', provablyNotApplied: /^HTTP 4\d\d/.test(e.message), error: e.message.replace(/^HTTP \d+ /, ''), sent: false });
+        const provably = /^HTTP 4\d\d/.test(e.message);
+        budget.settle(key, provably ? 'released' : 'unknown', { now });
+        results.push({ step: 'reply', target: tgtR, status: 'failed', provablyNotApplied: provably, error: e.message.replace(/^HTTP \d+ /, ''), sent: false });
       }
       continue;
     }
@@ -712,7 +718,7 @@ async function _requestStored({ recordId, option, surface, sessionId, caller, no
   if (!w.ok) return { ...w, code: 409 };
   const duty = await deps.readDuty(now);
   if (!duty || duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
-  const budgetSteps = w.steps.filter((s) => s.step !== 'reply').map((s) => (s.step === 'calendar' ? { kind: 'calendar.solo', minutes: toMin(s.end) - toMin(s.start), contacts: 0, spendPence: 0 } : { kind: 'vault.note', minutes: 0, contacts: 0, spendPence: 0 }));
+  const budgetSteps = w.steps.map(budgetStep);
   const b = budget.brief({ now }).boundary;
   let begun = false;
   try { begun = budget.usage(budget.londonDay(now)).moveKeys.includes(w.moveKey); } catch { begun = false; }

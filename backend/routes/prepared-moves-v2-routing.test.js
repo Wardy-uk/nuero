@@ -94,7 +94,7 @@ test('Nick can ask to confirm the STORED proposal: the exact writes, and nothing
   const r = await post('/request', { recordId: p.json.move.recordId, sessionId: 'session_nick_0001' });
   // Locked device: the boundary is named — never a confirmation for a yes that cannot be carried out.
   assert.equal(r.status, 409);
-  assert.match(r.json.error, /locked/i);
+  assert.match(r.json.error, /switched off on NEURO’s server/);
   assert.equal(db.get(`SELECT COUNT(*) n FROM human_action_intents`).n, 0);
   // Lock open and an allowance for today: the server's exact question and writes.
   process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';

@@ -49,7 +49,20 @@ async function scanOnce({ now = Date.now(), deps = {} } = {}) {
     try { stopped = require('./authority-budget').stopState().stopped; } catch { stopped = false; }
     const g = gate({ flagOn, workingDay, duty, inMeeting, stopped });
     if (!g.run) return { ran: false, why: g.why };
-    const r = await require('./prepared-move-planner').planAndStore({ now, origin: 'scan', deps: deps.planner || {} });
+    // Today's allowance used up → nothing more is prepared until tomorrow.
+    let left = null;
+    try { const s = (deps.authority || require('./authority-budget').status)({ now }); left = s.grant ? s.allowance.moves.left : null; } catch { left = null; }
+    if (left === 0) return { ran: false, why: 'today’s prepared moves are used up' };
+    // ONE active proposal at a time: while one is still open (not confirmed,
+    // deferred, declined or resolved) and still true, it is kept fresh and
+    // nothing new is prepared. Once Nick has dealt with it, the next scan moves on.
+    const planner = require('./prepared-move-planner');
+    const store = require('./prepared-move-store');
+    for (const rec of (deps.active || store.activeV2)({ now })) {
+      const still = await planner.recheck(rec.packet, { deps: deps.planner || {} });
+      if (still.ok) { store.markChecked(rec.id, now); return { ran: true, outcome: 'active-kept', moveKey: rec.moveKey, version: rec.version, withheld: 0 }; }
+    }
+    const r = await planner.planAndStore({ now, origin: 'scan', deps: deps.planner || {} });
     const out = { ran: true, outcome: r.outcome, moveKey: r.record ? r.record.moveKey : null, version: r.record ? r.record.version : null, withheld: (r.withheld || []).length };
     if (r.outcome === 'stored') console.log(`[PreparedMoveScan] stored ${out.moveKey} v${out.version} (${out.withheld} withheld)`);
     return out;

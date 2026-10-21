@@ -29,8 +29,8 @@ async function post(call, route, body = {}) {
 }
 
 /** Step 1 of granting: the exact terms, with a one-use confirmation. Grants nothing. */
-export async function previewGrant(call, { blockMinutes = 30 } = {}) {
-  const r = await post(call, 'grant/preview', { blockMinutes });
+export async function previewGrant(call) {
+  const r = await post(call, 'grant/preview', {});
   return r.ok ? { kind: 'granting', preview: r.body } : { kind: 'error', message: r.body.error || 'NEURO would not prepare that allowance.' };
 }
 
@@ -62,6 +62,6 @@ export async function resume(call, preview) {
 
 /** PURE. The step a receipt line reads as — the receipt's own words only. */
 export function receiptSummary(rc) {
-  const step = (s) => (s.step === 'calendar' ? 'Calendar block' : s.step === 'note' ? 'Note' : s.step);
+  const step = (s) => (s.step === 'calendar' ? 'Calendar block' : s.step === 'note' ? 'Note' : s.step === 'reply' ? 'Reply draft (not sent)' : s.step);
   return (rc.steps || []).map((s) => `${step(s)}: ${s.status === 'done' ? 'done and read back' : s.status === 'already-done' ? 'already in place' : s.status === 'stopped' ? 'not attempted (stopped)' : s.status === 'failed' ? 'not saved' : s.status === 'removed-since' ? 'since removed' : s.status}`);
 }

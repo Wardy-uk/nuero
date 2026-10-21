@@ -281,28 +281,11 @@ body {
     padding-right: 1.5rem;
   }
 
-  /* ⚠ ONE NAVIGATION BAR ON A WIDE SCREEN (20 Oct 2026). On a phone the
-     secondary row stacked above the primary one reads as one menu opened; on a
-     desktop the same two rows read as two separate navigation systems, one on
-     top of the other. Here they share ONE bar: the secondary tabs to the left,
-     the three modes to the right, and "More" — which only toggles that row —
-     steps aside while the row is showing. The phone layout is unchanged. */
-  .app {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-  }
-  .app > * { grid-column: 1 / -1; }
-  .app__view { min-height: 0; }
-  .app__nav--more { grid-row: 3; grid-column: 1; justify-content: flex-end; background: var(--panel); border-bottom: 0; overflow-x: auto; }
-  .app__nav--more + .app__nav { grid-row: 3; grid-column: 2; }
-  /* In the shared bar every tab keeps its own width — none squeezed to "Cap…" —
-     and a hairline marks where the three modes begin. */
-  .app__nav--more .navbtn,
-  .app__nav--more:not([hidden]) + .app__nav .navbtn { flex: 0 0 auto; min-width: 4.75rem; }
-  .app__nav--more:not([hidden]) + .app__nav { gap: 0.25rem; border-left: 1px solid var(--line); padding-left: 0.75rem; }
-  .app__nav--more[hidden] + .app__nav { grid-column: 1 / -1; }
-  .app__nav--more:not([hidden]) + .app__nav .navbtn[aria-expanded] { display: none; }
+  /* ⚠ 22 Oct 2026: there is no shared wide bar any more. The bar is exactly
+     Capture · Now · Review · More on every width; More opens the menu of the
+     other screens ABOVE it, as on the phone, and nothing else joins the bar. */
+  .app__nav--menu { justify-content: center; }
+  .app__nav--menu .navbtn { flex: 0 1 9rem; }
 }
 
 /* ── The scrollbar ──────────────────────────────────────────────────────────

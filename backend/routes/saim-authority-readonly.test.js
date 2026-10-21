@@ -105,8 +105,8 @@ test('1. on a fresh database, status — repeated and concurrent — writes noth
   const s = many[0].json;
   // The correct zero state.
   assert.equal(s.contract, 'saim-authority-v1');
-  assert.equal(s.gates.device.open, false); assert.equal(s.gates.device.say, 'SAiM is technically locked on this device.');
-  assert.equal(s.grant, null); assert.equal(s.gates.allowance.say, 'SAiM has no allowance to act today.');
+  assert.equal(s.gates.device.open, false); assert.equal(s.gates.device.say, 'Carrying out moves is switched off on NEURO’s server.');
+  assert.equal(s.grant, null); assert.equal(s.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves today.');
   for (const k of ['blocks', 'minutes', 'notes', 'moves']) assert.deepEqual([s.allowance[k].granted, s.allowance[k].used, s.allowance[k].left], [0, 0, 0], k);
   assert.equal(s.allowance.spendPence, 0); assert.equal(s.allowance.contacts, 0);
   assert.equal(s.stopped, false); assert.deepEqual(s.receipts, []); assert.equal(s.active.state, 'none'); assert.equal(s.canAct, false);
@@ -138,9 +138,10 @@ test('2. the May do screen renders from that zero state, and rendering changes n
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
   const html = renderToString(React.createElement(mod.exports.AuthorityView, { state: { kind: 'ready', status: s } }));
   const t = html.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  assert.match(t, /SAiM is technically locked on this device\./);
-  assert.match(t, /SAiM has no allowance to act today\./);
-  assert.match(t, /Calendar blocks 0 of 0/); assert.match(t, /None yet\./);
+  assert.match(t, /Carrying out moves is switched off on NEURO’s server\./);
+  assert.match(t, /Allow SAiM to carry out up to three prepared moves today/);
+  assert.match(t, /you haven’t allowed any today\./);
+  assert.match(t, /Allow SAiM to carry out up to three prepared moves today/); assert.match(t, /Nothing has been carried out today\./);
   assert.match(html, /Stop all SAiM actions/);
   assert.deepEqual(fingerprint(), before, 'rendering May do from the zero state wrote nothing');
 });
@@ -194,7 +195,10 @@ test('3b. the schema is created atomically: concurrent first writers both succee
   // prove the creation is ONE transaction: ensure() runs exec inside
   // transaction(...).immediate(), so a partial schema cannot be observed.
   const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'authority-budget.js'), 'utf8');
-  assert.match(src, /g\.transaction\(\(\) => g\.exec\(`[\s\S]*CREATE TABLE IF NOT EXISTS saim_authority_grants[\s\S]*`\)\)\.immediate\(\);/);
+  assert.match(src, /g\.transaction\(\(\) => g\.exec\(`[\s\S]*\$\{grantsDDL\(\)\}[\s\S]*\$\{reservationsDDL\(\)\}[\s\S]*CREATE TABLE IF NOT EXISTS saim_authority_events[\s\S]*`\)\)\.immediate\(\);/);
+  assert.match(src, /function grantsDDL\(\) \{\s*return `\s*CREATE TABLE IF NOT EXISTS saim_authority_grants/);
+  // The three-move rebuild of an older table is ONE transaction too.
+  assert.match(src, /function _migrateCeilings\(\) \{[\s\S]*g\.transaction\(\(\) => \{[\s\S]*\}\)\.immediate\(\);/);
   // And concurrent first writes from separate processes on a fresh file both land without error.
   const { spawnSync } = require('child_process');
   const fresh = path.join(tmp, 'race.db');
@@ -215,7 +219,7 @@ test('3b. the schema is created atomically: concurrent first writers both succee
 test('4. existing authority data reads correctly — and reading it changes nothing', async () => {
   let s = (await call('GET', 'status')).json;
   assert.equal(s.grant.blockMinutes, 30);
-  assert.deepEqual([s.allowance.blocks.left, s.allowance.minutes.left, s.allowance.notes.left], [1, 30, 1]);
+  assert.deepEqual([s.allowance.blocks.left, s.allowance.minutes.left, s.allowance.notes.left, s.allowance.moves.left], [3, 90, 3, 3]);
   // A move uses its allowance (as the executor would), and leaves a receipt.
   const r = budget.reserve({ moveKey: 'm1', title: 'x', steps: [{ key: 'm1:calendar', kind: 'calendar.solo', minutes: 30 }, { key: 'm1:note', kind: 'vault.note' }] });
   assert.equal(r.ok, true);
