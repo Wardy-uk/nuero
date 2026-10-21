@@ -208,3 +208,12 @@
 .kmw__private { font-weight: 700; color: var(--kmw-gold); }
 .kmw__owed { margin-top: 10px; }
 .kmw__owed .kmw__choice { margin-top: 6px; }
+
+/* The private-draft interview on the promise card (26 Oct 2026). */
+.kmw__progress { font-weight: 700; font-size: 12px; color: var(--kmw-gold); }
+.kmw__ask-text { min-height: 72px; resize: vertical; max-width: 560px; }
+.kmw__said { margin: 8px 0; }
+.kmw__said-head { font-weight: 700; }
+.kmw__said-line { overflow-wrap: anywhere; }
+.kmw__parked, .kmw__dest { opacity: 0.85; }
+.kmw__actions .kmw__choice { margin-left: 8px; }

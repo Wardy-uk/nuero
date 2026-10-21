@@ -61,6 +61,9 @@ Object.assign(planner.DEFAULT_DEPS, {
   draft: async () => { drafts += 1; return { ok: true, text: '## Targets\n- Hybrid incentive targets were discussed and need agreeing', gaps: ['the numbers'] }; },
 });
 
+// Duty is pinned: the view holds a move off duty, so an unpinned clock made this file fail every evening.
+require('../services/prepared-move').readDuty = async () => ({ onDuty: true, why: 'working' });
+
 let server; let base;
 test.before(async () => {
   await db.init();

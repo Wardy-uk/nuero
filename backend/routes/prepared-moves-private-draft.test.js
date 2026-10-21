@@ -344,13 +344,14 @@ test('the capacity card opens the draft at its next question; a card with no pro
   const m = require('../services/promise-moves').moveFor(itemFor('promise:600', tid, { state: 'needs-a-block' }));
   assert.equal(m.state, 'interview');
   assert.equal(m.question.id, 'achievable'); assert.equal(m.question.canPark, true);
-  assert.match(m.say, /decision 1 of 4/);
+  assert.match(m.say, /^Decision 1 of 4: What does ‘achievable’ mean here/);
+  assert.equal(m.destinationSay, 'Not saved yet. When you choose to save it, this draft will go in the Support Hub project.');
   const cr = require('../services/canonical-read');
   const card = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', meta: { taskId: tid } };
   const other = { kind: 'item', type: 'capacity', actionHint: 'Open State of Play', meta: { taskId: 99999 } };
   cr.linkPromiseOpens([card, other], { 'promise:600': m });
   assert.equal(card.actionHint, 'Answer SAiM’s question');
-  assert.equal(card.open.show, 'draft'); assert.equal(card.open.recordId, rec.id);
+  assert.equal(card.open.show, 'promise', 'mid-interview the question is on the promise card'); assert.equal(card.open.recordId, rec.id);
   assert.equal(other.actionHint, 'Open State of Play'); assert.equal(other.open, undefined);
 });
 
@@ -554,4 +555,80 @@ test('a private draft prepared under the 25 Oct rule (no interview, beside the m
   const s = store.latest(planner.moveKeyFor('project-note', `task:${tid}`)).packet.selected;
   assert.ok(s.interview && s.interview.next, 'with the interview');
   assert.match(s.decision.proposedWrites.find((w) => w.kind === 'vault.note').path, /^Projects\/Working\//);
+});
+
+test('THE LIVE FAILURE (26 Oct 2026): an older private draft whose evidence hash matches is never handed back — the press re-plans and returns the interview', async () => {
+  const T = 'Define the hybrid WFH incentive targets for the second line';
+  fs.writeFileSync(path.join(VAULT, 'Areas', 'Live.md'), `# Live\n- Define the hybrid WFH incentive targets for the second line.\n${PEOPLE_LINES}`);
+  require('../services/task-store').createTask({ text: T, source: 'manual', origin_path: 'Areas/Live.md' });
+  const tid = db.get('SELECT id FROM tasks WHERE text = ?', [T]).id;
+  promises.set('promise:990', promiseOf('promise:990', T, tid));
+  const mk = planner.moveKeyFor('project-note', `task:${tid}`);
+  const first = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:990' } });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const cur = store.latest(mk);
+  // The live shape: the 25 Oct packet (no interview, beside the meeting) carrying the SAME evidence hash a fresh gather produces.
+  const old = JSON.parse(JSON.stringify(cur.packet));
+  delete old.selected.interview;
+  old.selected.decision.slots = old.selected.decision.slots.filter((x) => x.id !== 'unfinished');
+  old.selected.decision.proposedWrites.find((w) => w.kind === 'vault.note').path = `Meetings/2026/09/${planner.safeTitle(T)} – Private draft.md`;
+  const row = db.get('SELECT * FROM prepared_moves WHERE id = ?', [cur.id]);
+  const oldId = 'pm_00000000000000live01';
+  db.run('INSERT INTO prepared_moves (id, move_key, version, contract, packet_json, packet_hash, options_json, decided_at, evidence_expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [oldId, mk, row.version + 1, row.contract, JSON.stringify(old), 'live-shape', JSON.stringify({ approve: {} }), row.decided_at, row.evidence_expires_at, new Date().toISOString()]);
+  assert.equal(store.latest(mk).packet.selected.evidenceHash, cur.packet.selected.evidenceHash, 'the hash collides, as it did live');
+  const before = outward();
+  const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:990' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.notEqual(r.body.outcome, 'unchanged', 'the old record is NOT handed back');
+  assert.notEqual(store.latest(mk).id, oldId);
+  assert.ok(r.body.move, 'something to show');
+  assert.equal(r.body.promiseMove.state, 'interview');
+  assert.equal(r.body.promiseMove.question.id, 'achievable');
+  assert.equal(r.body.promiseMove.question.canPark, true);
+  assert.equal(r.body.promiseMove.recordId, store.latest(mk).id);
+  assert.equal(r.body.promiseMove.version, store.latest(mk).version);
+  assert.equal(r.body.promiseMove.destinationSay, 'Not saved yet. When you choose to save it, this draft will go in Working drafts.');
+  assert.doesNotMatch(JSON.stringify(r.body), /Nothing more to prepare/);
+  assert.deepEqual(outward(), before, 'still nothing written, sent or booked');
+  // The answer comes back in the SAME contract, with the next question.
+  const a = await call('/api/prepared-moves/answer', { method: 'POST', body: { recordId: r.body.promiseMove.recordId, version: r.body.promiseMove.version, questionId: 'achievable', text: 'Measured monthly' } });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  assert.equal(a.body.promiseMove.state, 'interview');
+  assert.equal(a.body.promiseMove.question.id, 'incentive');
+  assert.deepEqual(a.body.promiseMove.interview.said.map((x) => x.answer), ['Measured monthly']);
+});
+
+test('the route never answers success with nothing to show: a record the view refuses is a 409 that says why — never "Nothing more to prepare"', async () => {
+  const T = 'Define the hybrid WFH incentive targets for third line';
+  fs.writeFileSync(path.join(VAULT, 'Areas', 'Refused.md'), `# R\n- Define the hybrid WFH incentive targets for third line.\n${PEOPLE_LINES}`);
+  require('../services/task-store').createTask({ text: T, source: 'manual', origin_path: 'Areas/Refused.md' });
+  const tid = db.get('SELECT id FROM tasks WHERE text = ?', [T]).id;
+  promises.set('promise:991', promiseOf('promise:991', T, tid));
+  const view = require('../services/prepared-move-view');
+  const real = view.v2View;
+  view.v2View = async () => ({ move: null, why: 'the view refused it' });
+  try {
+    const r = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:991' } });
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /SAiM couldn’t show what it prepared \(the view refused it\)\. Nothing was saved, booked or sent\./);
+    const res = await import(require('url').pathToFileURL(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'presentation', 'promiseMove.mjs')).href);
+    const shown = res.promiseMoveResult(r.body);
+    assert.equal(shown.kind, 'refused');
+    assert.doesNotMatch(shown.message, /Nothing more to prepare/);
+    assert.doesNotMatch(JSON.stringify(res.promiseMoveResult({ ok: true })), /Nothing more to prepare/, 'not even for a bare ok');
+  } finally { view.v2View = real; }
+});
+
+test('the card read off canonical Now carries the SAME contract as the route: canPark, the not-saved-yet line, the record and version', async () => {
+  const tid = db.get("SELECT id FROM tasks WHERE text = 'Define the hybrid WFH incentive targets for the second line'").id;
+  const item = { ...itemFor('promise:990', tid, { state: 'needs-a-block', why: 'x' }), owedTo: null, due: { date: '2026-10-16', say: 'overdue', endsAt: '' }, evidence: [], because: [] };
+  const m = require('../services/promise-moves').moveFor(item);
+  assert.equal(m.state, 'interview');
+  const t = require('../services/keep-my-word').compose({ workbench: { state: 'ok', items: [item] }, moves: { 'promise:990': m } }).thread;
+  assert.equal(t.move.question.canPark, true, 'Park survives the trip through Now');
+  assert.equal(t.move.destinationSay, 'Not saved yet. When you choose to save it, this draft will go in Working drafts.');
+  assert.equal(t.move.recordId, m.recordId); assert.equal(t.move.version, m.version);
+  assert.equal(t.move.moveKey, m.moveKey);
+  assert.deepEqual(t.move.interview.said.map((x) => x.answer), ['Measured monthly']);
 });

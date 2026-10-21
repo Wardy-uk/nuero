@@ -318,6 +318,9 @@ function destinationFor(task, deps) {
   return { folder: brief.WORKING_FOLDER, project: null, basis: found.size ? 'conflict' : 'none', candidates: [...found.keys()] };
 }
 
+/** Bumped whenever what a private draft IS changes (26 Oct 2026: the interview + where it is kept). */
+const PRIVATE_DRAFT_RULE = 'interview-1';
+
 function privateBriefGather({ n, p, task, mode, roster, answers, said, observed, freshness, nowMs, deps }) {
   const brief = require('./private-brief');
   const origin = String(task.origin_path || '');
@@ -350,7 +353,8 @@ function privateBriefGather({ n, p, task, mode, roster, answers, said, observed,
     title: task.text, task: { id: task.id, text: task.text, due: task.due_date || null },
     // Projects/Working is created by the governed save itself if it is not there yet.
     notePath, folder: dest.folder, destination: dest, folderExists: dest.folder === brief.WORKING_FOLDER ? true : _exists(dest.folder), observed, facts: out.facts, freshness,
-    evidenceHash: sha(JSON.stringify([n.sourceKey, 'private-draft', task.text, src.lines.map((l) => l.line + l.text), src.leftOut, answers || []])),
+    // The RULE is part of the evidence: a draft planned under an older rule (no interview, another place) must never match a fresh one.
+    evidenceHash: sha(JSON.stringify([n.sourceKey, 'private-draft', PRIVATE_DRAFT_RULE, dest.folder, task.text, src.lines.map((l) => l.line + l.text), src.leftOut, answers || []])),
     employment,
   };
 }
@@ -796,7 +800,14 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
     }
     // Unchanged evidence → the stored proposal stands; no model call is bought.
     const prior = deps.latest(moveKey);
+    // ⚠ The match is only kept if the stored proposal still stands: an unchanged hash over a
+    // packet that now fails its own re-check (an older rule, a moved source) is re-planned —
+    // handing it back is how "Nothing more to prepare" reached Nick with nothing prepared (26 Oct 2026).
+    let stands = false;
     if (prior && prior.packet && prior.packet.selected && prior.packet.selected.evidenceHash === g.evidenceHash) {
+      try { stands = prior.packet.selected.plan === 'ask' || (await recheck(prior.packet, { deps: over })).ok === true; } catch { stands = false; }
+    }
+    if (stands) {
       deps.markChecked(prior.id, nowMs);
       return { ok: true, outcome: ref && !source && prior.packet.selected.plan === 'ask' ? 'existing' : 'unchanged', record: prior, withheld };
     }

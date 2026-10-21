@@ -242,6 +242,10 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
     if (recordId) active = [...active.filter((r) => r.id === recordId), ...active.filter((r) => r.id !== recordId)];
     let outstanding = [];
     try { outstanding = outstandingFrom(active, now); } catch { outstanding = []; }
+    // A private draft still mid-interview is worked on its promise card (26 Oct 2026),
+    // not shown a second time here — unless Nick asked for that record.
+    const midInterview = (r) => { const x = r.packet && r.packet.selected; return Boolean(x && x.plan === 'draft' && x.interview && x.interview.next); };
+    if (!recordId) active = active.filter((r) => !midInterview(r));
     for (const rec of active) {
       const duty = await (deps.readDuty || ((t) => require('./prepared-move').readDuty(t)))(now);
       const v = await v2View(rec, { now, duty, checks: deps.checks ? deps.checks({ now }) : null });

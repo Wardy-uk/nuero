@@ -1357,7 +1357,8 @@ function linkPromiseOpens(cards, moves) {
     if (!c || c.kind !== 'item' || !c.meta || c.meta.taskId == null) continue;
     const m = byTask.get(Number(c.meta.taskId));
     if (!m || !OPEN_SAY[m.state]) continue;
-    const draft = ['interview', 'needs-decision', 'ready', 'scheduled', 'done'].includes(m.state) && m.recordId;
+    // Mid-interview the question is ON the promise card, so that is where it opens.
+    const draft = ['needs-decision', 'ready', 'scheduled', 'done'].includes(m.state) && m.recordId;
     c.open = { kind: 'promise', ref: m.ref, recordId: m.recordId || null, state: m.state, show: draft ? 'draft' : 'promise', privateDraft: Boolean(m.privateDraft) };
     c.actionHint = m.state === 'interview' ? OPEN_SAY.interview : m.privateDraft && draft ? 'Open the private draft' : m.privateDraft && m.state === 'offer' ? 'Prepare a private working draft' : OPEN_SAY[m.state];
   }

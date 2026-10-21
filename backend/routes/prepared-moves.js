@@ -57,10 +57,24 @@ const by = (req) => { const m = caller(req).machine || (req.apiClient ? String(r
 const planner = () => require('../services/prepared-move-planner');
 const pstore = () => require('../services/prepared-move-store');
 /** The stored proposal as /current would show it, for a reply. */
-async function shown(record) {
+/** The view of a stored record, or why it cannot be shown. */
+async function shownWhy(record) {
   const duty = await require('../services/prepared-move').readDuty(Date.now());
   const v = await view().v2View(record, { duty });
-  return v.move || null;
+  return { move: v.move || null, why: v.why || null };
+}
+/**
+ * The answer for a record a press or an answer produced (26 Oct 2026). ⚠ NEVER
+ * success with nothing to show: a stored record the view refuses is a 409 that
+ * says why, or the card renders a no-op sentence over nothing prepared. A
+ * promise's move also carries `promiseMove` — the ONE object the promise card
+ * renders, the same one canonical Now gives it.
+ */
+async function recordAnswer(res, r, extra = {}) {
+  const sh = await shownWhy(r.record);
+  if (!sh.move) return res.status(409).json({ ok: false, ...extra, error: `SAiM couldn’t show what it prepared${sh.why ? ` (${sh.why})` : ''}. Nothing was saved, booked or sent.` });
+  const promiseMove = require('../services/promise-moves').fromRecord(r.record);
+  return res.json({ ok: true, ...extra, outcome: r.outcome, move: sh.move, ...(promiseMove ? { promiseMove } : {}), confirmWhere: 'Only Nick can confirm it, on his SAiM screen.' });
 }
 
 // GET /api/prepared-moves/current — prepared move, read only (make ready, SAiM proposal, drafted reply, meeting prep): what SAiM has prepared now — the draft, evidence and freshness, exact writes, any question she needs answered, and `makeReady` when nothing is prepared. Stores and mints nothing. Machines may read; only Nick confirms.
@@ -118,7 +132,7 @@ router.post('/prepare', async (req, res) => {
     if (ref.startsWith('promise:')) freshKmw();
     if (r.outcome === 'handoff') return res.json({ ok: true, outcome: 'handoff', say: r.why, handoff: r.handoff, move: null, withdrawn: withdrawn && withdrawn.withdrawn });
     if (!r.record) return res.json({ ok: true, outcome: r.outcome, say: r.why || null, move: null, withdrawn: withdrawn && withdrawn.withdrawn });
-    res.json({ ok: true, outcome: r.outcome, move: await shown(r.record), confirmWhere: 'Only Nick can confirm it, on his SAiM screen.', ...(withdrawn ? { withdrawn: withdrawn.withdrawn || null } : {}) });
+    return recordAnswer(res, r, withdrawn ? { withdrawn: withdrawn.withdrawn || null } : {});
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -159,7 +173,8 @@ router.post('/answer', async (req, res) => {
     if ((s.source || {}).promiseKey) freshKmw();
     if (r.ok && r.outcome === 'handoff') return res.json({ ok: true, answered: true, outcome: 'handoff', say: r.why, handoff: r.handoff, move: null });
     if (!r.ok) return res.status(409).json({ ok: false, error: r.why, answered: true });
-    res.json({ ok: true, answered: true, outcome: r.outcome, move: r.record ? await shown(r.record) : null });
+    if (!r.record) return res.json({ ok: true, answered: true, outcome: r.outcome, say: r.why || null, move: null });
+    return recordAnswer(res, r, { answered: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

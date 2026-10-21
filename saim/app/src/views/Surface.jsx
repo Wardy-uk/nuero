@@ -704,8 +704,10 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       // Keep my word: take a held promise forward — asks, in place, what SAiM needs; stores a proposal only.
       onPromiseMove={async (op) => {
         const r = await promiseMove(op);
-        // A draft just prepared from its card is shown on Home straight away.
-        if (r && r.ok && r.move && r.move.plan === 'draft' && r.move.recordId) setShowMove({ recordId: r.move.recordId, n: Date.now() });
+        // The interview happens ON the promise card. Home opens the draft only for the
+        // governed save — once every decision is answered or parked (26 Oct 2026).
+        const pmv = r && r.ok && r.promiseMove;
+        if (pmv && ['needs-decision', 'ready'].includes(pmv.state) && pmv.recordId) setShowMove({ recordId: pmv.recordId, n: Date.now() });
         return r;
       }}
       canOpen={canOpen}

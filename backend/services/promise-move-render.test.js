@@ -117,8 +117,10 @@ test('needs-decision on the card says nothing is booked; scheduled says when', (
 test('KmwMove sends only prepare(ref) and answer(recordId, version, questionId, text) — nothing else', () => {
   const src = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'), 'utf-8');
   const body = src.slice(src.indexOf('export function KmwMove'), src.indexOf('export function KmwThread'));
-  assert.match(body, /\{ action: 'prepare', ref: move\.ref \}/);
-  assert.match(body, /\{ action: 'answer', recordId: asking\.recordId, version: asking\.version, questionId: asking\.question\.id, text: t \}/);
+  assert.match(body, /\{ action: 'prepare', ref: cur\.ref \}/);
+  assert.match(body, /\{ action: 'answer', recordId: cur\.recordId, version: cur\.version, questionId: q\.id, text: t \}/);
+  assert.match(body, /\{ action: 'park', recordId: cur\.recordId, version: cur\.version, questionId: q\.id \}/);
+  assert.match(body, /\{ action: 'withdraw', ref: cur\.ref \}/);
   assert.doesNotMatch(body, /fetch\(|confirm|approve|send/i);
 });
 

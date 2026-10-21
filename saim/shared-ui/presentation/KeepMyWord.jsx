@@ -110,44 +110,60 @@ function DraftResult({ result, draft, onOpenActions }) {
  */
 export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState(null); // promiseMoveResult()
+  const [local, setLocal] = useState(null); // the move a press or an answer just returned (promiseMove)
+  const [note, setNote] = useState(null);   // { message, error } — a sentence, never a state
   const [text, setText] = useState('');
-  if (!move) return null;
+  if (!move && !local) return null;
+  // ONE contract (26 Oct 2026): what the route returned IS the card's move. A
+  // newer move from a poll wins over an older local one, never the other way.
+  const cur = local && (!move || (local.moveKey === move.moveKey && (local.version || 0) >= (move.version || 0)) || move.state === 'offer') ? local : move;
   const can = Boolean(onPromiseMove) && !readOnly;
-  // The question on screen: one just asked, or the one the move is already asking.
-  const asking = step && step.kind === 'ask' ? step
-    : !step && move.state === 'ask' && move.question ? { kind: 'ask', question: move.question, recordId: move.recordId, version: move.version } : null;
-  const run = async (op, answering) => {
+  const run = async (op, { answering = false } = {}) => {
     if (busy) return;
     setBusy(true);
     try {
       const r = promiseMoveResult(await onPromiseMove(op), { answering });
-      if (r.kind === 'refused' && r.keep) setStep({ ...asking, refused: r.message });
-      else { setStep(r); setText(''); }
+      if (r.kind === 'move') { setLocal(r.move); setNote(null); setText(''); }
+      else if (r.kind === 'ask') { setLocal({ ...cur, state: 'ask', question: r.question, recordId: r.recordId, version: r.version, say: r.question.question }); setNote(null); setText(''); }
+      else if (r.kind === 'refused') setNote({ message: r.message, error: true }); // the words stay in the box
+      else { setNote({ message: r.say, error: false }); setText(''); }
     } catch {
-      setStep(answering ? { ...asking, refused: 'NEURO didn’t answer. Your answer was not saved — it is still in the box.' } : { kind: 'refused', message: 'NEURO didn’t answer. Nothing was changed.' });
+      setNote({ message: answering ? 'NEURO didn’t answer. Your answer was not saved — it is still in the box.' : 'NEURO didn’t answer. Nothing was changed.', error: true });
     } finally { setBusy(false); }
   };
-  const press = () => run({ action: 'prepare', ref: move.ref }, false);
-  const withdraw = () => run({ action: 'withdraw', ref: move.ref }, false);
+  const q = cur && ['ask', 'interview'].includes(cur.state) ? cur.question : null;
+  const press = () => run({ action: 'prepare', ref: cur.ref });
+  const withdraw = () => run({ action: 'withdraw', ref: cur.ref });
   const submit = (e) => {
     e.preventDefault();
     const t = text.trim();
-    if (!t || !asking) return;
-    run({ action: 'answer', recordId: asking.recordId, version: asking.version, questionId: asking.question.id, text: t }, true);
+    if (!t || !q) return;
+    run({ action: 'answer', recordId: cur.recordId, version: cur.version, questionId: q.id, text: t }, { answering: true });
   };
-  const q = asking && asking.question;
-  const pd = move.privateDraft || null;
-  const oa = move.owedAnswer || null;
+  const park = () => run({ action: 'park', recordId: cur.recordId, version: cur.version, questionId: q.id });
+  const pd = cur.privateDraft || null;
+  const oa = cur.owedAnswer || null;
+  const iv = cur.interview || null;
+  const id = `kmw-q-${String(cur.ref || 'p').replace(/[^A-Za-z0-9_-]/g, '-')}`;
   return (
     <div className={`kmw__row kmw__row--move${pd ? ' kmw__row--private' : ''}`}>
       <span className="kmw__rowlabel">Next</span>
       <div>
         {pd && <p className="kmw__rowline kmw__private">{pd.label}</p>}
-        {move.say && !step && move.state !== 'ask' && <p className="kmw__rowline">{move.say}</p>}
+        {cur.state === 'interview' && iv && <p className="kmw__rowline kmw__progress">Decision {iv.n} of {iv.total}</p>}
+        {cur.state !== 'ask' && cur.state !== 'interview' && cur.say && <p className="kmw__rowline">{cur.say}</p>}
+        {iv && iv.said && iv.said.length > 0 && (
+          <div className="kmw__said">
+            <p className="kmw__rowline kmw__said-head">You said</p>
+            {iv.said.map((x) => <p key={x.id} className="kmw__rowline kmw__said-line"><b>{x.decision}:</b> {x.answer}</p>)}
+          </div>
+        )}
+        {iv && iv.parked && iv.parked.length > 0 && (
+          <p className="kmw__rowline kmw__parked">Parked — still unresolved: {iv.parked.map((x) => x.decision).join('; ')}.</p>
+        )}
         {q ? (
           <form className="kmw__ask" onSubmit={submit}>
-            <label className="kmw__rowline kmw__ask-q" htmlFor={`kmw-q-${move.ref}`}>{q.question}</label>
+            <label className="kmw__rowline kmw__ask-q" htmlFor={id}>{q.question}</label>
             {q.why && <p className="kmw__rowline kmw__ask-why">{q.why}</p>}
             {can ? (
               <>
@@ -156,18 +172,22 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false }) {
                     {q.choices.map((c) => <button key={c} type="button" className={`kmw__choice${text === c ? ' kmw__choice--on' : ''}`} onClick={() => setText(c)} disabled={busy}>{c}</button>)}
                   </div>
                 )}
-                <input id={`kmw-q-${move.ref}`} className="kmw__ask-input" type="text" maxLength={120} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} placeholder="A full name, or a group" autoComplete="off" />
-                <div className="kmw__actions"><button type="submit" className="kmw__open" disabled={busy || !text.trim()}>{busy ? 'Telling SAiM…' : 'Tell SAiM'}</button></div>
+                {q.id === 'owed'
+                  ? <input id={id} className="kmw__ask-input" type="text" maxLength={120} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} placeholder="A full name, or a group" autoComplete="off" />
+                  : <textarea id={id} className="kmw__ask-input kmw__ask-text" rows={3} maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} placeholder="In your own words" />}
+                <div className="kmw__actions">
+                  <button type="submit" className="kmw__open" disabled={busy || !text.trim()}>{busy ? 'Telling SAiM…' : 'Tell SAiM'}</button>
+                  {q.canPark && <button type="button" className="kmw__choice" onClick={park} disabled={busy}>Park this for now</button>}
+                </div>
               </>
             ) : <p className="kmw__rowline">Answer this in SAiM on your phone or desktop.</p>}
-            {asking.refused && <p className="kmw__rowline kmw__draft-error" role="status">{asking.refused}</p>}
           </form>
-        ) : step ? (
-          <p className={`kmw__rowline${step.kind === 'refused' ? ' kmw__draft-error' : ' kmw__draft-done'}`} role="status">{step.kind === 'refused' ? step.message : step.say}</p>
-        ) : move.state === 'offer' && move.control && can ? (
-          <div className="kmw__actions"><button type="button" className="kmw__open" onClick={press} disabled={busy}>{busy ? 'One moment…' : move.control}</button></div>
+        ) : cur.state === 'offer' && cur.control && can ? (
+          <div className="kmw__actions"><button type="button" className="kmw__open" onClick={press} disabled={busy}>{busy ? 'One moment…' : cur.control}</button></div>
         ) : null}
-        {oa && !step && (
+        {cur.destinationSay && <p className="kmw__rowline kmw__dest">{cur.destinationSay}</p>}
+        {note && <p className={`kmw__rowline${note.error ? ' kmw__draft-error' : ' kmw__draft-done'}`} role="status">{note.message}</p>}
+        {oa && cur.state === 'offer' && (
           <div className="kmw__owed">
             <p className="kmw__rowline">{oa.say}</p>
             {can && <button type="button" className="kmw__choice" onClick={withdraw} disabled={busy}>{oa.control}</button>}

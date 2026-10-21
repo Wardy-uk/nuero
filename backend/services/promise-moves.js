@@ -48,6 +48,67 @@ function scheduledSay(b) {
 }
 
 /**
+ * PURE (given the store's reads). ONE prepared-move record as the promise card
+ * shows it — the shared contract (26 Oct 2026): the card reads it off Now, and
+ * /prepare and /answer return the SAME object as `promiseMove`, so the desktop
+ * and the phone render one interpretation of one response.
+ *   → { state, ref, moveKey, recordId, version, say, question?, interview?, destinationSay?, ... } | null
+ */
+function stateOf(rec, { now = Date.now(), store, extra = {}, ref, moveKey }) {
+  const s = rec.packet.selected;
+  const booked = store.scheduledFor(moveKey);
+  const dest = (s.deliverable || {}).destination || null;
+  // Never a claim that something is saved or where — only where it WILL go when Nick chooses to save it.
+  const destinationSay = s.privateDraft && s.plan === 'draft'
+    ? `Not saved yet. When you choose to save it, this draft will go in ${dest && dest.project ? `the ${dest.project} project` : 'Working drafts'}.`
+    : null;
+  if (store.completedMove(moveKey)) return { ...extra, state: booked ? 'scheduled' : 'done', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: booked ? scheduledSay(booked) : 'Carried out — every change was read back.' };
+  const sup = store.suppression(moveKey, now);
+  if (sup) return { ...extra, state: sup.response, ref, moveKey, recordId: rec.id, version: rec.version, say: sup.say };
+  if (!(Date.parse(rec.evidenceExpiresAt) > now)) return null;
+  if (s.plan === 'ask') {
+    const q = ((s.ask || {}).questions || [])[0] || null;
+    return { ...extra, state: 'ask', ref, moveKey, recordId: rec.id, version: rec.version, question: q, headline: s.headline, say: q ? q.question : s.headline };
+  }
+  const iv = s.interview || null;
+  const ivView = iv ? {
+    done: iv.done, total: iv.total, open: iv.open,
+    n: iv.next ? iv.questions.findIndex((x) => x.id === iv.next.id) + 1 : null,
+    said: iv.questions.filter((q) => q.state === 'answered').map((q) => ({ id: q.id, decision: q.decision, answer: q.answer })),
+    parked: iv.questions.filter((q) => q.state === 'parked').map((q) => ({ id: q.id, decision: q.decision })),
+  } : null;
+  // A private draft still being worked through (26 Oct 2026): the ONE next question, answerable or parkable.
+  if (s.plan === 'draft' && iv && iv.next) {
+    const q = iv.next;
+    return { ...extra, state: 'interview', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
+      question: { id: q.id, question: q.question, why: q.why || null, choices: [], canPark: true },
+      interview: ivView, destinationSay,
+      say: `Decision ${ivView.n} of ${iv.total}: ${q.question}` };
+  }
+  if (booked) return { ...extra, state: 'scheduled', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: scheduledSay(booked) };
+  if (store.needsBlock(rec)) {
+    const slot = ((s.decision || {}).slots || [])[0] || {};
+    return { ...extra, state: 'needs-decision', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, interview: ivView, destinationSay,
+      say: iv ? `Every decision is answered or parked. Save it and protect the time from the draft on your SAiM home${slot.date ? ` — I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet` : ''}.`
+        : `Prepared — it needs your decision before I can schedule it${slot.date ? ` (I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet)` : ''}. It’s on your SAiM home.` };
+  }
+  return { ...extra, state: 'ready', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, interview: ivView, destinationSay, say: `${s.headline} It’s on your SAiM home for you to confirm.` };
+}
+
+/**
+ * The shared contract for a route's answer: the record a promise's move just
+ * became, as the card shows it. Null for anything that is not a promise's move.
+ */
+function fromRecord(rec, { now = Date.now(), deps = {} } = {}) {
+  const s = rec && rec.packet && rec.packet.selected;
+  const key = s && s.source && s.source.promiseKey;
+  if (!key) return null;
+  const store = deps.store || require('./prepared-move-store');
+  const extra = { privateDraft: s.privateDraft ? privateView() : null, owedAnswer: null, focusRef: `promise:${key}` };
+  return stateOf(rec, { now, store, extra, ref: `promise:${key}`, moveKey: rec.moveKey });
+}
+
+/**
  * The move state of one workbench item. `deps` (tests): planner, store, now.
  * → null when the promise is not one SAiM can take forward from here.
  */
@@ -79,33 +140,8 @@ function moveFor(item, { now = Date.now(), deps = {} } = {}) {
     // A private draft planned before the interview existed (26 Oct 2026) is offered again, never shown as finished work.
     && !(priv && rec.packet.selected.plan === 'draft' && !rec.packet.selected.interview);
   if (mine) {
-    const s = rec.packet.selected;
-    const booked = store.scheduledFor(moveKey);
-    if (store.completedMove(moveKey)) return { ...extra, state: booked ? 'scheduled' : 'done', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: booked ? scheduledSay(booked) : 'Carried out — every change was read back.' };
-    const sup = store.suppression(moveKey, now);
-    if (sup) return { ...extra, state: sup.response, ref, moveKey, recordId: rec.id, version: rec.version, say: sup.say };
-    if (Date.parse(rec.evidenceExpiresAt) > now) {
-      if (s.plan === 'ask') {
-        const q = ((s.ask || {}).questions || [])[0] || null;
-        return { ...extra, state: 'ask', ref, moveKey, recordId: rec.id, version: rec.version, question: q, headline: s.headline, say: q ? q.question : s.headline };
-      }
-      // A private draft still being worked through (26 Oct 2026): the ONE next question, answerable or parkable.
-      if (s.plan === 'draft' && s.interview && s.interview.next) {
-        const iv = s.interview; const q = iv.next;
-        const n = iv.questions.findIndex((x) => x.id === q.id) + 1;
-        return { ...extra, state: 'interview', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
-          question: { id: q.id, question: q.question, why: q.why || null, choices: [], canPark: true },
-          interview: { done: iv.done, total: iv.total, open: iv.open },
-          say: `Your private draft is ready to work on — decision ${n} of ${iv.total}: “${q.question}” It’s on your SAiM home.` };
-      }
-      if (booked) return { ...extra, state: 'scheduled', ref, moveKey, recordId: rec.id, version: rec.version, scheduled: booked, say: scheduledSay(booked) };
-      if (store.needsBlock(rec)) {
-        const slot = ((s.decision || {}).slots || [])[0] || {};
-        return { ...extra, state: 'needs-decision', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
-          say: `Prepared — it needs your decision before I can schedule it${slot.date ? ` (I’d suggest ${dayShort(slot.date)}, ${slot.start}–${slot.end}; nothing is booked yet)` : ''}. It’s on your SAiM home.` };
-      }
-      return { ...extra, state: 'ready', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline, say: `${s.headline} It’s on your SAiM home for you to confirm.` };
-    }
+    const st = stateOf(rec, { now, store, extra, ref, moveKey });
+    if (st) return st;
   }
   // Nothing open for this promise: offer the one control that takes it forward.
   const p = item.preparation;
@@ -141,4 +177,4 @@ async function list({ now = Date.now() } = {}) {
   };
 }
 
-module.exports = { OWED_CONTROL, READY_CONTROL, PRIVATE_CONTROL, moveFor, list, scheduledSay };
+module.exports = { OWED_CONTROL, READY_CONTROL, PRIVATE_CONTROL, stateOf, fromRecord, moveFor, list, scheduledSay };

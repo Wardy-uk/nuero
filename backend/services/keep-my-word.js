@@ -252,7 +252,10 @@ function moveView(m) {
   return {
     state: m.state, ref: m.ref, control: m.control || null, say: m.say || null,
     privateDraft: m.privateDraft || null, owedAnswer: m.owedAnswer || null, focusRef: m.focusRef || null, interview: m.interview || null,
-    question: m.question ? { id: m.question.id, question: m.question.question, why: m.question.why || null, choices: m.question.choices || [] } : null,
+    // The SAME fields /prepare and /answer return as `promiseMove` (26 Oct 2026) — a field dropped here is a
+    // control that exists on one path and not the other (Park vanished on the desktop after a refresh).
+    question: m.question ? { id: m.question.id, question: m.question.question, why: m.question.why || null, choices: m.question.choices || [], canPark: Boolean(m.question.canPark) } : null,
+    destinationSay: m.destinationSay || null, moveKey: m.moveKey || null, headline: m.headline || null,
     recordId: m.recordId || null, version: m.version || null, scheduled: m.scheduled || null,
   };
 }
