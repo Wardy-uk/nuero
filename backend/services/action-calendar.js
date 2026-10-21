@@ -120,7 +120,32 @@ async function cancelEvent(eventId, { comment = '' } = {}) {
   return { outcome: classify(r), status: r.status, category: r.category || null };
 }
 
+/**
+ * Decline an invite Nick did NOT organise (21 Oct 2026, leave-guard only).
+ * Graph mails the organiser the response with the comment; on an occurrence it
+ * declines that one day, never the series.
+ */
+async function declineEvent(eventId, { comment = '' } = {}) {
+  const r = await _req('POST', `/me/events/${encodeURIComponent(eventId)}/decline`, {
+    comment: String(comment || '').slice(0, 2000), sendResponse: true,
+  });
+  return { outcome: classify(r), status: r.status, category: r.category || null };
+}
+
+/**
+ * Read-back for a decline: Nick's own response on the event, or 'gone' — Outlook
+ * removes a declined meeting from the calendar, so a 404 after an accepted
+ * decline is the expected success. `null` = could not read (never a success).
+ */
+async function responseOf(eventId) {
+  const r = await _req('GET', `/me/events/${encodeURIComponent(eventId)}?$select=id,responseStatus,isCancelled`);
+  if (r.status === 404) return 'gone';
+  if (r.status >= 200 && r.status < 300 && r.data) return (r.data.responseStatus && r.data.responseStatus.response) || 'none';
+  return null;
+}
+
 module.exports = {
   MARKER_PROP, TIMEZONE, classify, normaliseEvent, createBody,
   createEvent, findByMarker, readEvent, eventsAt, moveEvent, cancelEvent,
+  declineEvent, responseOf,
 };

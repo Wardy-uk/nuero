@@ -60,6 +60,8 @@ const HUMAN_ORIGINS = Object.freeze({
   '1to1-book': 'human_direct',
   '1to1-move': 'human_direct',
   '1to1-cancel': 'human_direct',
+  // The Leave clashes card (21 Oct 2026): a move/cancel Nick ticked there.
+  'leave-clash': 'human_direct',
   'event-composer': 'human_direct',
   composer: 'human_direct',
   'chase-button': 'human_assisted',

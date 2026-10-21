@@ -1240,7 +1240,7 @@ module.exports = {
   afterGovernedCalendar,
   // exported for tests
   _internals: {
-    findGapInWindow, countOneToOnes, findSlot, reserve, subjectFor,
+    findGapInWindow, countOneToOnes, findSlot, reserve, subjectFor, ONE_TO_ONE_SUBJECT, awayFor, addDays,
     dateStr, isWorkingDay, earliestDate, toMinutes,
     isRealEventId, recordMove, findClashExcluding, MOVES_KEY,
     PM_WINDOW, AM_WINDOW, MAX_PER_DAY, SEARCH_DAYS,

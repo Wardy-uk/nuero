@@ -37,6 +37,9 @@ const SUPPRESSIBLE = new Set([
   'nudge_cleared',
   'weekly_review', 'knowledge_reflection', 'vault_hygiene', 'sweep_complete',
   'plaud', 'plan_milestone', 'teams_mention', 'day_plan',
+  // Leave guard (21 Oct 2026): a review card and a summary of declines — both
+  // can wait for the morning.
+  'leave_clashes', 'leave_declined',
   // The ambient layer — water, sitting, exercise, a health trend. SUPPRESSIBLE
   // by definition: it is the most interruptible thing SAiM says, and the whole
   // design rests on it respecting quiet hours, the dedupe and the hourly cap.

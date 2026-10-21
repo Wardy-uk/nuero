@@ -90,7 +90,7 @@ const CALENDAR_TYPES = new Set(['create_calendar_event', 'reschedule_calendar_ev
 // 9 Oct 2026: anything Nick started himself (or NEURO proposed on the screen
 // he was using) sends on his click — a one-use intent grant, no code. Must
 // match services/intent-grants.js HUMAN_ORIGINS (pinned by a test).
-const DIRECT_ORIGINS = new Set(['1to1-book', '1to1-move', '1to1-cancel', 'event-composer', 'composer', 'chase-button', 'weekly-risk', 'chat-attended']);
+const DIRECT_ORIGINS = new Set(['1to1-book', '1to1-move', '1to1-cancel', 'leave-clash', 'event-composer', 'composer', 'chase-button', 'weekly-risk', 'chat-attended']);
 const INITIATOR_WORDS = {
   human_direct: 'you',
   human_assisted: 'you, from something NEURO drafted',

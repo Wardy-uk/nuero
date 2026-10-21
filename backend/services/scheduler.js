@@ -911,7 +911,16 @@ function start() {
   // refresh keeps the previous copy rather than emptying it.
   const refreshAvailability = (why) => {
     require('./team-availability').refresh()
-      .then(r => { if (!r.ok) console.warn(`[Scheduler] Availability refresh (${why}) failed`); })
+      .then(r => {
+        if (!r.ok) { console.warn(`[Scheduler] Availability refresh (${why}) failed`); return; }
+        // Leave guard (21 Oct 2026): new leave → the clash card; and decline
+        // anything unanswered on a leave day (only while the switch is on).
+        const guard = require('./leave-guard');
+        return guard.detectNew()
+          .then(d => { if (d.fresh && d.fresh.length) console.log(`[LeaveGuard] new leave ${d.fresh.join(', ')} — ${d.items} clash(es)`); })
+          .then(() => guard.autoDecline())
+          .catch(e => console.error('[LeaveGuard] pass failed:', e.message));
+      })
       .catch(e => console.error(`[Scheduler] Availability refresh (${why}) error:`, e.message));
   };
   setTimeout(() => refreshAvailability('startup'), 20000);

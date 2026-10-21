@@ -5,6 +5,7 @@ import AttentionCard from './AttentionCard';
 import MeetingControls from './MeetingControls';
 import RoomOfferCard from './RoomOfferCard';
 import FrictionSection from './FrictionSection';
+import LeaveClashes from './LeaveClashes';
 import AmbientSection from './AmbientSection';
 import NowSituation from './canonical/NowSituation';
 import { useWorkOnly } from '../workOnly';
@@ -753,6 +754,8 @@ export default function AdhdPanel({ onNavigate }) {
         </section>
       )}
 
+      {/* Renders nothing unless something already booked sits on Nick's leave. */}
+      <LeaveClashes />
       <WhileHere data={cohort} onNavigate={onNavigate} />
       <DeskLaunch work={work} onOpen={openOnDesk} states={deskStates} />
 

@@ -181,6 +181,7 @@ app.use('/api/activity/timeline', require('./routes/activity-timeline'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/screen-usage', require('./routes/screen-usage'));
 app.use('/api/1to1', require('./routes/one-to-one'));
+app.use('/api/leave', require('./routes/leave'));
 app.use('/api/vault-actions', require('./routes/vault-actions'));
 app.use('/api/development-plan', require('./routes/development-plan'));
 app.use('/api/nova-signals', require('./routes/nova-signals'));

@@ -113,6 +113,18 @@ const WRITERS = Object.freeze({
     why: 'Arming the walk is the approval of this card to these people, sent only if he is overdue; the approver is the person missing, so it cannot wait for the approval code. Machine clients cannot arm, extend, cancel or check in.',
     readback: 'Sent Items by internetMessageId; a draft no longer a draft counts as sent',
   },
+  // 21 Oct 2026: declining an invite on a day People HR says Nick is on leave.
+  // Unattended only behind the Settings switch leave_auto_decline (turning it on
+  // IS the approval, Nick's call); otherwise one tap on the Leave clashes card.
+  'microsoft.calendar.leave-decline': {
+    target: "the organiser of a meeting on one of Nick's leave days", authority: 'A3',
+    initiation: 'timer behind the leave_auto_decline switch, or Nick on the Leave clashes card', ledger: true,
+    // Declining twice is harmless — Graph answers the same response again.
+    idempotentTarget: true,
+    effect: 'one decline (with a short "on annual leave" note) of one occurrence Nick did not organise; never a series, never his own meeting',
+    why: 'Only for invites still unanswered (timer) or ticked on the card (Nick), only on approved leave read from People HR; an accept on a leave day is his and is never overridden.',
+    readback: 'Graph re-read: responseStatus declined, or the event gone from the calendar',
+  },
   'gmail.unsubscribe': {
     target: "a mailing list's own one-click unsubscribe URL (RFC 8058)", authority: 'A3', initiation: 'Nick pressing Unsubscribe on the Gmail clean-up screen', ledger: true,
     // Unsubscribing twice is harmless, so Nick may re-try an unknown outcome.

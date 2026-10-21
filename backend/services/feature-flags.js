@@ -172,6 +172,19 @@ const FLAGS = [
     impact: 'may notify you before meetings; never contacts anyone else',
   },
   {
+    // 21 Oct 2026, Nick's call: decline automatically, under a switch he turns
+    // on. Default OFF — turning it on IS the approval of every such decline.
+    key: 'leave_auto_decline',
+    env: 'LEAVE_AUTO_DECLINE',
+    default: false,
+    label: 'Decline invites on my leave days',
+    description: 'When someone invites you to a meeting on a day People HR says you are on leave, and you have '
+      + 'not answered it, NEURO declines it with a short "I’m on annual leave that day" note, reads the answer '
+      + 'back from Outlook and tells you once what it declined. It never declines a meeting you organise, one you '
+      + 'have already accepted, or anything when your leave could not be read. Half days look like whole days.',
+    impact: 'declines meeting invites as you, on your leave days only',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

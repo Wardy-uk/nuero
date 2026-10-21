@@ -1,0 +1,58 @@
+/* Leave clashes (21 Oct 2026) — full width, like the rest of Now. */
+.leave-clash {
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.leave-clash__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.leave-clash__head h3 { margin: 0; font-size: 14px; color: var(--warning); }
+.leave-clash__head p { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+
+.leave-clash__table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.leave-clash__table th {
+  text-align: left; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted); font-weight: 500; padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.leave-clash__table td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-primary); }
+.leave-clash__table input[type="date"],
+.leave-clash__table input[type="datetime-local"] {
+  background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary);
+  border-radius: var(--radius-sm); padding: 3px 5px; font-size: 12px;
+}
+.leave-clash__off td { opacity: 0.5; }
+
+.leave-clash__verb {
+  font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); white-space: nowrap;
+}
+.leave-clash__verb--move, .leave-clash__verb--block, .leave-clash__verb--due { color: var(--accent); border-color: var(--accent); }
+.leave-clash__verb--decline, .leave-clash__verb--cancel { color: var(--warning); border-color: var(--warning); }
+
+.leave-clash__why { color: var(--text-secondary); max-width: 360px; }
+.leave-clash__sub { font-size: 10px; color: var(--text-muted); }
+.leave-clash__warn { font-size: 10px; color: var(--warning); }
+.leave-clash__x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.leave-clash__x:hover { color: var(--danger); }
+
+.leave-clash__gap {
+  margin: 6px 0; padding: 6px 8px; font-size: 11px; color: var(--warning);
+  background: rgba(240, 160, 64, 0.08); border-radius: var(--radius-sm);
+}
+.leave-clash__info { font-size: 11px; color: var(--text-muted); margin: 8px 0 0; }
+.leave-clash__actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+.leave-clash__results { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+.leave-clash__results li { padding: 4px 0; }
+.leave-clash__results li.ok { color: var(--success); }
+.leave-clash__results li.bad { color: var(--warning); }
