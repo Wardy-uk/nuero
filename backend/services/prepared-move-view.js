@@ -147,7 +147,7 @@ async function v2View(record, { now = Date.now(), duty = null, checks = null } =
     checkedAt: record.checkedAt || record.createdAt,
   };
   const d = duty || { onDuty: false, why: 'unknown' };
-  if (d.onDuty !== true) return { held: { reason: d.why, say: require('./prepared-move').HELD_SAY }, move: { ...common, held: true, options: [], prepared: { headline: require('./prepared-move').HELD_SAY, detail: s.headline } } };
+  if (!require('./prepared-move-exec').dutyPermits(d, record)) return { held: { reason: d.why, say: require('./prepared-move').HELD_SAY }, move: { ...common, held: true, options: [], prepared: { headline: require('./prepared-move').HELD_SAY, detail: s.headline } } };
   if (s.plan === 'ask') return { move: { ...common, options: [], moment: { headline: s.headline } } };
   const offered = []; const notOffered = [];
   const ck = checks || exec.defaultChecks({ adapters: { vault: exec.readOnlyVault() }, now });
@@ -244,8 +244,11 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
     try { outstanding = outstandingFrom(active, now); } catch { outstanding = []; }
     // A private draft still mid-interview is worked on its promise card (26 Oct 2026),
     // not shown a second time here — unless Nick asked for that record.
-    const midInterview = (r) => { const x = r.packet && r.packet.selected; return Boolean(x && x.plan === 'draft' && x.interview && x.interview.next); };
-    if (!recordId) active = active.filter((r) => !midInterview(r));
+    // ⚠ And once decided, its governed SAVE is on that card too (26 Oct 2026): a second
+    // copy here — held off duty, or picked over another move — is exactly how the
+    // save went missing after a refresh. Asked for by id, it is still answered.
+    const onItsCard = (r) => { const x = r.packet && r.packet.selected; return Boolean(x && x.privateDraft && x.source && x.source.promiseKey); };
+    if (!recordId) active = active.filter((r) => !onItsCard(r));
     for (const rec of active) {
       const duty = await (deps.readDuty || ((t) => require('./prepared-move').readDuty(t)))(now);
       const v = await v2View(rec, { now, duty, checks: deps.checks ? deps.checks({ now }) : null });

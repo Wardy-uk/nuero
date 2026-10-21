@@ -540,10 +540,29 @@ async function execute({ recordId, option = 'approve', grantId, adapters, target
 }
 const RUNNING = new Set();
 
+/**
+ * PURE. May this move go ahead under this duty reading? On duty: yes. Off duty —
+ * outside working hours ONLY, never on leave and never when duty is unreadable —
+ * a PRIVATE DRAFT Nick started himself from the promise card (only his press on
+ * /prepare creates one; machines are refused there) may still be saved: he has
+ * just worked through its interview, and holding his own save "for the next
+ * working morning" stranded him (Nick, 21 Oct 2026). Every other gate — switch,
+ * stop, allowance, fresh checks, a one-use confirmation — still applies, and every
+ * other move stays held off duty. ONE rule for the view, /request, /confirm and
+ * the executor, so a save shown is a save that can be carried out.
+ */
+function dutyPermits(duty, record) {
+  if (duty && duty.onDuty === true) return true;
+  if (!duty || duty.why !== 'off-duty') return false;
+  const pkt = record && record.packet;
+  const s = pkt && pkt.selected;
+  return Boolean(pkt && pkt.contract === 'prepared-move-v2' && s && s.privateDraft && s.source && s.source.promiseKey);
+}
+
 async function _executeHeld({ record, w, option, grantId, adapters, kind, checks, now, budget }) {
   // 4. Off duty: prepare and read only — never act.
   const duty = await deps.readDuty(now);
-  if (!duty || duty.onDuty !== true) return refuse(HELD, { held: true });
+  if (!dutyPermits(duty, record)) return refuse(HELD, { held: true });
 
   // 4. The confirmation must be a prepared-move grant (anyone else's is left unspent).
   const ig = require('./intent-grants');
@@ -783,7 +802,7 @@ async function _requestStored({ recordId, option, surface, sessionId, caller, no
   const w = writesFor(record.packet, option);
   if (!w.ok) return { ...w, code: 409 };
   const duty = await deps.readDuty(now);
-  if (!duty || duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
+  if (!dutyPermits(duty, record)) return refuse(HELD, { code: 409, held: true });
   const budgetSteps = w.steps.map(budgetStep);
   const b = budget.brief({ now }).boundary;
   let begun = false;
@@ -819,12 +838,12 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
   if (!executionEnabled()) return refuse(`Carrying out prepared moves is switched off (${FLAG}) — nothing was written and your confirmation was not used.`, { code: 409, disabled: true, gate: 'device' });
   const budget = require('./authority-budget');
   if (budget.stopState().stopped) return refuse(`${budget.STOPPED_SAY} Nothing was written and your confirmation was not used.`, { code: 409, gate: 'stop' });
-  // Re-read now: a confirmation minted in working hours is not used off duty.
-  const duty = await deps.readDuty(now);
-  if (!duty || duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });
   const store = require('./prepared-move-store');
   const record = store.get(recordId);
   if (!record) return refuse('no such prepared move', { code: 404 });
+  // Re-read now: a confirmation minted in working hours is not used off duty (dutyPermits names the one exception).
+  const duty = await deps.readDuty(now);
+  if (!dutyPermits(duty, record)) return refuse(HELD, { code: 409, held: true });
   if (Number(version) !== record.version || !store.isLatest(record)) return refuse('this move has changed since it was shown — it needs confirming again', { code: 409, rePrepare: true });
   const sup = store.suppression(record.moveKey, now);
   if (sup) return refuse(`${sup.say} Nothing was written and your confirmation was not used.`, { code: 409 });
@@ -835,6 +854,6 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
 }
 
 module.exports = {
-  FLAG, WRITER, DIARY_MAX_AGE_MS, PROJECT_FOLDERS, V2_NOTE_RULES, PRIVATE_NOTE_RULE, privateDraftAllowed, destinationOf, openQuestions, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
+  FLAG, WRITER, DIARY_MAX_AGE_MS, dutyPermits, PROJECT_FOLDERS, V2_NOTE_RULES, PRIVATE_NOTE_RULE, privateDraftAllowed, destinationOf, openQuestions, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
   requestConfirmation, execute, requestForMove, confirmMove, londonMs, _setDeps,
 };

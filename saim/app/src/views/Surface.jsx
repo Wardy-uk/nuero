@@ -16,6 +16,7 @@ import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import AskDock from '../../../shared-ui/presentation/AskDock';
 import PreparedMove from '../components/PreparedMove';
+import PromiseSave from '../components/PromiseSave.jsx';
 import { prepareDelivery, promiseMove } from '../promiseDelivery.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
@@ -703,13 +704,12 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       onPrepareDelivery={(key) => prepareDelivery(key)}
       // Keep my word: take a held promise forward — asks, in place, what SAiM needs; stores a proposal only.
       onPromiseMove={async (op) => {
-        const r = await promiseMove(op);
-        // The interview happens ON the promise card. Home opens the draft only for the
-        // governed save — once every decision is answered or parked (26 Oct 2026).
-        const pmv = r && r.ok && r.promiseMove;
-        if (pmv && ['needs-decision', 'ready'].includes(pmv.state) && pmv.recordId) setShowMove({ recordId: pmv.recordId, n: Date.now() });
-        return r;
+        // The interview AND the governed save happen ON the promise card (26 Oct 2026):
+        // nothing here depends on this press's answer to show the save later.
+        return promiseMove(op);
       }}
+      // The private draft's save step, pinned to its record — shown on every load.
+      renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} onChanged={() => load({ quiet: true })} />}
       canOpen={canOpen}
       crownExtra={(
         <button

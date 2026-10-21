@@ -277,3 +277,7 @@
 /* The governed save inside a promise card on NEURO desktop (26 Oct 2026). */
 .pmo2__embedpage { margin: 8px 0; }
 .pmo2__embedpage > summary { cursor: pointer; color: #b7c2d0; font-size: 13px; }
+
+/* PromiseSave — the save step in the promise card, on every SAiM shell. */
+.promise-save { margin-top: 8px; }
+.promise-save__authority { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.12); }

@@ -236,8 +236,8 @@ app.whenReady().then(async () => {
         await scrollTo('document.querySelector(".kmw__save")'); await shot('5-boundary-allowance');
         r.route = !!(await js('!!(' + btn('Open what SAiM may do') + ')'));
         if (r.route) await js('(' + btn('Open what SAiM may do') + ').click()');
-        r.authority = await waitFor('(() => { const a = document.querySelector(".adhd__promise-authority .auth"); return a ? a.innerText : null; })()');
-        await scrollTo('document.querySelector(".adhd__promise-authority")'); await shot('6-what-saim-may-do');
+        r.authority = await waitFor('(() => { const a = document.querySelector(".promise-save__authority .auth"); return a ? a.innerText : null; })()');
+        await scrollTo('document.querySelector(".promise-save__authority")'); await shot('6-what-saim-may-do');
       } else if (j.mode === 'save') {
         r.saveReady = await waitFor('(() => { ' + openCard + '; return !!(' + btn('Save it and protect the time') + '); })()', 25000);
         r.saveBody = await body(); r.saveBox = await saveBox();

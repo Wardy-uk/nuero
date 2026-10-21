@@ -179,6 +179,8 @@ export default function AttentionSurface({
   onPrepareDelivery = null,
   // Keep my word: take a held promise forward as a prepared move (ask / answer). null = no control.
   onPromiseMove = null,
+  // Keep my word: the shell's governed save step for a private draft, drawn IN the card. null = none.
+  renderPromiseSave = null,
   // Would the shell's onOpen do anything for this card? Unset = yes (the old behaviour).
   // A button that does nothing is not drawn — "Open State of Play" on a phone (25 Oct 2026).
   canOpen = null,
@@ -645,6 +647,7 @@ export default function AttentionSurface({
           onPrepareDelivery={onPrepareDelivery}
           onPromiseMove={onPromiseMove}
           onOpenActions={onOpenActions}
+          renderPromiseSave={renderPromiseSave}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />
       </div>
