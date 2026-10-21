@@ -16,6 +16,7 @@ import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import AskDock from '../../../shared-ui/presentation/AskDock';
 import PreparedMove from '../components/PreparedMove';
+import { prepareDelivery } from '../promiseDelivery.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
 import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
@@ -678,6 +679,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       // trustworthy move exists, and writes nothing without Nick's press.
       prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} />}
       preparedMoment={preparedMoment}
+      // Keep my word: prepare the governed delivery note; approval stays in Actions on the desktop.
+      onPrepareDelivery={(key) => prepareDelivery(key)}
       crownExtra={(
         <button
           type="button"

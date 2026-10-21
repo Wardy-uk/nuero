@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './KeepMyWord.css';
 
 // Keep my word — the locked SAiM home scene (timefield.html, 21 Oct 2026).
@@ -11,9 +12,12 @@ import './KeepMyWord.css';
 //     where it lives) or the promise SAiM is holding as a THREAD.
 //
 // ⚠ IT DECIDES NOTHING. State, order, wording and the lead rule are the
-//   server's. The one control is the existing `onOpen` hand-off to the task —
-//   never a confirm, never a send: a held thread NAMES the missing authority
-//   and offers no way round it.
+//   server's. Its controls are hand-offs the SHELL supplies: `onOpen` (the
+//   task) and, for a promise that is a message, `onPrepareDelivery` — which
+//   only PREPARES the governed draft (POST /api/promises/:key/prepare) and
+//   shows what came back. Never a confirm, an approval or a send: a held thread
+//   NAMES what is missing and offers no way round it. No URL lives here, so a
+//   shell without a credential path (the kiosk) simply passes no handler.
 
 export function KmwReadout({ readout, compact = false }) {
   if (!readout) return null;
@@ -76,9 +80,44 @@ export function KmwReceipt({ receipt }) {
   );
 }
 
-export function KmwThread({ thread, onOpen = null, actions = false }) {
+/** The draft the route handed back — read-only. Approval happens in Actions, never here. */
+function DraftResult({ result, draft, onOpenActions }) {
+  if (result.error) return <p className="kmw__rowline kmw__draft-error" role="status">Not drafted — {result.error}</p>;
+  const a = result.action || {};
+  const d = a.draft || {};
+  return (
+    <div className="kmw__draft-result" role="status">
+      <p className="kmw__rowline kmw__draft-done">{result.already ? 'This is the delivery note already drafted — nothing new was created, and nothing has been sent.' : 'Drafted for your approval — nothing has been sent.'}</p>
+      {Array.isArray(d.to) && d.to.length > 0 && <p className="kmw__rowline">To {d.to.map((r) => r.name ? `${r.name} <${r.email}>` : r.email).join(', ')}</p>}
+      {d.subject && <p className="kmw__rowline">“{d.subject}”</p>}
+      {d.body && <pre className="kmw__draft-body">{d.body}</pre>}
+      <p className="kmw__rowline">{draft.review}</p>
+      {draft.sendingOff && <p className="kmw__rowline">{draft.sendingOff}</p>}
+      {onOpenActions && <div className="kmw__actions"><button type="button" className="kmw__open" onClick={() => onOpenActions(a.actionId || null)}>Review it in Actions</button></div>}
+    </div>
+  );
+}
+
+export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
+  const [drafting, setDrafting] = useState(false);
+  const [result, setResult] = useState(null);
   if (!thread) return null;
-  const open = actions && onOpen
+  const draft = thread.draft || null;
+  const canDraft = Boolean(actions && draft && draft.control && onPrepareDelivery);
+  const prepare = async () => {
+    if (drafting) return;
+    setDrafting(true);
+    try {
+      const r = await onPrepareDelivery(draft.key);
+      setResult(r && r.ok ? r : { error: (r && r.error) || 'NEURO didn’t answer, so nothing was drafted.' });
+    } catch (e) {
+      setResult({ error: e && e.message ? e.message : 'NEURO didn’t answer, so nothing was drafted.' });
+    } finally {
+      setDrafting(false);
+    }
+  };
+  // One control per state: where a delivery can be drafted, that IS the control.
+  const open = actions && onOpen && !canDraft
     ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
     : null;
   return (
@@ -95,6 +134,22 @@ export function KmwThread({ thread, onOpen = null, actions = false }) {
           <span className="kmw__rowlabel">{thread.preparation.label}</span>
           <div><p className="kmw__rowline">{thread.preparation.why}</p></div>
         </div>
+        {draft && (
+          <div className="kmw__row kmw__row--draft">
+            <span className="kmw__rowlabel">Delivery</span>
+            <div>
+              <p className="kmw__rowline kmw__draft-say">{draft.say}</p>
+              {draft.waiting && <p className="kmw__rowline">{draft.waiting}</p>}
+              {draft.sendingOff && !result && <p className="kmw__rowline">{draft.sendingOff}</p>}
+              {canDraft && !(result && result.ok) && (
+                <div className="kmw__actions">
+                  <button type="button" className="kmw__open" disabled={drafting} onClick={prepare}>{drafting ? 'Drafting…' : draft.control}</button>
+                </div>
+              )}
+              {result && <DraftResult result={result} draft={draft} onOpenActions={onOpenActions} />}
+            </div>
+          </div>
+        )}
         {thread.held && (
           <div className="kmw__row kmw__row--held">
             <span className="kmw__rowlabel">Held</span>
@@ -118,7 +173,8 @@ export function KmwThread({ thread, onOpen = null, actions = false }) {
 }
 
 /** The main surface: the receipt when there is one (the thread, if any, folded under it), else the thread. */
-export function KmwMain({ kmw, onOpen = null, actions = false }) {
+export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
+  const t = { onOpen, actions, onPrepareDelivery, onOpenActions };
   if (!kmw) return null;
   if (kmw.receipt) {
     return (
@@ -127,22 +183,22 @@ export function KmwMain({ kmw, onOpen = null, actions = false }) {
         {kmw.thread && (
           <details className="kmw__fold">
             <summary>{`Keeping your word — ${kmw.thread.title}`}</summary>
-            <KmwThread thread={kmw.thread} onOpen={onOpen} actions={actions} />
+            <KmwThread thread={kmw.thread} {...t} />
           </details>
         )}
       </div>
     );
   }
-  return <div className="kmw__main"><KmwThread thread={kmw.thread} onOpen={onOpen} actions={actions} /></div>;
+  return <div className="kmw__main"><KmwThread thread={kmw.thread} {...t} /></div>;
 }
 
 /** The folded entry beneath an urgent lead: recognisable by its title, opened on demand. */
-export function KmwFolded({ kmw, onOpen = null, actions = false }) {
+export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
   if (!kmw || !kmw.entry) return null;
   return (
     <details className="kmw__fold kmw__fold--entry">
       <summary>{kmw.entry}</summary>
-      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} />
+      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />
     </details>
   );
 }

@@ -5,6 +5,7 @@ import ManifestView from './ManifestView.jsx';
 import { manifest, linkHref } from './manifest.mjs';
 import PreparedMove from '../src/components/PreparedMove';
 import { preparedPlacement, keepWordPlacement } from './prepared.mjs';
+import { prepareDelivery } from '../src/promiseDelivery.mjs';
 
 // The SAiM page of the Alt A/B release (alt-v3, 16 Oct 2026): the adapter's
 // view-model over the live /api/canonical/now, with every control routed through
@@ -70,6 +71,9 @@ export default function LiveSaim({ canonical, error, at = null, busy, onAct, run
           onAct, onDeskOpen, deskStates, busy, onChoose, choiceNote, debug,
           prepared, preparedLeads: place.leads, preparedFold, preparedEntry: (moment && moment.entry) || null,
           keepMyWord: kmwPlace.show ? kmw : null, kmwLeads: kmwPlace.leads, kmwFolded: kmwPlace.folded,
+          // Keep my word: prepare the governed delivery note; Actions in NEURO is where it is approved.
+          onPrepareDelivery: (key) => prepareDelivery(key),
+          actionsHref: linkHref(neuroUrl, 'neuro:?view=actions'),
           linkFor: (href) => linkHref(neuroUrl, href),
           dock: <Dock variant="wk" utterances={canonical.utterances} onSay={onAct} />,
         }}

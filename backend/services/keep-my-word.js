@@ -189,24 +189,61 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
 // ── The thread ───────────────────────────────────────────────────────────────
 
 /** PURE. The held sentence when the thread needs authority SAiM lacks — or null. */
-function heldFor(item, authority) {
+const DRAFT_SAY = 'SAiM can prepare a delivery note for your approval. Nothing will be sent.';
+const DRAFT_CONTROL = 'Draft the delivery note';
+const SENDING_OFF = '“Send approved emails” is off, so the note can be reviewed but can’t be approved to send until that setting is on.';
+const REVIEW_SAY = 'Review it, write in what you promised, and approve it in Actions, in NEURO on the desktop. Nothing is sent until you do.';
+const WAITING = {
+  prepared: 'A delivery note is already drafted and waiting for your approval.',
+  approved: 'Its delivery note is approved and about to be sent.',
+  executing: 'Its delivery note is being sent now.',
+  executed: 'Its delivery note was sent and is waiting to be read back in Sent Items.',
+  execution_uncertain: 'Its delivery note may have been sent — Actions is checking Sent Items.',
+};
+
+/**
+ * PURE. The bounded delivery action for a `needs-a-draft` promise — or null.
+ * Shown ONLY when NEURO can name one recipient address; a draft that has moved
+ * past `prepared` is reported, not offered again. Readiness unknown → null
+ * (and heldFor names why).
+ */
+function draftFor(item, delivery) {
+  if (!item.preparation || item.preparation.state !== 'needs-a-draft') return null;
+  const r = delivery && delivery.items ? delivery.items[item.key] : null;
+  if (!r || !r.addressable) return null;
+  const live = r.live || null;
+  const offered = !live || live.status === 'prepared';
+  return {
+    key: item.key,
+    say: DRAFT_SAY,
+    control: offered ? DRAFT_CONTROL : null,
+    waiting: live ? WAITING[live.status] || null : null,
+    liveActionId: live ? live.actionId : null,
+    sendingOff: delivery.sending === true ? null : SENDING_OFF,
+    review: REVIEW_SAY,
+  };
+}
+
+/** PURE. The held sentence when the thread cannot proceed — or null. */
+function heldFor(item, authority, delivery = null) {
   const prep = item.preparation && item.preparation.state;
   if (prep === 'needs-a-draft') {
-    // Not an authority gap: governed drafts exist (prepared-actions). What is
-    // missing is the promise-linked draft/delivery loop (promise-loop, on
-    // saim-meeting-promises), so nothing here may prepare one.
-    return `This promise is a message to ${item.owedTo}. Preparing it as a governed draft needs the promise-linked delivery loop, which isn’t connected yet — so nothing has been drafted, and nothing will be sent from here.`;
+    const r = delivery && delivery.items ? delivery.items[item.key] : null;
+    if (!r) return 'NEURO couldn’t check whether this can be drafted, so nothing is offered.';
+    if (!r.addressable) return `NEURO has no single email address for ${item.owedTo || 'the person it is owed to'} in their People note, so nothing is drafted. Add it there and this can be drafted.`;
+    return null;
   }
   if (prep === 'needs-a-block' && authority && authority.boundary && authority.boundary.say) return authority.boundary.say;
   return null;
 }
 
 /** PURE. The promise SAiM is holding, as the scene draws it. */
-function threadFrom(workbench, authority) {
+function threadFrom(workbench, authority, delivery = null) {
   const items = (workbench && workbench.items) || [];
   if (!items.length) return null;
   const it = items[0];
-  const held = heldFor(it, authority);
+  const held = heldFor(it, authority, delivery);
+  const draft = held ? null : draftFor(it, delivery);
   const sensitiveWithheld = (workbench.withheld && workbench.withheld.sensitive) || 0;
   return {
     key: it.key, taskIds: it.taskIds, taskId: it.leadTaskId,
@@ -218,6 +255,7 @@ function threadFrom(workbench, authority) {
     evidence: it.evidence,
     because: it.because,
     held: held ? { say: held } : null,
+    draft,
     more: items.length > 1 ? { count: items.length - 1, titles: items.slice(1).map((x) => x.title) } : null,
     withheld: sensitiveWithheld ? `${num(sensitiveWithheld)} more involve${sensitiveWithheld === 1 ? 's' : ''} someone’s employment — not shown here.` : null,
   };
@@ -229,11 +267,12 @@ function threadFrom(workbench, authority) {
  *   workbench     promise-workbench-v1 or null
  *   receipt       receiptView() or null
  *   authority     authority-budget.brief() or null
+ *   delivery      { sending, items: { key → promise-delivery.readiness() } } or null
  *   presentation  the presentation it rides on (for the lead rule)
  */
-function compose({ score: sc = null, workbench = null, receipt = null, authority = null, presentation = null, now = Date.now() } = {}) {
+function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, presentation = null, now = Date.now() } = {}) {
   const lead = leadFrom(presentation);
-  const thread = threadFrom(workbench, authority);
+  const thread = threadFrom(workbench, authority, delivery);
   const readout = readoutFrom({ score: sc, workbench, receipt, now });
   const hasMain = Boolean(receipt || thread);
   let state;
@@ -258,4 +297,4 @@ function compose({ score: sc = null, workbench = null, receipt = null, authority
   };
 }
 
-module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, compose };
+module.exports = { CONTRACT, LEAD_MODES, PREP_LABEL, DRAFT_SAY, DRAFT_CONTROL, SENDING_OFF, REVIEW_SAY, draftFor, leadFrom, receiptView, latestVerifiedReceipt, mondayLine, trendLine, readoutFrom, heldFor, threadFrom, compose };

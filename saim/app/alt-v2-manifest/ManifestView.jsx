@@ -44,6 +44,15 @@ function Dest({ d, live, primary = false }) {
   );
 }
 
+/** Keep my word on Alt: the bounded delivery action, and Actions opened in NEURO. */
+function kmwHandlers(live) {
+  return {
+    actions: Boolean(live.onPrepareDelivery),
+    onPrepareDelivery: live.onPrepareDelivery || null,
+    onOpenActions: live.actionsHref ? () => window.open(live.actionsHref, '_blank', 'noopener') : null,
+  };
+}
+
 export default function ManifestView({ v, live = null }) {
   const r = v.rail;
   const busy = Boolean(live && live.busy);
@@ -54,7 +63,7 @@ export default function ManifestView({ v, live = null }) {
       <div className={`wk__grid${live && live.keepMyWord ? ' wk__grid--kmw' : ''}`}>
         {live && live.keepMyWord && <KmwReadout readout={live.keepMyWord.readout} />}
         <section className={`wk__main${live && live.prepared ? ' mf__main--prep' : ''}`} aria-label="Current work">
-          {live && live.keepMyWord && live.kmwLeads ? <KmwMain kmw={live.keepMyWord} /> : (
+          {live && live.keepMyWord && live.kmwLeads ? <KmwMain kmw={live.keepMyWord} {...kmwHandlers(live)} /> : (
           <div className="wk__block">
             <p className="wk__state mf__state"><span className="wk__dot mf__dot" aria-hidden="true" />{v.state.toUpperCase()}</p>
             <h1 className={`wk__title${v.sentence ? '' : ' mf__title--sentence'}`}>{v.title}</h1>
@@ -85,7 +94,7 @@ export default function ManifestView({ v, live = null }) {
             </details>
           )}
           {/* Keep my word, folded under whatever leads — recognisable by its title. */}
-          {live && live.keepMyWord && live.kmwFolded && <KmwFolded kmw={live.keepMyWord} />}
+          {live && live.keepMyWord && live.kmwFolded && <KmwFolded kmw={live.keepMyWord} {...kmwHandlers(live)} />}
 
           {v.refused && (
             <div className="mf__blind">

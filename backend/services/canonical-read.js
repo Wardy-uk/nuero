@@ -1411,11 +1411,18 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
     if (!_keepWordMemo || _keepWordMemo.minute !== minute) {
       const ledger = require('./promise-ledger').read({ now: nowMs });
       const proofs = require('./promise-score').readProofs();
+      const workbench = require('./promise-workbench').read({ now: nowMs, ledger, proofs: proofs.proofs });
+      // Read-only: whether each draftable promise has one named address and a
+      // draft already waiting, and whether approved email can be sent at all.
+      const draftable = (workbench.items || []).filter((i) => i.preparation && i.preparation.state === 'needs-a-draft').map((i) => i.key);
+      let sending = false;
+      try { sending = require('./feature-flags').isEnabled('governed_execution') === true; } catch { sending = false; }
       _keepWordMemo = { minute, k: {
         score: require('./promise-score').read({ now: nowMs, ledger }),
-        workbench: require('./promise-workbench').read({ now: nowMs, ledger, proofs: proofs.proofs }),
+        workbench,
         receipt: require('./keep-my-word').latestVerifiedReceipt({ now: nowMs }),
         authority: require('./authority-budget').brief({ now: nowMs }),
+        delivery: { sending, items: Object.fromEntries(require('./promise-delivery').readiness(draftable, { ledger })) },
       } };
     }
     payload.keepMyWord = _keepWordMemo.k;

@@ -61,6 +61,38 @@ function actionsFor(key, db = require('../db/database')) {
   return rows.filter((r) => { try { const e = JSON.parse(r.evidence_json); return e.promiseKey === key && e.move === MOVE; } catch { return false; } });
 }
 
+/** PURE. The ONE recipient NEURO can name for a promise, or why it cannot (the same rule prepare uses). */
+function recipientFor(p, contacts) {
+  if (!p.owedTo || !p.owedTo.resolved) return { ok: false, why: 'NEURO cannot tell who this is owed to — choose the recipient' };
+  const c = (contacts || []).find((x) => x.name === p.owedTo.resolved);
+  if (!c || !EMAIL_RE.test(String(c.email || ''))) return { ok: false, why: `no address for ${p.owedTo.resolved} in their People note — choose the recipient` };
+  return { ok: true, recipient: { name: c.name, email: String(c.email).toLowerCase() } };
+}
+
+/**
+ * READ-ONLY. For the home: can each promise be drafted now, and is a draft
+ * already waiting? Writes nothing and prepares nothing.
+ *   → Map key → { addressable, why, live: { actionId, status } | null }
+ */
+function readiness(keys, { ledger, contacts = null, db = require('../db/database') } = {}) {
+  const out = new Map();
+  let people = contacts;
+  try { if (!people) people = require('./contact-directory').fromPeopleNotes(); } catch { people = []; }
+  for (const key of keys) {
+    const p = ((ledger && ledger.promises) || []).find((x) => x.key === key);
+    if (!p) { out.set(key, { addressable: false, why: 'NEURO couldn’t find this promise', live: null }); continue; }
+    const r = recipientFor(p, people);
+    let live = null;
+    try {
+      const rows = actionsFor(key, db).filter((x) => LIVE.includes(x.status));
+      const last = rows[rows.length - 1];
+      if (last) live = { actionId: last.action_id, status: last.status };
+    } catch { live = null; }
+    out.set(key, { addressable: r.ok, why: r.ok ? null : r.why, live });
+  }
+  return out;
+}
+
 /**
  * Prepare the governed delivery email for one promise. Never sends.
  *   to: [{ name, email }] — required when NEURO cannot name ONE recipient.
@@ -91,11 +123,9 @@ function prepare(key, { to = null, now = Date.now(), deps = {} } = {}) {
     recipients = to.map((r) => ({ name: r && r.name ? String(r.name).slice(0, 120) : null, email: String((r && r.email) || '').trim().toLowerCase() }));
     if (recipients.some((r) => !EMAIL_RE.test(r.email))) return { ok: false, code: 400, error: 'a recipient address is not valid' };
   } else {
-    if (!p.owedTo || !p.owedTo.resolved) return { ok: false, code: 409, recipientNeeded: true, error: 'NEURO cannot tell who this is owed to — choose the recipient' };
-    const contacts = deps.contacts || require('./contact-directory').fromPeopleNotes();
-    const c = contacts.find((x) => x.name === p.owedTo.resolved);
-    if (!c || !EMAIL_RE.test(String(c.email || ''))) return { ok: false, code: 409, recipientNeeded: true, error: `no address for ${p.owedTo.resolved} in their People note — choose the recipient` };
-    recipients = [{ name: c.name, email: String(c.email).toLowerCase() }];
+    const r = recipientFor(p, deps.contacts || require('./contact-directory').fromPeopleNotes());
+    if (!r.ok) return { ok: false, code: 409, recipientNeeded: true, error: r.why };
+    recipients = [r.recipient];
   }
 
   const d = draftFor(p, recipients[0].name);
@@ -107,4 +137,4 @@ function prepare(key, { to = null, now = Date.now(), deps = {} } = {}) {
   });
 }
 
-module.exports = { MOVE, ORIGIN, LIVE, meetingPhrase, draftFor, actionsFor, prepare };
+module.exports = { MOVE, ORIGIN, LIVE, meetingPhrase, draftFor, actionsFor, recipientFor, readiness, prepare };

@@ -789,6 +789,15 @@ export default function AdhdPanel({ onNavigate }) {
               try { await api('/api/signals/life/not-now', { method: 'POST' }); } catch { /* stays */ }
               attention.refresh();
             }}
+            // Keep my word: only PREPARES the governed delivery note — it waits in Actions for the approval code.
+            onPrepareDelivery={async (key) => {
+              try {
+                const res = await apiFetch(`/api/promises/${encodeURIComponent(key)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const body = await res.json().catch(() => null);
+                return body && typeof body === 'object' ? (res.ok ? body : { ...body, ok: false }) : { ok: false, error: `NEURO answered ${res.status}, so nothing was drafted.` };
+              } catch { return { ok: false, error: 'NEURO didn’t answer, so nothing was drafted.' }; }
+            }}
+            onOpenActions={onNavigate ? () => onNavigate('actions') : null}
           />
         </section>
       ) : (

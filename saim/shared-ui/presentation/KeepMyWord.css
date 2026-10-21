@@ -41,6 +41,11 @@
 .kmw__actions { margin-top: 20px; display: flex; gap: 18px; align-items: center; }
 .kmw__open { border: 0; background: var(--kmw-gold); color: #22170d; padding: 11px 15px; font-size: 12px; font-weight: 800; cursor: pointer; }
 
+.kmw__draft-say { color: var(--kmw-ink); }
+.kmw__draft-result { margin-top: 10px; }
+.kmw__draft-body { margin: 8px 0; padding: 10px 0 10px 12px; border-left: 1px solid var(--kmw-line); white-space: pre-wrap; font: 12px/1.5 Georgia, serif; color: #b8b3a7; }
+.kmw__open:disabled { opacity: .6; cursor: default; }
+
 /* The folded thread beneath an urgent lead: a recognisable line, opened on demand. */
 .kmw__fold { margin: 16px 0; }
 .kmw__fold > summary { cursor: pointer; list-style: none; font: 13px/1.5 Georgia, serif; color: var(--kmw-dim); border-left: 2px solid var(--kmw-amber); padding: 4px 0 4px 12px; }

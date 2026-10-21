@@ -41,6 +41,9 @@ const THREAD_ITEM = {
   because: [], evidence: [{ kind: 'due', fact: 'Due Thursday 22 October — the date set on the task.' }],
 };
 const BENCH = { state: 'ok', items: [THREAD_ITEM], withheld: { sensitive: 1, ambiguous: 0, unreadable: 0, undated: 0 } };
+const DRAFT_ITEM = { ...THREAD_ITEM, title: 'Send Hope the onboarding checklist', preparation: { state: 'needs-a-draft', why: 'It is a message to one person; nothing is drafted yet.' } };
+const DRAFT_BENCH = { ...BENCH, items: [DRAFT_ITEM] };
+const READY = (over = {}) => ({ sending: true, items: { 'promise:31': { addressable: true, why: null, live: null, ...over } } });
 const CALM = { mode: 'calm', needsYou: [], primary: null };
 const URGENT = { mode: 'needs-attention', needsYou: [{ id: 'risk', title: 'Weekly Risk report waits for you' }], primary: null };
 const OPEN = { canAct: true, boundary: null };
@@ -106,10 +109,15 @@ test('held: the missing authority is NAMED, and there is no confirmation path', 
   const v = k.compose({ score: SCORE, workbench: BENCH, authority: LOCKED, presentation: CALM, now: NOW });
   assert.equal(v.state, 'held');
   assert.equal(v.thread.held.say, LOCKED.boundary.say);
-  const draft = k.compose({ score: SCORE, workbench: { ...BENCH, items: [{ ...THREAD_ITEM, preparation: { state: 'needs-a-draft', why: 'x' } }] }, authority: OPEN, presentation: CALM, now: NOW });
-  assert.equal(draft.state, 'held');
-  assert.match(draft.thread.held.say, /promise-linked delivery loop, which isn’t connected yet/);
-  assert.ok(!/no authority/i.test(draft.thread.held.say), 'the blocker is the missing loop, not authority');
+  // A message promise NEURO cannot address is held, and says exactly why.
+  const noAddr = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: { sending: true, items: { 'promise:31': { addressable: false, why: 'x', live: null } } }, presentation: CALM, now: NOW });
+  assert.equal(noAddr.state, 'held');
+  assert.match(noAddr.thread.held.say, /no single email address for Hope Goodall/);
+  assert.equal(noAddr.thread.draft, null, 'no control when it cannot be addressed');
+  // Readiness unknown → held, nothing offered (fail closed).
+  const unknown = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: null, presentation: CALM, now: NOW });
+  assert.equal(unknown.state, 'held');
+  assert.match(unknown.thread.held.say, /couldn’t check whether this can be drafted/);
 });
 
 test('verified receipt: leads on a calm screen, folds under an urgent lead', () => {
@@ -272,4 +280,159 @@ test('composePresentation attaches keepMyWord from the Now payload, and a fault 
   const broken = composePresentation(payload, { now: fx.at });
   assert.equal(broken.keepMyWord, null);
   assert.ok(broken.situation && broken.situation.headline, 'the presentation survives');
+});
+
+// ── The bounded delivery action (needs-a-draft) ──────────────────────────────
+
+test('needs-a-draft: the truthful offer — one control, nothing sent, NOT held, nothing about a missing loop', () => {
+  const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: READY(), presentation: CALM, now: NOW });
+  assert.equal(v.state, 'calm', 'not a permanently held state');
+  assert.equal(v.thread.held, null);
+  assert.equal(v.thread.draft.say, 'SAiM can prepare a delivery note for your approval. Nothing will be sent.');
+  assert.equal(v.thread.draft.control, 'Draft the delivery note');
+  assert.equal(v.thread.draft.sendingOff, null);
+  assert.ok(!/isn’t connected|not connected|unavailable/i.test(JSON.stringify(v.thread)), 'no stale “loop unavailable” wording');
+});
+
+test('needs-a-draft with “Send approved emails” off: drafting still offered, and it says it cannot be approved to send yet', () => {
+  const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: { ...READY(), sending: false }, presentation: CALM, now: NOW });
+  assert.equal(v.thread.draft.control, 'Draft the delivery note');
+  assert.equal(v.thread.draft.sendingOff, '“Send approved emails” is off, so the note can be reviewed but can’t be approved to send until that setting is on.');
+  const out = html(presentationWith(v, CALM), 'desktop', { onPrepareDelivery: async () => ({ ok: true }) });
+  assert.ok(out.includes('can’t be approved to send until that setting is on'));
+});
+
+test('a draft already waiting: the same control returns the same draft; one past “prepared” is reported, never offered again', () => {
+  const waiting = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY({ live: { actionId: 'pa_1', status: 'prepared' } }), presentation: CALM, now: NOW });
+  assert.equal(waiting.thread.draft.control, 'Draft the delivery note');
+  assert.match(waiting.thread.draft.waiting, /already drafted and waiting for your approval/);
+  for (const status of ['approved', 'executing', 'executed', 'execution_uncertain']) {
+    const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY({ live: { actionId: 'pa_1', status } }), presentation: CALM, now: NOW });
+    assert.equal(v.thread.draft.control, null, status);
+    assert.ok(v.thread.draft.waiting, status);
+  }
+});
+
+test('under an urgent lead the thread (and its control) folds beneath the lead', () => {
+  const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY(), presentation: URGENT, now: NOW });
+  assert.equal(v.state, 'folded');
+  assert.equal(v.thread.draft.control, 'Draft the delivery note');
+});
+
+const kmwButtons = (out) => [...out.matchAll(/<button type="button" class="kmw__open"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+
+test('render: the offer and ONE control — no approve, send or confirm anywhere in the thread', () => {
+  const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: READY(), presentation: CALM, now: NOW });
+  for (const profile of ['phone', 'desktop']) {
+    const out = html(presentationWith(kmw, CALM), profile, { onPrepareDelivery: async () => ({ ok: true }), onOpenActions: () => {} });
+    assert.ok(out.includes('SAiM can prepare a delivery note for your approval. Nothing will be sent.'), profile);
+    assert.deepEqual(kmwButtons(out), ['Draft the delivery note'], `${profile}: exactly one control`);
+    assert.ok(!/>[^<]*(Approve|Send|Confirm)[^<]*<\/button>/.test(out), `${profile}: no approve, send or confirm`);
+  }
+});
+
+test('render: no prepare handler (the kiosk, or any shell without one) → the offer is shown, the control is not; never on the watch', () => {
+  const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: READY(), presentation: CALM, now: NOW });
+  const kiosk = html(presentationWith(kmw, CALM), 'kiosk', { onOpen: null });
+  assert.ok(kiosk.includes('SAiM can prepare a delivery note'));
+  assert.ok(!kiosk.includes('Draft the delivery note'));
+  const watch = html(presentationWith(kmw, CALM), 'watch', { onPrepareDelivery: async () => ({ ok: true }) });
+  assert.ok(!watch.includes('delivery note'));
+});
+
+test('render: urgent lead first; the delivery control lives in the folded thread beneath it', () => {
+  const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY(), presentation: URGENT, now: NOW });
+  const out = html(presentationWith(kmw, { ...URGENT, headline: 'One thing needs you.' }), 'phone', { onPrepareDelivery: async () => ({ ok: true }) });
+  const lead = out.indexOf('Weekly Risk report waits for you');
+  const fold = out.indexOf('<details class="kmw__fold kmw__fold--entry">');
+  const ctl = out.indexOf('Draft the delivery note');
+  assert.ok(lead > 0 && fold > lead && ctl > fold, 'lead → fold → control');
+});
+
+test('the click calls ONLY the prepare handler with the promise key, reveals the route’s draft, repeats idempotently, and shows a refusal whole', async () => {
+  const { KmwThread } = await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'));
+  const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY(), presentation: CALM, now: NOW });
+  const R = require('react');
+  const realUseState = R.useState;
+  let slots = []; let i = 0;
+  R.useState = (init) => { const at = i++; if (!(at in slots)) slots[at] = init; return [slots[at], (v) => { slots[at] = typeof v === 'function' ? v(slots[at]) : v; }]; };
+  const find = (node, pred) => {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) { for (const n of node) { const r = find(n, pred); if (r) return r; } return null; }
+    if (pred(node)) return node;
+    return find(node.props && node.props.children, pred);
+  };
+  const buttonOf = (tree, label) => find(tree, (n) => n.type === 'button' && [].concat(n.props.children).join('') === label);
+  const text = (tree) => renderToString(R.createElement(() => tree)).replace(/<!-- -->/g, '');
+  try {
+    const calls = [];
+    const handler = async (key) => {
+      calls.push(key);
+      const action = { actionId: 'pa_9', draft: { to: [{ name: 'Hope Goodall', email: 'hope@nurtur.tech' }], subject: 'Following up: Send Hope the onboarding checklist', body: 'Hi Hope,\n\n[details]\n\nNick' } };
+      return calls.length === 1 ? { ok: true, action } : { ok: true, already: true, action };
+    };
+    let opened = null;
+    const props = { thread: kmw.thread, actions: true, onPrepareDelivery: handler, onOpenActions: (id) => { opened = id; } };
+    const render = (p = props) => { i = 0; return KmwThread(p); };
+    let tree = render();
+    await buttonOf(tree, 'Draft the delivery note').props.onClick();
+    tree = render();
+    assert.deepEqual(calls, ['promise:31'], 'exactly one call, with the promise key');
+    const shown = text(tree);
+    assert.ok(shown.includes('Drafted for your approval — nothing has been sent.'));
+    assert.ok(shown.includes('Following up: Send Hope the onboarding checklist'));
+    assert.ok(shown.includes('Review it in Actions'), 'the hand-off to the existing governed draft');
+    assert.equal(buttonOf(tree, 'Draft the delivery note'), null, 'the control gives way to the result');
+    // Repeat (a reload, a second press): the route returns the SAME draft and the thread says so.
+    slots = []; tree = render();
+    await buttonOf(tree, 'Draft the delivery note').props.onClick();
+    tree = render();
+    assert.ok(text(tree).includes('already drafted — nothing new was created'));
+    assert.deepEqual(calls, ['promise:31', 'promise:31']);
+    // Refusal: the server's reason, whole.
+    slots = [];
+    const refuse = { ...props, onPrepareDelivery: async () => ({ ok: false, routing: true, error: 'This involves someone’s employment. I won’t draft a decision or write to them.' }) };
+    tree = render(refuse);
+    await buttonOf(tree, 'Draft the delivery note').props.onClick();
+    tree = render(refuse);
+    assert.ok(text(tree).includes('Not drafted — This involves someone’s employment. I won’t draft a decision or write to them.'));
+    assert.equal(opened, null, 'nothing opened without Nick pressing it');
+  } finally {
+    R.useState = realUseState;
+  }
+});
+
+test('the shared component holds no URL and no send/approve call — the shells supply the one route', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'), 'utf-8');
+  assert.ok(!/['"`]\/api\//.test(src), 'no API path in shared UI');
+  assert.ok(!/approve|execute|intent-grant|challenge/i.test(src.replace(/\/\/.*$/gm, '')), 'no approval or execution in code');
+  for (const f of ['saim/app/src/promiseDelivery.mjs', 'frontend/src/components/AdhdPanel.jsx']) {
+    const body = fs.readFileSync(path.join(ROOT, f), 'utf-8');
+    assert.ok(body.includes('/api/promises/${encodeURIComponent(key)}/prepare'), `${f} calls only the prepare route`);
+  }
+});
+
+test('phone/Alt helper: POSTs ONLY to the prepare route with nothing in the body, and returns a refusal whole', async () => {
+  const out = await esbuild.build({
+    entryPoints: [path.join(ROOT, 'saim', 'app', 'src', 'promiseDelivery.mjs')], bundle: true, write: false, format: 'cjs', platform: 'node', logLevel: 'silent',
+    plugins: [{ name: 'api-stub', setup(b) {
+      b.onResolve({ filter: /^\.\/api$/ }, () => ({ path: 'api', namespace: 'stub' }));
+      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = (p) => "https://neuro.test" + p; export const authHeaders = (p, x = {}) => ({ ...x, "X-Neuro-Pin": "pin" });', loader: 'js' }));
+    } }],
+  });
+  const mod = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
+  const calls = [];
+  const fake = (body, status = 200) => async (url, opts) => { calls.push({ url, method: opts.method, body: opts.body }); return { ok: status < 300, status, json: async () => body }; };
+  const ok = await mod.exports.prepareDelivery('promise:31', { fetchImpl: fake({ ok: true, action: { actionId: 'pa_9' } }) });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(calls[0], { url: 'https://neuro.test/api/promises/promise%3A31/prepare', method: 'POST', body: '{}' });
+  const long = 'This involves someone’s employment. I won’t draft a decision or write to them. It needs a decision from you with your HR reviewer — I can list what the notes say, for that conversation.';
+  const refused = await mod.exports.prepareDelivery('promise:7', { fetchImpl: fake({ ok: false, routing: true, error: long }, 409) });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error, long, 'never truncated');
+  const down = await mod.exports.prepareDelivery('promise:7', { fetchImpl: async () => { throw new Error('offline'); } });
+  assert.deepEqual(down, { ok: false, error: 'NEURO didn’t answer, so nothing was drafted.' });
+  assert.equal(calls.length, 2, 'one call per press, no retries');
 });

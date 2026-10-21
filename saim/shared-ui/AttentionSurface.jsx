@@ -174,6 +174,9 @@ export default function AttentionSurface({
   // What kind of prepared moment is showing (PreparedMove.momentOf) — so the
   // situation never calls the day quiet over an actionable move.
   preparedMoment = null,
+  // Keep my word (21 Oct 2026): passed straight to Situation; null = no control.
+  onPrepareDelivery = null,
+  onOpenActions = null,
   footAside = null,
   footExtra = null,
   // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
@@ -582,6 +585,8 @@ export default function AttentionSurface({
           note={footAside}
           prepared={prepared}
           preparedMoment={preparedMoment}
+          onPrepareDelivery={onPrepareDelivery}
+          onOpenActions={onOpenActions}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />
       </div>

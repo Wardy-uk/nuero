@@ -211,6 +211,10 @@ export default function Situation({
   // What kind of prepared moment is showing: { kind: 'actionable', headline }
   // or { kind: 'held' } (PreparedMove.momentOf), or null.
   preparedMoment = null,
+  // Keep my word: the shell's call to POST /api/promises/:key/prepare (only
+  // PREPARES the governed draft) and its hand-off to Actions. Absent → no control.
+  onPrepareDelivery = null,
+  onOpenActions = null,
 }) {
   const plan = composeForSurface(presentation, profile);
   if (!presentation) return null;
@@ -288,7 +292,7 @@ export default function Situation({
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
   const kmwFolded = kmw && !kmwLeads && (kmw.receipt || kmw.thread)
-    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} />
+    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />
     : null;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
@@ -315,7 +319,7 @@ export default function Situation({
               return [
                 kmwLeads ? (
                   <header key={i} className={`sit__situation sit__situation--kmw sit__situation--kmw-${kmw.state}`}>
-                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} />
+                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>
                 ) : (

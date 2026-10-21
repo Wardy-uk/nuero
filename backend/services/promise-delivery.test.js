@@ -25,7 +25,8 @@ for (const k of ['GOVERNED_EXECUTION_ENABLED', 'COMMITMENT_RISK_MODE', 'MEETING_
 
 const V = process.env.OBSIDIAN_VAULT_PATH;
 const put = (rel, text) => { const f = path.join(V, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
-const PEOPLE = ['Alex Reed', 'Sam Patel', 'Robin Hale', 'Casey Lin', 'Drew Moss', 'Avery Nolan', 'Quinn Hart', 'Morgan Lee', 'Toby Vance'];
+const PEOPLE = ['Alex Reed', 'Sam Patel', 'Robin Hale', 'Casey Lin', 'Drew Moss', 'Avery Nolan', 'Quinn Hart', 'Morgan Lee', 'Toby Vance', 'Jamie Ross'];
+put('People/Pat Gray.md', ['---', 'role: contractor', '---', '# Pat Gray', ''].join('\n')); // no address on file
 for (const name of PEOPLE) put(`People/${name}.md`, `---\nemail: ${name.toLowerCase().replace(' ', '.')}@nurtur.tech\n---\n# ${name}\n`);
 const NOTE = 'Meetings/2026/10/2026-10-14 - Ops sync.md';
 const T = {
@@ -38,6 +39,8 @@ const T = {
   early: 'Nick to send Quinn Hart the release notes',
   hr: 'Nick to confirm Morgan Lee phased return plan',
   retry: 'Nick to send Toby Vance the capacity model',
+  offline: 'Nick to send Jamie Ross the cover rota',
+  noaddr: 'Nick to send Pat Gray the meeting minutes',
 };
 put(NOTE, ['# Ops sync', '', '## Actions', ...Object.values(T).map((t) => `- ${t}`), ''].join('\n'));
 
@@ -125,7 +128,7 @@ async function deliver(name, at, { hidden = false } = {}) {
 test.before(async () => {
   await db.init();
   assert.equal(proofs.setCode(CODE).ok, true);
-  for (const name of ['kept', 'straddle', 'late', 'ticked', 'chase', 'executed', 'hr', 'retry']) task(name, '2026-10-21');
+  for (const name of ['kept', 'straddle', 'late', 'ticked', 'chase', 'executed', 'hr', 'retry', 'offline', 'noaddr']) task(name, '2026-10-21');
   task('early', '2026-10-20');
 });
 
@@ -143,6 +146,62 @@ test('refusals: an employment matter gets the routing note; an unknown promise 4
   assert.match(hr.error, /employment/);
   assert.equal(delivery.prepare('promise:999999', { now: clock }).code, 404);
   assert.equal(db.all('SELECT COUNT(*) AS n FROM prepared_actions')[0].n, 0);
+});
+
+test('readiness (read-only): addressable or not, and the live draft once one exists — preparing nothing', async () => {
+  const ledger = require('./promise-ledger').read({ now: clock });
+  const before = db.all('SELECT COUNT(*) AS n FROM prepared_actions')[0].n;
+  const r = delivery.readiness([keyOf('offline'), keyOf('noaddr'), 'promise:999999'], { ledger });
+  assert.deepEqual(r.get(keyOf('offline')), { addressable: true, why: null, live: null });
+  assert.equal(r.get(keyOf('noaddr')).addressable, false);
+  assert.match(r.get(keyOf('noaddr')).why, /no address for Pat Gray/);
+  assert.equal(r.get('promise:999999').addressable, false);
+  assert.equal(db.all('SELECT COUNT(*) AS n FROM prepared_actions')[0].n, before, 'readiness prepares nothing');
+});
+
+test('“Send approved emails” OFF: the note can be DRAFTED, but cannot be approved to send', () => {
+  assert.equal(flags.isEnabled('governed_execution'), false, 'off by default');
+  clock = Date.parse('2026-10-21T08:30:00Z');
+  const prep = delivery.prepare(keyOf('offline'), { now: clock });
+  assert.equal(prep.ok, true, prep.error);
+  const ed = pa.edit(prep.action.actionId, { body: prep.action.draft.body.replace('[details]', 'The rota.'), payloadHash: prep.action.payloadHash, now: clock });
+  const a = ed.action;
+  const ch = proofs.issue({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, now: clock });
+  const ap = pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: CODE, now: clock });
+  assert.equal(ap.ok, false, 'approval refused while sending is off');
+  assert.equal(pa.get(a.actionId).status, 'prepared', 'still a draft for review');
+  assert.equal(sentItems.length, 0);
+  const live = delivery.readiness([keyOf('offline')], { ledger: require('./promise-ledger').read({ now: clock }) }).get(keyOf('offline')).live;
+  assert.deepEqual(live, { actionId: a.actionId, status: 'prepared' }, 'the home sees the waiting draft');
+});
+
+test('the route over HTTP: prepares, repeats idempotently, refuses an employment matter — and sends nothing', async () => {
+  const express = require('express');
+  const app = express();
+  app.use(express.json());
+  app.use('/api/promises', require('../routes/promise-delivery'));
+  const server = await new Promise((ok) => { const sv = app.listen(0, () => ok(sv)); });
+  const base = `http://127.0.0.1:${server.address().port}/api/promises`;
+  const post = async (key, body = {}) => { const r = await fetch(`${base}/${encodeURIComponent(key)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, body: await r.json() }; };
+  try {
+    const sentBefore = sentItems.length;
+    const first = await post(keyOf('offline'));
+    assert.equal(first.status, 200);
+    assert.equal(first.body.already, true, 'the draft already waiting is handed back');
+    const second = await post(keyOf('offline'));
+    assert.equal(second.body.action.actionId, first.body.action.actionId, 'repeat press → the SAME draft');
+    assert.equal(second.body.action.status, 'prepared');
+    const hr = await post(keyOf('hr'));
+    assert.equal(hr.status, 409);
+    assert.equal(hr.body.routing, true);
+    assert.match(hr.body.error, /employment/);
+    const chase = await post(keyOf('offline'), { move: 'chase-email' });
+    assert.equal(chase.status, 400, 'only deliver-email is prepared here');
+    const noaddr = await post(keyOf('noaddr'));
+    assert.equal(noaddr.status, 409);
+    assert.equal(noaddr.body.recipientNeeded, true);
+    assert.equal(sentItems.length, sentBefore, 'nothing was sent');
+  } finally { server.close(); }
 });
 
 test('a missing recipient is CHOSEN, never guessed', () => {
@@ -269,7 +328,7 @@ test('END TO END: with the real proof source connected, the score moves from unm
   flags.setEnabled('governed_execution', true);
   const r = score.read({ now: SCORE_AT });
   assert.equal(r.proofSource.status, 'connected');
-  assert.equal(r.proofSource.connectedSince, '2026-10-21T09:00:00.000Z');
+  assert.equal(r.proofSource.connectedSince, '2026-10-21T08:30:00.000Z', 'the first promise delivery prepared (with sending off)');
   const out = Object.fromEntries(r.entries.map((e) => [e.key, e.outcome]));
   assert.equal(out[keyOf('kept')], 'kept-on-time');
   assert.equal(out[keyOf('straddle')], 'unverified');
