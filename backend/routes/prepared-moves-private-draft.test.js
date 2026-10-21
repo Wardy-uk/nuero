@@ -521,3 +521,37 @@ test('the policy boundary holds: an HR-worded promise, or one the ledger marks s
   const b = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:902' } });
   assert.equal(b.status, 409);
 });
+
+test('a private draft prepared under the 25 Oct rule (no interview, beside the meeting) is never handed back — pressing prepares it again with the interview, in Working', async () => {
+  const T = 'Define the hybrid WFH incentive measures for the leads';
+  fs.writeFileSync(path.join(VAULT, 'Areas', 'Old.md'), `# Old\n- Define the hybrid WFH incentive measures for the leads.\n${PEOPLE_LINES}`);
+  require('../services/task-store').createTask({ text: T, source: 'manual', origin_path: 'Areas/Old.md' });
+  const tid = db.get('SELECT id FROM tasks WHERE text = ?', [T]).id;
+  promises.set('promise:880', promiseOf('promise:880', T, tid));
+  const first = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:880' } });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  // Re-store it as the OLD shape: no interview, a Meetings/ path.
+  const cur = store.latest(planner.moveKeyFor('project-note', `task:${tid}`));
+  const old = JSON.parse(JSON.stringify(cur.packet));
+  delete old.selected.interview;
+  old.selected.decision.slots = old.selected.decision.slots.filter((x) => x.id !== 'unfinished');
+  old.selected.decision.proposedWrites.find((w) => w.kind === 'vault.note').path = `Meetings/2026/09/${planner.safeTitle(T)} – Private draft.md`;
+  old.selected.evidenceHash = 'old-rule';
+  // Rows are immutable (a trigger), so the old shape goes in as the NEXT version — as the live one is.
+  const row = db.get('SELECT * FROM prepared_moves WHERE id = ?', [cur.id]);
+  const oldId = `pm_${'0'.repeat(14)}old1`.slice(0, 23);
+  db.run('INSERT INTO prepared_moves (id, move_key, version, contract, packet_json, packet_hash, options_json, decided_at, evidence_expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [oldId, row.move_key, row.version + 1, row.contract, JSON.stringify(old), 'old-rule', JSON.stringify({ approve: {} }), row.decided_at, row.evidence_expires_at, new Date().toISOString()]);
+  const stale = store.get(oldId);
+  assert.equal(store.latest(planner.moveKeyFor('project-note', `task:${tid}`)).id, oldId);
+  assert.equal((await planner.recheck(stale.packet)).ok, false, 'never confirmed or handed back');
+  assert.equal(exec.writesFor(stale.packet, 'approve').ok, false, 'its Meetings/ path is refused');
+  const m = require('../services/promise-moves').moveFor(itemFor('promise:880', tid, { state: 'needs-a-block' }));
+  assert.equal(m.state, 'offer', 'offered again, not shown as finished');
+  const again = await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:880' } });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.notEqual(again.body.outcome, 'existing');
+  const s = store.latest(planner.moveKeyFor('project-note', `task:${tid}`)).packet.selected;
+  assert.ok(s.interview && s.interview.next, 'with the interview');
+  assert.match(s.decision.proposedWrites.find((w) => w.kind === 'vault.note').path, /^Projects\/Working\//);
+});

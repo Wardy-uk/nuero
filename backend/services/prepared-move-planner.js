@@ -966,6 +966,9 @@ async function recheck(packet, { deps: over = {} } = {}) {
   }
   if (s.screens && s.screens.employment && s.screens.employment.mode === 'private-draft' && s.plan === 'draft') {
     if (!require('./private-brief').isPrivateDraft(draft0)) return { ok: false, why: 'the draft is no longer marked as your private draft' };
+    // Planned under the 25 Oct rule (no interview; kept beside the meeting): never handed back or confirmed — prepared again.
+    const note = ((s.decision || {}).proposedWrites || []).find((w) => w.kind === 'vault.note');
+    if (!s.interview || !note || !require('./prepared-move-exec').PRIVATE_NOTE_RULE(String(note.path || ''))) return { ok: false, why: 'it was prepared under an older rule — prepare it again' };
     if (((s.decision || {}).proposedWrites || []).some((w) => !['vault.note', 'calendar.solo'].includes(w.kind))) return { ok: false, why: 'a private draft may only save a note and hold your own time' };
   }
   const t = deps.task(s.source.taskId);

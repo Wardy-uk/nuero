@@ -75,7 +75,9 @@ function moveFor(item, { now = Date.now(), deps = {} } = {}) {
   const rec = store.latest(moveKey);
   const mine = rec && rec.packet && rec.packet.contract === 'prepared-move-v2' && ((rec.packet.selected || {}).source || {}).promiseKey === item.key
     // A record planned before this promise became private-draft-only (the old owed ask) is not its move any more.
-    && (!priv || (((rec.packet.selected || {}).screens || {}).employment || {}).mode === 'private-draft');
+    && (!priv || (((rec.packet.selected || {}).screens || {}).employment || {}).mode === 'private-draft')
+    // A private draft planned before the interview existed (26 Oct 2026) is offered again, never shown as finished work.
+    && !(priv && rec.packet.selected.plan === 'draft' && !rec.packet.selected.interview);
   if (mine) {
     const s = rec.packet.selected;
     const booked = store.scheduledFor(moveKey);
