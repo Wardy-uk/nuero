@@ -162,6 +162,7 @@ export const interactive = {
   post_canonical_lead_reminders:'When NEURO may remind Nick about a birthday or anniversary is his own setting. He sets it in NEURO → Life → Personal dates.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
+  post_1to1_apply_window: 'Booking and moving 1-2-1s emails real people as Nick. He confirms them in NEURO → People → Schedule 1-2-1s.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',
   post_1to1_cancel: 'Cancelling a 1-2-1 tells the attendee as Nick. He cancels it in NEURO → Team.',
   // Build 14C: everything backend/services/authority-matrix.js refuses to a

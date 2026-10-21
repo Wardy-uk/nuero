@@ -313,163 +313,311 @@ function slotToIso(date, time, durationMinutes) {
 }
 
 /**
- * Batch booking for everyone whose 1-2-1 is overdue.
+ * Mass schedule / reschedule wizard (21 Oct 2026) — replaces "Book all
+ * outstanding". Pick people and a window; NEURO plans everyone into it, spread
+ * evenly, MOVING anyone who already has a 1-2-1 (Nick's call: always re-place)
+ * and booking anyone who has none.
  *
- * Same two-step contract as the single booking, and more important here: this
- * can send a dozen real invites at once, so the plan is shown in full — who,
- * when, and which address each invite goes to — before anything is created.
+ * Same two-step contract as every other 1-2-1 flow: Plan reads the diary and
+ * changes nothing; the full plan — who, from when, to when, book or move, which
+ * address — is on screen before Confirm, because Confirm emails real invites
+ * and "updated" notices to real people. Each row is then confirmed with its own
+ * one-use intent grant, moves first, one failure never taking the rest with it.
  */
-function BookAllDialog({ names, onClose, onBooked }) {
+function localYmd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function defaultWindow() {
+  const from = new Date();
+  from.setDate(from.getDate() + 1);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 14);
+  return { from: localYmd(from), to: localYmd(to) };
+}
+
+const MODE_LABEL = { book: 'Book', move: 'Move', unchanged: 'No change' };
+
+function ScheduleWizard({ preselect = [], onClose, onDone }) {
+  const [step, setStep] = useState('pick'); // pick | plan | result
+  const [roster, setRoster] = useState(null);
+  const [rosterError, setRosterError] = useState('');
+  const [selected, setSelected] = useState(() => new Set(preselect));
+  const [win, setWin] = useState(defaultWindow);
+  const [duration, setDuration] = useState(30);
   const [plan, setPlan] = useState(null);
-  const [edits, setEdits] = useState({}); // person -> { date, time } overrides
+  const [include, setInclude] = useState({}); // person -> bool
+  const [edits, setEdits] = useState({});     // person -> { date, time }
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [booking, setBooking] = useState(false);
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    fetch(apiUrl('/api/1to1/plan-all'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ people: names }),
-    })
+    fetch(apiUrl('/api/1to1/cadence'))
       .then(r => r.json())
-      .then(d => { if (d.ok) setPlan(d); else setError(d.error || 'Could not build a plan'); })
-      .catch(e => setError(e.message));
+      .then(d => {
+        if (!d.ok) { setRosterError(d.error || 'Could not read the team'); return; }
+        setRoster(d.people || []);
+        // Nothing preselected (no one overdue) → start with the people who are due.
+        if (!preselect.length) {
+          setSelected(new Set((d.people || [])
+            .filter(p => p.bookable && ['overdue', 'due-soon', 'unwritten'].includes(p.state))
+            .map(p => p.name)));
+        }
+      })
+      .catch(e => setRosterError(e.message));
   }, []);
 
-  const confirm = async () => {
-    setBooking(true);
+  const bookable = (roster || []).filter(p => p.bookable);
+  const toggle = (name) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+  const hhmm = iso => String(iso || '').split('T')[1]?.slice(0, 5) || '';
+
+  const runPlan = async () => {
+    setBusy(true);
     setError('');
     try {
-      const res = await fetch(apiUrl('/api/1to1/book-all'), {
+      const res = await fetch(apiUrl('/api/1to1/plan-window'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ people: [...selected], from: win.from, to: win.to, durationMinutes: duration }),
+      });
+      const d = await res.json();
+      if (!d.ok) { setError(d.error || 'Could not build a plan'); setBusy(false); return; }
+      setPlan(d);
+      setEdits({});
+      // A new booking with no address cannot be sent, so it starts unticked.
+      setInclude(Object.fromEntries(d.planned.map(p => [p.person,
+        p.mode !== 'unchanged' && !(p.mode === 'book' && !p.attendee?.email)])));
+      setStep('plan');
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const chosen = plan ? plan.planned.filter(p => include[p.person] && p.mode !== 'unchanged') : [];
+
+  const confirm = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/1to1/apply-window'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: plan.planned.map(p => {
+          items: chosen.map(p => {
             const e = edits[p.person];
-            const iso = e
-              ? slotToIso(e.date, e.time, p.durationMinutes)
-              : { start: p.start, end: p.end };
+            const iso = e ? slotToIso(e.date, e.time, p.durationMinutes) : { start: p.start, end: p.end };
             return {
               person: p.person,
+              mode: p.mode,
               start: iso.start,
               end: iso.end,
+              eventId: p.current?.eventId,
               email: p.attendee?.email || undefined,
               subject: p.subject,
+              durationMinutes: p.durationMinutes,
+              searchDays: p.searchDays,
             };
           }),
         }),
       });
       const d = await res.json();
-      // 9 Oct 2026: pressing Book is the decision. Each prepared invite is
-      // confirmed with its own one-use grant and sent now, one at a time, so a
-      // failure on one never takes the rest with it and nothing is retried.
+      if (!d.results) { setError(d.error || 'Nothing was prepared'); setBusy(false); return; }
+      // Pressing Confirm is the decision: each prepared change is sent with its
+      // own one-use grant, in the order the server prepared them (moves first).
       const results = [];
-      for (const r of d.results || []) {
+      for (const r of d.results) {
         if (!r.ok || !r.action) { results.push(r); continue; }
         const x = await executeDirect(r.action);
         results.push({ ...r, direct: x, outcome: directOutcome(x) });
       }
-      setResult({ ...d, results, sent: results.filter(r => r.direct?.executed).length });
-      onBooked?.();
+      setResult({ results, sent: results.filter(r => r.direct?.executed).length });
+      setStep('result');
+      onDone?.(results.map(r => r.person));
     } catch (e) { setError(e.message); }
-    setBooking(false);
+    setBusy(false);
   };
 
-  const hhmm = iso => iso.split('T')[1].slice(0, 5);
+  const moves = chosen.filter(p => p.mode === 'move').length;
+  const books = chosen.length - moves;
 
   return (
     <div className="note-editor-overlay" onClick={onClose}>
-      <div className="book-dialog book-dialog-wide" onClick={e => e.stopPropagation()}>
+      <div className="book-dialog book-dialog-wide sched-wizard" onClick={e => e.stopPropagation()}>
         <div className="note-editor-header">
           <span className="note-editor-title">
-            {result ? 'Booking results' : `Book all outstanding 1-2-1s${plan ? ` (${plan.planned.length})` : ''}`}
+            {step === 'pick' && 'Schedule 1-2-1s — who and when'}
+            {step === 'plan' && `Schedule 1-2-1s — plan for ${win.from} to ${win.to}`}
+            {step === 'result' && 'Schedule 1-2-1s — results'}
           </span>
           <button className="note-editor-close" onClick={onClose}>x</button>
         </div>
 
-        {result ? (
+        {step === 'pick' && (
           <div className="book-dialog-body">
-            <div className={result.sent ? 'book-ok' : 'book-error'}>
-              {result.sent || 0} of {(result.results || []).length} invite{(result.results || []).length === 1 ? '' : 's'} sent
-            </div>
-            {/* Each line says what the governed send actually reported for it. */}
-            <ul className="book-results">
-              {(result.results || []).map((r, i) => (
-                <li key={i} className={r.direct?.executed ? 'ok' : 'bad'}>
-                  <span className="book-results-name">{r.person}</span>
-                  {r.ok
-                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''} — {r.outcome?.text || 'not sent'}</span>
-                    : <span>{r.error}</span>}
-                </li>
-              ))}
-            </ul>
-            <div className="book-actions"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
+            {rosterError ? (
+              <div className="book-error">Couldn't read the team: {rosterError}</div>
+            ) : !roster ? (
+              <div className="note-editor-loading">Reading the team…</div>
+            ) : (
+              <>
+                <div className="sched-window">
+                  <label><span>From</span>
+                    <input type="date" value={win.from} onChange={e => setWin(w => ({ ...w, from: e.target.value }))} />
+                  </label>
+                  <label><span>To</span>
+                    <input type="date" value={win.to} onChange={e => setWin(w => ({ ...w, to: e.target.value }))} />
+                  </label>
+                  <label><span>New 1-2-1s last</span>
+                    <select value={duration} onChange={e => setDuration(Number(e.target.value))}>
+                      <option value={30}>30 min</option>
+                      <option value={45}>45 min</option>
+                      <option value={60}>60 min</option>
+                    </select>
+                  </label>
+                  <div className="sched-quick">
+                    <button className="btn btn-small" onClick={() => setSelected(new Set(bookable.map(p => p.name)))}>All</button>
+                    <button className="btn btn-small" onClick={() => setSelected(new Set(bookable.filter(p => p.state === 'overdue' || p.state === 'unwritten').map(p => p.name)))}>Overdue</button>
+                    <button className="btn btn-small" onClick={() => setSelected(new Set())}>None</button>
+                  </div>
+                </div>
+
+                <table className="book-plan sched-pick">
+                  <thead><tr><th></th><th>Who</th><th>Team</th><th>Cadence</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {roster.map(p => (
+                      <tr key={p.name} className={p.bookable ? '' : 'sched-disabled'} onClick={() => p.bookable && toggle(p.name)}>
+                        <td>
+                          <input type="checkbox" disabled={!p.bookable} checked={selected.has(p.name)}
+                            onChange={() => toggle(p.name)} onClick={e => e.stopPropagation()} />
+                        </td>
+                        <td>{p.name}</td>
+                        <td>{p.team || '—'}</td>
+                        <td>{p.cadence || '—'}</td>
+                        <td className={`sched-state sched-state-${p.state}`}>{p.bookable ? (p.label || p.state) : (p.why || 'no cadence set')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <p className="book-caveat">
+                  Everyone ticked is placed inside the window, spread across it, most overdue first.
+                  Anyone who already has a 1-2-1 in the diary is <strong>moved</strong> (they get an "updated" notice);
+                  anyone without one gets a new invite. Nothing changes until you confirm the plan.
+                </p>
+                {error && <div className="book-error">{error}</div>}
+                <div className="book-actions">
+                  <button className="btn" onClick={onClose}>Cancel</button>
+                  <button className="btn btn-primary" onClick={runPlan} disabled={busy || !selected.size}>
+                    {busy ? 'Planning…' : `Plan ${selected.size} 1-2-1${selected.size === 1 ? '' : 's'}`}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        ) : !plan && !error ? (
-          <div className="note-editor-loading">Finding slots for {names.length} people...</div>
-        ) : error && !plan ? (
+        )}
+
+        {step === 'plan' && plan && (
           <div className="book-dialog-body">
-            <div className="book-error">{error}</div>
-            <div className="book-actions"><button className="btn" onClick={onClose}>Close</button></div>
-          </div>
-        ) : (
-          <div className="book-dialog-body">
+            {plan.window?.startsLater && (
+              <div className="book-warn">The window starts tomorrow ({plan.window.effectiveFrom}) — 1-2-1s are never booked for today or earlier.</div>
+            )}
             <table className="book-plan">
               <thead>
-                <tr><th>Who</th><th>When</th><th>Invite to</th></tr>
+                <tr><th></th><th>Who</th><th>Action</th><th>Now</th><th>New slot</th><th>Invite to</th></tr>
               </thead>
               <tbody>
                 {plan.planned.map(p => (
-                  <tr key={p.person}>
-                    <td>{p.person}</td>
+                  <tr key={p.person} className={include[p.person] || p.mode === 'unchanged' ? '' : 'sched-disabled'}>
                     <td>
-                      <SlotEditor
-                        compact
-                        date={edits[p.person]?.date ?? p.date}
-                        time={edits[p.person]?.time ?? hhmm(p.start)}
-                        durationMinutes={p.durationMinutes}
-                        onChange={next => setEdits(prev => ({ ...prev, [p.person]: next }))}
-                      />
+                      {p.mode !== 'unchanged' && (
+                        <input type="checkbox" checked={!!include[p.person]}
+                          disabled={p.mode === 'book' && !p.attendee?.email}
+                          onChange={() => setInclude(prev => ({ ...prev, [p.person]: !prev[p.person] }))} />
+                      )}
                     </td>
-                    <td className={p.attendee?.email ? 'book-plan-email' : 'book-plan-noemail'}>
-                      {p.attendee?.email || 'no address — no invite'}
+                    <td>
+                      {p.person}
+                      {p.moveCount >= 2 && <div className="sched-note">already moved {p.moveCount} times</div>}
+                      {p.awayCheck === 'unknown' && <div className="sched-note">leave not checked</div>}
+                    </td>
+                    <td><span className={`sched-mode sched-mode-${p.mode}`}>{MODE_LABEL[p.mode]}</span></td>
+                    <td>{p.current ? `${formatDate(String(p.current.start).slice(0, 10))} ${hhmm(p.current.start)}` : '—'}</td>
+                    <td>
+                      {p.mode === 'unchanged' ? (
+                        <span>{formatDate(p.date)} {hhmm(p.start)} (stays)</span>
+                      ) : (
+                        <SlotEditor
+                          compact
+                          date={edits[p.person]?.date ?? p.date}
+                          time={edits[p.person]?.time ?? hhmm(p.start)}
+                          durationMinutes={p.durationMinutes}
+                          onChange={next => setEdits(prev => ({ ...prev, [p.person]: next }))}
+                        />
+                      )}
+                    </td>
+                    <td className={p.mode === 'move' || p.attendee?.email ? 'book-plan-email' : 'book-plan-noemail'}>
+                      {p.mode === 'move' ? 'existing attendees' : (p.attendee?.email || 'no address — cannot book')}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            {plan.notBookable?.length > 0 && (
-              <div className="book-warn">
-                Excluded — not on a 1-2-1 cadence: {plan.notBookable.map(s => `${s.person} (${s.reason})`).join(', ')}
-              </div>
-            )}
             {plan.skipped?.length > 0 && (
               <div className="book-warn">
-                Couldn't place: {plan.skipped.map(s => s.person).join(', ')} — {plan.skipped[0].reason}
+                Couldn't place inside the window:
+                <ul>{plan.skipped.map(s => <li key={s.person}>{s.person} — {s.reason}</li>)}</ul>
               </div>
             )}
+            {plan.notBookable?.length > 0 && (
+              <div className="book-warn">Not on a 1-2-1 cadence: {plan.notBookable.map(s => `${s.person} (${s.reason})`).join(', ')}</div>
+            )}
+            {plan.unknown?.length > 0 && (
+              <div className="book-warn">Not an active direct report: {plan.unknown.join(', ')}</div>
+            )}
             {plan.withoutInvite?.length > 0 && (
-              <div className="book-warn">
-                No email resolved for {plan.withoutInvite.join(', ')} — those go in your calendar with no invite.
-              </div>
+              <div className="book-warn">No email for {plan.withoutInvite.join(', ')} — add it to their People note to book them.</div>
+            )}
+            {plan.awayUnchecked?.length > 0 && (
+              <div className="book-warn">Couldn't check leave for {plan.awayUnchecked.map(a => a.person).join(', ')} — the slots ignore any holiday they have booked.</div>
             )}
 
             <p className="book-caveat">
-              Slots are free in your calendar; the team's availability isn't visible to NEURO,
-              so these go out as normal invites they can decline. Max 2 a day, 10:00–12:00 or
-              14:00–16:30 only.
+              Slots are free in your calendar only — the team's diaries aren't visible to NEURO. Max 2 a day,
+              no Fridays, 10:00–12:00 or 14:00–16:30, an hour between 1-2-1s.
             </p>
             {error && <div className="book-error">{error}</div>}
             <div className="book-actions">
-              <button className="btn" onClick={onClose} disabled={booking}>Cancel</button>
-              <button className="btn btn-primary" onClick={confirm} disabled={booking || !plan.planned.length}>
-                {booking
-                  ? 'Booking...'
-                  : `Confirm & send ${plan.planned.filter(p => p.attendee?.email).length} invite${plan.planned.filter(p => p.attendee?.email).length === 1 ? '' : 's'}`}
+              <button className="btn" onClick={() => setStep('pick')} disabled={busy}>Back</button>
+              <button className="btn btn-primary" onClick={confirm} disabled={busy || !chosen.length}>
+                {busy
+                  ? 'Sending…'
+                  : `Confirm — ${[books && `book ${books}`, moves && `move ${moves}`].filter(Boolean).join(', ') || 'nothing to send'}`}
               </button>
             </div>
+          </div>
+        )}
+
+        {step === 'result' && result && (
+          <div className="book-dialog-body">
+            <div className={result.sent ? 'book-ok' : 'book-error'}>
+              {result.sent} of {result.results.length} change{result.results.length === 1 ? '' : 's'} sent
+            </div>
+            <ul className="book-results">
+              {result.results.map((r, i) => (
+                <li key={i} className={r.direct?.executed ? 'ok' : 'bad'}>
+                  <span className="book-results-name">{r.person}</span>
+                  <span>
+                    {MODE_LABEL[r.mode] || r.mode} {r.start ? `${formatDate(r.start.split('T')[0])} ${hhmm(r.start)}` : ''} — {r.ok ? (r.outcome?.text || 'not sent') : r.error}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="book-actions"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
           </div>
         )}
       </div>
@@ -1138,15 +1286,13 @@ export default function PeopleBoard() {
           <span className="team-saim-label">SAiM</span>
           <p className="team-saim-line">{saimLine}</p>
         </div>
-        {overdueNames.length > 0 && (
-          <button
-            className="team-saim-book-all"
-            onClick={() => setBookingAll(overdueNames)}
-            title={`Plan 1-2-1s for: ${overdueNames.join(', ')}`}
-          >
-            Book all outstanding ({overdueNames.length})
-          </button>
-        )}
+        <button
+          className="team-saim-book-all"
+          onClick={() => setBookingAll(overdueNames)}
+          title="Pick people and a date range — NEURO books or moves their 1-2-1s into it"
+        >
+          Schedule 1-2-1s{overdueNames.length > 0 ? ` (${overdueNames.length} overdue)` : ''}
+        </button>
       </div>
 
       {/* What the team owes Nick. Grouped by person, worst offender first — and
@@ -1184,12 +1330,12 @@ export default function PeopleBoard() {
       </div>
 
       {bookingAll && (
-        <BookAllDialog
-          names={bookingAll}
+        <ScheduleWizard
+          preselect={bookingAll}
           onClose={() => setBookingAll(null)}
-          onBooked={() => {
-            // next-1-2-1-due moved for everyone booked — refresh the badges
-            bookingAll.forEach(n => {
+          onDone={(names) => {
+            // 1-2-1-booked moved for everyone booked or moved — refresh the badges
+            names.forEach(n => {
               fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(n)}`))
                 .then(r => r.json())
                 .then(data => setPeopleData(prev => ({ ...prev, [n]: data })))

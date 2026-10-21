@@ -597,11 +597,39 @@ function recordMove(name, { from, to, reason = null }) {
  * match and is tried first; subject is the fallback, because a hand-booked
  * "Catch up - Nick/Hope" may carry no attendee NEURO can resolve.
  */
+/**
+ * PURE: this person's 1-2-1s among `events`, best first — the next one still to
+ * come, else the most recent missed one. Shared by findOneToOne and the window
+ * planner so "which meeting is their 1-2-1" has one answer. Graph times are
+ * wall-clock Europe/London, compared as strings against `nowStr`.
+ */
+function matchOneToOnes(events, name, email, nowStr) {
+  const first = String(name || '').split(' ')[0].toLowerCase();
+  const mail = email ? String(email).toLowerCase() : null;
+  const all = (events || [])
+    .filter(e => !['cancelled'].includes(String(e.showAs || 'busy').toLowerCase()))
+    .filter(e => !e.isAllDay)
+    // The 5-minute "Plaud admin — 1-2-1 — …" write-up block is not the 1-2-1.
+    .filter(e => !/^plaud admin/i.test(String(e.subject || '')))
+    .filter((e) => {
+      const looks121 = ONE_TO_ONE_SUBJECT.test(String(e.subject || ''));
+      const byEmail = mail
+        && (e.attendees || []).some(a => String(a.email || '').toLowerCase() === mail);
+      // A meeting naming them in the subject counts only if it also reads as a
+      // 1-2-1 — "Team Meeting Hope handover" is not one.
+      const bySubject = looks121 && String(e.subject || '').toLowerCase().includes(first);
+      return byEmail ? looks121 || (e.attendees || []).length <= 2 : bySubject;
+    })
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const upcoming = all.filter(e => String(e.end || e.start) >= nowStr);
+  const missed = all.filter(e => String(e.end || e.start) < nowStr);
+  return upcoming.length ? upcoming : missed.reverse();
+}
+
 async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS, lookbackDays = MISSED_LOOKBACK_DAYS } = {}) {
   if (!name) return { ok: false, error: 'person is required' };
 
   const attendee = await resolveAttendee(name);
-  const first = name.split(' ')[0].toLowerCase();
 
   // Read a few days BACK as well (15 Oct 2026): a 1-2-1 that slipped past with no
   // note is exactly the one Nick needs to move, and a forward-only search said
@@ -614,28 +642,7 @@ async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS, lookb
     return { ok: false, error: `Could not read the calendar: ${e.message}` };
   }
 
-  const all = (events || [])
-    .filter(e => !['cancelled'].includes(String(e.showAs || 'busy').toLowerCase()))
-    .filter(e => !e.isAllDay)
-    // The 5-minute "Plaud admin — 1-2-1 — …" write-up block is not the 1-2-1.
-    .filter(e => !/^plaud admin/i.test(String(e.subject || '')))
-    .filter((e) => {
-      const looks121 = ONE_TO_ONE_SUBJECT.test(String(e.subject || ''));
-      const byEmail = attendee.email
-        && (e.attendees || []).some(a => String(a.email || '').toLowerCase() === attendee.email.toLowerCase());
-      // A meeting naming them in the subject counts only if it also reads as a
-      // 1-2-1 — "Team Meeting Hope handover" is not one.
-      const bySubject = looks121 && String(e.subject || '').toLowerCase().includes(first);
-      return byEmail ? looks121 || (e.attendees || []).length <= 2 : bySubject;
-    })
-    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
-
-  // Prefer the next one still to come; only if there is none, the most recent
-  // missed one. Graph times are wall-clock Europe/London, compared as strings.
-  const nowStr = localStamp(from);
-  const upcoming = all.filter(e => String(e.end || e.start) >= nowStr);
-  const missed = all.filter(e => String(e.end || e.start) < nowStr);
-  const candidates = upcoming.length ? upcoming : missed.reverse();
+  const candidates = matchOneToOnes(events, name, attendee.email, localStamp(from));
 
   if (!candidates.length) {
     return { ok: false, error: `No 1-2-1 with ${name} found in the last ${lookbackDays} or next ${days} days`, searched: days };
@@ -733,7 +740,7 @@ async function proposeReschedule(name, { after = null, durationMinutes = null } 
  * `1-2-1-booked` follows the meeting to its new date; `last-1-2-1` does NOT —
  * same rule as book(). Only a written-up note proves a 1-2-1 actually happened.
  */
-async function reschedule({ person, eventId, start, end, reason = null, skipClashCheck = false }) {
+async function reschedule({ person, eventId, start, end, reason = null, skipClashCheck = false, searchDays = SEARCH_DAYS }) {
   if (!person || !eventId || !start || !end) {
     return { ok: false, error: 'person, eventId, start and end are required' };
   }
@@ -749,7 +756,9 @@ async function reschedule({ person, eventId, start, end, reason = null, skipClas
 
   // The event as it is NOW — time and attendees — is bound into the approval;
   // the executor refuses if any of it changes before Nick approves.
-  const found = await findOneToOne(person);
+  // `searchDays`: the window planner looks further ahead than 21 days, so it
+  // must find the event with the same horizon it planned against.
+  const found = await findOneToOne(person, { days: searchDays });
   if (!found.ok || found.event.id !== eventId) {
     return { ok: false, error: found.ok ? 'That 1-2-1 is not the one found in the calendar now — reload and try again' : found.error };
   }
@@ -901,9 +910,282 @@ async function bookAll(items = []) {
   };
 }
 
+// ── Mass schedule / reschedule over a window (21 Oct 2026) ──────────────────
+//
+// Nick picks people and a date window; every selected person is (re)placed
+// inside it. His calls, asked before building:
+//   - ALWAYS RE-PLACE: someone with a 1-2-1 already in the diary is MOVED into
+//     the plan (a PATCH, so they get "updated", never "cancelled" + "invited"),
+//     even if it already sits inside the window — the batch is re-spread.
+//   - SPREAD EVENLY: the window's usable days are divided across the people,
+//     most overdue earliest, so the batch does not pile into the first two days.
+//   - Nobody is placed OUTSIDE the window. Someone who will not fit is reported
+//     by name with the reason, never quietly pushed past the end date.
+// Every other booking rule is the one findSlot already enforces (10–12 /
+// 14–16:30, :00/:30 starts, never over a meeting, an hour between 1-2-1s,
+// max 2 a day, no Fridays, working days, their leave).
+
+const MAX_WINDOW_DAYS = 92;
+
+function _isYmd(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s || ''))) return false;
+  const d = new Date(`${s}T12:00:00`);
+  return !Number.isNaN(d.getTime()) && dateStr(d) === s;
+}
+
+/**
+ * PURE. The window as asked, refused (never clamped) when it is not a real
+ * range. A start of today or earlier begins TOMORROW instead — the "never
+ * today" rule — and `startsLater` says so rather than hiding it.
+ */
+function validateWindow(from, to, now = new Date()) {
+  if (!_isYmd(from)) return { ok: false, invalid: true, error: 'from must be a real date (YYYY-MM-DD)' };
+  if (!_isYmd(to)) return { ok: false, invalid: true, error: 'to must be a real date (YYYY-MM-DD)' };
+  if (to < from) return { ok: false, invalid: true, error: 'the window ends before it starts' };
+  const tomorrow = dateStr(addDays(now, 1));
+  if (to < tomorrow) return { ok: false, invalid: true, error: 'the window is already over — 1-2-1s are never booked for today or the past' };
+  const span = Math.round((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000) + 1;
+  if (span > MAX_WINDOW_DAYS) return { ok: false, invalid: true, error: `a window can be at most ${MAX_WINDOW_DAYS} days` };
+  const effectiveFrom = from < tomorrow ? tomorrow : from;
+  return { ok: true, from, to, effectiveFrom, startsLater: effectiveFrom !== from };
+}
+
+/** PURE. Days in [from, to] a 1-2-1 may go on at all (working day, not a Friday). */
+function eligibleDays(events, from, to) {
+  const out = [];
+  for (let d = new Date(`${from}T12:00:00`); dateStr(d) <= to; d = addDays(d, 1)) {
+    if (d.getDay() === 5) continue;
+    if (!isWorkingDay(d, events)) continue;
+    out.push(dateStr(d));
+  }
+  return out;
+}
+
+/** PURE. Where person i of n should START looking, spread across `dayCount` days. */
+function spreadIndex(i, n, dayCount) {
+  if (!dayCount || !n) return 0;
+  return Math.min(dayCount - 1, Math.floor((i * dayCount) / n));
+}
+
+/**
+ * PURE. findSlot's rules over a fixed list of days: from the person's spread
+ * target to the end of the window, then back from the start — so a full
+ * target day falls forward first, and only then earlier.
+ */
+function findSlotInDays(events, days, startIdx, durationMinutes, personOff = null) {
+  const order = [...days.slice(startIdx), ...days.slice(0, startIdx)];
+  for (const d of order) {
+    if (personOff && personOff.has(d)) continue;
+    const day = new Date(`${d}T12:00:00`);
+    if (countOneToOnes(day, events) >= MAX_PER_DAY) continue;
+    for (const window of [PM_WINDOW, AM_WINDOW]) {
+      const gap = findGapInWindow(day, events, window, durationMinutes);
+      if (!gap) continue;
+      return {
+        date: d,
+        start: minutesToClock(d, gap.start),
+        end: minutesToClock(d, gap.end),
+        window: window === PM_WINDOW ? 'afternoon' : 'morning',
+      };
+    }
+  }
+  return null;
+}
+
+/** How far ahead to look for someone's existing 1-2-1: well past the window's end. */
+function horizonDays(to, now = new Date()) {
+  const days = Math.ceil((new Date(`${to}T12:00:00`) - now) / 86400000);
+  return Math.max(SEARCH_DAYS, days + SEARCH_DAYS);
+}
+
+/**
+ * Plan the window. Reads only — creates and moves nothing.
+ */
+async function planWindow(names, { from, to, durationMinutes = DEFAULT_DURATION_MIN } = {}) {
+  const v = validateWindow(from, to);
+  if (!v.ok) return v;
+
+  const index = detect.getIndex();
+  const active = new Set((index.people || []).map(p => p.name));
+  const byName = new Map((index.people || []).map(p => [p.name, p]));
+  const wanted = [...new Set(names || [])].filter(Boolean);
+  const unknown = wanted.filter(n => !active.has(n));
+  const notBookable = wanted
+    .filter(n => active.has(n) && !byName.get(n).bookable)
+    .map(n => ({ person: n, reason: byName.get(n).status || 'not on a 1-2-1 cadence' }));
+  const candidates = wanted
+    .filter(n => active.has(n) && byName.get(n).bookable)
+    .map(n => ({ name: n, fmDue: readNextDue(n) }))
+    // Most overdue first, so they get the earliest days; no due date at all is
+    // the most neglected case and sorts first.
+    .sort((a, b) => String(a.fmDue || '0000-00-00').localeCompare(String(b.fmDue || '0000-00-00')));
+  if (!candidates.length) return { ok: false, error: 'Nobody in that list is on a 1-2-1 cadence', unknown, notBookable };
+
+  const now = new Date();
+  const searchDays = horizonDays(v.to, now);
+  let events;
+  try {
+    const microsoft = require('./microsoft');
+    events = await microsoft.fetchCalendarEvents(
+      dateStr(addDays(now, -MISSED_LOOKBACK_DAYS)), dateStr(addDays(now, searchDays)));
+  } catch (e) {
+    return { ok: false, error: `Could not read the calendar: ${e.message}` };
+  }
+  events = events || [];
+
+  // Who already has one, by the SAME rule findOneToOne / reschedule use.
+  const nowStr = localStamp(now);
+  const rows = [];
+  for (const c of candidates) {
+    const attendee = await resolveAttendee(c.name);
+    const existing = matchOneToOnes(events, c.name, attendee.email, nowStr)[0] || null;
+    rows.push({ ...c, attendee, existing });
+  }
+
+  // The meetings being moved come OUT of the working diary: they must neither
+  // clash with their own new slot nor count towards a day's cap.
+  const moving = new Set(rows.filter(r => r.existing && isRealEventId(r.existing.id)).map(r => r.existing.id));
+  const working = events.filter(e => !moving.has(e.id));
+  const days = eligibleDays(working, v.effectiveFrom, v.to);
+  if (!days.length) {
+    return { ok: false, error: `No usable days in ${v.effectiveFrom} – ${v.to} (weekends, Fridays and bank holidays are skipped)`, unknown, notBookable };
+  }
+
+  const planned = [];
+  const skipped = [];
+  const awayUnchecked = [];
+  rows.forEach((r, i) => {
+    if (r.existing && !isRealEventId(r.existing.id)) {
+      skipped.push({ person: r.name, reason: `their 1-2-1 on ${String(r.existing.start).slice(0, 10)} came from the calendar fallback and cannot be moved from here` });
+      return;
+    }
+    const minutes = r.existing
+      ? (Math.max(15, toMinutes(r.existing.end) - toMinutes(r.existing.start)) || durationMinutes)
+      : durationMinutes;
+    const away = awayFor(r.name);
+    if (!away.checked) awayUnchecked.push({ person: r.name, reason: away.reason });
+    const slot = findSlotInDays(working, days, spreadIndex(i, rows.length, days.length), minutes, away.dates);
+    if (!slot) {
+      skipped.push({
+        person: r.name,
+        reason: `no free ${minutes}-minute slot in ${v.effectiveFrom} – ${v.to}`
+          + (away.checked && away.dates.size ? ' (allowing for their leave)' : ''),
+      });
+      return;
+    }
+    reserve(working, r.name, slot);
+    const current = r.existing
+      ? { eventId: r.existing.id, start: r.existing.start, end: r.existing.end, subject: r.existing.subject }
+      : null;
+    const unchanged = Boolean(current && String(current.start).slice(0, 16) === slot.start.slice(0, 16));
+    planned.push({
+      person: r.name,
+      mode: !current ? 'book' : (unchanged ? 'unchanged' : 'move'),
+      date: slot.date,
+      start: slot.start,
+      end: slot.end,
+      window: slot.window,
+      durationMinutes: minutes,
+      subject: subjectFor(r.name),
+      attendee: r.attendee,
+      current,
+      dueDate: r.fmDue || null,
+      moveCount: current ? movesFor(r.name).length : 0,
+      awayCheck: away.checked ? 'checked' : 'unknown',
+      searchDays,
+    });
+  });
+
+  return {
+    ok: true,
+    window: v,
+    days: days.length,
+    planned,
+    skipped,
+    unknown,
+    notBookable,
+    // A NEW booking with no address cannot be made (book() refuses); a move needs none.
+    withoutInvite: planned.filter(p => p.mode === 'book' && !p.attendee?.email).map(p => p.person),
+    awayUnchecked,
+    totalRequested: wanted.length,
+  };
+}
+
+/**
+ * Prepare every confirmed row of a window plan. Same contract as bookAll:
+ * sequential, fault-isolated, nothing sent here — each success carries the exact
+ * prepared action the screen then confirms with its own intent grant.
+ *
+ * MOVES ARE PREPARED (and so sent) FIRST, and slots are re-checked against the
+ * diary with every meeting being moved taken out of it: in a re-spread batch
+ * one person's new slot is often another's old one, and the plain clash check
+ * would refuse it over a meeting that is about to leave. A slot taken by
+ * anything ELSE since the plan was made is refused for that row only.
+ */
+async function applyWindow(items = []) {
+  if (!Array.isArray(items) || !items.length) return { ok: false, error: 'nothing to schedule' };
+  const rows = items
+    .filter(it => it && it.mode !== 'unchanged')
+    .sort((a, b) => (a.mode === 'move' ? 0 : 1) - (b.mode === 'move' ? 0 : 1));
+  if (!rows.length) return { ok: false, error: 'nothing to change — every row is already where the plan puts it' };
+
+  const moving = new Set(rows.filter(r => r.mode === 'move' && r.eventId).map(r => r.eventId));
+  const dates = rows.map(r => String(r.start || '').slice(0, 10)).filter(_isYmd).sort();
+  let working = null;
+  if (dates.length) {
+    try {
+      const microsoft = require('./microsoft');
+      working = ((await microsoft.fetchCalendarEvents(dates[0], dates[dates.length - 1])) || [])
+        .filter(e => !moving.has(e.id));
+    } catch { working = null; } // best-effort, as bookAll: never blocks on a failed read
+  }
+
+  const results = [];
+  for (const it of rows) {
+    const { person, mode, start, end, eventId, email, subject, durationMinutes, searchDays } = it;
+    if (!person || !start || !end || !['book', 'move'].includes(mode) || (mode === 'move' && !eventId)) {
+      results.push({ person: person || '(unknown)', mode, ok: false, error: 'incomplete row — re-plan' });
+      continue;
+    }
+    const day = String(start).slice(0, 10);
+    if (working) {
+      const from = toMinutes(start);
+      const to = toMinutes(end);
+      const hit = working
+        .filter(e => e.date === day)
+        .filter(e => String(e.showAs || 'busy').toLowerCase() !== 'cancelled')
+        .filter(e => !(e.isAllDay && String(e.showAs || '').toLowerCase() === 'free'))
+        .find(e => (e.isAllDay ? true : from < toMinutes(e.end) && to > toMinutes(e.start)));
+      if (hit) { results.push({ person, mode, start, end, ok: false, error: `slot now clashes with "${hit.subject || 'a meeting'}" — re-plan` }); continue; }
+      if (countOneToOnes(new Date(`${day}T12:00:00`), working) >= MAX_PER_DAY) {
+        results.push({ person, mode, start, end, ok: false, error: `already ${MAX_PER_DAY} 1-2-1s that day — re-plan` });
+        continue;
+      }
+    }
+    let outcome;
+    try {
+      outcome = mode === 'move'
+        ? await reschedule({
+          person, eventId, start, end, reason: 'Batch reschedule', skipClashCheck: true,
+          searchDays: Number.isFinite(searchDays) ? Math.min(searchDays, 200) : SEARCH_DAYS,
+        })
+        : await book({ person, start, end, email, subject, durationMinutes, skipClashCheck: true });
+    } catch (e) {
+      outcome = { ok: false, error: e.message };
+    }
+    results.push({ person, mode, start, end, ...outcome });
+    if (outcome.ok && working) reserve(working, person, { date: day, start, end });
+  }
+
+  const prepared = results.filter(r => r.ok);
+  return { ok: prepared.length > 0, prepared: prepared.length, failed: results.length - prepared.length, results };
+}
+
 module.exports = {
   propose,
   planAll,
+  planWindow,
+  applyWindow,
   book,
   bookAll,
   findOneToOne,
@@ -918,5 +1200,6 @@ module.exports = {
     dateStr, isWorkingDay, earliestDate, toMinutes,
     isRealEventId, recordMove, findClashExcluding, MOVES_KEY,
     PM_WINDOW, AM_WINDOW, MAX_PER_DAY, SEARCH_DAYS,
+    matchOneToOnes, validateWindow, eligibleDays, spreadIndex, findSlotInDays, horizonDays,
   },
 };

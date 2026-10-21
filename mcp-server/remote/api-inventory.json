@@ -516,7 +516,7 @@
     "route": "/api/1to1/find/:person",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 357,
+    "line": 390,
     "description": "GET /api/1to1/find/:person.",
     "params": [
       "person"
@@ -534,7 +534,7 @@
     "route": "/api/1to1/moves/:person",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 415,
+    "line": 448,
     "description": "GET /api/1to1/moves/:person.",
     "params": [
       "person"
@@ -7000,12 +7000,30 @@
     "stream": false
   },
   {
+    "id": "post_1to1_apply_window",
+    "method": "POST",
+    "route": "/api/1to1/apply-window",
+    "domain": "1to1",
+    "source": "routes/one-to-one.js",
+    "line": 356,
+    "description": "POST /api/1to1/apply-window. prepare every confirmed row of a window plan (book new / move existing 1-2-1s). Each comes back as a prepared governed action the screen confirms itself; nothing is sent here. Refuses machine clients. Body: { items: [{ person, mode: book|move, start, end, eventId?, email",
+    "params": [],
+    "query": [],
+    "body": [
+      "items"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_1to1_book",
     "method": "POST",
     "route": "/api/1to1/book",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 339,
+    "line": 372,
     "description": "POST /api/1to1/book.",
     "params": [],
     "query": [],
@@ -7082,7 +7100,7 @@
     "route": "/api/1to1/cancel",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 401,
+    "line": 434,
     "description": "POST /api/1to1/cancel. cancel a 1-2-1 that is in the diary (cancel one-to-one, call off a 1:1). PREPARES a governed cancel_calendar_event bound to the real event; the screen that pressed Cancel then confirms that exact action with a one-use intent grant, Graph tells the attendee, and it is read back",
     "params": [],
     "query": [],
@@ -7102,7 +7120,7 @@
     "route": "/api/1to1/notes",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 424,
+    "line": 457,
     "description": "POST /api/1to1/notes.",
     "params": [],
     "query": [],
@@ -7197,6 +7215,27 @@
     "stream": false
   },
   {
+    "id": "post_1to1_plan_window",
+    "method": "POST",
+    "route": "/api/1to1/plan-window",
+    "domain": "1to1",
+    "source": "routes/one-to-one.js",
+    "line": 339,
+    "description": "POST /api/1to1/plan-window. mass schedule / reschedule 1-2-1s: plan chosen people into a date window (bulk book, batch move, re-spread one to ones). Reads only; creates and moves nothing. Body: { people: [names], from: YYYY-MM-DD, to: YYYY-MM-DD, durationMinutes? }",
+    "params": [],
+    "query": [],
+    "body": [
+      "durationMinutes",
+      "from",
+      "people",
+      "to"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_1to1_propose",
     "method": "POST",
     "route": "/api/1to1/propose",
@@ -7221,7 +7260,7 @@
     "route": "/api/1to1/propose-reschedule",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 368,
+    "line": 401,
     "description": "POST /api/1to1/propose-reschedule.",
     "params": [],
     "query": [],
@@ -7241,7 +7280,7 @@
     "route": "/api/1to1/reschedule",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 382,
+    "line": 415,
     "description": "POST /api/1to1/reschedule.",
     "params": [],
     "query": [],

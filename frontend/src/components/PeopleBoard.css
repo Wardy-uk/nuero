@@ -1003,3 +1003,80 @@
     padding: 12px;
   }
 }
+
+/* ── Schedule 1-2-1s wizard (21 Oct 2026) ── wide: a dozen rows with editors */
+.sched-wizard {
+  width: min(1100px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.sched-window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sched-window label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sched-window input,
+.sched-window select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.sched-quick {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.sched-quick .btn-small {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+.sched-pick tbody tr { cursor: pointer; }
+.sched-pick tbody tr:hover td { background: var(--bg-tertiary); }
+
+.book-plan tr.sched-disabled td { color: var(--text-muted); opacity: 0.6; }
+.sched-pick tr.sched-disabled { cursor: default; }
+
+.sched-state-overdue,
+.sched-state-unwritten { color: var(--warning); }
+.sched-state-booked { color: var(--success); }
+
+.sched-mode {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.sched-mode-book { color: var(--accent); border-color: var(--accent); }
+.sched-mode-move { color: var(--warning); border-color: var(--warning); }
+.sched-mode-unchanged { color: var(--text-muted); }
+
+.sched-note {
+  font-size: 10px;
+  color: var(--warning);
+  margin-top: 2px;
+}
+
+.book-warn ul { margin: 4px 0 0 16px; padding: 0; }

@@ -165,6 +165,7 @@ const ROUTE_RULES = Object.freeze([
   // Build 8 (the route says so itself); the matrix states the stricter rule.
   R('POST', '/api/1to1/book', 'calendar.attendee.create', { machine: 'refuse' }),
   R('POST', '/api/1to1/book-all', 'calendar.attendee.create', { machine: 'refuse' }),
+  R('POST', '/api/1to1/apply-window', 'calendar.attendee.create', { machine: 'refuse' }),
   R('POST', '/api/1to1/reschedule', 'calendar.attendee.reschedule', { machine: 'refuse' }),
   R('POST', '/api/1to1/cancel', 'calendar.attendee.cancel', { machine: 'refuse' }),
   R('POST', '/api/c/login', 'config.security'),

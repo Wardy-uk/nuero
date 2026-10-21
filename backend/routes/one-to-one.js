@@ -335,6 +335,39 @@ router.post('/book-all', async (req, res) => {
   }
 });
 
+// POST /api/1to1/plan-window — mass schedule / reschedule 1-2-1s: plan chosen people into a date window (bulk book, batch move, re-spread one to ones). Reads only; creates and moves nothing. Body: { people: [names], from: YYYY-MM-DD, to: YYYY-MM-DD, durationMinutes? }
+router.post('/plan-window', async (req, res) => {
+  try {
+    const { people, from, to, durationMinutes } = req.body || {};
+    if (!Array.isArray(people) || !people.length) {
+      return res.status(400).json({ ok: false, error: 'people (array) is required' });
+    }
+    const result = await booking.planWindow(people, { from, to, durationMinutes });
+    // A refused window (bad dates, already over, too long) is a caller error.
+    if (result.invalid) return res.status(400).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error('[1to1/plan-window]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/1to1/apply-window — prepare every confirmed row of a window plan (book new / move existing 1-2-1s). Each comes back as a prepared governed action the screen confirms itself; nothing is sent here. Refuses machine clients. Body: { items: [{ person, mode: book|move, start, end, eventId?, email?, subject?, durationMinutes?, searchDays? }] }
+router.post('/apply-window', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, sent: false, error: 'Booking and moving 1-2-1s emails real people as Nick — it needs Nick, in NEURO. A machine client cannot do it.' });
+  try {
+    const { items } = req.body || {};
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ ok: false, error: 'items (array) is required' });
+    }
+    const result = await booking.applyWindow(items);
+    res.json(result);
+  } catch (e) {
+    console.error('[1to1/apply-window]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Create the event. Only reached after Nick has confirmed a proposal.
 router.post('/book', async (req, res) => {
   // Build 8: a machine client (the API token: n8n, the remote MCP gateway) may
