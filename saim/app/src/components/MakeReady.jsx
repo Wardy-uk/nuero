@@ -15,6 +15,7 @@ export function MakeReadyView({ item, result = null, busy = false, readOnly = fa
       <div className="mr" role="status">
         <p className="mr__say">{result.kind === 'prepared' ? result.headline : result.message}</p>
         {result.kind === 'prepared' && onOpen && <button type="button" className="mr__btn" onClick={onOpen}>See it on the SAiM home →</button>}
+        {result.kind === 'already' && onOpen && <button type="button" className="mr__btn" onClick={onOpen}>See what SAiM has ready →</button>}
       </div>
     );
   }

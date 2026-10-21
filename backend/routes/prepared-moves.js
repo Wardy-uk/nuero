@@ -87,6 +87,8 @@ router.post('/prepare', async (req, res) => {
   if (typeof ref !== 'string' || !REF_RE.test(ref)) return res.status(400).json({ ok: false, error: 'ref is required — a Now item reference (item:… or held:…)' });
   try {
     const r = await planner().planAndStore({ ref, origin: req.apiClient || caller(req).machine ? 'mcp' : 'manual' });
+    // One active prepared move at a time: the open one is named, untouched, and the way to it given.
+    if (r.outcome === 'already-active') return res.status(409).json({ ok: false, outcome: 'already-active', error: r.why, active: { title: r.active.title, headline: r.active.headline }, openOn: 'surface' });
     if (!r.ok) return res.status(409).json({ ok: false, error: r.why, reason: r.reason || null, withheld: r.withheld });
     if (!r.record) return res.json({ ok: true, outcome: r.outcome, say: r.why || null, move: null });
     res.json({ ok: true, outcome: r.outcome, move: await shown(r.record), confirmWhere: 'Only Nick can confirm it, on his SAiM screen.' });

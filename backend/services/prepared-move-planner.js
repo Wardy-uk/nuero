@@ -159,7 +159,18 @@ const DEFAULT_DEPS = {
   holidays: () => { try { return require('./working-days').holidaySet(); } catch { return new Set(); } },
   // Booked off on that day (People HR via NOVA). Unknown is NOT off — the
   // fresh checks re-read leave before anything is written.
-  leaveOn: (day) => { try { const ta = require('./team-availability'); const r = ta.selfAbsenceOn(day, ta.snapshot(new Date())); return Boolean(r && r.known && r.off); } catch { return false; } },
+  // 23 Oct 2026: TRI-STATE, failing closed. 'off' (known and booked off),
+  // 'working' (known and not off), or 'unknown' (unreadable, not yet synced,
+  // or a reader error). An unknown day is never offered a time.
+  leaveState: (day) => {
+    try {
+      const ta = require('./team-availability');
+      const r = ta.selfAbsenceOn(day, ta.snapshot(new Date()));
+      if (!r || r.known !== true) return 'unknown';
+      return r.off === true ? 'off' : r.off === false ? 'working' : 'unknown';
+    } catch { return 'unknown'; }
+  },
+  activeV2: (now) => require('./prepared-move-store').activeV2({ now }),
   completed: (moveKey) => require('./prepared-move-store').completedMove(moveKey),
   draft: (kind, input) => require('./prepared-move-drafter').draft(kind, input),
   answers: (moveKey) => require('./prepared-move-store').answersFor(moveKey),
@@ -445,7 +456,8 @@ function composeV2({ n, g, draft, slot, alternatives = [], decision, duty, nowMs
     forum: kind === 'meeting-prep' ? { title: g.title, start: g.meeting.start } : null,
     preparation: [{ did: `Drafted the ${kind === 'email-reply' ? 'reply' : 'note'} from ${sourceFacts.length} source line${sourceFacts.length === 1 ? '' : 's'}${slot ? ` and found ${BLOCK_MINUTES} free minutes to finish it` : ''}.`, sideEffect: 'none — nothing saved, booked or sent', draft: noteContent || draft.text }],
     decision: { slots, proposedWrites: writes, forum: kind === 'meeting-prep' ? { title: g.title, start: g.meeting.start } : null },
-    why: slot ? `A block is proposed because the draft leaves ${gaps.length} thing${gaps.length === 1 ? '' : 's'} only you can supply.` : null,
+    why: slot ? `A block is proposed because the draft leaves ${gaps.length} thing${gaps.length === 1 ? '' : 's'} only you can supply.` : (g.noTimeBecause || null),
+    noTimeBecause: g.noTimeBecause || null,
     authority: { needsApproval: writes.map((w) => w.kind), mustNot: MUST_NOT[kind] },
     verification: { checks: writes.map((w) => ({ what: w.kind === 'governed.reply' ? 'The reply waits in Actions, not sent' : w.kind === 'vault.note' ? 'The note exists with exactly the confirmed text' : 'The block exists, just you', how: 'read back after writing' })) },
     origin,
@@ -489,23 +501,27 @@ const toMins = (t) => { const x = /T(\d\d):(\d\d)/.exec(String(t || '')); return
  * `minutes` window remains inside the working window (after now + a lead to
  * confirm), else the earliest on the next working day — looking through
  * `workingDays` working days in all. A day that is a weekend, a bank holiday
- * (`nonWorking`) or booked off (`isOff(day)` true) is skipped and does not use
- * up the window. Busy = any timed event that is not free or cancelled (the
- * diary already turns "free but held" meetings into busy). Every slot keeps
- * a buffer either side of a meeting.
- * → { slot: {date,startTime,endTime}|null, searched: [dates], why }
+ * (`nonWorking`) is skipped and does not use up the window. Each working day's
+ * LEAVE is tri-state (`leave(day)`): 'off' → skipped; 'working' → considered;
+ * anything else (unknown, unreadable) → NOT offered a time — leave that cannot
+ * be checked never reads as "not off" (23 Oct 2026). Busy = any timed event
+ * that is not free or cancelled (the diary already turns "free but held"
+ * meetings into busy). Every slot keeps a buffer either side of a meeting.
+ * → { slot: {date,startTime,endTime}|null, searched, skipped, leaveUnknown, why, leaveBlocked }
  */
-function nextSlot({ events = [], nowMs, nonWorking = new Set(), isOff = () => false, minutes = BLOCK_MINUTES, buffer = 5, workingDays = SLOT_WORKING_DAYS } = {}) {
+function nextSlot({ events = [], nowMs, nonWorking = new Set(), leave = () => 'unknown', minutes = BLOCK_MINUTES, buffer = 5, workingDays = SLOT_WORKING_DAYS } = {}) {
   const wd = require('../../shared/working-days.cjs');
   const today = ymdLondon(nowMs);
   const nowLocal = new Date(nowMs).toLocaleString('sv-SE', { timeZone: 'Europe/London' });
   const nowMin = Number(nowLocal.slice(11, 13)) * 60 + Number(nowLocal.slice(14, 16));
-  const searched = []; const skipped = [];
+  const searched = []; const skipped = []; const leaveUnknown = [];
   for (let i = 0; i < 40 && searched.length < workingDays; i++) {
     const day = ymdLondon(Date.parse(`${today}T12:00:00Z`) + i * DAY);
     if (!wd.isWorkingDay(new Date(`${day}T12:00:00`), nonWorking)) continue;
     searched.push(day);
-    if (isOff(day)) { skipped.push(day); continue; }
+    let st; try { st = leave(day); } catch { st = 'unknown'; }
+    if (st === 'off') { skipped.push(day); continue; }
+    if (st !== 'working') { leaveUnknown.push(day); continue; }
     let cursor = DUTY.start;
     if (day === today) cursor = Math.max(cursor, Math.ceil((nowMin + LEAD_MIN) / 5) * 5);
     const busy = (events || []).filter((e) => e && !e.isAllDay && e.showAs !== 'free' && e.showAs !== 'cancelled' && String(e.start).slice(0, 10) === day)
@@ -514,17 +530,21 @@ function nextSlot({ events = [], nowMs, nonWorking = new Set(), isOff = () => fa
       if (st - buffer - cursor >= minutes) break;
       cursor = Math.max(cursor, en + buffer);
     }
-    if (cursor + minutes <= DUTY.end) return { slot: { date: day, startTime: hhmm(cursor), endTime: hhmm(cursor + minutes) }, searched, skipped };
+    if (cursor + minutes <= DUTY.end) return { slot: { date: day, startTime: hhmm(cursor), endTime: hhmm(cursor + minutes) }, searched, skipped, leaveUnknown };
   }
-  return { slot: null, searched, skipped, why: `no free ${minutes} minutes in the next ${workingDays} working days` };
+  if (leaveUnknown.length) {
+    return { slot: null, searched, skipped, leaveUnknown, leaveBlocked: true,
+      why: `I couldn’t safely check your leave for ${leaveUnknown.length === searched.length ? 'any' : `${leaveUnknown.length}`} of the next ${workingDays} working days, so I haven’t proposed a time` };
+  }
+  return { slot: null, searched, skipped, leaveUnknown, why: `no free ${minutes} minutes in the next ${workingDays} working days` };
 }
 
 function _slotFor(deps, nowMs) {
   const today = ymdLondon(nowMs);
   const diary = deps.diary(today, 21);
   if (!diary.known) return { known: false, why: 'the calendar could not be read' };
-  const r = nextSlot({ events: diary.events, nowMs, nonWorking: deps.holidays(), isOff: (d) => { try { return deps.leaveOn(d) === true; } catch { return false; } } });
-  if (!r.slot) return { known: true, slot: null, why: r.why };
+  const r = nextSlot({ events: diary.events, nowMs, nonWorking: deps.holidays(), leave: (d) => deps.leaveState(d) });
+  if (!r.slot) return { known: true, slot: null, why: r.why, leaveBlocked: Boolean(r.leaveBlocked) };
   return { known: true, slot: r.slot, diaryFetchedAt: diary.fetchedAt, today: r.slot.date === today };
 }
 
@@ -547,6 +567,19 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
   const roster = deps.roster();
   const withheld = [];
 
+  // ⚠ EXACTLY ONE ACTIVE PREPARED MOVE, whichever route asks (23 Oct 2026).
+  // A manual press while another proposal is still open (not expired,
+  // deferred, declined, done, and still true) prepares NOTHING and touches
+  // nothing — that proposal is not deferred, replaced or re-checked here.
+  let openRec = null;
+  if (ref && !source) {
+    for (const rec of (deps.activeV2(nowMs) || [])) {
+      let ok = false;
+      try { ok = (await recheck(rec.packet, { deps: over })).ok === true; } catch { ok = false; }
+      if (ok) { openRec = rec; break; }
+    }
+  }
+
   let list;
   if (source) list = [{ n: source }];
   else {
@@ -564,6 +597,14 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
     const n = entry.n || normalise(c, deps);
     if (n.withhold) { withheld.push({ ref: c && c.ref, title: c && c.title, reason: n.withhold, why: n.why }); continue; }
     const moveKey = moveKeyFor(n.kind, n.sourceKey);
+    if (openRec && openRec.moveKey !== moveKey) {
+      const head = ((openRec.packet || {}).selected || {}).headline || 'a prepared move';
+      return {
+        ok: false, outcome: 'already-active', withheld,
+        why: `SAiM already has something ready for you — “${head}” Deal with that one first: it’s on your SAiM home. Nothing new was prepared.`,
+        active: { recordId: openRec.id, version: openRec.version, title: ((openRec.packet || {}).selected || {}).title || null, headline: head },
+      };
+    }
     const sup = deps.suppression(moveKey, nowMs);
     if (sup && !source) {
       withheld.push({ ref: n.ref, title: n.title, reason: sup.response, why: sup.say });
@@ -617,14 +658,19 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
       // SCHEDULE — only when the draft needs Nick's own authorship to finish.
       if (n.kind === 'project-note' && draft.gaps.length) {
         const s = _slotFor(deps, nowMs);
-        if (!s.known || !s.slot) {
+        if (s.known && !s.slot && s.leaveBlocked) {
+          // Leave could not be checked: the DRAFT may still be offered, but no
+          // time is proposed — never a block on a day SAiM cannot verify.
+          g.noTimeBecause = `${s.why}.`;
+        } else if (!s.known || !s.slot) {
           const why = `It needs your own time to finish, and ${s.why || 'no safe slot was found'} — so nothing is offered.`;
           withheld.push({ ref: n.ref, title: n.title, reason: 'no-safe-slot', why });
           if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
           continue;
+        } else {
+          slot = s.slot;
+          g.freshness = [...(g.freshness || []), { kind: 'calendar', ref: 'calendar_cache', observedAt: s.diaryFetchedAt, maxHours: 2 }];
         }
-        slot = s.slot;
-        g.freshness = [...(g.freshness || []), { kind: 'calendar', ref: 'calendar_cache', observedAt: s.diaryFetchedAt, maxHours: 2 }];
       }
     }
     const selected = composeV2({ n, g, draft, slot, alternatives, decision, duty, nowMs, origin });

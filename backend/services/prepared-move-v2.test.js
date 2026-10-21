@@ -66,6 +66,9 @@ function deps(candidates, over = {}) {
     diary: () => ({ known: true, events: [], fetchedAt: new Date(NOW - 60000).toISOString() }),
     findSlot: () => ({ date: ymd(NOW + DAY), startTime: '10:00', endTime: '10:30' }),
     holidays: () => new Set(),
+    leaveState: () => 'working',
+    // Tests about OTHER rules start with no open proposal; the one-active rule has its own tests.
+    activeV2: () => [],
     evidenceLines: () => [{ text: 'Support Hub triage notes need a single owner and a weekly review', cite: 'Projects/Support Hub/Support Hub.md:3' }],
     ...over,
   };

@@ -51,7 +51,9 @@ function deps(cands, over = {}) {
     draft: async () => ({ ok: true, text: 'Hi Sam,\n\nThanks — I will confirm the renewal for Acme this month.\n\nNick', gaps: [] }),
     diary: () => ({ known: true, events: [], fetchedAt: new Date(NOW - 60000).toISOString() }),
     holidays: () => new Set(),
-    leaveOn: () => false,
+    leaveState: () => 'working',
+    // Tests about OTHER rules start with no open proposal; the one-active rule has its own tests.
+    activeV2: () => [],
     ...over,
   };
 }
@@ -187,11 +189,13 @@ const ymdOf = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/L
 /** The next Monday on or after a date, so fixtures land on a real working week. */
 function nextMonday(fromMs) { for (let i = 0; i < 8; i++) { const d = ymdOf(fromMs + i * DAY); if (new Date(`${d}T12:00:00Z`).getUTCDay() === 1) return d; } return null; }
 const add = (d, n) => ymdOf(Date.parse(`${d}T12:00:00Z`) + n * DAY);
+/** Leave known and working on every day. */
+const W = () => 'working';
 const busyDay = (d) => ({ start: `${d}T09:00:00`, end: `${d}T17:30:00`, showAs: 'busy', isAllDay: false });
 
 test('slots: a free 30 minutes TODAY is preferred, and it starts after now', () => {
   const mon = nextMonday(NOW + 7 * DAY);
-  const r = planner.nextSlot({ nowMs: london(mon, '13:02'), events: [{ start: `${mon}T13:30:00`, end: `${mon}T14:00:00`, showAs: 'busy' }] });
+  const r = planner.nextSlot({ leave: W, nowMs: london(mon, '13:02'), events: [{ start: `${mon}T13:30:00`, end: `${mon}T14:00:00`, showAs: 'busy' }] });
   assert.equal(r.slot.date, mon);
   assert.equal(r.slot.startTime, '14:05', 'after the meeting and its buffer — not overlapping now+lead either');
 });
@@ -200,24 +204,24 @@ test('slots: today full → the earliest valid slot on the NEXT working day (wee
   const mon = nextMonday(NOW + 7 * DAY);
   const fri = add(mon, 4);
   // Friday full, the weekend skipped, Monday a bank holiday, Tuesday on leave → Wednesday 09:00.
-  const r = planner.nextSlot({ nowMs: london(fri, '10:00'), events: [busyDay(fri)], nonWorking: new Set([add(mon, 7)]), isOff: (d) => d === add(mon, 8) });
+  const r = planner.nextSlot({ nowMs: london(fri, '10:00'), events: [busyDay(fri)], nonWorking: new Set([add(mon, 7)]), leave: (d) => (d === add(mon, 8) ? 'off' : 'working') });
   assert.equal(r.slot.date, add(mon, 9)); assert.equal(r.slot.startTime, '09:00');
   // After the working window today → tomorrow.
-  const late = planner.nextSlot({ nowMs: london(mon, '17:15'), events: [] });
+  const late = planner.nextSlot({ leave: W, nowMs: london(mon, '17:15'), events: [] });
   assert.equal(late.slot.date, add(mon, 1));
   // Free-marked and cancelled events are not walls; all-day events are not walls.
-  const freeish = planner.nextSlot({ nowMs: london(mon, '08:00'), events: [{ ...busyDay(mon), showAs: 'free' }, { ...busyDay(mon), showAs: 'cancelled' }, { ...busyDay(mon), isAllDay: true }] });
+  const freeish = planner.nextSlot({ leave: W, nowMs: london(mon, '08:00'), events: [{ ...busyDay(mon), showAs: 'free' }, { ...busyDay(mon), showAs: 'cancelled' }, { ...busyDay(mon), isAllDay: true }] });
   assert.equal(freeish.slot.date, mon); assert.equal(freeish.slot.startTime, '09:00');
 });
 
 test('slots: nothing valid in the full ten-working-day window → no slot, said plainly', () => {
   const mon = nextMonday(NOW + 7 * DAY);
   const events = []; for (let i = 0; i < 20; i++) events.push(busyDay(add(mon, i)));
-  const r = planner.nextSlot({ nowMs: london(mon, '08:00'), events });
+  const r = planner.nextSlot({ leave: W, nowMs: london(mon, '08:00'), events });
   assert.equal(r.slot, null); assert.equal(r.searched.length, 10, 'ten WORKING days searched');
   assert.equal(r.why, 'no free 30 minutes in the next 10 working days');
   // The eleventh working day is free, but it is outside the window.
-  const r11 = planner.nextSlot({ nowMs: london(mon, '08:00'), events: events.filter((e) => !e.start.startsWith(add(mon, 14))) });
+  const r11 = planner.nextSlot({ leave: W, nowMs: london(mon, '08:00'), events: events.filter((e) => !e.start.startsWith(add(mon, 14))) });
   assert.equal(r11.slot, null);
 });
 
