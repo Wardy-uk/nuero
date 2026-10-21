@@ -21,16 +21,23 @@ function fromNow(mins) {
   return `in ${h}h${m ? ` ${m}m` : ''}`;
 }
 
-export default function MeetingPrep() {
+/** The prep path: THIS meeting when SAiM named one (its hand-off's own link), else the next one. */
+export function prepPath(context) {
+  const id = context && typeof context.eventId === 'string' ? context.eventId : '';
+  return id ? `/api/meeting-prep?event=${encodeURIComponent(id)}` : '/api/meeting-prep';
+}
+
+export default function MeetingPrep({ context = null }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
+  const path = prepPath(context);
 
   useEffect(() => {
     let live = true;
-    apiFetch('/api/meeting-prep')
+    apiFetch(path)
       .then((data) => live && setState({ loading: false, error: null, data }))
       .catch((error) => live && setState({ loading: false, error: error.message, data: null }));
     return () => { live = false; };
-  }, []);
+  }, [path]);
 
   const { loading, error, data } = state;
   const meeting = data?.meeting;
@@ -61,7 +68,7 @@ export default function MeetingPrep() {
       {meeting && (
         <Lit tone="lead" className="mp__meeting">
           <div className="mp__when">
-            {meeting.startFormatted}{meeting.endFormatted ? `–${meeting.endFormatted}` : ''} · {fromNow(meeting.minutesAway)}
+            {meeting.startFormatted}{meeting.endFormatted ? `–${meeting.endFormatted}` : ''} · {meeting.inProgress ? 'on now' : fromNow(meeting.minutesAway)}
           </div>
           <div className="mp__subject">{meeting.subject}</div>
           {meeting.location && <div className="mp__loc">📍 {meeting.location}</div>}

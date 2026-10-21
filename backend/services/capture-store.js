@@ -73,9 +73,35 @@ const MAX_NAME_ATTEMPTS = 100;
  * keeps the ordinary filename clean, which matters because these are read by a
  * human in Obsidian.
  */
-function writeNote({ title, content, source = 'neuro-capture' }) {
+/** One-line, quoted YAML scalar — a meeting subject must not break the frontmatter. */
+function yamlString(v) {
+  return `"${String(v).replace(/[\r\n]+/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * The frontmatter lines and the one context line for a capture made in a
+ * meeting (21 Oct 2026). `meta.meeting` is ONLY what the diary confirmed; the
+ * kind is what Nick picked. Nothing here is inferred, summarised or attributed.
+ */
+function metaParts(meta) {
+  if (!meta) return { fm: '', line: '' };
+  const lines = [];
+  if (meta.captureKind) lines.push(`capture_kind: ${meta.captureKind}`);
+  const m = meta.meeting;
+  if (m && m.subject) lines.push(`meeting: ${yamlString(m.subject)}`);
+  if (m && m.start) lines.push(`meeting_start: ${m.start}`);
+  if (m && m.eventId) lines.push(`meeting_event_id: ${yamlString(m.eventId)}`);
+  const when = m && typeof m.start === 'string' && /T\d{2}:\d{2}/.test(m.start) ? ` (${m.start.slice(11, 16)})` : '';
+  const kindWord = meta.captureKind ? KIND_WORD[meta.captureKind] || 'Note' : 'Note';
+  const line = m && m.subject ? `${kindWord} — from the meeting “${String(m.subject).replace(/[\r\n]+/g, ' ')}”${when}.\n\n` : '';
+  return { fm: lines.length ? `${lines.join('\n')}\n` : '', line };
+}
+const KIND_WORD = { decision: 'Decision', commitment: 'Commitment', risk: 'Risk', 'follow-up': 'Follow-up' };
+
+function writeNote({ title, content, source = 'neuro-capture', meta = null }) {
   const text = String(content || '').trim();
   if (!text) throw new Error('content is required');
+  const extra = metaParts(meta);
 
   ensureDirs();
   const slug = slugifyTitle(title);
@@ -84,8 +110,8 @@ function writeNote({ title, content, source = 'neuro-capture' }) {
   const now = new Date().toISOString();
   const fmTitle = title ? `title: "${String(title).replace(/"/g, '\\"')}"\n` : '';
   const body = title
-    ? `---\ndate: ${now}\nsource: ${source}\nstatus: unprocessed\n${fmTitle}---\n\n# ${title}\n\n${text}\n`
-    : `---\ndate: ${now}\nsource: ${source}\nstatus: unprocessed\n---\n\n${text}\n`;
+    ? `---\ndate: ${now}\nsource: ${source}\nstatus: unprocessed\n${fmTitle}${extra.fm}---\n\n# ${title}\n\n${extra.line}${text}\n`
+    : `---\ndate: ${now}\nsource: ${source}\nstatus: unprocessed\n${extra.fm}---\n\n${extra.line}${text}\n`;
 
   let filename = null;
   let filePath = null;

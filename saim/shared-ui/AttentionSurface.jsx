@@ -258,6 +258,9 @@ export default function AttentionSurface({
     // saim-handoff-v1: WHERE to go for the lead SAiM chose (saim/policy).
     // Read for the one next step on the home; never re-decided here.
     handoff = null,
+    // The running meeting as NEURO names it ({ key, subject, scheduledEnd }) —
+    // what "Capture from this meeting" may say it is about. Null → it names none.
+    meeting = null,
   } = data;
 
   // The desk apps worth offering NOW — composed server-side from explicit links
@@ -572,10 +575,12 @@ export default function AttentionSurface({
     // The ONE next step (21 Oct 2026): SAiM's own hand-off for a meeting, as a
     // control — only where this shell can complete it. Calm stays quiet.
     const step = nextStep({
-      handoff, presentation, context,
+      handoff, presentation, context, meeting,
       can: {
         external: prof !== 'kiosk' && prof !== 'watch' && typeof window !== 'undefined',
-        tab: (id) => Boolean(onNavigate) && (id === 'prep' || id === 'capture'),
+        // ⚠ No capture on a wall: the kiosk keeps its read-only home, and an
+        //   input it cannot complete is worse than none.
+        tab: (id) => Boolean(onNavigate) && (id === 'prep' || (id === 'capture' && prof !== 'kiosk' && prof !== 'watch')),
         desk: Boolean(onDeskOpen && work && work.atDesk),
         neuro: false,
       },
@@ -583,7 +588,7 @@ export default function AttentionSurface({
     const runStep = (a) => {
       const r = a.run;
       if (r.type === 'external') window.open(r.href, '_blank', 'noopener');
-      else if (r.type === 'tab') onNavigate(r.tab);
+      else if (r.type === 'tab') onNavigate(r.tab, r.context ? { context: r.context } : undefined);
       else if (r.type === 'desk') onDeskOpen(r.app);
     };
     const stepEl = step ? (

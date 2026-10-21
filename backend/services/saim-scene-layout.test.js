@@ -141,7 +141,8 @@ function page(Situation, presentation, { profile = 'desktop', step = false } = {
     React.createElement(Situation, { presentation, profile, scene: true, field, ask: profile === 'kiosk' ? null : ask, foot: profile === 'phone' ? null : foot,
       step: step ? React.createElement('div', { className: 'sit__step' },
         React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--yes sit__step-go' }, 'Join in Teams'),
-        React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--quiet sit__step-alt' }, 'Open meeting prep')) : null, onOpen: () => {}, onPrepareDelivery: () => {}, onOpenActions: () => {} })));
+        React.createElement('button', { type: 'button', className: 'sit__chip sit__chip--quiet sit__step-alt' }, 'Open meeting prep'),
+        ...(profile === 'kiosk' ? [] : [React.createElement('button', { key: 'c', type: 'button', className: 'sit__chip sit__chip--quiet sit__step-alt' }, 'Capture from this meeting')])) : null, onOpen: () => {}, onPrepareDelivery: () => {}, onOpenActions: () => {} })));
   return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#06090d}*{animation:none!important;transition:none!important}${CSS}</style></head><body>${body}</body></html>`;
 }
 

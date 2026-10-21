@@ -203,8 +203,12 @@ function AppShell() {
   const isSecondary = revealsSecondary(active);
   const moreVisible = navOpen || isSecondary;
 
-  function goTab(tab) {
+  // The same context the phone shell carries (21 Oct 2026): Prep's exact event,
+  // Capture's running meeting. Cleared by any other navigation.
+  const [navContext, setNavContext] = useState(null);
+  function goTab(tab, { context = null } = {}) {
     if (!tab) return;
+    setNavContext(context && typeof context === 'object' ? context : null);
     setActive(tab);
     if (PRIMARY.some((t) => t.id === tab)) setNavOpen(false);
   }
@@ -252,8 +256,9 @@ function AppShell() {
           {/* `key` forces a fresh mount when switching Capture↔Voice so
               `autoRecord` re-fires — the phone's rule, and the same component. */}
           <ActiveView
-            key={active}
+            key={`${active}:${navContext ? (navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
             autoRecord={active === 'voice'}
+            context={navContext}
             onNavigate={goTab}
             onShowAll={() => setNavOpen(true)}
           />

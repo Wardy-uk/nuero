@@ -24,6 +24,18 @@ const teamRoster = require('../services/team-roster');
 // GET /api/meeting-prep — next upcoming meeting with prep
 router.get('/', async (req, res) => {
   try {
+    // `?event=<event_id>` (21 Oct 2026): THAT meeting's prep — the one SAiM's
+    // hand-off named, including one already running. Without it this answered
+    // "the next meeting to start", so "Open meeting prep" during a meeting
+    // showed the FOLLOWING meeting's prep. Not found is said, never swapped
+    // for a different meeting.
+    const event = typeof req.query.event === 'string' ? req.query.event.trim() : '';
+    if (req.query.event !== undefined) {
+      if (!event || event.length > 600) return res.status(400).json({ error: 'event must be a calendar event id' });
+      const found = await _getMeetingById(event);
+      if (!found) return res.json({ meeting: null, requested: event, message: 'NEURO can’t find that meeting in today’s diary, so there’s no prep to show for it.' });
+      return res.json({ meeting: { ...found, prep: _buildPrep(found) }, requested: event, laterToday: [] });
+    }
     const meetings = await _getUpcomingMeetings(4);
     if (meetings.length === 0) {
       return res.json({ meeting: null, message: 'No upcoming meetings in the next 4 hours' });
@@ -166,6 +178,23 @@ async function _fetchEvents(startStr, endStr) {
     attendees: e.attendees || [],
     showAs: e.showAs || e.show_as || null,
   }));
+}
+
+/** One of today's (or tomorrow's) timed events by its exact id, shaped like an upcoming meeting. */
+async function _getMeetingById(eventId) {
+  const now = new Date();
+  const events = await _fetchEvents(_localDate(now), _localDate(new Date(now.getTime() + 86400000)));
+  const e = events.find((x) => x.event_id === eventId && !x.is_all_day);
+  if (!e) return null;
+  const start = new Date(e.start_time);
+  const end = new Date(e.end_time);
+  return {
+    ...e,
+    minutesAway: Math.round((start - now) / 60000),
+    inProgress: start <= now && end > now,
+    startFormatted: start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    endFormatted: end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+  };
 }
 
 async function _getUpcomingMeetings(hoursAhead) {

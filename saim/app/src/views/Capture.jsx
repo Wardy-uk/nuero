@@ -4,6 +4,7 @@ import { enqueue, flush, discard, retry, outcomeFor, pending as pendingOps, subs
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import './Capture.css';
 import { speechRecognitionCtor } from '../speechRecognition';
+import { MEETING_KINDS, meetingLine, meetingPayload, receiptLine } from '../meetingCapture.mjs';
 
 // CAPTURE — get it out of Nick's head immediately, and never lose it.
 //
@@ -26,8 +27,15 @@ import { speechRecognitionCtor } from '../speechRecognition';
 // write the row twice. It stays online-only and says so when there is no signal.
 const RECENT_LIMIT = 5;
 
-export default function Capture({ autoRecord = false }) {
+export default function Capture({ autoRecord = false, context = null }) {
   const [mode, setMode] = useState('note'); // 'note' | 'todo' | 'feature'
+  // "Capture from this meeting" (21 Oct 2026): arrived from SAiM's home in a
+  // meeting. `context.meeting` is NEURO's own { key, subject } or null when it
+  // named none — this view never guesses one. Leaving the mode is one tap.
+  const [inMeeting, setInMeeting] = useState(() => Boolean(context && Object.prototype.hasOwnProperty.call(context, 'meeting')));
+  const meeting = inMeeting && context ? context.meeting || null : null;
+  const [kind, setKind] = useState('decision');
+  const kindSpec = MEETING_KINDS.find((k) => k.id === kind) || MEETING_KINDS[0];
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [priority, setPriority] = useState('normal'); // todo only
@@ -59,7 +67,7 @@ export default function Capture({ autoRecord = false }) {
   }, [reloadQueue]);
 
   // A feature is titled, not typed at — the one line IS the item.
-  const ready = mode === 'feature' ? title.trim().length > 0 : text.trim().length > 0;
+  const ready = !inMeeting && mode === 'feature' ? title.trim().length > 0 : text.trim().length > 0;
 
   async function submit(e) {
     e.preventDefault();
@@ -68,7 +76,7 @@ export default function Capture({ autoRecord = false }) {
     setFlash(null);
 
     // ── Feature: online-only, and honest about it ────────────────────────────
-    if (mode === 'feature') {
+    if (!inMeeting && mode === 'feature') {
       try {
         const res = await apiFetch('/api/capture/feature', {
           method: 'POST',
@@ -99,14 +107,19 @@ export default function Capture({ autoRecord = false }) {
     }
 
     // ── Note / todo: always through the outbox ──────────────────────────────
-    const kind = mode === 'note' ? 'capture.note' : 'capture.todo';
-    const payload = mode === 'note'
-      ? { title: title.trim() || undefined, content: text.trim() }
-      : { text: text.trim(), priority: priority === 'high' ? 'high' : undefined };
+    // In a meeting it is still a plain `capture.note` — Nick's words, the kind
+    // he picked, and the canonical meeting key for NEURO to confirm.
+    const opKind = inMeeting || mode === 'note' ? 'capture.note' : 'capture.todo';
+    const payload = inMeeting
+      ? meetingPayload({ text, kind, meeting })
+      : mode === 'note'
+        ? { title: title.trim() || undefined, content: text.trim() }
+        : { text: text.trim(), priority: priority === 'high' ? 'high' : undefined };
+    const receiptFor = (outcome, receipt) => (inMeeting ? receiptLine(outcome, receipt, { kind, meeting }) : null);
 
     let queued;
     try {
-      queued = await enqueue(kind, payload);
+      queued = await enqueue(opKind, payload);
     } catch (err) {
       // Local persistence failed. The draft is the ONLY copy — do not touch it.
       setFlash({ ok: false, msg: `NOT saved — this device couldn't store it (${err.message}). Your words are still here; don't close the app.` });
@@ -118,7 +131,7 @@ export default function Capture({ autoRecord = false }) {
     // and survives a reload, a crash and a cold start.
     setTitle('');
     setText('');
-    setFlash({ ok: true, msg: 'Queued on this device — not in NEURO yet.' });
+    setFlash(receiptFor({ state: 'pending' }, null) || { ok: true, msg: 'Queued on this device — not in NEURO yet.' });
 
     try {
       const result = await flush();
@@ -127,7 +140,11 @@ export default function Capture({ autoRecord = false }) {
       // while this capture merely failed on the network — which would tell Nick
       // NEURO refused something it never saw.
       const outcome = outcomeFor(result.receipts[queued.operationId]);
-      if (outcome.state === 'confirmed') {
+      const said = receiptFor(outcome, result.receipts[queued.operationId]);
+      if (said) {
+        setFlash(said);
+        if (outcome.state === 'confirmed') loadRecent();
+      } else if (outcome.state === 'confirmed') {
         setFlash({ ok: true, msg: mode === 'note' ? 'Saved to NEURO.' : 'Saved to NEURO — on your list.' });
         loadRecent();
       } else if (outcome.state === 'refused') {
@@ -136,7 +153,7 @@ export default function Capture({ autoRecord = false }) {
         setFlash({ ok: true, msg: 'Queued on this device — I’ll send it when there’s signal.' });
       }
     } catch {
-      setFlash({ ok: true, msg: 'Queued on this device — I’ll send it when there’s signal.' });
+      setFlash(receiptFor({ state: 'pending' }, null) || { ok: true, msg: 'Queued on this device — I’ll send it when there’s signal.' });
     } finally {
       setBusy(false);
       reloadQueue();
@@ -182,14 +199,27 @@ export default function Capture({ autoRecord = false }) {
       <h1 className="view__title">Capture</h1>
       <p className="view__lede">Get it out of your head. Zero friction.</p>
 
+      {inMeeting ? (
+        <div className="cap__meeting">
+          <p className="cap__meeting-name">{meetingLine(meeting)}</p>
+          <div className="cap__modes" role="group" aria-label="What is it?">
+            {MEETING_KINDS.map((k) => (
+              <button key={k.id} type="button" className={`cap__mode${kind === k.id ? ' cap__mode--on' : ''}`}
+                aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>{k.label}</button>
+            ))}
+          </div>
+          <button type="button" className="cap__plain" onClick={() => setInMeeting(false)}>Plain capture instead</button>
+        </div>
+      ) : (
       <div className="cap__modes">
         <button type="button" className={`cap__mode${mode === 'note' ? ' cap__mode--on' : ''}`} onClick={() => setMode('note')}>Note</button>
         <button type="button" className={`cap__mode${mode === 'todo' ? ' cap__mode--on' : ''}`} onClick={() => setMode('todo')}>Todo</button>
         <button type="button" className={`cap__mode${mode === 'feature' ? ' cap__mode--on' : ''}`} onClick={() => setMode('feature')}>Feature</button>
       </div>
+      )}
 
       <form className="cap__form" onSubmit={submit}>
-        {(mode === 'note' || mode === 'feature') && (
+        {!inMeeting && (mode === 'note' || mode === 'feature') && (
           <input
             className="cap__title"
             type="text"
@@ -202,7 +232,7 @@ export default function Capture({ autoRecord = false }) {
         <div className="cap__textwrap">
           <textarea
             className="cap__text"
-            placeholder={mode === 'note' ? "What's on your mind?"
+            placeholder={inMeeting ? kindSpec.placeholder : mode === 'note' ? "What's on your mind?"
               : mode === 'todo' ? 'What needs doing?'
               : 'Why does it matter? (optional, but it needs one before it can be ranked)'}
             value={text}
@@ -223,7 +253,7 @@ export default function Capture({ autoRecord = false }) {
           )}
         </div>
 
-        {mode === 'todo' && (
+        {!inMeeting && mode === 'todo' && (
           <label className="cap__prio">
             <input
               type="checkbox"
@@ -234,7 +264,7 @@ export default function Capture({ autoRecord = false }) {
           </label>
         )}
 
-        {mode === 'feature' && (
+        {!inMeeting && mode === 'feature' && (
           <div className="cap__modes cap__modes--sub">
             {['NEURO', 'SAiM', 'NOVA'].map((s) => (
               <button
@@ -250,9 +280,9 @@ export default function Capture({ autoRecord = false }) {
         )}
 
         <button className="cap__submit" type="submit" disabled={busy || !ready}>
-          {busy ? 'Saving…' : mode === 'note' ? 'Save note' : mode === 'todo' ? 'Add todo' : 'Add to tracker'}
+          {busy ? 'Saving…' : inMeeting ? `Save ${kindSpec.label.toLowerCase()}` : mode === 'note' ? 'Save note' : mode === 'todo' ? 'Add todo' : 'Add to tracker'}
         </button>
-        {mode === 'feature' && (
+        {!inMeeting && mode === 'feature' && (
           <p className="cap__hint">A feature idea needs a connection — it goes into the tracker, not the queue.</p>
         )}
       </form>

@@ -41,7 +41,7 @@
     "route": "/api/canonical/needs-you/synthetic",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 93,
+    "line": 95,
     "description": "DELETE /api/canonical/needs-you/synthetic. clear every live synthetic P0 test item (or one, with ?id=).",
     "params": [],
     "query": [
@@ -1078,7 +1078,7 @@
     "route": "/api/canonical/classifications",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 178,
+    "line": 180,
     "description": "GET /api/canonical/classifications. every calendar and reminder list the sources have shown, with what Nick classified each as (life domains, tracked), how it is keyed (id or title) and whether its title is ambiguous.",
     "params": [],
     "query": [],
@@ -1094,7 +1094,7 @@
     "route": "/api/canonical/classifications/entries",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 186,
+    "line": 188,
     "description": "GET /api/canonical/classifications/entries. what one calendar or reminder list holds: upcoming/open entries and past/completed ones, titles and dates only. Keywords: calendar entries, reminder list items, view calendar. Query: kind (calendar|reminder-list), sourceKey, limit.",
     "params": [],
     "query": [
@@ -1114,7 +1114,7 @@
     "route": "/api/canonical/commitments",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 107,
+    "line": 109,
     "description": "GET /api/canonical/commitments. commitments from the world model (what I owe / what is owed to me), with counterpart, due context, meeting/task links, progress state and life domains. Query: direction=i-owe|owed-to-me, status, domain.",
     "params": [],
     "query": [
@@ -1134,7 +1134,7 @@
     "route": "/api/canonical/commitments/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 140,
+    "line": 142,
     "description": "GET /api/canonical/commitments/:id.",
     "params": [
       "id"
@@ -1152,7 +1152,7 @@
     "route": "/api/canonical/companions/:id/care",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 373,
+    "line": 375,
     "description": "GET /api/canonical/companions/:id/care. a companion's care (Ember): next explicit care item, open items, recent completions, linked tasks/reminders/calendar entries, mentions (inference), walk state today and the last week. Keywords: Ember care, dog walk, vet, flea.",
     "params": [
       "id"
@@ -1170,7 +1170,7 @@
     "route": "/api/canonical/domains",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 101,
+    "line": 103,
     "description": "GET /api/canonical/domains. the life-domain and personal-importance vocabulary every surface renders from.",
     "params": [],
     "query": [],
@@ -1186,7 +1186,7 @@
     "route": "/api/canonical/findings",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 154,
+    "line": 156,
     "description": "GET /api/canonical/findings. what NEURO is noticing and what attention decided: every evaluator's findings (source blindness, commitment risk, meeting intelligence) with status, shadow/live, verdict and suppression reason. Query: status=active|resolved|all.",
     "params": [],
     "query": [
@@ -1204,7 +1204,7 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 224,
+    "line": 226,
     "description": "GET /api/canonical/goals. Nick's explicitly stored goals and intentions, with importance, dates and explicit links. Never inferred. Query: status=active|paused|achieved|dropped|all.",
     "params": [],
     "query": [
@@ -1222,7 +1222,7 @@
     "route": "/api/canonical/goals/measures",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 247,
+    "line": 249,
     "description": "GET /api/canonical/goals/measures. the closed catalogue of things a goal can be measured by, with units and target shape. Keywords: goal measure types.",
     "params": [],
     "query": [],
@@ -1238,7 +1238,7 @@
     "route": "/api/canonical/goals/progress",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 233,
+    "line": 235,
     "description": "GET /api/canonical/goals/progress. how each active goal is moving by the measure Nick chose (hikes a week, blood-pressure average, weight, steps, sleep, resting heart, a project finished), with levers: other things NEURO can see that bear on it. Keywords: goal progress, goal insights, am I on track.",
     "params": [],
     "query": [
@@ -1256,7 +1256,7 @@
     "route": "/api/canonical/lead-reminders",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 478,
+    "line": 480,
     "description": "GET /api/canonical/lead-reminders. the lead-reminder cadence Nick set per kind of personal date (e.g. anniversary: 10, 5, 1 days before). Keywords: anniversary reminder, birthday nag.",
     "params": [],
     "query": [],
@@ -1272,7 +1272,7 @@
     "route": "/api/canonical/life",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 162,
+    "line": 164,
     "description": "GET /api/canonical/life. Nick's whole life as the world model sees it: stored goals, and per life domain how many commitments, sources, goals and upcoming events carry evidence of belonging to it (zeros kept; unknown counted).",
     "params": [],
     "query": [],
@@ -1288,7 +1288,7 @@
     "route": "/api/canonical/needs-you",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 50,
+    "line": 52,
     "description": "GET /api/canonical/needs-you. Build 12.3 P0 digest: count and items that need Nick (approvals, escalations, critical items), each with its notification policy (eligible, channels, dedupeKey, reason). What the watch complication counts and the phone may notify about.",
     "params": [],
     "query": [],
@@ -1304,7 +1304,7 @@
     "route": "/api/canonical/needs-you/notifications",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 60,
+    "line": 62,
     "description": "GET /api/canonical/needs-you/notifications. recent P0 notification ledger rows: claimed, accepted by iOS, failed, opened (tapped), dismissed, per device. Accepted is never delivered-to-wrist.",
     "params": [],
     "query": [
@@ -1343,7 +1343,7 @@
     "route": "/api/canonical/obligations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 306,
+    "line": 308,
     "description": "GET /api/canonical/obligations. open personal obligations: tasks and commitments with an explicit non-work domain or an explicit link to a personal goal or date, with due, source, status and whether each needs Nick now. Keywords: personal tasks, life admin. Query: admin=1.",
     "params": [],
     "query": [
@@ -1361,7 +1361,7 @@
     "route": "/api/canonical/personal-admin",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 313,
+    "line": 315,
     "description": "GET /api/canonical/personal-admin. personal admin (MOT, renewals, bills, forms): the obligations whose explicit domain is admin, finance or transport, and an audit of which sources hold any. Keywords: personal admin, renewals.",
     "params": [],
     "query": [],
@@ -1393,7 +1393,7 @@
     "route": "/api/canonical/radar",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 296,
+    "line": 298,
     "description": "GET /api/canonical/radar. Future Radar: what is coming up in Nick's life over 7, 14 or 30 days and whether anything needs doing first; every item says why it is there. Keywords: coming up, upcoming, future radar, next two weeks. Query: days (7|14|30).",
     "params": [],
     "query": [
@@ -1411,7 +1411,7 @@
     "route": "/api/canonical/reminder-lists",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 330,
+    "line": 332,
     "description": "GET /api/canonical/reminder-lists. audit of every Apple Reminders list by stable id: name, app, classification, tracked and why, open/completed counts from the last push, duplicate names, source health. Keywords: reminder lists audit.",
     "params": [],
     "query": [],
@@ -1427,7 +1427,7 @@
     "route": "/api/canonical/sources",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 149,
+    "line": 151,
     "description": "GET /api/canonical/sources. what NEURO can see, from SourceHealth only: each source's transport, freshness, lifecycle (expected/optional/retired), blindness finding, and one verdict (seeing/quiet/stale/failing/unknown/retired); plus runtime jobs.",
     "params": [],
     "query": [],
@@ -1443,7 +1443,7 @@
     "route": "/api/canonical/tasks",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 167,
+    "line": 169,
     "description": "GET /api/canonical/tasks. tasks from the world model (NEURO, Microsoft, Apple Reminders) with due context, life domains (a reminder takes its list's classification) and personal importance. Query: system, domain, status.",
     "params": [],
     "query": [
@@ -3607,7 +3607,9 @@
     "line": 25,
     "description": "GET /api/meeting-prep. next upcoming meeting with prep",
     "params": [],
-    "query": [],
+    "query": [
+      "event"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -3620,7 +3622,7 @@
     "route": "/api/meeting-prep/all",
     "domain": "meeting-prep",
     "source": "routes/meeting-prep-view.js",
-    "line": 53,
+    "line": 65,
     "description": "GET /api/meeting-prep/all. all today's meetings with prep",
     "params": [],
     "query": [],
@@ -3636,7 +3638,7 @@
     "route": "/api/meeting-prep/:id",
     "domain": "meeting-prep",
     "source": "routes/meeting-prep-view.js",
-    "line": 111,
+    "line": 123,
     "description": "GET /api/meeting-prep/:id. prep for a specific meeting by event_id",
     "params": [
       "id"
@@ -3654,7 +3656,7 @@
     "route": "/api/meeting-prep/week",
     "domain": "meeting-prep",
     "source": "routes/meeting-prep-view.js",
-    "line": 67,
+    "line": 79,
     "description": "GET /api/meeting-prep/week. all meetings for the next 7 days with prep",
     "params": [],
     "query": [
@@ -7884,7 +7886,7 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 494,
+    "line": 496,
     "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
@@ -7904,7 +7906,7 @@
     "route": "/api/canonical/care/:id/cancel",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 403,
+    "line": 405,
     "description": "POST /api/canonical/care/:id/cancel. Nick cancels a companion care item (it is no longer needed). Keywords: cancel Ember care.",
     "params": [
       "id"
@@ -7922,7 +7924,7 @@
     "route": "/api/canonical/care/:id/done",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 393,
+    "line": 395,
     "description": "POST /api/canonical/care/:id/done. Nick marks a companion care item done (doneOn, default today). A repeat he set moves it to its next date counted from that day; otherwise it closes. Keywords: Ember care done.",
     "params": [
       "id"
@@ -7942,7 +7944,7 @@
     "route": "/api/canonical/classifications",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 197,
+    "line": 199,
     "description": "POST /api/canonical/classifications. Nick classifies a calendar or reminder list (life domains, and for a list whether it is tracked). Keywords: classify calendar, reminder list domain. Body: kind, sourceKey, domains, tracked, label.",
     "params": [],
     "query": [],
@@ -7964,7 +7966,7 @@
     "route": "/api/canonical/commitments/:id/resolve",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 119,
+    "line": 121,
     "description": "POST /api/canonical/commitments/:id/resolve. close a commitment at its owner: done, or not-owed (dropped). Keywords: mark commitment done, not owed, close commitment. Body: outcome (done|not-owed).",
     "params": [
       "id"
@@ -7984,7 +7986,7 @@
     "route": "/api/canonical/commitments/:id/who",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 130,
+    "line": 132,
     "description": "POST /api/canonical/commitments/:id/who. say who owes a commitment owed to you, by the full name of a People note. Keywords: resolve who, set promisor, unresolved person. Body: name.",
     "params": [
       "id"
@@ -8004,7 +8006,7 @@
     "route": "/api/canonical/companions",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 357,
+    "line": 359,
     "description": "POST /api/canonical/companions. create a companion (pet) by writing Companions/<name>.md with type: pet. Keywords: add pet, create companion, Ember. Body: name, species, breed, household. Never overwrites an existing note.",
     "params": [],
     "query": [],
@@ -8025,7 +8027,7 @@
     "route": "/api/canonical/companions/:id/care",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 382,
+    "line": 384,
     "description": "POST /api/canonical/companions/:id/care. Nick adds a care item for a companion: kind (walk|vet|vaccination|flea|worm|medication|grooming|insurance|other), title, dueDate, dueTime, recurrence {every, unit day|week|month|year} only as he states it, note. Keywords: add Ember care, vet appointment.",
     "params": [
       "id"
@@ -8050,7 +8052,7 @@
     "route": "/api/canonical/companions/:id/links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 412,
+    "line": 414,
     "description": "POST /api/canonical/companions/:id/links. Nick links an existing task, reminder, calendar entry (meeting:…), commitment or personal date (pd:…) to a companion's care. Explicit only; a title mentioning Ember is not a link. Body: entityId, careKind, label. Keywords: link to Ember.",
     "params": [
       "id"
@@ -8072,7 +8074,7 @@
     "route": "/api/canonical/companions/:id/links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 423,
+    "line": 425,
     "description": "POST /api/canonical/companions/:id/links/remove. take an explicit care link off a companion. Body: entityId, label. Keywords: unlink Ember.",
     "params": [
       "id"
@@ -8093,7 +8095,7 @@
     "route": "/api/canonical/companions/:id/walks",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 434,
+    "line": 436,
     "description": "POST /api/canonical/companions/:id/walks. Nick's own word about a day's walk for a companion: mark walked|not-applicable, day (default today; never a future day). Nick's own walking is never read as the dog's. Keywords: Ember walked, dog walk.",
     "params": [
       "id"
@@ -8114,7 +8116,7 @@
     "route": "/api/canonical/companions/:id/walks/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 445,
+    "line": 447,
     "description": "POST /api/canonical/companions/:id/walks/remove. take back a walk mark for a day. Body: day.",
     "params": [
       "id"
@@ -8134,7 +8136,7 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 252,
+    "line": 254,
     "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links, measure ({kind, target, period?, projectId?, by?} or null). Creates nothing else: no task, no nudge.",
     "params": [],
     "query": [],
@@ -8160,7 +8162,7 @@
     "route": "/api/canonical/goals/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 263,
+    "line": 265,
     "description": "POST /api/canonical/goals/:id. update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed), measure (null clears).",
     "params": [
       "id"
@@ -8190,7 +8192,7 @@
     "route": "/api/canonical/goals/:id/links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 274,
+    "line": 276,
     "description": "POST /api/canonical/goals/:id/links. link ONE item to an active goal (explicit only; gives context, never urgency). Keywords: link task to goal, goal link. Body: entityId (task:/commitment:/meeting:/pd:/person:/companion:), relation, label.",
     "params": [
       "id"
@@ -8212,7 +8214,7 @@
     "route": "/api/canonical/goals/:id/links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 285,
+    "line": 287,
     "description": "POST /api/canonical/goals/:id/links/remove. take one explicit link off a goal. Keywords: unlink goal. Body: entityId, label.",
     "params": [
       "id"
@@ -8233,7 +8235,7 @@
     "route": "/api/canonical/lead-reminders",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 483,
+    "line": 485,
     "description": "POST /api/canonical/lead-reminders. Nick sets the lead reminders for a kind of personal date: first step is Radar context, middle steps a stronger prompt, the last step Needs You and the only push (skipped when linked prep is done). Body: kind (birthday|anniversary|other), offsets (days before, e.g.",
     "params": [],
     "query": [],
@@ -8252,7 +8254,7 @@
     "route": "/api/canonical/needs-you/notifications/claim",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 68,
+    "line": 70,
     "description": "POST /api/canonical/needs-you/notifications/claim. a device claims the right to post one P0 notification: dedupeKey, deviceId, channel, itemId, synthetic. First claim wins; repeats answer claim:false.",
     "params": [],
     "query": [],
@@ -8274,7 +8276,7 @@
     "route": "/api/canonical/needs-you/notifications/event",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 76,
+    "line": 78,
     "description": "POST /api/canonical/needs-you/notifications/event. what happened to a claimed P0 notification: event accepted|failed|opened|dismissed, dedupeKey, deviceId, channel, detail. Failed releases the claim.",
     "params": [],
     "query": [],
@@ -8296,7 +8298,7 @@
     "route": "/api/canonical/needs-you/synthetic",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 84,
+    "line": 86,
     "description": "POST /api/canonical/needs-you/synthetic. start a safe synthetic P0 test (kind escalation|email, ttlMinutes <= 60) through the real attention path; contacts no external system. PIN only.",
     "params": [],
     "query": [],
@@ -8315,7 +8317,7 @@
     "route": "/api/canonical/personal-admin/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 321,
+    "line": 323,
     "description": "POST /api/canonical/personal-admin/annotations. Nick marks a personal-admin item waiting, blocked (with a reason) or routine, corrects its kind, or sets a lead time. Body: entityId, kind, state, note, leadDays. Keywords: admin waiting, blocked, lead time.",
     "params": [],
     "query": [],
@@ -8337,7 +8339,7 @@
     "route": "/api/canonical/prep-links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 335,
+    "line": 337,
     "description": "POST /api/canonical/prep-links. Nick links a task or commitment as PREPARATION for a personal date (pd:…), calendar entry (meeting:…), person or companion. Explicit only. Keywords: link prep, preparation. Body: subjectId, entityId, label.",
     "params": [],
     "query": [],
@@ -8357,7 +8359,7 @@
     "route": "/api/canonical/prep-links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 346,
+    "line": 348,
     "description": "POST /api/canonical/prep-links/remove. take an explicit preparation link away. Keywords: unlink prep. Body: subjectId, entityId, label.",
     "params": [],
     "query": [],
@@ -8377,7 +8379,7 @@
     "route": "/api/canonical/vehicle-links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 456,
+    "line": 458,
     "description": "POST /api/canonical/vehicle-links. Nick links a personal-admin task or commitment to a vehicle he names (e.g. MOT → car): transport context only. Body: vehicle, entityId, label. Keywords: car, MOT, vehicle admin.",
     "params": [],
     "query": [],
@@ -8397,7 +8399,7 @@
     "route": "/api/canonical/vehicle-links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 467,
+    "line": 469,
     "description": "POST /api/canonical/vehicle-links/remove. take a vehicle link off a task or commitment. Body: vehicle, entityId, label.",
     "params": [],
     "query": [],

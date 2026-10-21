@@ -50,6 +50,8 @@ const KNOWN_KINDS = new Set(Object.values(KINDS));
 
 const MAX_OPERATIONS_PER_REQUEST = 100;
 const MAX_TEXT_LENGTH = 20000;
+/** What a capture made in a meeting may be — Nick picks one; NEURO infers none. */
+const CAPTURE_KINDS = ['decision', 'commitment', 'risk', 'follow-up'];
 
 // ── Pure validation ──────────────────────────────────────────────────────────
 
@@ -96,6 +98,16 @@ function validateOperation(op) {
     }
     if (payload.title !== undefined && payload.title !== null && typeof payload.title !== 'string') {
       return { ok: false, reason: 'payload.title must be a string' };
+    }
+    // A capture made IN a meeting (21 Oct 2026): one bounded kind, and the
+    // canonical meeting key SAiM showed — never a subject or time from the
+    // device. Unknown values are refused, not dropped: a "decision" saved as a
+    // plain note would say less than Nick said.
+    if (payload.captureKind !== undefined && payload.captureKind !== null && !CAPTURE_KINDS.includes(payload.captureKind)) {
+      return { ok: false, reason: `payload.captureKind must be one of ${CAPTURE_KINDS.join(', ')}` };
+    }
+    if (payload.meetingKey !== undefined && payload.meetingKey !== null && !isNonEmptyString(payload.meetingKey, 700)) {
+      return { ok: false, reason: 'payload.meetingKey must be a non-empty string' };
     }
     return { ok: true };
   }
@@ -184,23 +196,47 @@ function receiptFromRow(row, status) {
 // ── Appliers ─────────────────────────────────────────────────────────────────
 // Each returns `{ canonicalId, detail }`, or throws. All SYNCHRONOUS.
 
-function applyCaptureNote(payload) {
+/**
+ * The meeting a capture was made in — CONFIRMED against the diary, or null.
+ * The device sends only the canonical key SAiM showed it; subject and times
+ * come from the calendar, judged at the moment Nick CAPTURED it (`createdAt`),
+ * so a capture made offline mid-meeting and sent afterwards is still linked.
+ * No key, an unknown key, or a meeting not running then → null, and the
+ * receipt says why. Never a guess.
+ */
+function meetingForCapture(key, op) {
+  if (!key) return { meeting: null, why: null };
+  const at = op && op.createdAt && !Number.isNaN(Date.parse(op.createdAt)) ? new Date(op.createdAt) : new Date();
+  let ev = null;
+  try { ev = require('./attention').meetingEventByKey(key, at); } catch { ev = null; }
+  if (!ev) return { meeting: null, why: 'not-confirmed' };
+  const startMs = Date.parse(ev.start);
+  if (Number.isFinite(startMs) && startMs > at.getTime()) return { meeting: null, why: 'not-confirmed' };
+  return { meeting: { subject: String(ev.subject || '').trim() || null, start: ev.start || null, end: ev.end || null, eventId: ev.id || null }, why: null };
+}
+
+function applyCaptureNote(payload, op) {
   const captureStore = require('./capture-store');
+  const captureKind = payload.captureKind || null;
+  const { meeting, why } = meetingForCapture(payload.meetingKey || null, op);
   const { filePath, filename, written } = captureStore.writeNote({
     title: payload.title ? String(payload.title).trim() : undefined,
     content: payload.content,
     source: 'neuro-mobile',
+    meta: captureKind || meeting ? { captureKind, meeting } : null,
   });
   const relative = captureStore.relativePath(filePath);
 
-  // Side effects that must never fail the operation: the capture has landed,
-  // and reporting failure after the fact would make Nick capture it twice.
   try { require('./activity').trackCapture('note'); } catch {}
   try { require('./vault-hooks').onVaultWrite(filePath, 'mobile-capture-note'); } catch {}
 
   return {
     canonicalId: `capture:${relative}`,
-    detail: JSON.stringify({ filename, bytes: written.length }),
+    detail: JSON.stringify({
+      filename, bytes: written.length, path: relative,
+      ...(captureKind ? { captureKind } : {}),
+      ...(payload.meetingKey ? { meeting: meeting ? { subject: meeting.subject, start: meeting.start } : null, meetingWhy: why } : {}),
+    }),
   };
 }
 
@@ -565,6 +601,7 @@ function diagnostics({ deviceId = null, limit = 50 } = {}) {
 }
 
 module.exports = {
+  CAPTURE_KINDS,
   CONTRACT_VERSION,
   KINDS,
   KNOWN_KINDS,

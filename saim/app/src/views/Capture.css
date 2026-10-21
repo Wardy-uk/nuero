@@ -198,3 +198,8 @@
   font-size: 0.78rem;
   cursor: pointer;
 }
+
+/* Capture from this meeting (21 Oct 2026): which meeting, then the one kind. */
+.cap__meeting { margin: 0 0 0.75rem; }
+.cap__meeting-name { margin: 0 0 0.6rem; font-weight: 600; }
+.cap__plain { margin-top: 0.5rem; background: none; border: 0; padding: 0; color: inherit; opacity: 0.7; text-decoration: underline; font: inherit; font-size: 0.9rem; cursor: pointer; }

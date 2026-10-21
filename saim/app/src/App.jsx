@@ -165,6 +165,7 @@ export default function App() {
   // the thing that pinged him, not on the home screen. This is only the default
   // when he opened the app himself.
   const [active, setActive] = useState(() => readLaunchIntent()?.tab || DEFAULT_TAB);
+  const [navContext, setNavContext] = useState(null);
   // The strip is revealed on request. On a WIDE screen it stays revealed while
   // Nick is off the Surface, as part of the one bar; on a PHONE a secondary
   // screen is a pushed view with its own Back, so the strip is only ever a
@@ -236,7 +237,11 @@ export default function App() {
 
   // Any navigation that did not come from a notification drops the remembered
   // kind — a 5pm EOD nudge must not still be steering the Ritual tab tomorrow.
-  function goTab(tab, { fromHistory = false } = {}) {
+  function goTab(tab, { fromHistory = false, context = null } = {}) {
+    // What the target screen needs to be specific (21 Oct 2026): Prep's exact
+    // event, Capture's running meeting. Any other navigation clears it, so a
+    // stale meeting never steers a later visit.
+    setNavContext(context && typeof context === 'object' ? context : null);
     // Entering a secondary screen remembers where Back returns to.
     if (revealsSecondary(tab) && !revealsSecondary(active)) setBackTo(active);
     setActive(tab);
@@ -412,8 +417,9 @@ export default function App() {
             sitting on the Ritual tab re-opens it as EOD instead of being
             ignored by the view's mount-time default. */}
         <ActiveView
-          key={`${active}:${intentKind || ''}`}
+          key={`${active}:${intentKind || ''}:${navContext ? (navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
           autoRecord={active === 'voice'}
+          context={navContext}
           intentKind={intentKind}
           onNavigate={goTab}
           onActionIntent={setActionIntent}

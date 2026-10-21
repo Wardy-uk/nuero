@@ -30,7 +30,7 @@ const handoffFor = (rule, primary, alternatives = []) => ({ contract: 'saim-hand
 const IN_MEETING = handoffFor('S3 meeting', JOIN, [PREP]);
 const PRE_MEETING = handoffFor('S3a imminent meeting transition', JOIN, [PREP]);
 const PHONE = { external: true, tab: (id) => id === 'prep' || id === 'capture', desk: false, neuro: false };
-const KIOSK = { ...PHONE, external: false };
+const KIOSK = { ...PHONE, external: false, tab: (id) => id === 'prep' }; // the wall never offers capture
 
 let S;
 test.before(async () => { S = await import(pathToFileURL(path.join(ROOT, 'saim/shared-ui/presentation/nextStep.mjs')).href); });
@@ -41,7 +41,13 @@ test('active meeting: SAiM’s hand-off order — Join in Teams first, meeting p
   const s = S.nextStep({ handoff: IN_MEETING, presentation: { mode: 'in-meeting' }, context: { activity: 'in-meeting' }, can: PHONE });
   assert.equal(s.primary.label, 'Join in Teams');
   assert.deepEqual(s.primary.run, { type: 'external', href: JOIN.target.href });
-  assert.deepEqual(s.alternatives.map((a) => [a.label, a.run]), [['Open meeting prep', { type: 'tab', tab: 'prep' }]]);
+  // Prep carries THIS meeting's event id (from NEURO's own link); capture follows, with the canonical meeting.
+  assert.deepEqual(s.alternatives.map((a) => [a.label, a.run]), [
+    ['Open meeting prep', { type: 'tab', tab: 'prep', context: { eventId: 'AAMkTEST' } }],
+    ['Capture from this meeting', { type: 'tab', tab: 'capture', context: { meeting: null } }],
+  ]);
+  const named = S.nextStep({ handoff: IN_MEETING, presentation: { mode: 'in-meeting' }, context: { activity: 'in-meeting' }, meeting: { key: 'k', subject: ' Sprint ', scheduledEnd: 'x' }, can: PHONE });
+  assert.deepEqual(named.alternatives[1].run.context, { meeting: { key: 'k', subject: 'Sprint', scheduledEnd: 'x' } });
 });
 
 test('active meeting on a wall (no external links): meeting prep, never a Teams link it cannot open', () => {
@@ -52,7 +58,7 @@ test('active meeting on a wall (no external links): meeting prep, never a Teams 
 
 test('active meeting with no usable hand-off: a focused capture, through the existing Capture view', () => {
   const s = S.nextStep({ handoff: null, presentation: { mode: 'in-meeting' }, context: { activity: 'in-meeting' }, can: PHONE });
-  assert.deepEqual(s.primary, { label: 'Capture from this meeting', run: { type: 'tab', tab: 'capture' } });
+  assert.deepEqual(s.primary, { label: 'Capture from this meeting', run: { type: 'tab', tab: 'capture', context: { meeting: null } } });
   // A hand-off for a DIFFERENT rule is not a meeting destination.
   const other = S.nextStep({ handoff: handoffFor('S7 top item', JOIN), presentation: { mode: 'in-meeting' }, context: { activity: 'in-meeting' }, can: PHONE });
   assert.equal(other.primary.label, 'Capture from this meeting');
@@ -75,7 +81,7 @@ test('upcoming meeting: the existing join, then prep; without a hand-off, SAiM�
   assert.equal(s.primary.label, 'Join in Teams');
   assert.equal(s.alternatives[0].label, 'Open meeting prep');
   const bare = S.nextStep({ handoff: null, presentation: { mode: 'upcoming' }, context: { activity: 'pre-meeting' }, can: PHONE });
-  assert.deepEqual(bare.primary, { label: 'Open meeting prep', run: { type: 'tab', tab: 'prep' } });
+  assert.deepEqual(bare.primary, { label: 'Open meeting prep', run: { type: 'tab', tab: 'prep', context: null } });
 });
 
 test('calm: quiet — no step invented, whatever hand-off rides along', () => {
