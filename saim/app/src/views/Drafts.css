@@ -37,3 +37,13 @@
 .drafts__history { margin-top: 18px; }
 .drafts__history summary { cursor: pointer; opacity: 0.8; }
 .drafts__msg { margin: 8px 0; }
+
+/* Today (22 Oct 2026): what was prepared, confirmed and verified today — compact. */
+.drafts__today { margin: 4px 0 12px; }
+.drafts__today-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.drafts__today-row { display: grid; grid-template-columns: 3.4rem 1fr; gap: 10px; align-items: start; padding: 6px 0; border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08)); }
+.drafts__today-time { font-variant-numeric: tabular-nums; opacity: 0.8; padding-top: 2px; }
+.drafts__today-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.drafts__today-title { font-weight: 600; overflow-wrap: anywhere; }
+.drafts__today-meta { opacity: 0.85; font-size: 0.92em; overflow-wrap: anywhere; }
+.drafts__today-meta code { font-size: 0.95em; }

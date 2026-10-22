@@ -241,8 +241,8 @@ test('a project note that needs Nick is OFFERED when today is full — the propo
   const slot = r.record.packet.selected.decision.slots[0];
   assert.equal(slot.date, add(mon, 1)); assert.equal(slot.start, '09:00'); assert.equal(slot.end, '09:30');
   const w = exec.writesFor(r.record.packet, 'approve');
-  assert.match(w.confirmation.writes.join(' '), new RegExp(`calendar, \\w+day \\d+ \\w+ 09:00–09:30\\. Just you`));
-  assert.match(w.confirmation.question, /reserve 30 minutes on \w+day/);
+  assert.match(w.confirmation.writes.join(' '), new RegExp(`calendar, \\w+day \\d+ \\w+, 09:00–09:30\\. Just you`));
+  assert.match(w.confirmation.question, /^Reserve \w+day \d+ \w+, 09:00–09:30 and save the draft\?$/);
 });
 
 // ── 4. Make this ready, only where it can do something ──────────────────────

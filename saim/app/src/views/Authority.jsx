@@ -83,8 +83,11 @@ export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAl
           <ul className="auth__rcs">
             {todays.map((r, i) => (
               <li key={i} className={r.complete ? 'auth__rc auth__rc--done' : 'auth__rc auth__rc--partial'}>
-                <p className="auth__rcwhen">{when(r.at)}{r.target === 'sandbox' ? ' · practice run' : ''}{r.title ? ` · ${r.title}` : ''}</p>
+                <p className="auth__rcwhen">{when(r.at)}{r.target === 'sandbox' ? ' · practice run, nothing real changed' : r.verified ? ' · done and read back' : ''}{r.title ? ` · ${r.title}` : ''}</p>
                 <ul className="auth__rcsteps">{receiptSummary(r).map((l, j) => <li key={j}>{l}</li>)}</ul>
+                {/* Receipt truth: the exact block time and, for a live note only, where it is. */}
+                {r.when && <p className="auth__rcwhen">{r.target === 'sandbox' ? 'Sandbox block' : 'Calendar'} · {r.when}</p>}
+                {r.notePath && r.target !== 'sandbox' && <p className="auth__rcwhen">Note · <code>{r.notePath}</code></p>}
               </li>
             ))}
           </ul>

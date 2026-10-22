@@ -214,7 +214,9 @@ test('a confirmation minted while open, used after the lock closed: refused befo
   const r = await request();
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.executionEnabled, true);
-  assert.equal(r.json.confirmation.question, `Reserve 30 minutes on ${exec.writesFor(fixture(), 'approve').confirmation.writes[0].match(/calendar, (.+?) 10:25/)[1]} (10:25–10:55) and save the draft?`);
+  // Receipt truth: the exact date and time leads, in the executor's own words (the write line says the same).
+  const exact = exec.writesFor(fixture(), 'approve').confirmation.writes[0].match(/calendar, (.+? \d+ \w+, 10:25–10:55)\./)[1];
+  assert.equal(r.json.confirmation.question, `Reserve ${exact} and save the draft?`);
   const checksAfterRequest = S.checkBuilds;
   assert.equal(S.adapterBuilds, 0, 'a request never builds the live writers');
 
@@ -544,7 +546,7 @@ test('the next working morning: the same move is prepared afresh, re-checked, an
   assert.equal(checked, 1, 'fresh checks ran before anything was offered');
   assert.equal(morning.held, undefined);
   assert.ok(morning.move.options.length > 0);
-  assert.match(morning.move.options[0].question, /^Reserve 30 minutes on /);
+  assert.match(morning.move.options[0].question, /^Reserve \w+day \d+ \w+, \d\d:\d\d–\d\d:\d\d and save the draft\?$/);
   assert.match(morning.move.prepared.headline, /^I’ve drafted /);
   const r = await request();
   assert.equal(r.status, 200, JSON.stringify(r.json));

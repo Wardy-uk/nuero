@@ -400,7 +400,9 @@ test('stop: DURING an action — the step in progress finishes truthfully, the n
   assert.equal(r.ok, true);
   assert.deepEqual(r.receipt.steps.map((s) => s.status), ['done', 'stopped']);
   assert.equal(r.receipt.complete, false);
-  assert.match(r.receipt.plain, /The note was not attempted — SAiM’s actions were stopped\. The calendar block is in place and stays\./);
+  assert.match(r.receipt.plain, /^Practice run — nothing real was changed\. The note was not attempted — SAiM’s actions were stopped\. The sandbox block that worked stays in the sandbox\./);
+  assert.equal(r.receipt.practice, true);
+  assert.equal(r.receipt.verified, false);
   assert.equal(r.receipt.next, 'Nothing more will happen while SAiM’s actions are stopped.');
   assert.equal(await sb.vault.exists(NOTE), false, 'no note');
   const s = budget.status();
@@ -422,7 +424,7 @@ test('status claims nothing without a receipt: no run = "Nothing has been carrie
   s = budget.status();
   assert.equal(s.receipts.length, 1); assert.equal(s.receipts[0].complete, true);
   assert.equal(s.active.state, 'done'); assert.equal(s.active.practice, true);
-  assert.equal(s.active.say, 'Practice run, nothing real was changed: Both are in place and checked.', 'a practice run never reads as a real one');
+  assert.equal(s.active.say, 'Practice run — nothing real was changed. A sandbox calendar block was made and read back — not your calendar. A sandbox note was saved and read back — not your vault.', 'a practice run never reads as a real one — and says so once, not twice');
   const flat = JSON.stringify(s);
   assert.doesNotMatch(flat, /saim-move:|pm_[0-9a-f]|ig_[0-9a-f]|ag_[0-9a-f]|ar_[0-9a-f]/, 'no internal identifier in what Nick sees');
 });

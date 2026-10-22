@@ -49,6 +49,30 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dayLong = (d) => { const x = new Date(`${d}T12:00:00Z`); return `${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]}`; };
+// Receipt truth (22 Oct 2026): every confirmation and receipt states the EXACT date
+// and time — "Friday 23 October, 10:30–11:00" — in one wording, used by the view too.
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dayFull = (d) => { const x = new Date(`${d}T12:00:00Z`); return `${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${MONTHS_FULL[x.getUTCMonth()]}`; };
+/** PURE. "Friday 23 October, 10:30–11:00" — or null when the slot is not a real one. */
+function whenFull(slot) {
+  if (!slot || !/^\d{4}-\d\d-\d\d$/.test(slot.date || '') || !/^\d\d:\d\d$/.test(slot.start || '') || !/^\d\d:\d\d$/.test(slot.end || '')) return null;
+  return `${dayFull(slot.date)}, ${slot.start}–${slot.end}`;
+}
+/** PURE. "Projects → Working → Draft (private draft)" — where to find a note in Obsidian. */
+function notePathWords(p) {
+  const parts = String(p || '').replace(/\.md$/i, '').split('/').filter(Boolean);
+  return parts.length ? parts.join(' → ') : null;
+}
+/** PURE. How the block sits against the meeting it prepares for — or null when that is not known. */
+function relationFor(slot, forum) {
+  if (!slot || !forum || !forum.start) return null;
+  const fs0 = String(forum.start);
+  const fDate = fs0.slice(0, 10); const fTime = fs0.slice(11, 16);
+  if (!/^\d{4}-\d\d-\d\d$/.test(fDate) || !/^\d\d:\d\d$/.test(fTime)) return null;
+  const name = forum.title || forum.subject || null;
+  const what = name ? `the ${name} meeting` : 'the meeting';
+  return `This gives you ${toMin(slot.end) - toMin(slot.start)} minutes before ${what} on ${dayFull(fDate)} at ${fTime}.`;
+}
 const toMin = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return h * 60 + m; };
 // Europe/London wall clock → epoch ms (the slot is a wall-clock time).
 function londonMs(date, hhmm) {
@@ -106,7 +130,7 @@ function writesFor(packet, option) {
     forum: d.forum || null, verification: s.verification || null, title: s.title,
     confirmation: {
       writes: [
-        `Add “${cal.title}” to your calendar, ${dayLong(slot.date)} ${slot.start}–${slot.end}. Just you — nobody is invited.`,
+        `Add “${cal.title}” to your calendar, ${whenFull(slot)}. Just you — nobody is invited.`,
         `Save the draft as a new note: ${p}`,
       ],
       contacts: 'Nobody else is contacted: no invite, email or message. The shared board and your reply to the meeting invite are left alone.',
@@ -230,7 +254,7 @@ function writesForV2(packet, option) {
     if (!Array.isArray(cal.attendees) || cal.attendees.length !== 0) return refuse('the block has attendees — a block that invites anyone is not this action');
     if (!TITLE_RE.test(String(cal.title || ''))) return refuse('the block title is not a single plain line');
     steps.push({ step: 'calendar', writer: WRITER.calendar, title: cal.title, date: slot.date, start: slot.start, end: slot.end, attendees: [], body: cal.body, marker: moveKey });
-    lines.push(`Add “${cal.title}” to your calendar, ${dayLong(slot.date)} ${slot.start}–${slot.end}. Just you — nobody is invited.`);
+    lines.push(`Add “${cal.title}” to your calendar, ${whenFull(slot)}. Just you — nobody is invited.`);
   } else if (slot.date) {
     return refuse('this move offers a time but books no block');
   }
@@ -238,7 +262,7 @@ function writesForV2(packet, option) {
     ok: true, contract: 'prepared-move-v2', moveKey, option, slot: cal ? slot : null, steps, writeHash: sha(JSON.stringify(steps)), destination,
     forum: s.forum || null, verification: s.verification || null, title: s.title,
     confirmation: {
-      question: s.kind === 'email-reply' ? 'Put this reply in Actions for your approval?' : unfinished ? 'Save this unfinished draft? No time will be booked.' : cal ? `Save the draft and reserve ${toMin(slot.end) - toMin(slot.start)} minutes on ${dayLong(slot.date)} (${slot.start}–${slot.end})?` : 'Save this as a note?',
+      question: s.kind === 'email-reply' ? 'Put this reply in Actions for your approval?' : unfinished ? 'Save this unfinished draft? No time will be booked.' : cal ? `Reserve ${whenFull(slot)} and save the draft?` : 'Save this as a note?',
       writes: lines,
       contacts: reply ? 'Nothing is sent: the reply waits in Actions until you approve it with your code. Nobody is invited and no task is created.' : 'Nobody is contacted: no email, invite or message, and no task is created.',
     },
@@ -665,24 +689,41 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
 
   const good = (r) => r.status === 'done' || r.status === 'already-done';
   const complete = results.every(good);
+  // ── Receipt truth (22 Oct 2026), stamped HERE, never by a client flag ──
+  // practice: anything not run against the live adapters changed nothing real.
+  // verified: live, every step done/already-done, and every read-back held.
+  const practice = kind !== 'live';
+  const verified = !practice && complete && results.every((r) => (r.verified || []).every((c) => c.ok));
+  for (const r of results) {
+    const src = w.steps.find((s) => s.step === r.step) || {};
+    if (r.step === 'calendar') r.when = whenFull(src) ? { date: src.date, start: src.start, end: src.end, say: whenFull(src) } : null;
+    if (r.step === 'note') {
+      // A practice note is not in the vault: no vault path is claimed for it.
+      if (practice) { r.path = null; r.findIt = null; } else { r.path = r.path || src.path || null; r.findIt = good(r) ? notePathWords(r.path) : null; }
+    }
+  }
   const label = (r) => (r.step === 'calendar' ? 'The calendar block' : r.step === 'reply' ? 'The reply draft' : 'The note');
   const STAYS = { calendar: 'The calendar block is in place and stays.', note: 'The note is saved and stays.', reply: 'The reply draft is in Actions and stays — it has not been sent.' };
   const DONE = { calendar: 'The block is in your calendar, just you.', note: 'The note is saved and read back.', reply: 'The reply is in Actions waiting for your approval code — it has NOT been sent.' };
+  // A practice run says so, and never claims your calendar or your vault.
+  const DONE_PRACTICE = { calendar: 'A sandbox calendar block was made and read back — not your calendar.', note: 'A sandbox note was saved and read back — not your vault.', reply: 'A sandbox reply draft was made — nothing went to Actions and nothing was sent.' };
   const v2 = w.contract === 'prepared-move-v2';
   const receipt = {
     recordId: record.id, version: record.version, option, moveKey: w.moveKey, target: kind,
     at: new Date(now).toISOString(), confirmedWith: spent.grant.id, writeHash: w.writeHash,
-    steps: results, complete,
+    steps: results, complete, practice, verified,
+    when: (results.find((r) => r.step === 'calendar' && r.when) || {}).when || null,
+    notePath: practice ? null : (results.find((r) => r.step === 'note' && good(r)) || {}).path || null,
     ...(v2 ? { contract: 'prepared-move-v2', sent: false } : {}),
     ...(w.destination ? { destination: w.destination } : {}),
     plain: complete
-      ? (v2 ? results.map((r) => DONE[r.step]).join(' ') : 'Both are in place and checked.')
+      ? (practice ? results.map((r) => DONE_PRACTICE[r.step]).join(' ') : v2 ? results.map((r) => DONE[r.step]).join(' ') : 'Both are in place and checked.')
       : results.filter((r) => !good(r)).map((r) => (r.status === 'removed-since'
         ? `${label(r)} was made earlier and has since been removed — I haven’t recreated it.`
         : r.status === 'stopped'
           ? `${label(r)} was not attempted — SAiM’s actions were stopped.`
           : `${label(r)} ${r.status === 'failed' ? (r.provablyNotApplied ? 'was not saved' : 'may not have been saved') : 'was saved but did not read back as confirmed'}: ${r.error || 'the check did not match'}.`)).join(' ')
-        + ` ${results.filter(good).map((r) => STAYS[r.step]).join(' ')}`.trimEnd(),
+        + ` ${results.filter(good).map((r) => (practice ? `The sandbox ${r.step === "calendar" ? "block" : r.step} that worked stays in the sandbox.` : STAYS[r.step])).join(' ')}`.trimEnd(),
     next: complete ? 'Nothing else will be done.'
       : results.every((r) => good(r) || r.status === 'removed-since') ? 'Nothing else will be done.'
         : results.some((r) => r.status === 'stopped') ? 'Nothing more will happen while SAiM’s actions are stopped.'
@@ -691,9 +732,10 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
     forum: w.forum,
   };
   // Where a private draft actually went — said from the path that was written, only if the note step worked.
-  if (w.destination && results.some((r) => r.step === 'note' && good(r))) {
+  if (!practice && w.destination && results.some((r) => r.step === 'note' && good(r))) {
     receipt.plain = `${receipt.plain} ${w.destination.project ? `Linked to project: ${w.destination.project}.` : 'Kept in your working drafts (Projects/Working).'}`.trim();
   }
+  if (practice) receipt.plain = `Practice run — nothing real was changed. ${receipt.plain}`;
   // Kept with what SAiM wrote, so a later read can tell Nick's own words from SAiM's.
   const noteW = w.steps.find((x) => x.step === 'note');
   try { db.setState(`saim_move_receipt:${w.moveKey}`, JSON.stringify({ ...receipt, written: noteW ? { path: noteW.path, content: noteW.content } : null })); } catch { /* the ledger still holds the steps */ }
@@ -790,7 +832,8 @@ async function requestForMove({ option = 'approve', recordId = null, surface = '
     executionEnabled: enabled,
     authority: { ...budget.brief({ now }), fits: fit.ok, ...(fit.ok ? {} : { limit: fit.limit, say: fit.say }) },
     confirmation: {
-      question: `Reserve ${mins} minutes on ${dayLong(w.slot.date)} (${w.slot.start}–${w.slot.end}) and save the draft?`,
+      question: `Reserve ${whenFull(w.slot)} and save the draft?`,
+      relation: relationFor(w.slot, w.forum),
       writes: c.confirmation.writes,
       contacts: c.confirmation.contacts,
       nothingElse: 'Nothing else changes: no email, invite, task, board card, goal or notification.',
@@ -835,6 +878,7 @@ async function _requestStored({ recordId, option, surface, sessionId, caller, no
     authority: { ...budget.brief({ now }), fits: fit.ok },
     confirmation: {
       question: w.confirmation.question, writes: w.confirmation.writes, contacts: w.confirmation.contacts,
+      relation: w.slot ? relationFor(w.slot, w.forum) : null,
       nothingElse: 'Nothing else changes: nothing is sent, nobody is invited, and no task, board card, goal or notification is created.',
       ...(enabled ? {} : { off: 'Carrying out prepared moves is switched off, so confirming will not write anything.' }),
     },
@@ -868,5 +912,5 @@ async function confirmMove({ recordId, version, option, grantId, caller = {}, no
 
 module.exports = {
   FLAG, WRITER, DIARY_MAX_AGE_MS, dutyPermits, PROJECT_FOLDERS, V2_NOTE_RULES, PRIVATE_NOTE_RULE, privateDraftAllowed, destinationOf, openQuestions, writesFor, writesForV2, freshChecks, defaultChecks, liveAdapters, readOnlyVault,
-  requestConfirmation, execute, requestForMove, confirmMove, londonMs, _setDeps,
+  requestConfirmation, execute, requestForMove, confirmMove, londonMs, _setDeps, whenFull, notePathWords, relationFor, dayFull,
 };

@@ -281,3 +281,11 @@
 /* PromiseSave — the save step in the promise card, on every SAiM shell. */
 .promise-save { margin-top: 8px; }
 .promise-save__authority { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.12); }
+
+/* Receipt truth (22 Oct 2026): practice is labelled first; exact time and where to find the note. */
+.pmo__practice { margin: 0 0 6px; padding: 6px 10px; border-left: 3px solid rgba(255,255,255,0.2); opacity: 0.95; }
+.pmo__act--practice .pmo__actlead { opacity: 0.9; }
+.pmo__relation { margin: 4px 0 8px; opacity: 0.85; }
+.pmo__rwhen { opacity: 0.9; }
+.pmo__findit { display: inline; opacity: 0.9; overflow-wrap: anywhere; }
+.pmo__view { margin-left: 8px; }

@@ -474,6 +474,7 @@ function recordReceipt(receipt, { title = null, now = Date.now() } = {}) {
     ensure();
     event('receipt', {
       title, target: receipt.target, complete: receipt.complete, plain: receipt.plain, at: receipt.at,
+      practice: receipt.practice === true, verified: receipt.verified === true, when: receipt.when ? receipt.when.say : null, notePath: receipt.notePath || null,
       steps: (receipt.steps || []).map((s) => ({ step: s.step, status: s.status, target: s.target || null })),
     }, now);
   } catch { /* the external write ledger still holds the steps */ }
@@ -504,7 +505,7 @@ function status({ now = Date.now() } = {}) {
   const active = inFlight.length
     ? { state: 'in-progress', title: inFlight[0].title, say: 'A prepared move is being carried out now.' }
     : (lastReceipt && londonDay(Date.parse(lastReceipt.at)) === day)
-      ? { state: lastReceipt.complete ? 'done' : 'partly-done', title: lastReceipt.title, practice: lastReceipt.target === 'sandbox', say: lastReceipt.target === 'sandbox' ? `Practice run, nothing real was changed: ${lastReceipt.plain}` : lastReceipt.plain }
+      ? { state: lastReceipt.complete ? 'done' : 'partly-done', title: lastReceipt.title, practice: lastReceipt.target === 'sandbox', say: lastReceipt.target === 'sandbox' && !/^Practice run/.test(lastReceipt.plain || '') ? `Practice run, nothing real was changed: ${lastReceipt.plain}` : lastReceipt.plain }
       : { state: 'none', title: null, say: 'Nothing has been carried out today.' };
 
   const granted = Boolean(g);

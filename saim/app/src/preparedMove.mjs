@@ -130,15 +130,48 @@ const STATUS_WORDS = {
 
 /** PURE. The receipt in plain lines — every word from the receipt itself. */
 export function receiptLines(receipt) {
+  const practice = receiptKind(receipt) === 'practice';
   return (receipt.steps || []).map((s) => ({
-    step: STEP_NAME[s.step] || s.step,
+    step: practice ? (PRACTICE_STEP_NAME[s.step] || s.step) : (STEP_NAME[s.step] || s.step),
     status: s.step === 'reply' && (s.status === 'done' || s.status === 'already-done')
-      ? (s.status === 'done' ? 'in Actions, waiting for your approval — not sent' : 'already in Actions — not repeated, not sent')
+      ? (practice ? 'made in the sandbox — nothing went to Actions, nothing sent' : s.status === 'done' ? 'in Actions, waiting for your approval — not sent' : 'already in Actions — not repeated, not sent')
       : s.status === 'failed' && s.provablyNotApplied === false ? 'may not have been saved' : (STATUS_WORDS[s.status] || s.status),
     ok: s.status === 'done' || s.status === 'already-done',
     target: s.target,
     note: s.note || s.unconfirmed || s.error || null,
+    // Receipt truth (22 Oct 2026): the exact time the executor stamped; a vault location
+    // only for a LIVE note (a practice note is not in the vault and claims no place).
+    when: s.when && s.when.say ? s.when.say : null,
+    findIt: practice ? null : (s.findIt || null),
+    path: practice ? null : (s.path || null),
   }));
+}
+
+const PRACTICE_STEP_NAME = { calendar: 'Sandbox calendar block', note: 'Sandbox note', reply: 'Sandbox reply draft' };
+
+/**
+ * PURE. What KIND of receipt this is — stamped by the executor, never inferred from
+ * how the screen looks: 'practice' (the sandbox — nothing real changed), 'verified'
+ * (live, complete, every read-back held), 'real' (live, but not complete or not all
+ * read back), or 'unknown' (a receipt that does not say where it ran claims nothing).
+ */
+export function receiptKind(receipt) {
+  if (!receipt || !receipt.target) return 'unknown';
+  if (receipt.practice === true || receipt.target === 'sandbox') return 'practice';
+  if (receipt.target !== 'live') return 'unknown';
+  return receipt.verified === true ? 'verified' : 'real';
+}
+
+/** PURE. The receipt's one-line lead — "Done" ONLY when verified. */
+export function receiptLead(receipt) {
+  const k = receiptKind(receipt);
+  if (k === 'practice') return 'Practice run — nothing real was changed';
+  if (k === 'unknown') return 'I can’t confirm what this changed';
+  if (k === 'verified') return 'Done';
+  const steps = receipt.steps || [];
+  if (steps.some((s) => s.status === 'stopped')) return 'Stopped part-way';
+  if (!steps.some((s) => s.status === 'done' || s.status === 'already-done')) return 'Nothing was saved';
+  return receipt.complete ? 'Done — but a read-back didn’t hold' : 'Partly done';
 }
 
 /**

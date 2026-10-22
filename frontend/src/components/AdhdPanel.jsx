@@ -879,7 +879,7 @@ export default function AdhdPanel({ onNavigate }) {
               } catch { return { ok: false, error: 'NEURO didn’t answer.' }; }
             }}
             onOpenActions={onNavigate ? () => onNavigate('actions') : null}
-            renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} hideContextFor={focusTaskId} onOpenContext={openInVault} />}
+            renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} hideContextFor={focusTaskId} onOpenContext={openInVault} onOpenNote={(n) => openInVault(n.path)} />}
             renderItemExtra={(it) => {
               const e = eligibleFor(it);
               return e ? <MakeReady item={e} call={desktopCall} onOpenDraft={onNavigate ? (recordId) => onNavigate('drafts', recordId ? { recordId } : null) : null} /> : null;

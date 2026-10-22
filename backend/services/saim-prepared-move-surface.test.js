@@ -181,7 +181,7 @@ test('ready: Meeting readiness — why now, what SAiM has done, what remains hum
 });
 
 test('the objects only claim to be placed when the receipt says so', () => {
-  const r = (calendar, note) => ({ kind: 'receipt', view: VIEW, option: 'approve', receipt: { complete: calendar === 'done' && note === 'done', plain: 'x', next: 'Nothing else will be done.', steps: [{ step: 'calendar', status: calendar }, { step: 'note', status: note }] } });
+  const r = (calendar, note) => ({ kind: 'receipt', view: VIEW, option: 'approve', receipt: { target: 'live', complete: calendar === 'done' && note === 'done', verified: calendar === 'done' && note === 'done', plain: 'x', next: 'Nothing else will be done.', steps: [{ step: 'calendar', status: calendar }, { step: 'note', status: note }] } });
   let h = html(r('done', 'failed'));
   assert.match(h, /In your calendar · read back/); assert.doesNotMatch(h, /Saved in your notes/);
   h = html(r('failed', 'done'));
@@ -189,10 +189,14 @@ test('the objects only claim to be placed when the receipt says so', () => {
   h = html(r('done', 'stopped'));
   assert.match(text(h), /Draft note ?: not attempted — SAiM’s actions were stopped/);
   assert.doesNotMatch(h, /Saved in your notes/);
-  h = html({ ...r('done', 'done'), receipt: { ...r('done', 'done').receipt, target: 'sandbox', complete: true } });
-  assert.match(text(h), /Done — practice run, nothing real was changed/);
-  assert.match(h, /Practice run · placed and read back/); assert.match(h, /Practice run · saved and read back/);
-  assert.doesNotMatch(h, /In your calendar|Saved in your notes/, 'a practice run never claims his real calendar or notes');
+  h = html({ ...r('done', 'done'), receipt: { ...r('done', 'done').receipt, target: 'sandbox', practice: true, verified: false, complete: true } });
+  assert.match(text(h), /Practice run — nothing real was changed\. This ran against a sandbox/);
+  assert.match(h, /Sandbox calendar · practice run, not yours/); assert.match(h, /Sandbox note · practice run, not in your vault/);
+  assert.doesNotMatch(h, /In your calendar|Saved in your notes|>Done</, 'a practice run never claims his real calendar or notes, and is never "Done"');
+  // A receipt that does not say where it ran claims nothing at all.
+  h = html({ ...r('done', 'done'), receipt: { ...r('done', 'done').receipt, target: undefined } });
+  assert.match(text(h), /I can’t confirm what this changed/);
+  assert.doesNotMatch(h, /In your calendar|Saved in your notes|>Done</);
 });
 
 test('a budget refusal at confirm is the server’s own words, and nothing is claimed', () => {
@@ -292,28 +296,28 @@ test('a lost connection while confirming is UNKNOWN — never success, never "no
 // ── Receipts from the existing contract ──────────────────────────────────────
 
 test('a complete receipt is rendered from the receipt itself', async () => {
-  const receipt = { recordId: REQUEST.recordId, complete: true, plain: 'Both are in place and checked.', next: 'Nothing else will be done.', contacted: [],
+  const receipt = { recordId: REQUEST.recordId, target: 'live', practice: false, verified: true, complete: true, plain: 'Both are in place and checked.', next: 'Nothing else will be done.', contacted: [],
     steps: [
-      { step: 'calendar', status: 'done', target: '2026-10-20 10:25–10:55 “Triage and escalation criteria draft”', verified: [] },
-      { step: 'note', status: 'done', target: 'Projects/Support Improvement Plan/SIP - T1 Acceptance Criteria (draft).md', unconfirmed: 'Saved and read back on the Pi. Reaching your other devices depends on Obsidian Sync, which I haven’t checked.' },
+      { step: 'calendar', status: 'done', target: '2026-10-20 10:25–10:55 “Triage and escalation criteria draft”', verified: [{ what: 'event read back', ok: true }], when: { date: '2026-10-20', start: '10:25', end: '10:55', say: 'Tuesday 20 October, 10:25–10:55' } },
+      { step: 'note', status: 'done', target: 'Projects/Support Improvement Plan/SIP - T1 Acceptance Criteria (draft).md', path: 'Projects/Support Improvement Plan/SIP - T1 Acceptance Criteria (draft).md', findIt: 'Projects → Support Improvement Plan → SIP - T1 Acceptance Criteria (draft)', verified: [{ what: 'note read back', ok: true }], unconfirmed: 'Saved and read back on the Pi. Reaching your other devices depends on Obsidian Sync, which I haven’t checked.' },
     ] };
   const s = await flow.confirm(fakeCall({ 'POST /api/prepared-moves/confirm': { status: 200, body: { ok: true, receipt } } }), { view: VIEW, option: 'approve', request: { ...REQUEST, executionEnabled: true }, now: NOW });
   const t = text(html(s));
-  assert.match(t, /Done Both are in place and checked\. Calendar block : done and read back/);
-  assert.match(t, /Draft note : done and read back .* Obsidian Sync, which I haven’t checked\./);
+  assert.match(t, /Done Both are in place and checked\. Calendar block : done and read back · Tuesday 20 October, 10:25–10:55/, 'the exact date and time');
+  assert.match(t, /Draft note : done and read back .* Obsidian Sync, which I haven’t checked\. In Obsidian: Projects → Support Improvement Plan → SIP - T1 Acceptance Criteria \(draft\)\./, 'exactly where to find it');
   assert.match(t, /Nothing else will be done\./);
   assert.doesNotMatch(t, /Ask again to finish it/);
 });
 
 test('a partial receipt says exactly what did and did not happen, and offers only a retry of what is missing', () => {
-  const receipt = { complete: false, plain: 'The calendar block may not have been saved: timed out. The note is saved and stays.', next: 'Confirm again to retry only what is missing — nothing that worked is repeated or undone.',
+  const receipt = { target: 'live', complete: false, verified: false, plain: 'The calendar block may not have been saved: timed out. The note is saved and stays.', next: 'Confirm again to retry only what is missing — nothing that worked is repeated or undone.',
     steps: [{ step: 'calendar', status: 'failed', provablyNotApplied: false, target: 'x', error: 'timed out' }, { step: 'note', status: 'done', target: 'y' }] };
   const t = text(html({ kind: 'receipt', view: VIEW, option: 'approve', receipt }));
   assert.match(t, /Partly done The calendar block may not have been saved: timed out\. The note is saved and stays\./);
   assert.match(t, /Calendar block : may not have been saved/);
   assert.match(t, /Ask again to finish it/);
   assert.doesNotMatch(t, /^Done\b/);
-  const removed = text(html({ kind: 'receipt', view: VIEW, option: 'approve', receipt: { complete: false, plain: 'The calendar block was made earlier and has since been removed — I haven’t recreated it. The note is saved and stays.', next: 'Nothing else will be done.', steps: [{ step: 'calendar', status: 'removed-since' }, { step: 'note', status: 'already-done' }] } }));
+  const removed = text(html({ kind: 'receipt', view: VIEW, option: 'approve', receipt: { target: 'live', complete: false, plain: 'The calendar block was made earlier and has since been removed — I haven’t recreated it. The note is saved and stays.', next: 'Nothing else will be done.', steps: [{ step: 'calendar', status: 'removed-since' }, { step: 'note', status: 'already-done' }] } }));
   assert.match(removed, /made earlier and since removed — not recreated/);
   assert.doesNotMatch(removed, /Ask again to finish it/);
 });

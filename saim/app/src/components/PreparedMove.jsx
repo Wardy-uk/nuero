@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
-import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, park, interviewOf, outstandingOf, boundaryOf } from '../preparedMove.mjs';
+import { loadWithRetry, load, askToConfirm, confirm, receiptLines, receiptKind, receiptLead, newSessionId, makeCall, makeReady, respond, answer, park, interviewOf, outstandingOf, boundaryOf } from '../preparedMove.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
 import TaskContext from '../../../shared-ui/TaskContext.jsx';
@@ -37,14 +37,51 @@ const parts = (ymd) => { const [y, m, d] = String(ymd).split('-').map(Number); c
 export function receiptMarks(receipt) {
   const out = { calendar: null, note: null };
   if (!receipt) return out;
-  // A practice run wrote to a disposable copy, never to his calendar or notes.
-  const practice = receipt.target === 'sandbox';
+  // A practice run wrote to a disposable copy, never to his calendar or notes; a
+  // receipt that does not say where it ran claims nothing at all.
+  const kind = receiptKind(receipt);
+  if (kind === 'unknown') return out;
   for (const s of receipt.steps || []) {
     const ok = s.status === 'done' || s.status === 'already-done';
-    if (s.step === 'calendar') out.calendar = ok ? (practice ? 'Practice run · placed and read back' : 'In your calendar · read back') : null;
-    if (s.step === 'note') out.note = ok ? (practice ? 'Practice run · saved and read back' : 'Saved in your notes · read back') : null;
+    if (s.step === 'calendar') out.calendar = ok ? (kind === 'practice' ? 'Sandbox calendar · practice run, not yours' : 'In your calendar · read back') : null;
+    if (s.step === 'note') out.note = ok ? (kind === 'practice' ? 'Sandbox note · practice run, not in your vault' : 'Saved in your notes · read back') : null;
   }
   return out;
+}
+
+/**
+ * The receipt, ONE renderer for the v1 and v2 paths (receipt truth, 22 Oct 2026).
+ * Every word comes from the receipt the executor stamped: the lead is "Done" ONLY
+ * when verified; a practice run says so first and claims no calendar or vault;
+ * each step carries its exact time; a live note says exactly where to find it.
+ */
+export function ReceiptBlock({ receipt: r, busy = false, onAgain = null, onOpenNote = null }) {
+  const kind = receiptKind(r);
+  const tone = kind === 'verified' ? 'done' : kind === 'practice' ? 'practice' : 'partial';
+  return (
+    <div className={`pmo__act pmo__act--${tone}`} role="status" data-receipt-kind={kind}>
+      {kind === 'practice' && <p className="pmo__practice">Practice run — nothing real was changed. This ran against a sandbox, not your calendar or your notes.</p>}
+      <p className="pmo__actlead">{receiptLead(r)}</p>
+      <p>{r.plain}</p>
+      <ul className="pmo__receipt">
+        {receiptLines(r).map((l, i) => (
+          <li key={i} className={l.ok ? 'pmo__ok' : 'pmo__notok'}>
+            <strong>{l.step}</strong>: {l.status}
+            {l.when && <span className="pmo__rwhen"> · {l.when}</span>}
+            {l.note && <span className="pmo__sub"> {l.note}</span>}
+            {l.ok && l.path && (
+              <span className="pmo__findit">
+                {' '}In Obsidian: {l.findIt || l.path}.
+                {onOpenNote && <button type="button" className="pmo__btn pmo__view" onClick={() => onOpenNote({ path: l.path })}>View the draft</button>}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="pmo__sub">{r.next}</p>
+      {!r.complete && onAgain && /retry/i.test(r.next || '') && <button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Ask again to finish it</button>}
+    </div>
+  );
 }
 
 /** How much of the page shows before "Read the full draft". */
@@ -299,7 +336,7 @@ function EmbeddedBoundary({ boundary, onOpenAuthority, onAgain = null, busy = fa
   );
 }
 
-function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false, drafts = false, renderContext = null }) {
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false, drafts = false, renderContext = null, onOpenNote = null }) {
   const { view } = state; const move = view.move;
   const d = move.deliverable || {};
   const [deferDays, setDeferDays] = useState(1);
@@ -399,18 +436,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
 
   function choice() {
     if (readOnly) return <p className="pmo__sub">Confirm this in SAiM on your phone or desktop — this screen can only show it.</p>;
-    if (state.kind === 'receipt') {
-      const r = state.receipt;
-      return (
-        <div className={`pmo__act pmo__act--${r.complete ? 'done' : 'partial'}`} role="status">
-          <p className="pmo__actlead">{r.complete ? 'Done' : 'Partly done'}</p>
-          <p>{r.plain}</p>
-          <ul className="pmo__receipt">{receiptLines(r).map((l, i) => <li key={i} className={l.ok ? 'pmo__ok' : 'pmo__notok'}><strong>{l.step}</strong>: {l.status}{l.note && <span className="pmo__sub"> {l.note}</span>}</li>)}</ul>
-          <p className="pmo__sub">{r.next}</p>
-          {!r.complete && /retry/i.test(r.next || '') && <button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Ask again to finish it</button>}
-        </div>
-      );
-    }
+    if (state.kind === 'receipt') return <ReceiptBlock receipt={state.receipt} busy={busy} onAgain={onAgain} onOpenNote={onOpenNote} />;
     if (state.kind === 'responded') return <p className="pmo__sub" role="status">{state.message}</p>;
     if (state.kind === 'boundary' && (embedded || drafts)) return <EmbeddedBoundary boundary={state.boundary} onOpenAuthority={onOpenAuthority} onAgain={onAgain} busy={busy} />;
     if (state.kind === 'boundary') {
@@ -435,6 +461,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
       return (
         <div className="pmo__act pmo__act--confirm">
           <p className="pmo__ask">{c.question}</p>
+          {c.relation && <p className="pmo__relation">{c.relation}</p>}
           <ul className="pmo__writes">{c.writes.map((w, i) => <li key={i}>{w}</li>)}</ul>
           <p className="pmo__sub">{c.contacts}</p>
           {line ? <p className="pmo__locked">{line}</p> : (state.request.authority && state.request.authority.summary && <p className="pmo__allow">{state.request.authority.summary}</p>)}
@@ -508,7 +535,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false, drafts = false, renderContext = null }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false, drafts = false, renderContext = null, onOpenNote = null }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -531,7 +558,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   if (!move) return null;
   // Answered (put off / not relevant): say so in one line and get out of the way.
   if (state.kind === 'responded') return <p className="pmo__sub pmo2__note" role="status">{state.message}</p>;
-  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} drafts={drafts} renderContext={renderContext} />;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} drafts={drafts} renderContext={renderContext} onOpenNote={onOpenNote} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -692,25 +719,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
 
   function renderChoice() {
     // After a confirm: the server's receipt, verbatim.
-    if (state.kind === 'receipt') {
-      const r = state.receipt;
-      return (
-        <div className={`pmo__act pmo__act--${r.complete ? 'done' : 'partial'}`} role="status">
-          <p className="pmo__actlead">{r.complete ? 'Done' : 'Partly done'}{r.target === 'sandbox' ? ' — practice run, nothing real was changed' : ''}</p>
-          <p>{r.plain}</p>
-          <ul className="pmo__receipt">
-            {receiptLines(r).map((l, i) => (
-              <li key={i} className={l.ok ? 'pmo__ok' : 'pmo__notok'}>
-                <strong>{l.step}</strong>: {l.status}
-                {l.note && <span className="pmo__sub"> {l.note}</span>}
-              </li>
-            ))}
-          </ul>
-          <p className="pmo__sub">{r.next}</p>
-          {!r.complete && /retry/i.test(r.next || '') && <button type="button" className="pmo__btn" onClick={onAgain} disabled={busy}>Ask again to finish it</button>}
-        </div>
-      );
-    }
+    if (state.kind === 'receipt') return <ReceiptBlock receipt={state.receipt} busy={busy} onAgain={onAgain} onOpenNote={onOpenNote} />;
     // The one boundary, in the same story: what is ready stays ready; this is
     // the single thing that stands between it and SAiM doing it.
     if (state.kind === 'boundary') {
@@ -744,6 +753,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
       return (
         <div className="pmo__act pmo__act--confirm">
           <p className="pmo__ask">{c.question}</p>
+          {c.relation && <p className="pmo__relation">{c.relation}</p>}
           <ul className="pmo__writes">{c.writes.map((w, i) => <li key={i}>{w}</li>)}</ul>
           <p className="pmo__sub">{c.contacts}</p>
           {/* The allowance this would use: the server's own sentence when nothing
@@ -814,7 +824,7 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, drafts = false, initial = null, onChanged = null, onPrepared = null, hideContextFor = null, onOpenContext = null }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, drafts = false, initial = null, onChanged = null, onPrepared = null, hideContextFor = null, onOpenContext = null, onOpenNote = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   // The kiosk can SHOW a prepared move but never confirm or write (its shell
   // declares the platform; no device sniffing).
@@ -881,6 +891,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       readOnly={readOnly}
       embedded={embedded}
       drafts={drafts}
+      onOpenNote={readOnly ? null : onOpenNote}
       // The task's pinned context (22 Oct 2026) — not when the page already shows it for this task.
       renderContext={(taskId) => (hideContextFor != null && Number(hideContextFor) === Number(taskId) ? null : <TaskContext taskId={taskId} call={call} compact onOpen={onOpenContext} label="Context for this task" />)}
       onMakeReady={() => run(async () => {

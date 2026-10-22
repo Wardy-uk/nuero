@@ -13,13 +13,13 @@ import Authority from '../views/Authority.jsx';
 // question, the draft, the save step) rather than the card's folded save step.
 // `hideContextFor` / `onOpenContext` (22 Oct 2026): the page already shows context for that
 // task (NEURO's Now, for the task in focus), so the card does not repeat it; how a note opens.
-export default function PromiseSave({ recordId, call = null, onChanged = null, drafts = false, initial = null, hideContextFor = null, onOpenContext = null }) {
+export default function PromiseSave({ recordId, call = null, onChanged = null, drafts = false, initial = null, hideContextFor = null, onOpenContext = null, onOpenNote = null }) {
   const [authority, setAuthority] = useState(false);
   const [n, setN] = useState(0);
   if (!recordId) return null;
   return (
     <div className="promise-save">
-      <PreparedMove key={`${recordId}:${n}`} call={call} recordId={recordId} embedded={!drafts} drafts={drafts} initial={n === 0 ? initial : null} readOnly={false} onOpenAuthority={() => setAuthority(true)} onChanged={onChanged} hideContextFor={hideContextFor} onOpenContext={onOpenContext} />
+      <PreparedMove key={`${recordId}:${n}`} call={call} recordId={recordId} embedded={!drafts} drafts={drafts} initial={n === 0 ? initial : null} readOnly={false} onOpenAuthority={() => setAuthority(true)} onChanged={onChanged} hideContextFor={hideContextFor} onOpenContext={onOpenContext} onOpenNote={onOpenNote} />
       {authority && (
         <div className="promise-save__authority">
           <Authority call={call} />

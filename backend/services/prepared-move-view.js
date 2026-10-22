@@ -29,11 +29,11 @@ const BUDGET_MS = 1500;
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dayLong = (d) => { const x = new Date(`${d}T12:00:00Z`); return `${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]}`; };
-const toMin = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return h * 60 + m; };
 
 /** The same words /request uses for its question — pinned equal by a test. */
+// The executor owns the wording (receipt truth, 22 Oct 2026): one sentence, never two.
 function questionFor(slot) {
-  return `Reserve ${toMin(slot.end) - toMin(slot.start)} minutes on ${dayLong(slot.date)} (${slot.start}–${slot.end}) and save the draft?`;
+  return `Reserve ${require('./prepared-move-exec').whenFull(slot)} and save the draft?`;
 }
 
 /**

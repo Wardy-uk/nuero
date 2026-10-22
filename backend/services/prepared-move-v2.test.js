@@ -253,7 +253,11 @@ test('confirm: note + block — exactly the shown note and block, read back, per
   assert.match(fs.readFileSync(path.join(ad.vault.root, notePath), 'utf8'), /## Suggested draft/);
   const cal = ad.calendar._all();
   assert.equal(cal.length, 1); assert.deepEqual(cal[0].attendees, []);
-  assert.match(r.receipt.plain, /note is saved/i);
+  assert.match(r.receipt.plain, /^Practice run — nothing real was changed\. A sandbox note was saved and read back — not your vault\./);
+  assert.equal(r.receipt.practice, true);
+  assert.equal(r.receipt.verified, false, 'a practice run is never "verified"');
+  assert.equal(r.receipt.notePath, null, 'a sandbox note claims no vault location');
+  assert.match(r.receipt.when.say, /^\w+day \d+ \w+, \d\d:\d\d–\d\d:\d\d$/, 'the exact date and time');
 });
 
 test('confirm: a reply goes to Actions as a DRAFT — never sent — and the receipt says so', async () => {
@@ -264,7 +268,7 @@ test('confirm: a reply goes to Actions as a DRAFT — never sent — and the rec
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.deepEqual(r.receipt.steps.map((s) => [s.step, s.status]), [['reply', 'done']]);
   assert.equal(r.receipt.sent, false);
-  assert.match(r.receipt.plain, /NOT been sent/);
+  assert.match(r.receipt.plain, /nothing went to Actions and nothing was sent/);
   const drafts = ad.governed._all();
   assert.equal(drafts.length, 1); assert.equal(drafts[0].status, 'prepared');
   assert.equal(drafts[0].draft.body, rec.packet.selected.decision.proposedWrites[0].body);
@@ -311,7 +315,7 @@ test('confirm: execution switched off, expired grant, duplicate confirm and part
   assert.equal(part.receipt.complete, false);
   assert.deepEqual(part.receipt.steps.map((s) => [s.step, s.status]), [['note', 'done'], ['calendar', 'failed']]);
   assert.match(part.receipt.plain, /calendar block was not saved/i);
-  assert.match(part.receipt.plain, /note is saved and stays/i);
+  assert.match(part.receipt.plain, /sandbox note that worked stays in the sandbox/i);
 });
 
 test('request (stored path): machines refused; a declined move cannot be asked to confirm', async () => {

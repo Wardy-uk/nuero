@@ -88,10 +88,13 @@ router.get('/current', async (req, res) => {
   }
 });
 
-// GET /api/prepared-moves/drafts — Drafts, in sections: needs your confirmation (proposals and reply drafts still to confirm or answer, each with one plain status and at most one action), ready for you to work on (saved private working drafts and saved notes — exact vault path, linked task, booked block — until the task is ticked or the draft abandoned), communication drafts (confirmed replies, in Actions), and history. Read only: nothing is stored, minted or sent.
+// GET /api/prepared-moves/drafts — Drafts, in sections: needs your confirmation (proposals and reply drafts still to confirm or answer, each with one plain status and at most one action), ready for you to work on (saved private working drafts and saved notes — exact vault path, linked task, booked block — until the task is ticked or the draft abandoned), communication drafts (confirmed replies, in Actions), history, and today (what was prepared, confirmed and verified today, with exact times and where each note is — practice runs labelled). Read only: nothing is stored, minted or sent.
 router.get('/drafts', async (req, res) => {
   try {
-    res.json(await require('../services/prepared-drafts').list());
+    const list = await require('../services/prepared-drafts').list();
+    let today;
+    try { today = require('../services/prepared-move-history').today(); } catch (e) { today = { known: false, gaps: [{ source: 'history', why: e.message }], items: [] }; }
+    res.json({ ...list, today });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

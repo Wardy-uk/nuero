@@ -273,6 +273,18 @@ test('confirmed: both created, read back, receipted against the stored version',
   assert.deepEqual(receipt.contacted, []);
   assert.equal((await sb.calendar._all()).length, 1);
   assert.deepEqual(fs.readdirSync(path.join(VAULT, 'Projects', 'Support Improvement Plan')), before, 'the stand-in vault was not written by a sandbox run');
+  // Receipt truth: a practice run is labelled, never verified, and claims no vault location.
+  assert.equal(receipt.practice, true);
+  assert.equal(receipt.verified, false);
+  assert.equal(receipt.notePath, null);
+  assert.equal(receipt.steps[1].path, null, 'a sandbox note is not in the vault');
+  assert.match(receipt.plain, /^Practice run — nothing real was changed\./);
+  assert.doesNotMatch(receipt.plain, /in your calendar|in your notes/i);
+  assert.match(receipt.steps[0].when.say, /^\w+day \d+ \w+, \d\d:\d\d–\d\d:\d\d$/, 'even a practice block states its exact time');
+  const row = require('./prepared-move-history').today().items.find((i) => i.moveKey === MOVE);
+  assert.equal(row.stage, 'practice');
+  assert.equal(row.note, null);
+  assert.equal(row.when.practice, true);
 });
 
 test('idempotent across confirmations', async () => {
@@ -288,7 +300,7 @@ test('partial: block lands, note fails — the block stays; a retry does only th
   sb.faults.vault = 'fail-next';
   const first = await confirmAndRun({ record: rec, adapters: sb });
   assert.deepEqual(first.receipt.steps.map((s) => s.status), ['done', 'failed']);
-  assert.match(first.receipt.plain, /The note was not saved: .* The calendar block is in place and stays\./);
+  assert.match(first.receipt.plain, /^Practice run — nothing real was changed\. The note was not saved: .* The sandbox block that worked stays in the sandbox\./);
   const retry = await confirmAndRun({ record: rec, adapters: sb });
   assert.deepEqual(retry.receipt.steps.map((s) => s.status), ['already-done', 'done']);
   assert.equal((await sb.calendar._all()).length, 1);
@@ -373,6 +385,19 @@ test('live adapters (fake Graph + temp vault): solo event with marker, read back
     assert.equal(receipt.steps[0].id, 'evt1');
     assert.match(receipt.steps[1].unconfirmed, /Obsidian Sync, which I haven’t checked/);
     assert.ok(fs.existsSync(path.join(VAULT, NOTE)));
+    // Receipt truth (22 Oct 2026): stamped by the executor from the live run itself.
+    assert.equal(receipt.practice, false);
+    assert.equal(receipt.verified, true, 'live, complete, every read-back held');
+    assert.match(receipt.steps[0].when.say, /^\w+day \d+ \w+, \d\d:\d\d–\d\d:\d\d$/, 'the exact date and time of the block');
+    assert.deepEqual(receipt.when, receipt.steps[0].when);
+    assert.equal(receipt.notePath, NOTE, 'the vault location, because the note is live and read back');
+    assert.equal(receipt.steps[1].findIt, 'Projects → Support Improvement Plan → SIP - T1 Acceptance Criteria (draft)');
+    const hist = require('./prepared-move-history').today();
+    const row = hist.items.find((i) => i.moveKey === MOVE);
+    assert.equal(row.stage, 'verified');
+    assert.equal(row.note.path, NOTE);
+    assert.equal(row.when.say, receipt.when.say);
+    assert.equal(row.when.practice, false);
     // Confirm again: found by marker, nothing posted twice; the note is ours and untouched.
     const posts = () => g.calls.filter((c) => c.startsWith('POST')).length;
     const again = await confirmAndRun({ record: rec, adapters: live, checks: okChecks({ noteState: exec.defaultChecks({ adapters: live }).noteState }) });

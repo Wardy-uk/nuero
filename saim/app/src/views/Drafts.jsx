@@ -55,6 +55,45 @@ export function WorkRow({ item, readOnly = false, busy = false, onOpenNote = nul
   );
 }
 
+const STAGE_TONE = { verified: 'ready', confirmed: 'wait', 'partly-done': 'ask', practice: 'held', prepared: 'wait' };
+
+/**
+ * PURE. Today's prepared, confirmed and verified work (22 Oct 2026) — compact and
+ * findable (#drafts-today). Every word is the server's: the stage the executor
+ * stamped, the exact time a calendar step carried, and a vault location only for a
+ * live note that read back. A practice run is labelled, never "done". Unreadable is
+ * said, never shown as an empty day.
+ */
+export function TodayHistory({ today, readOnly = false, onOpenNote = null }) {
+  if (!today) return null;
+  const items = today.items || [];
+  return (
+    <section className="drafts__today" id="drafts-today" aria-label="Today">
+      <h2 className="drafts__section">Today</h2>
+      {today.known === false && <p className="drafts__gap">I couldn’t read all of today’s records ({(today.gaps || []).map((g) => g.source).join(', ')}) — this list may be short.</p>}
+      {items.length === 0 ? (
+        <p className="drafts__empty drafts__empty--small">Nothing prepared or confirmed today.</p>
+      ) : (
+        <ul className="drafts__today-list">
+          {items.map((h) => (
+            <li key={h.moveKey} className={`drafts__today-row drafts__today-row--${h.stage}`} data-move-key={h.moveKey} data-stage={h.stage}>
+              <span className="drafts__today-time">{h.atSay || '—'}</span>
+              <span className="drafts__today-body">
+                <span className={`drafts__status drafts__status--${STAGE_TONE[h.stage] || 'held'}`}>{h.stageSay}</span>
+                <span className="drafts__today-title">{h.title}</span>
+                {h.when && <span className="drafts__today-meta">{h.when.practice ? 'Sandbox block' : 'Calendar'} · {h.when.say}</span>}
+                {h.note && <span className="drafts__today-meta">Note · <code>{h.note.path}</code></span>}
+                {h.reply && <span className="drafts__today-meta">Reply draft in Actions — not sent</span>}
+                {!readOnly && h.note && onOpenNote && <button type="button" className="drafts__go drafts__go--quiet" onClick={() => onOpenNote({ path: h.note.path, title: h.title, moveKey: h.moveKey })}>Open the note</button>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** PURE view. */
 export function DraftsView({ data, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, message = null }) {
   if (!data) return <section className="drafts" aria-label="Drafts"><h1 className="drafts__title">Drafts</h1><p className="drafts__sub">Reading Drafts…</p></section>;
@@ -81,6 +120,8 @@ export function DraftsView({ data, openKey = null, openMode = null, readOnly = f
       {(data.gaps || []).map((g, i) => <p key={i} className="drafts__gap">{g}</p>)}
       {message && <p className="drafts__msg" role="status">{message}</p>}
       {nothing && <p className="drafts__empty">Nothing in Drafts. When SAiM prepares something — or you ask it to make a Now item ready — it waits here until you save it, confirm it or put it off.</p>}
+
+      <TodayHistory today={data.today} readOnly={readOnly} onOpenNote={onOpenNote} />
 
       <h2 className="drafts__section" id="drafts-confirm">Needs your confirmation</h2>
       {confirmItems.length === 0 && replyItems.length === 0 ? (
@@ -216,7 +257,7 @@ export default function Drafts({ call: injectedCall = null, context = null, onOp
         try { await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: w.moveKey, outcome: 'restore' } }); } catch { /* the re-read shows it */ }
         await reload(); setBusy(false);
       }}
-      renderItem={(r) => <PromiseSave key={r.moveKey} recordId={r.recordId} call={call} drafts initial={(open && open.initial) || null} onChanged={() => reload()} />}
+      renderItem={(r) => <PromiseSave key={r.moveKey} recordId={r.recordId} call={call} drafts initial={(open && open.initial) || null} onChanged={() => reload()} onOpenNote={onOpenNote} />}
     />
   );
 }

@@ -13,7 +13,8 @@ export async function loadDrafts(call) {
   if (!r || r.status !== 200 || b.ok !== true || !Array.isArray(b.items)) return { ok: false, why: b.error || (b.gaps || [])[0] || `NEURO answered ${r ? r.status : 'nothing'}` };
   // `sections` (22 Oct 2026): saved work, communication drafts and history beside the confirmation list.
   const sections = b.sections || { confirm: b.items, work: [], communication: [], history: [] };
-  return { ok: true, items: b.items, sections, counts: b.counts || {}, gaps: b.gaps || [] };
+  // `today` (22 Oct 2026): what was prepared, confirmed and verified today — or null when the server sent none.
+  return { ok: true, items: b.items, sections, counts: b.counts || {}, gaps: b.gaps || [], today: b.today || null };
 }
 
 /**
