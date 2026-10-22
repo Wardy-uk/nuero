@@ -1189,7 +1189,7 @@ async function _turn(session) {
         // asked him for it again. The providers now refuse a cut-off call
         // rather than running it, which makes the failure loud; this is what
         // stops it happening in the first place.
-        { maxTokens: TOOL_TURN_MAX_TOKENS, maxRounds: 4 }
+        { maxTokens: TOOL_TURN_MAX_TOKENS, maxRounds: 4, callClass: `${session.kind || 'standup'}_tools` }
       );
       reply = result.text || '';
       session.degraded = false;

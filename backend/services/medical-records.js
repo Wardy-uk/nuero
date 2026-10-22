@@ -487,7 +487,7 @@ async function proposeFromScreenshots({ images } = {}, deps = {}) {
     result = await provider.vision(SYSTEM, { images: clean, prompt: buildPrompt(clean.length) }, {
       model: process.env.MEDICAL_VISION_MODEL || 'claude-opus-5',
       effort: 'medium',
-      maxTokens: 8000,
+      maxTokens: 8000, callClass: 'medical_scan',
     });
   } catch (e) {
     // The provider's message can name a model or key state; logged, not echoed.

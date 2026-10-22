@@ -4,43 +4,11 @@ const db = require('../db/database');
 const { evaluateEmail } = require('./email-priority');
 
 // CLAUDE_MODEL removed in Phase 3 — AI routing handles provider selection
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_TRIAGE_MODEL || 'qwen2.5:3b';
 const TRIAGE_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
-async function classifyWithOllama(emailList) {
-  const prompt = `You are classifying emails for Nick Ward, Head of Technical Support.
-Classify each email into exactly one category:
-- ACTION: Requires Nick to do something or reply
-- FYI: Informational only, no action needed
-- DELEGATE: Someone else should handle this
-- IGNORE: Automated, spam, or irrelevant
-
-Respond with ONLY a JSON array. No markdown, no explanation.
-Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]
-
-Emails:
-${emailList}`;
-
-  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt,
-      stream: false,
-      options: { temperature: 0.1, num_ctx: 4096, num_predict: 512 }
-    }),
-    signal: AbortSignal.timeout(30000) // 30s — fail fast to AI routing
-  });
-
-  if (!res.ok) throw new Error(`Ollama error: ${res.status}`);
-  const data = await res.json();
-  const text = data.response || '';
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('No JSON array in Ollama response');
-  return JSON.parse(jsonMatch[0]);
-}
+// classifyWithOllama removed 22 Oct 2026 — dead since 2 Sep (never called), and the
+// last direct Ollama fetch outside providers/. Classification goes through ai-routing,
+// which admits every request through the AI gate.
 
 // The model sees the mail in batches of this size (26 Aug 2026).
 //

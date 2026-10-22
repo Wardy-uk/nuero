@@ -208,19 +208,11 @@ async function getBatchEmbeddings(texts) {
   if (!apiKey) return texts.map(t => computeSimpleVector(t));
 
   try {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'voyage-3.5-lite',
-        input: texts.map(t => t.substring(0, 4000)),
-        input_type: 'document'
-      }),
-      signal: AbortSignal.timeout(30000)
-    });
+    const res = await require('./providers/voyage-provider').post({
+      model: 'voyage-3.5-lite',
+      input: texts.map(t => t.substring(0, 4000)),
+      input_type: 'document'
+    }, { callClass: 'embeddings_index', timeoutMs: 30000 });
     if (!res.ok) {
       const err = await res.text();
       if (res.status === 429) {
@@ -252,19 +244,11 @@ async function getEmbedding(text) {
   if (!apiKey) return computeSimpleVector(text);
 
   try {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'voyage-3.5-lite',
-        input: [text.substring(0, 4000)],
-        input_type: 'document'
-      }),
-      signal: AbortSignal.timeout(10000)
-    });
+    const res = await require('./providers/voyage-provider').post({
+      model: 'voyage-3.5-lite',
+      input: [text.substring(0, 4000)],
+      input_type: 'document'
+    }, { callClass: 'embeddings_index', timeoutMs: 10000 });
     if (!res.ok) {
       const err = await res.text();
       _recordFailure(`Voyage API ${res.status}: ${err.substring(0, 120)}`);
@@ -289,19 +273,11 @@ async function getQueryEmbedding(text) {
   if (!apiKey) return computeSimpleVector(text);
 
   try {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'voyage-3.5-lite',
-        input: [text.substring(0, 4000)],
-        input_type: 'query'
-      }),
-      signal: AbortSignal.timeout(10000)
-    });
+    const res = await require('./providers/voyage-provider').post({
+      model: 'voyage-3.5-lite',
+      input: [text.substring(0, 4000)],
+      input_type: 'query'
+    }, { callClass: 'embeddings_query', timeoutMs: 10000 });
     if (!res.ok) {
       _recordFailure(`Voyage query embed ${res.status}`);
       return null;

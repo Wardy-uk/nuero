@@ -201,4 +201,73 @@ async function isAvailable() {
 function getModel() { return OLLAMA_MODEL; }
 function getUrl() { return OLLAMA_URL; }
 
-module.exports = { generate, chat, streamChat, isAvailable, getModel, getUrl };
+// ── The AI gate (22 Oct 2026) ────────────────────────────────────────────────
+// Ollama is free, but it is ONE server on the Pi: every request still takes a
+// ticket so the gate's local concurrency limit applies, and the ticket is held
+// until the request (or its stream) has actually finished.
+const gateCall = require('./gate-call');
+
+function _gated(fn, { defaultClass, optionsAt, inputOf, defaultMax }) {
+  return async function gated(...args) {
+    const options = args[optionsAt] || {};
+    const model = options.model || OLLAMA_MODEL;
+    const ticket = gateCall.open({
+      provider: 'ollama', callClass: options.callClass || options.taskType || defaultClass, model,
+      maxInputTokens: gateCall.estimateTokens(...inputOf(args)), maxOutputTokens: options.maxTokens || defaultMax,
+    });
+    try {
+      const out = await fn(...args);
+      gateCall.close(ticket, { ok: true, model });
+      return out;
+    } catch (e) {
+      gateCall.close(ticket, { ok: false, error: e.message });
+      throw e;
+    }
+  };
+}
+
+/**
+ * A raw /api/chat request for callers that read Ollama's own response shape
+ * (routes/standup.js streams it itself). Admitted by the gate; the returned
+ * Response's body releases the ticket when it ends, errors or is cancelled, and
+ * a non-OK answer releases it at once.
+ */
+async function rawChat(body, { callClass, signal } = {}) {
+  const ticket = gateCall.open({
+    provider: 'ollama', callClass, model: body.model || OLLAMA_MODEL,
+    maxInputTokens: gateCall.estimateTokens(body.messages), maxOutputTokens: body.options && body.options.num_predict,
+  });
+  let res;
+  try {
+    res = await fetch(`${process.env.OLLAMA_URL || OLLAMA_URL}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+    });
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
+  }
+  if (!res.ok || !res.body) {
+    gateCall.close(ticket, { ok: res.ok, model: body.model, error: res.ok ? null : `HTTP ${res.status}` });
+    return res;
+  }
+  const reader = res.body.getReader();
+  let settled = false;
+  const fin = (ok, error) => { if (!settled) { settled = true; gateCall.close(ticket, { ok, model: body.model, error }); } };
+  const wrapped = new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) { fin(true); controller.close(); } else controller.enqueue(value);
+      } catch (e) { fin(false, e.message); controller.error(e); }
+    },
+    cancel(reason) { fin(false, 'cancelled'); return reader.cancel(reason); },
+  });
+  return new Response(wrapped, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
+module.exports = {
+  generate: _gated(generate, { defaultClass: null, optionsAt: 1, inputOf: (a) => [a[0]], defaultMax: 512 }),
+  chat: _gated(chat, { defaultClass: null, optionsAt: 2, inputOf: (a) => [a[0], a[1]], defaultMax: 512 }),
+  streamChat: _gated(streamChat, { defaultClass: 'chat_stream', optionsAt: 3, inputOf: (a) => [a[0], a[1]], defaultMax: 1024 }),
+  rawChat, isAvailable, getModel, getUrl,
+};

@@ -6,6 +6,14 @@
  */
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+// Every request below is admitted by the shared AI gate (reserve → call → settle).
+const gateCall = require('./gate-call');
+function _open(options, model, systemPrompt, messages, maxTokens, fallbackClass) {
+  return gateCall.open({
+    provider: 'openai', callClass: options.callClass || options.taskType || fallbackClass, model,
+    maxInputTokens: gateCall.estimateTokens(systemPrompt, messages), maxOutputTokens: maxTokens,
+  });
+}
 
 function _key() { return process.env.OPENAI_API_KEY || ''; }
 function _model() { return process.env.OPENAI_MODEL || 'gpt-4o-mini'; }
@@ -19,6 +27,8 @@ async function chat(systemPrompt, messages, options = {}) {
 
   const model = options.model || _model();
   const timeout = options.timeout || 30000;
+  const maxTokens = options.maxTokens || 512;
+  const ticket = _open(options, model, systemPrompt, messages, maxTokens);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -37,7 +47,7 @@ async function chat(systemPrompt, messages, options = {}) {
           ...messages,
         ],
         temperature: options.temperature ?? 0.5,
-        max_tokens: options.maxTokens || 512,
+        max_tokens: maxTokens,
       }),
       signal: controller.signal,
     });
@@ -51,7 +61,11 @@ async function chat(systemPrompt, messages, options = {}) {
     const text = data.choices?.[0]?.message?.content || '';
     const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
+    gateCall.close(ticket, gateCall.fromOpenAIUsage(data.usage, data.model || model));
     return { text, usage };
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -70,6 +84,8 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
 
   const model = options.model || _model();
   const timeout = options.timeout || 60000;
+  const maxTokens = options.maxTokens || 1024;
+  const ticket = _open(options, model, systemPrompt, messages, maxTokens, 'chat_stream');
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -88,7 +104,7 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
           ...messages,
         ],
         temperature: options.temperature ?? 0.5,
-        max_tokens: options.maxTokens || 1024,
+        max_tokens: maxTokens,
         stream: true,
       }),
       signal: controller.signal,
@@ -131,7 +147,12 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
       }
     }
 
+    // No usage chunk is requested here, so the gate settles this one pessimistically.
+    gateCall.close(ticket, { ok: true, model });
     return { fullText, usage: { total_tokens: 0 } };
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
   } finally {
     clearTimeout(timer);
   }

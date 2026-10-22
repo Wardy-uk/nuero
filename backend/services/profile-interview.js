@@ -220,7 +220,7 @@ async function _turn(session) {
         // at 500 a turn recording several facts was cut off mid-call, refused,
         // and retried out loud ("Sorry, let me do that properly"). Reply length
         // is the prompt's job.
-        { maxTokens: 1200, maxRounds: 4 },
+        { maxTokens: 1200, maxRounds: 4, callClass: 'profile_interview_tools' },
       );
       reply = result.text || '';
       session.degraded = false;

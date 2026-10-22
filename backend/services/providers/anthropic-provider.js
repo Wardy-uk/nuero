@@ -23,6 +23,34 @@ function _getClient() {
   return _client;
 }
 
+// ── The AI gate: every request below goes through _create / _stream ─────────
+const gateCall = require('./gate-call');
+const IMAGE_TOKENS = 1600; // Anthropic's per-image ceiling at the default size
+
+/** PURE. Input tokens for the gate's bound — images at their token cost, not their base64 length. */
+function _inputEstimate(params) {
+  const strip = (c) => (Array.isArray(c) ? c.map((b) => (b && b.type === 'image' ? '' : b)) : c);
+  const images = (params.messages || []).reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter((b) => b && b.type === 'image').length : 0), 0);
+  return gateCall.estimateTokens(params.system, (params.messages || []).map((m) => ({ ...m, content: strip(m.content) })), params.tools) + images * IMAGE_TOKENS;
+}
+function _open(params, options, fallbackClass) {
+  return gateCall.open({
+    provider: 'anthropic', callClass: options.callClass || options.taskType || fallbackClass, model: params.model,
+    maxInputTokens: _inputEstimate(params), maxOutputTokens: params.max_tokens,
+  });
+}
+async function _create(params, options, fallbackClass) {
+  const ticket = _open(params, options, fallbackClass);
+  try {
+    const r = await _getClient().messages.create(params);
+    gateCall.close(ticket, { ok: true, model: r.model || params.model, promptTokens: r.usage?.input_tokens, completionTokens: r.usage?.output_tokens });
+    return r;
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
+  }
+}
+
 async function chat(systemPrompt, messages, options = {}) {
   if (!_key()) throw new Error('Anthropic API key not configured');
 
@@ -34,12 +62,12 @@ async function chat(systemPrompt, messages, options = {}) {
     content: m.content,
   }));
 
-  const response = await _getClient().messages.create({
+  const response = await _create({
     model,
     max_tokens: maxTokens,
     system: systemPrompt || undefined,
     messages: anthropicMessages,
-  });
+  }, options);
 
   const text = response.content?.[0]?.text || '';
   const usage = {
@@ -72,7 +100,7 @@ async function vision(systemPrompt, { imageBase64, mediaType, images, prompt }, 
   // One image (VESTA) or several (a scrolled NHS app screen, read as one page).
   const pictures = Array.isArray(images) && images.length ? images : [{ imageBase64, mediaType }];
 
-  const response = await _getClient().messages.create({
+  const response = await _create({
     model: options.model || _model(),
     // Generous on purpose. A long shelf is a long JSON array, and the failure
     // mode of a tight cap is a truncated array that fails to parse and takes
@@ -90,7 +118,7 @@ async function vision(systemPrompt, { imageBase64, mediaType, images, prompt }, 
         { type: 'text', text: prompt },
       ],
     }],
-  });
+  }, options);
 
   // ⚠ A refusal is an HTTP 200 with `stop_reason: "refusal"`, not a thrown
   // error. Reading `.content` without checking would turn a decline into an
@@ -135,24 +163,36 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
 
   let fullText = '';
 
-  const stream = await _getClient().messages.stream({
+  const params = {
     model,
     max_tokens: maxTokens,
     system: systemPrompt || undefined,
     messages: anthropicMessages,
-  });
+  };
+  const ticket = _open(params, options, 'chat_stream');
+  let final = null;
+  try {
+    const stream = await _getClient().messages.stream(params);
 
-  for await (const chunk of stream) {
-    if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
-      const content = chunk.delta.text;
-      fullText += content;
-      if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ type: 'text', content })}\n\n`);
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        const content = chunk.delta.text;
+        fullText += content;
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ type: 'text', content })}\n\n`);
+        }
       }
     }
+    // The real usage, from the stream's own final message (it used to return 0).
+    try { final = typeof stream.finalMessage === 'function' ? await stream.finalMessage() : null; } catch { final = null; }
+    gateCall.close(ticket, { ok: true, model: final?.model || model, promptTokens: final?.usage?.input_tokens, completionTokens: final?.usage?.output_tokens });
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
   }
 
-  return { fullText, usage: { total_tokens: 0 } };
+  const inT = final?.usage?.input_tokens; const outT = final?.usage?.output_tokens;
+  return { fullText, model: final?.model || model, usage: Number.isFinite(inT) ? { prompt_tokens: inT, completion_tokens: outT || 0, total_tokens: inT + (outT || 0) } : { total_tokens: 0 } };
 }
 
 /**
@@ -204,13 +244,13 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
   let text = '';
 
   for (let round = 0; round < maxRounds; round++) {
-    const response = await _getClient().messages.create({
+    const response = await _create({
       model,
       max_tokens: maxTokens,
       system: systemPrompt || undefined,
       messages: convo,
       tools,
-    });
+    }, options, 'chat_tools');
 
     usage.prompt_tokens += response.usage?.input_tokens || 0;
     usage.completion_tokens += response.usage?.output_tokens || 0;

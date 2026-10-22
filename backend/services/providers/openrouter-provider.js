@@ -6,6 +6,8 @@
  */
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// Every request below is admitted by the shared AI gate (reserve → call → settle).
+const gateCall = require('./gate-call');
 
 function _key() { return process.env.OPENROUTER_API_KEY || ''; }
 function _model() { return process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5'; }
@@ -54,6 +56,12 @@ async function chat(systemPrompt, messages, options = {}) {
 
   const model = options.model || _model();
   const timeout = options.timeout || 30000;
+  const maxTokens = options.maxTokens || 512;
+  const ticket = gateCall.open({
+    provider: 'openrouter', callClass: options.callClass || options.taskType, model,
+    fallbackModels: _fallbackModels().filter((m) => m !== model),
+    maxInputTokens: gateCall.estimateTokens(systemPrompt, messages), maxOutputTokens: maxTokens,
+  });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -74,7 +82,7 @@ async function chat(systemPrompt, messages, options = {}) {
           ...messages,
         ],
         temperature: options.temperature ?? 0.5,
-        max_tokens: options.maxTokens || 512,
+        max_tokens: maxTokens,
         // Returns the real charged cost on `usage.cost`, which beats anything
         // we could compute from a hand-maintained price table.
         usage: { include: true },
@@ -96,7 +104,11 @@ async function chat(systemPrompt, messages, options = {}) {
     // ⚠ The model that ACTUALLY served it, not the one asked for. With a
     // fallback list those differ exactly when it matters, and the ledger would
     // otherwise bill a Gemini answer to Haiku and hide that a failover happened.
+    gateCall.close(ticket, gateCall.fromOpenAIUsage(usage, data.model || model));
     return { text, usage, model: data.model || model };
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -115,6 +127,12 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
 
   const model = options.model || _model();
   const timeout = options.timeout || 60000;
+  const maxTokens = options.maxTokens || 1024;
+  const ticket = gateCall.open({
+    provider: 'openrouter', callClass: options.callClass || options.taskType || 'chat_stream', model,
+    fallbackModels: _fallbackModels().filter((m) => m !== model),
+    maxInputTokens: gateCall.estimateTokens(systemPrompt, messages), maxOutputTokens: maxTokens,
+  });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -135,7 +153,7 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
           ...messages,
         ],
         temperature: options.temperature ?? 0.5,
-        max_tokens: options.maxTokens || 1024,
+        max_tokens: maxTokens,
         stream: true,
         // A stream reports its usage in a final chunk, but ONLY if asked.
         // Without this the function returned hardcoded zeros, so streaming chat
@@ -196,7 +214,11 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
       }
     }
 
+    gateCall.close(ticket, gateCall.fromOpenAIUsage(streamUsage, servedModel || model));
     return { fullText, usage: streamUsage, model: servedModel || model };
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -232,13 +254,22 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
   // A tools turn is several round-trips, so cost accumulates across them —
   // reporting only the last round would under-count a 5-round conversation
   // fivefold.
-  const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost: 0 };
+  // `cost` stays ABSENT until a round reports one: starting it at 0 made an
+  // unreported cost reach the ledger as a vendor-reported $0 (22 Oct 2026).
+  const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   let servedModel = null;
   let text = '';
 
   for (let round = 0; round < maxRounds; round++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
+    const roundMax = options.maxTokens || 1024;
+    // ONE ticket per round: a five-round loop is five requests and five tickets.
+    const ticket = gateCall.open({
+      provider: 'openrouter', callClass: options.callClass || options.taskType || 'chat_tools', model,
+      fallbackModels: _fallbackModels().filter((m) => m !== model),
+      maxInputTokens: gateCall.estimateTokens(convo, openaiTools), maxOutputTokens: roundMax,
+    });
 
     let data;
     try {
@@ -255,7 +286,7 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
           messages: convo,
           tools: openaiTools,
           temperature: options.temperature ?? 0.5,
-          max_tokens: options.maxTokens || 1024,
+          max_tokens: roundMax,
           usage: { include: true },
         }),
         signal: controller.signal,
@@ -265,6 +296,10 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
         throw new Error(`OpenRouter tool call failed: HTTP ${res.status} — ${body.substring(0, 200)}`);
       }
       data = await res.json();
+      gateCall.close(ticket, gateCall.fromOpenAIUsage(data.usage, data.model || model));
+    } catch (e) {
+      gateCall.close(ticket, { ok: false, error: e.message });
+      throw e;
     } finally {
       clearTimeout(timer);
     }
@@ -290,7 +325,8 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
       usage.prompt_tokens += data.usage.prompt_tokens || 0;
       usage.completion_tokens += data.usage.completion_tokens || 0;
       usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
-      usage.cost += Number(data.usage.cost) || 0;
+      const roundCost = Number(data.usage.cost);
+      if (data.usage.cost != null && Number.isFinite(roundCost)) usage.cost = (usage.cost || 0) + roundCost;
     }
 
     if (message?.content) text = text ? `${text}\n${message.content}` : message.content;

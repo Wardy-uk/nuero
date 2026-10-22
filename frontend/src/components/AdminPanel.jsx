@@ -11,6 +11,7 @@ import NotionSyncPanel from './NotionSyncPanel';
 import VestaAccounts from './VestaAccounts';
 import PersonalMailCard from './PersonalMailCard';
 import TaskContextActivation from './TaskContextActivation.jsx';
+import AiBudgetCard from './AiBudgetCard.jsx';
 import { signInOutcome, DeviceCodePanel } from './MicrosoftSignIn';
 
 
@@ -1117,6 +1118,11 @@ export default function AdminPanel({ pushState = {} }) {
 
       <CollapsibleSection title="AI & SAiM">
         <AiSettingsSection />
+      </CollapsibleSection>
+
+      {/* The shared NEURO + VANTAGE AI budget gate — shadow profile, read-only. */}
+      <CollapsibleSection title="AI budget (shadow)" hint="shared with VANTAGE · no cap set" defaultOpen>
+        <AiBudgetCard />
       </CollapsibleSection>
 
       {/* The ONLY place automatic context linking is turned on or off (22 Oct 2026). */}

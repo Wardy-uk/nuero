@@ -525,3 +525,19 @@
    padding underneath. */
 .admin-collapsible:not(.is-open) { padding-bottom: 12px; }
 .admin-input { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); padding: 6px 8px; font-size: 12px; width: 190px; }
+
+/* Shared AI budget gate — shadow profile (22 Oct 2026) */
+.aib { display: flex; flex-direction: column; gap: 10px; }
+.aib__mode, .aib__note { margin: 0; color: var(--text-primary); line-height: 1.45; }
+.aib__note { color: var(--text-muted); }
+.aib__muted { color: var(--text-muted); font-size: 12px; }
+.aib__tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.aib__tile { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.aib__num { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.aib__lbl { font-size: 12px; color: var(--text-muted); }
+.aib__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.aib__table th, .aib__table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.aib__table th { color: var(--text-muted); font-weight: 500; }
+.aib__h { font-weight: 600; margin-bottom: 4px; }
+.aib__refusals ul { margin: 0; padding-left: 18px; }
+@media (max-width: 600px) { .aib__table th:nth-child(2), .aib__table td:nth-child(2) { display: none; } }

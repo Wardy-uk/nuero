@@ -101,7 +101,7 @@ async function compare(batch, live, prompt) {
     const res = await openrouter.chat('', [{ role: 'user', content: prompt }], {
       model,
       temperature: 0.2,
-      maxTokens: 1024,
+      maxTokens: 1024, callClass: 'email_triage_shadow',
     });
     const ms = Date.now() - started;
 

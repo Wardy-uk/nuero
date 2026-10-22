@@ -91,6 +91,13 @@ async function runTask(task, payload) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PI4_TIMEOUT);
+  // Local, so free — but admitted by the AI gate so its concurrency applies.
+  const gateCall = require('./providers/gate-call');
+  const ticket = gateCall.open({
+    provider: 'pi4worker', callClass: task, model: 'pi4-ollama',
+    maxInputTokens: gateCall.estimateTokens(payload), maxOutputTokens: (payload && payload.maxTokens) || 1024,
+  });
+  let ticketOk = false;
 
   try {
     const r = await fetch(`${PI4_URL}/run-task`, {
@@ -117,6 +124,7 @@ async function runTask(task, payload) {
     _consecutiveFailures = 0;
     _skipUntil = 0;
     _lastFailure = null;
+    ticketOk = Boolean(data.ok);
     return {
       ok: data.ok,
       result: data.result || '',
@@ -143,6 +151,7 @@ async function runTask(task, payload) {
     return { ok: false, error: e.message, timedOut };
   } finally {
     clearTimeout(timer);
+    gateCall.close(ticket, { ok: ticketOk, model: 'pi4-ollama' });
   }
 }
 

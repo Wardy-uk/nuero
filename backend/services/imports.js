@@ -3,8 +3,6 @@ const path = require('path');
 const obsidian = require('./obsidian');
 const legacyNames = require('./legacy-names');
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 // CLAUDE_MODEL removed in Phase 3 — AI routing handles provider selection
 
 function broadcast(event) {

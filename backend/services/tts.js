@@ -24,7 +24,7 @@
 const crypto = require('crypto');
 const { spokenForm } = require('../../shared/spoken.cjs');
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// (The OpenRouter URL lives in providers/tts-provider.js.)
 const MODEL = process.env.TTS_MODEL || 'openai/gpt-audio-mini';
 // ballad is one of the MASCULINE voices and was a bad default for SAiM. Feminine options
 // on this model: coral, shimmer, sage, marin, nova (alloy is neutral). All nine names in
@@ -109,37 +109,18 @@ async function speak(text, options = {}) {
     return { audio: _cache.get(key), contentType: 'audio/wav', cached: true, spoken: clean, cost: 0 };
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeout || 60000);
-
-  let raw;
-  try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'https://neuro.nurtur.tech',
-        'X-Title': 'NEURO',
-      },
-      body: JSON.stringify({
-        model,
-        stream: true,                        // required for audio output
-        modalities: ['text', 'audio'],
-        audio: { voice, format: 'pcm16' },   // mp3 is rejected when streaming
-        messages: [
-          { role: 'system', content: SYSTEM },
-          ...ECHO_SHOT,
-          { role: 'user', content: `TEXT TO READ: ${clean}` },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    raw = await res.text();
-  } finally {
-    clearTimeout(timer);
-  }
+  // The network request (and its AI-gate ticket) lives in providers/tts-provider.js.
+  const raw = await require('./providers/tts-provider').requestAudio({
+    model,
+    stream: true,                        // required for audio output
+    modalities: ['text', 'audio'],
+    audio: { voice, format: 'pcm16' },   // mp3 is rejected when streaming
+    messages: [
+      { role: 'system', content: SYSTEM },
+      ...ECHO_SHOT,
+      { role: 'user', content: `TEXT TO READ: ${clean}` },
+    ],
+  }, { timeout: options.timeout || 60000 });
 
   let b64 = '', transcript = '', usage = null, err = null;
   for (const line of raw.split('\n')) {

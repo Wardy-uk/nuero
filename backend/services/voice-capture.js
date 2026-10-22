@@ -87,7 +87,7 @@ function wyomingEvent(type, data, payload) {
   return payload ? Buffer.concat([line, payload]) : line;
 }
 
-function transcribe(audio, { host = STT_HOST, port = STT_PORT, timeoutMs = STT_TIMEOUT_MS, language = 'en' } = {}) {
+function _transcribeRaw(audio, { host = STT_HOST, port = STT_PORT, timeoutMs = STT_TIMEOUT_MS, language = 'en' } = {}) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ host, port });
     let buffered = Buffer.alloc(0);
@@ -135,6 +135,25 @@ function transcribe(audio, { host = STT_HOST, port = STT_PORT, timeoutMs = STT_T
       socket.write(wyomingEvent('audio-stop', {}));
     });
   });
+}
+
+/**
+ * Transcribe through the AI gate: faster-whisper is local and free, but it is ONE
+ * service on the Pi, so each clip takes a ticket and the gate's local concurrency
+ * limit (voice_transcribe / whisper: 1) applies.
+ */
+async function transcribe(audio, opts = {}) {
+  const gateCall = require('./providers/gate-call');
+  const seconds = audio && audio.pcm && audio.rate ? audio.pcm.length / ((audio.width || 2) * (audio.channels || 1) * audio.rate) : 0;
+  const ticket = gateCall.open({ provider: 'whisper', callClass: 'voice_transcribe', model: 'faster-whisper', maxInputTokens: Math.ceil(seconds * 50), maxOutputTokens: 0 });
+  try {
+    const text = await _transcribeRaw(audio, opts);
+    gateCall.close(ticket, { ok: true, model: 'faster-whisper' });
+    return text;
+  } catch (e) {
+    gateCall.close(ticket, { ok: false, error: e.message });
+    throw e;
+  }
 }
 
 // ── Ledger (exactly once) ────────────────────────────────────────────────────

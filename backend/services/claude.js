@@ -831,7 +831,7 @@ async function _runWithTools(systemPrompt, messages, mode, ctx = {}) {
     messages,
     chatTools.toolDefinitions(),
     (name, input) => chatTools.execute(name, input, ctx),
-    { maxTokens: policy.maxTokens, maxRounds: 5 }
+    { maxTokens: policy.maxTokens, maxRounds: 5, callClass: 'chat_tools' }
   );
 
   // Meta matters as much as the tokens: this turn bypasses the routing tiers,

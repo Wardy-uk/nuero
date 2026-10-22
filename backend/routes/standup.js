@@ -158,16 +158,13 @@ async function preWarmStandup() {
       { role: 'user', content: 'Start my standup.' }
     ];
 
-    const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
-        messages: ollamaMessages,
-        stream: false,
-        options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
-      }),
-      signal: AbortSignal.timeout(300000) // 5 min — no rush, this is background
+    const ollamaRes = await require('../services/providers/ollama-provider').rawChat({
+      model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
+      messages: ollamaMessages,
+      stream: false,
+      options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+    }, {
+      callClass: 'standup_prewarm', signal: AbortSignal.timeout(300000) // 5 min — no rush, this is background
     });
 
     if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
@@ -327,16 +324,13 @@ async function preWarmEod() {
       { role: 'user', content: 'Start my EOD.' }
     ];
 
-    const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
-        messages: ollamaMessages,
-        stream: false,
-        options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
-      }),
-      signal: AbortSignal.timeout(300000)
+    const ollamaRes = await require('../services/providers/ollama-provider').rawChat({
+      model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
+      messages: ollamaMessages,
+      stream: false,
+      options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+    }, {
+      callClass: 'eod_prewarm', signal: AbortSignal.timeout(300000)
     });
 
     if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
@@ -1257,16 +1251,13 @@ router.post('/interactive', async (req, res) => {
           ...claudeMessages
         ];
 
-        const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
-            messages: ollamaMessages,
-            stream: true,
-            options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
-          }),
-          signal: AbortSignal.timeout(180000) // 3 min — Pi 5 can be slow on cold start
+        const ollamaRes = await require('../services/providers/ollama-provider').rawChat({
+          model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
+          messages: ollamaMessages,
+          stream: true,
+          options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
+        }, {
+          callClass: 'standup_interactive', signal: AbortSignal.timeout(180000) // 3 min — Pi 5 can be slow on cold start
         });
 
         if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
@@ -1396,16 +1387,13 @@ router.post('/eod/interactive', async (req, res) => {
     if (!usedOllama) {
       try {
         const ollamaMessages = [{ role: 'system', content: systemPrompt }, ...claudeMessages];
-        const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
-            messages: ollamaMessages,
-            stream: true,
-            options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
-          }),
-          signal: AbortSignal.timeout(180000)
+        const ollamaRes = await require('../services/providers/ollama-provider').rawChat({
+          model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
+          messages: ollamaMessages,
+          stream: true,
+          options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
+        }, {
+          callClass: 'eod_interactive', signal: AbortSignal.timeout(180000)
         });
         if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
         const reader = ollamaRes.body.getReader();

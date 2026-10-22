@@ -252,7 +252,7 @@ async function proposeFromPhoto({ username, imageBase64, mediaType, sections = [
     result = await anthropic.vision(
       SYSTEM,
       { imageBase64: data, mediaType, prompt: buildPrompt(sections) },
-      { model: process.env.VESTA_VISION_MODEL || 'claude-opus-5' }
+      { model: process.env.VESTA_VISION_MODEL || 'claude-opus-5', callClass: 'vesta_photo' }
     );
   } catch (e) {
     // ⚠ The message is NOT passed through to her. It is an API error string

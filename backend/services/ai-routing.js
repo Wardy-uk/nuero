@@ -868,12 +868,12 @@ async function _runAnthropic(taskType, payload, options) {
   if (payload.messages) {
     return anthropicProvider.chat(payload.systemPrompt || '', payload.messages, {
       maxTokens: payload.maxTokens,
-      timeout: options.timeout,
+      timeout: options.timeout, callClass: taskType,
     });
   }
   return anthropicProvider.generate(payload.prompt || '', {
     maxTokens: payload.maxTokens,
-    timeout: options.timeout,
+    timeout: options.timeout, callClass: taskType,
   });
 }
 
@@ -882,13 +882,13 @@ async function _runOpenAI(taskType, payload, options) {
     return openaiProvider.chat(payload.systemPrompt || '', payload.messages, {
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
-      timeout: options.timeout,
+      timeout: options.timeout, callClass: taskType,
     });
   }
   return openaiProvider.generate(payload.prompt || '', {
     temperature: payload.temperature,
     maxTokens: payload.maxTokens,
-    timeout: options.timeout,
+    timeout: options.timeout, callClass: taskType,
   });
 }
 
@@ -924,7 +924,7 @@ async function _runOllama(taskType, payload, options) {
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
       contextWindow: payload.contextWindow,
-      timeout: options.timeout,
+      timeout: options.timeout, callClass: taskType,
       onUsage,
     });
   }
@@ -933,7 +933,7 @@ async function _runOllama(taskType, payload, options) {
     temperature: payload.temperature,
     maxTokens: payload.maxTokens,
     contextWindow: payload.contextWindow,
-    timeout: options.timeout,
+    timeout: options.timeout, callClass: taskType,
     onUsage,
   });
 }
@@ -944,14 +944,14 @@ async function _runOpenRouter(taskType, payload, options) {
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
       contextWindow: payload.contextWindow,
-      timeout: options.timeout,
+      timeout: options.timeout, callClass: taskType,
     });
   }
   return openrouterProvider.generate(payload.prompt || '', {
     temperature: payload.temperature,
     maxTokens: payload.maxTokens,
     contextWindow: payload.contextWindow,
-    timeout: options.timeout,
+    timeout: options.timeout, callClass: taskType,
   });
 }
 
