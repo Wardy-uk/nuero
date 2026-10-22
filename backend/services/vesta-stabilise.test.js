@@ -45,3 +45,12 @@ test('a health delivery is one transaction (pinned) and the per-row guard stays 
   assert.match(rows, /catch \(e\)/, 'one bad row is still caught and cannot lose the batch');
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /cors\(\{ maxAge: 600[,}]/, 'preflights may be cached');
 });
+
+test('the wall read does not re-run on every render (22 Oct 2026 storm)', () => {
+  const wall = fs.readFileSync(path.join(__dirname, '..', '..', 'vesta', 'src', 'views', 'Wall.jsx'), 'utf8');
+  const body = wall.slice(wall.indexOf('const refresh = useCallback'), wall.indexOf('// Coming back to the screen'));
+  assert.match(body, /\}, \[screen\]\);/, 'the read depends only on screen mode');
+  assert.doesNotMatch(body, /\[onSignedOut\]/, 'never on the caller\'s callback identity');
+  const kiosk = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'frontend', 'src', 'components', 'ScreenWall.jsx'), 'utf8');
+  assert.match(kiosk, /onSignedOut=\{NOOP\}/, 'the kiosk hands a stable callback');
+});

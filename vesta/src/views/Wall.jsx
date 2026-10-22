@@ -718,6 +718,10 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
   want.current = range;
 
   const inFlight = useRef(false);
+  // Read through a ref so the read never depends on the caller's callback
+  // identity — an inline one re-ran the read on every render (22 Oct 2026).
+  const signedOut = useRef(onSignedOut);
+  signedOut.current = onSignedOut;
   const refresh = useCallback(async () => {
     const r = want.current;
     // One wall read at a time: a slow answer is never piled on by the next poll.
@@ -737,12 +741,12 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
       api.writeWallCache(rangeKey(r), next);
     } catch (err) {
       perf.fails++;
-      if (err.expired && !screen) return onSignedOut();
+      if (err.expired && !screen) return signedOut.current && signedOut.current();
       setError(err.message);
     } finally {
       inFlight.current = false;
     }
-  }, [onSignedOut]);
+  }, [screen]);
 
   // Coming back to the screen (iPad woken, app reopened) reads at once.
   useEffect(() => {

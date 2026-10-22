@@ -55,6 +55,12 @@ function useRoomOffers(enabled, area) {
   return { offers, answer, note, clearNote: () => setNote(null) };
 }
 
+// ⚠ STABLE, at module scope. The wall's read is a callback keyed on this, and
+// an effect re-runs it whenever the callback changes — an inline arrow here made
+// a new one every render, so every answer caused the next read: the screens
+// asked several times a second instead of once a minute (22 Oct 2026).
+const NOOP = () => {};
+
 function OfferCard({ offer, onAnswer }) {
   return (
     <div className="screenwall__offer">
@@ -86,7 +92,7 @@ export default function ScreenWall({ say = null, nickHere = false, area = null, 
   };
   return (
     <div className="screenwall">
-      <Wall screen fusion={fusion} onSignedOut={() => {}} />
+      <Wall screen fusion={fusion} onSignedOut={NOOP} />
       {/* His work, on the room screen, only while he is in the room and only
           when he asks — it folds back on its own (App.jsx). */}
       {nickHere && onWork && (
