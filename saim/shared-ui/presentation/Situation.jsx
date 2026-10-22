@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { composeForSurface, groupContext } from './budget.mjs';
 import './Situation.css';
-import { KmwReadout, KmwMain, KmwFolded } from './KeepMyWord.jsx';
+import { KmwReadout, KmwMain, KmwFolded, KmwWhy } from './KeepMyWord.jsx';
 
 // Situation — the adaptive SAiM composition (Build 12).
 //
@@ -227,6 +227,14 @@ export default function Situation({
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card
   // ({ recordId } → element). Absent (the SAiM shells) → the card points nowhere else.
   renderPromiseSave = null,
+  // NEURO's Now page (22 Oct 2026): the scene in a working surface — the readout earns its space,
+  // and `kmwJoinsLead` (the shell checked the lead card IS this promise's task) puts the promise
+  // under the lead as its WHY instead of a folded line repeating its title.
+  workspace = false,
+  kmwJoinsLead = false,
+  // Next rows ALREADY on this page in the shell's own words (NEURO: the running block's tasks),
+  // by exact id. A cut, never a re-rank; a Next with nothing left is not drawn.
+  omitNextIds = null,
   // The locked Keep my word scene (dark amber network, readout left, main
   // surface right). The SAiM shells opt in; NEURO's own Now does not.
   scene = false,
@@ -308,7 +316,9 @@ export default function Situation({
   // recognisably, beneath the last lead. Never on the watch.
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
-  const kmwFolded = kmw && !kmwLeads && (kmw.receipt || kmw.thread)
+  const kmwFolded = kmw && !kmwLeads && kmwJoinsLead && kmw.thread && !kmw.receipt
+    ? <KmwWhy key="kmw-why" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
+    : kmw && !kmwLeads && (kmw.receipt || kmw.thread)
     ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
     : null;
   // On an ambient surface the item the summary is about carries its hand-off
@@ -325,7 +335,7 @@ export default function Situation({
 
   return (
     <section
-      className={`sit sit--${plan.profile}${kmw ? ' sit--kmw' : ''}${kmw && scene ? ' sit--scene' : ''} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
+      className={`sit sit--${plan.profile}${workspace ? ' sit--workspace' : ''}${kmw ? ' sit--kmw' : ''}${kmw && scene ? ' sit--scene' : ''} sit--mode-${plan.mode} sit--tone-${s.tone || 'calm'} sit--level-${s.attentionLevel || 'none'}${preparedMoment ? ' sit--with-moment' : ''}${momentLeads ? ' sit--moment-leads' : ''}`}
       data-mode={plan.mode}
       data-profile={plan.profile}
     >
@@ -333,7 +343,7 @@ export default function Situation({
       {/* Keyed on the mode so a change of situation recomposes with a fade
           (and nothing at all under reduced motion). */}
       <div className="sit__body" key={plan.mode}>
-        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} />}
+        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} workspace={workspace} />}
         {plan.blocks.map((blk, i) => {
           switch (blk.type) {
             case 'situation':
@@ -405,17 +415,20 @@ export default function Situation({
                   ))}
                 </ul>
               );
-            case 'next':
+            case 'next': {
+              const items = omitNextIds ? blk.items.filter((it) => !omitNextIds.has(it.id)) : blk.items;
+              if (!items.length && !(blk.overflow > 0)) return null;
               return (
                 <div key={i} className="sit__nextblock">
                   {/* Under a focal "Next" object the rest of the list is what comes after it. */}
                   <h3 className="sit__label">{plan.blocks.some((b) => b.type === 'focal') ? 'Later' : 'Next'}</h3>
                   <ul className="sit__nextlist">
-                    {blk.items.map((it) => <NextRow key={it.id} item={it} onOpen={onOpen} actions={plan.actions} extra={plan.actions && renderItemExtra ? renderItemExtra(it) : null} />)}
+                    {items.map((it) => <NextRow key={it.id} item={it} onOpen={onOpen} actions={plan.actions} extra={plan.actions && renderItemExtra ? renderItemExtra(it) : null} />)}
                   </ul>
                   {blk.overflow > 0 && !ambient && <p className="sit__more">{blk.overflow} more later</p>}
                 </div>
               );
+            }
             case 'observations':
               return (
                 <ul key={i} className="sit__obs">

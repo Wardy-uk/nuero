@@ -22,8 +22,39 @@ import './KeepMyWord.css';
 //   or a send: a held thread NAMES what is missing and offers no way round it. No URL lives here, so a
 //   shell without a credential path (the kiosk) simply passes no handler.
 
-export function KmwReadout({ readout, compact = false }) {
+// A Monday report that needs nothing from Nick (sent, and read back) changes no choice now.
+const MONDAY_SETTLED = new Set(['sent-verified-on-time', 'sent-verified-late']);
+
+/**
+ * NEURO's Now page (22 Oct 2026): the SAME readout, made to earn its space in a
+ * working surface — the figure (or the honest "not measured yet"), the week's
+ * re-dates, a Monday report ONLY when it still needs something, and the promises
+ * awaiting judgement as one line (there is no action for them yet, so no card).
+ * The SAiM scenes keep the locked readout above.
+ */
+function WorkspaceReadout({ readout }) {
+  const j = readout.judgement;
+  const m = readout.monday && readout.monday.line && !MONDAY_SETTLED.has(readout.monday.state) ? readout.monday : null;
+  return (
+    <aside className="kmw__week kmw__week--workspace" aria-label="Holding the week">
+      <p className="kmw__label">{readout.label}</p>
+      {readout.figure
+        ? <p className="kmw__figure">{readout.figure}</p>
+        : readout.figureNote ? <p className="kmw__figure kmw__figure--note">{readout.figureNote}</p> : null}
+      {readout.figure
+        ? (readout.line && <p className="kmw__line">{readout.line}{readout.trend && <><br /><span className="kmw__trend">{readout.trend}</span></>}</p>)
+        : (readout.line && <details className="kmw__how"><summary>How this is counted</summary><p className="kmw__line">{readout.line}</p></details>)}
+      {readout.reDated && <p className="kmw__line kmw__line--quiet">{readout.reDated}</p>}
+      {m && <p className={`kmw__line kmw__monday kmw__monday--${m.state}`}><span className="kmw__inline-label">{m.label}</span> {m.line}</p>}
+      {readout.next && <p className="kmw__line"><span className="kmw__inline-label">{readout.next.label}</span> <strong>{readout.next.strong}</strong> {readout.next.line}</p>}
+      {j && <p className="kmw__line kmw__line--quiet"><strong>{j.strong}</strong> · {j.label}</p>}
+    </aside>
+  );
+}
+
+export function KmwReadout({ readout, compact = false, workspace = false }) {
   if (!readout) return null;
+  if (workspace) return <WorkspaceReadout readout={readout} />;
   return (
     <aside className={`kmw__week${compact ? ' kmw__week--compact' : ''}`} aria-label="Holding the week">
       <p className="kmw__label">{readout.label}</p>
@@ -208,7 +239,7 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false, renderSa
   );
 }
 
-export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
+export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, asWhy = false }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
   if (!thread) return null;
@@ -236,9 +267,10 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
     ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
     : null;
   return (
-    <section className={`kmw__thread kmw__thread--${thread.preparation.state}${thread.held ? ' kmw__thread--held' : ''}`} aria-label="Keeping your word" data-promise-ref={thread.move ? thread.move.ref : undefined}>
-      <p className="kmw__label kmw__label--live"><i aria-hidden="true" />{thread.label}</p>
-      <h2 className="kmw__headline kmw__headline--thread">{thread.title}</h2>
+    <section className={`kmw__thread kmw__thread--${thread.preparation.state}${thread.held ? ' kmw__thread--held' : ''}${asWhy ? ' kmw__thread--why' : ''}`} aria-label={asWhy ? 'Why it matters' : 'Keeping your word'} data-promise-ref={thread.move ? thread.move.ref : undefined}>
+      {/* As the WHY of the lead (22 Oct 2026) the title is the lead's — never said twice. */}
+      <p className="kmw__label kmw__label--live"><i aria-hidden="true" />{asWhy ? `Why it matters · ${thread.label}` : thread.label}</p>
+      {!asWhy && <h2 className="kmw__headline kmw__headline--thread">{thread.title}</h2>}
       <p className="kmw__lead">
         <span className="kmw__due">{thread.due.label}</span>
         {thread.owedTo && <span> · owed to {thread.owedTo}</span>}
@@ -305,6 +337,16 @@ export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery
     );
   }
   return <div className="kmw__main"><KmwThread thread={kmw.thread} {...t} /></div>;
+}
+
+/**
+ * The promise as the WHY of the lead (22 Oct 2026): when the lead card IS this
+ * promise's task, its Keep my word state (the question, the draft, the save)
+ * sits directly under it instead of a folded line repeating its title.
+ */
+export function KmwWhy({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
+  if (!kmw || !kmw.thread) return null;
+  return <div className="kmw__main kmw__why"><KmwThread thread={kmw.thread} asWhy onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} /></div>;
 }
 
 /** The folded entry beneath an urgent lead: recognisable by its title, opened on demand. */

@@ -741,3 +741,50 @@
 /* The governed save step inside the Keep my word card (26 Oct 2026). */
 .promise-save { margin-top: 8px; }
 .promise-save__authority { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border, #2a3340); }
+
+/* ── The SAiM Now scene uses the Now WORKSPACE (22 Oct 2026) ──────────────────
+   Nick: "a narrow centred card, about a third of the width; cramped on desktop,
+   unreadable on phone." Three caps stacked: the app's 960px page column, this
+   panel's 1000px, and the scene's own 46rem body with a 230px readout. NEURO's Now
+   opts out of all three and sizes from the WORKSPACE (a container query — the
+   sidebar's width is already gone), not the viewport. The SAiM shells' locked
+   scenes are untouched: everything here is scoped to `.adhd__now--situation`. */
+.main-view > .adhd { max-width: none; }
+.adhd__now--situation { container: now / inline-size; }
+.adhd__now--situation .sit--workspace .sit__body { max-width: none; margin: 0; padding: 0; }
+.adhd__now--situation .sit.sit--workspace.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body {
+  grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
+  column-gap: clamp(24px, 3.5vw, 64px);
+}
+/* The main area is generous, but prose keeps a readable measure. */
+.adhd__now--situation .sit--workspace .sit__body > :not(.kmw__week) { max-width: 70rem; }
+.adhd__now--situation .sit--workspace .kmw__main { max-width: 70rem; }
+.adhd__now--situation .sit--workspace .kmw__lead,
+.adhd__now--situation .sit--workspace .sit__summary { max-width: 64ch; }
+/* rem, not ch: the rows' text is 11px, so 64ch was only ~350px. */
+.adhd__now--situation .sit--workspace .kmw__row > div { max-width: 46rem; }
+.adhd__now--situation .sit--workspace .kmw__week { max-width: none; }
+.adhd__now--situation .sit--workspace .kmw__how summary { cursor: pointer; font: 12px/1.5 Georgia, serif; color: var(--kmw-dim, #9a9384); margin: 4px 0; }
+.adhd__now--situation .sit--workspace .kmw__inline-label { font: 700 10px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--kmw-amber, #d69042); margin-right: 6px; }
+/* The promise as the lead's WHY: tied to the card above it, not a second card. */
+.adhd__now--situation .sit--workspace .kmw__why { margin: -0.6rem 0 1.6rem; padding-left: 14px; border-left: 2px solid var(--kmw-amber, #d69042); }
+.adhd__now--situation .sit--workspace .kmw__why .kmw__thread { padding-top: 6px; }
+
+/* Narrow workspace (a phone, a half-width window): ONE column, full width. The
+   readout becomes a compact summary above the situation — never a skinny column. */
+@container now (max-width: 720px) {
+  .sit.sit--workspace.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body { display: block; }
+  .sit--workspace .sit__body > * { max-width: none; }
+  .sit.sit--workspace.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body > .kmw__week {
+    position: static; grid-row: auto; max-width: none; margin: 0 0 1.25rem; padding: 0 0 0.9rem;
+    border-bottom: 1px solid var(--kmw-line, rgba(242, 185, 95, 0.18));
+  }
+  .sit--workspace .kmw__week .kmw__figure { font-size: 30px; margin: 2px 0; }
+  .sit--workspace .kmw__week .kmw__figure--note { font-size: 20px; }
+  .sit--workspace .sit__headline { font-size: 1.9rem; }
+  .sit--workspace .sit__next-btn { grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr); column-gap: 0.75rem; }
+  .sit--workspace .kmw__why { margin-left: 0; }
+}
+@media (max-width: 600px) {
+  .adhd__now--situation { padding: 1rem 0.85rem; }
+}

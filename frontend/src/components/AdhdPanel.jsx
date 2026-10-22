@@ -24,6 +24,18 @@ import { desktopCall } from '../desktopCall';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
+/**
+ * PURE. Is the lead card this promise's own task? Only by an id the server gave both —
+ * the card's task (capacity cards carry `meta.taskId`) or its promise link
+ * (`open.ref`) — never by matching titles.
+ */
+export function leadIsThePromise(card, kmw) {
+  const t = kmw && kmw.thread;
+  if (!card || !t) return false;
+  if (card.meta && card.meta.taskId != null && t.taskId != null && Number(card.meta.taskId) === Number(t.taskId)) return true;
+  return Boolean(card.open && t.key && card.open.ref === `promise:${t.key}`);
+}
+
 // apiFetch hands back a raw Response and sets no Content-Type, so every JSON
 // call needs this wrapper. Throwing on non-2xx keeps a failed load from
 // rendering as a page full of zeroes, which would read as "you did nothing".
@@ -797,6 +809,12 @@ export default function AdhdPanel({ onNavigate }) {
           {workOnly && <p className="adhd__now-workonly">Work only{attention.data.situation?.personalHeld?.say ? ` — ${attention.data.situation.personalHeld.say}` : ' — personal life is hidden.'}</p>}
           <Situation
             presentation={attention.data.presentation}
+            // NEURO's Now page uses the workspace (22 Oct 2026): the readout earns its space, and a
+            // lead card that IS a promise's task shows that promise as its WHY (no repeated title).
+            workspace
+            kmwJoinsLead={leadIsThePromise(attention.primary, attention.data.presentation.keepMyWord)}
+            // The running block's tasks are already the card above — never repeated in Next.
+            omitNextIds={new Set(((data && data.blockNow && data.blockNow.tasks) || []).map((t) => `commitment:task:${t.taskId}`))}
             profile="desktop"
             renderPrimary={attention.primary ? () => (
               <AttentionCard card={attention.primary} onNavigate={onNavigate} onAct={attention.act} onStarted={load} />
