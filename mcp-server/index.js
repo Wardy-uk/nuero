@@ -113,10 +113,16 @@ async function neuroApi(path, options = {}) {
 
 const VAULT_CONFIGURED = () => Boolean(VAULT_PATH) && fs.existsSync(VAULT_PATH);
 
+// Credentials awaiting rotation (22 Oct 2026) live in this folder: the fallback
+// never reads, lists, searches or writes it — same rule as NEURO's /api/vault.
+const SECURITY_DIRS = (process.env.VAULT_SECURITY_DIRS || 'Security review').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+function isSecurityName(name) { return SECURITY_DIRS.includes(String(name).toLowerCase()); }
+
 function safeVaultPath(rel) {
   if (rel == null) return null;
   const resolved = path.resolve(VAULT_PATH, withScope(rel));
   if (!resolved.startsWith(path.resolve(VAULT_PATH))) return null; // path traversal guard
+  if (path.relative(path.resolve(VAULT_PATH), resolved).split(/[\\/]/).some(isSecurityName)) return null;
   return resolved;
 }
 
@@ -154,6 +160,7 @@ const localVault = {
     const dp = safeVaultPath(dir || '');
     if (!dp || !fs.existsSync(dp)) throw new Error(`Directory not found: ${dir || '/'}`);
     const files = fs.readdirSync(dp, { withFileTypes: true })
+      .filter(e => !isSecurityName(e.name))
       .map(e => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' }));
     return { dir: normalizeRelative(dir || ''), files };
   },
@@ -167,7 +174,7 @@ const localVault = {
       if (depth > 4 || results.length >= max || !fs.existsSync(d)) return;
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         if (results.length >= max) break;
-        if (e.name.startsWith('.')) continue;
+        if (e.name.startsWith('.') || isSecurityName(e.name)) continue;
         const fp = path.join(d, e.name);
         if (e.isDirectory()) { walk(fp, depth + 1); continue; }
         if (!e.name.endsWith('.md')) continue;
@@ -192,7 +199,7 @@ const localVault = {
     (function walk(d, depth) {
       if (depth > 4 || !fs.existsSync(d)) return;
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-        if (e.name.startsWith('.')) continue;
+        if (e.name.startsWith('.') || isSecurityName(e.name)) continue;
         const fp = path.join(d, e.name);
         if (e.isDirectory()) { if (!SKIP.has(e.name)) walk(fp, depth + 1); continue; }
         if (!e.name.endsWith('.md')) continue;
@@ -221,7 +228,7 @@ const localVault = {
     (function walk(d, depth) {
       if (depth > 5 || !fs.existsSync(d)) return;
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-        if (e.name.startsWith('.')) continue;
+        if (e.name.startsWith('.') || isSecurityName(e.name)) continue;
         const fp = path.join(d, e.name);
         if (e.isDirectory()) { if (!SKIP.has(e.name)) walk(fp, depth + 1); continue; }
         if (!e.name.endsWith('.md')) continue;

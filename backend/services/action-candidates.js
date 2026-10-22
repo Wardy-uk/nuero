@@ -94,6 +94,8 @@ function shouldSkipPath(relativePath) {
     /^[A-Za-z]:\//.test(value) ||
     value.startsWith('Tasks/') ||
     value.startsWith('Daily/') ||
+    // Credentials awaiting rotation: never read for commitments (22 Oct 2026).
+    require('./vault-exclusions').isSecurityPath(value) ||
     value.startsWith('Templates/') ||
     value.startsWith('.obsidian/') ||
     value.startsWith('Archive/') ||

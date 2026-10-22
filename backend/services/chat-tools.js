@@ -430,6 +430,10 @@ const HANDLERS = {
       return { ok: false, error: 'Path is outside the vault' };
     }
     if (!full.toLowerCase().endsWith('.md')) return { ok: false, error: 'Only .md notes can be read' };
+    // Credentials awaiting rotation (22 Oct 2026): never read into a conversation.
+    if (require('./vault-exclusions').isSecurityPath(path.relative(root, full))) {
+      return { ok: false, error: 'That note is in Security review — NEURO does not read it.' };
+    }
     if (!fs.existsSync(full)) return { ok: false, error: `Note not found: ${notePath}` };
 
     const content = fs.readFileSync(full, 'utf-8');

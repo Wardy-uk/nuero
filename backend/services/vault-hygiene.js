@@ -33,6 +33,10 @@ const crypto = require('crypto');
 const EXCLUDE_DIRS = new Set([
   '.git', '.obsidian', '.trash', '.stfolder', '.stversions', '.sync', '.claude', '.lint-backups',
   'Archive', 'Templates', 'Scripts', 'Conflicts', 'node_modules', 'Vault Audit',
+  // Credentials awaiting rotation (22 Oct 2026): never scanned, linked into or
+  // quoted — the contextual linking plan had copied the start of a secret from
+  // a credentials note into every weekly plan.
+  ...require('./vault-exclusions').SECURITY_DIRS,
 ]);
 
 const REPORT_REL = ['Documents', 'System', 'Vault Audit'];
@@ -73,11 +77,13 @@ const DEFAULT_CTX_ROOTS = [
 const CTX_FORBIDDEN_ROOTS = {
   Tasks: 'outcome notes read appended prose as a write-up and would release held tasks',
   Notion: 'pull-only mirrors would push the appended block back into Notion',
+  'Security review': 'it holds credentials awaiting rotation — never read, linked into or quoted',
 };
 
 function assertCtxRoots(roots) {
   for (const r of roots || []) {
     const head = String(r).split('/')[0];
+    if (require('./vault-exclusions').isSecurityPath(head)) throw new Error(`contextual linking refuses "${r}": ${CTX_FORBIDDEN_ROOTS['Security review']}`);
     if (CTX_FORBIDDEN_ROOTS[head]) {
       throw new Error(`contextual linking refuses "${r}": ${CTX_FORBIDDEN_ROOTS[head]}`);
     }
@@ -286,7 +292,16 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A short context snippet around a match index, for autonomy cards.
 function snippet(text, idx, len) {
-  return text.slice(Math.max(0, idx - 40), idx + len + 40).replace(/\s+/g, ' ').trim();
+  return maskSecrets(text.slice(Math.max(0, idx - 40), idx + len + 40).replace(/\s+/g, ' ').trim());
+}
+
+// Anything credential-shaped in quoted context is masked before it reaches a
+// report. A report is a vault note: it syncs to the Pi and its backups, and the
+// first triage found a secret fragment repeated in seven of them.
+const SECRET_KV = /\b((?:[A-Za-z0-9_-]*?)(?:api[_ -]?key|secret|password|passwd|pwd|token|bearer|pat))(\s*[:=]\s*)(["']?)[^\s"'`,;)]+/gi;
+const SECRET_RAW = /(?<![A-Za-z0-9])(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gl(?:c|sa)_[A-Za-z0-9+/=_]{20,}|xox[bap]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})/g;
+function maskSecrets(text) {
+  return String(text || '').replace(SECRET_KV, '$1$2$3[redacted]').replace(SECRET_RAW, '[redacted]');
 }
 
 // Build the People roster: FULL NAMES only (handoff §3.1), with a name→count map
@@ -1807,6 +1822,7 @@ module.exports = {
   graphConfig,
   dedupSummaries,
   nightlySweep,
+  maskSecrets,
   planVaultAuditRetention,
   retainVaultAudit,
   AUDIT_RETENTION,

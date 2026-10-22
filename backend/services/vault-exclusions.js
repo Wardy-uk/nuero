@@ -84,6 +84,20 @@ const TRANSIENT_DIRS = [
 const SENSITIVE_DIRS = (process.env.VAULT_SENSITIVE_DIRS || 'Private,Personal')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
+// ── Security review: notes holding credentials ───────────────────────────────
+//
+// 22 Oct 2026: the vault triage found plain-text passwords, a PAT and API
+// secrets in seven notes, and Nick moved them into `Security review/` pending
+// rotation. Unlike `Personal/`, NOTHING here may be read by NEURO at all: not
+// embedded (chat RAG and search_vault would quote the secret), not entity-
+// extracted, not readable through /api/vault or the chat `read_note` tool, never
+// quoted by a vault-hygiene report (the contextual linking plan had copied the
+// start of one secret into every weekly plan). It is also sensitive, so
+// task-context, Notion sync and knowledge-trust refuse it too.
+// ⚠ Fails CLOSED by name: rename the folder and the env var must follow.
+const SECURITY_DIRS = (process.env.VAULT_SECURITY_DIRS || 'Security review')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 // ── Personal life ────────────────────────────────────────────────────────────
 //
 // Home life, as opposed to the sensitive-work material above. DEFAULT EMPTY, on
@@ -123,7 +137,7 @@ const GENERATED_FILE_PATTERNS = [
 
 // The shared base: never content, for any consumer.
 const INDEX_EXCLUDED_DIRS = new Set([
-  ...INFRA_DIRS, ...GENERATED_DIRS, ...RETIRED_DIRS, ...TRANSIENT_DIRS,
+  ...INFRA_DIRS, ...GENERATED_DIRS, ...RETIRED_DIRS, ...TRANSIENT_DIRS, ...SECURITY_DIRS,
 ]);
 
 // ⚠ The two sets below are NO LONGER one a superset of the other, and that is
@@ -148,6 +162,7 @@ const EMBEDDING_EXCLUDED_DIRS = new Set([...INDEX_EXCLUDED_DIRS, 'Daily']);
 /** Should this directory NAME be walked into? */
 function isExcludedDir(name, { forEmbeddings = false } = {}) {
   if (!name) return false;
+  if (SECURITY_DIRS.some((d) => d.toLowerCase() === String(name).toLowerCase())) return true;
   const set = forEmbeddings ? EMBEDDING_EXCLUDED_DIRS : ENTITY_EXCLUDED_DIRS;
   return set.has(name);
 }
@@ -168,7 +183,19 @@ function _underAny(relativePath, dirs) {
  * doing two jobs badly.
  */
 function isSensitivePath(relativePath) {
-  return _underAny(relativePath, SENSITIVE_DIRS);
+  return _underAny(relativePath, SENSITIVE_DIRS) || isSecurityPath(relativePath);
+}
+
+/**
+ * A note under a security-review folder: never read, quoted or indexed by NEURO.
+ * Case-insensitive, and a top-level FOLDER of that name counts even when the
+ * path names the folder itself (listing it).
+ */
+function isSecurityPath(relativePath) {
+  if (!relativePath) return false;
+  const parts = String(relativePath).replace(/\\/g, '/').split('/').filter(Boolean);
+  const names = SECURITY_DIRS.map((d) => d.toLowerCase());
+  return parts.some((seg) => names.includes(seg.toLowerCase()));
 }
 
 /** Home life, as opposed to work. Empty by default — see PERSONAL_DIRS. */
@@ -193,6 +220,7 @@ function noteDomain(relativePath, frontmatter) {
 /** Is this vault-relative path excluded — by any segment, or by filename? */
 function isExcludedPath(relativePath, options = {}) {
   if (!relativePath) return true;
+  if (isSecurityPath(relativePath)) return true;
   const parts = String(relativePath).replace(/\\/g, '/').split('/');
   const file = parts[parts.length - 1];
   for (const seg of parts.slice(0, -1)) {
@@ -207,6 +235,7 @@ module.exports = {
   RETIRED_DIRS,
   TRANSIENT_DIRS,
   SENSITIVE_DIRS,
+  SECURITY_DIRS,
   PERSONAL_DIRS,
   GENERATED_FILE_PATTERNS,
   INDEX_EXCLUDED_DIRS,
@@ -215,6 +244,7 @@ module.exports = {
   isExcludedDir,
   isExcludedPath,
   isSensitivePath,
+  isSecurityPath,
   isPersonalPath,
   noteDomain,
 };

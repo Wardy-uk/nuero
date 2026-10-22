@@ -65,6 +65,10 @@ function safePath(relativePath) {
   const resolved = path.resolve(root, relativePath);
   if (!isInside(root, resolved)) return null;
 
+  // Credentials awaiting rotation (22 Oct 2026): no read, write, list or export
+  // through this router — it is what the MCP vault tools and external chats call.
+  if (require('../services/vault-exclusions').isSecurityPath(path.relative(root, resolved))) return null;
+
   // ── Symlink escape ────────────────────────────────────────────────────────
   // If the target already exists, resolve it for real: a symlink INSIDE the
   // vault pointing outside it passes every textual test there is. A path that
@@ -150,7 +154,7 @@ router.get('/list', (req, res) => {
   if (!dirPath) return res.status(400).json({ error: 'Invalid path' });
   if (!fs.existsSync(dirPath)) return res.status(404).json({ error: 'Directory not found' });
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  const files = entries.map(e => ({
+  const files = entries.filter((e) => !require('../services/vault-exclusions').isSecurityPath(e.name)).map(e => ({
     name: e.name,
     type: e.isDirectory() ? 'directory' : 'file'
   }));

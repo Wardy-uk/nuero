@@ -1509,6 +1509,8 @@ function searchVault(query, maxResults = 5) {
       if (entry.name.startsWith('.')) continue;
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
+        // Credentials awaiting rotation (22 Oct 2026) are never searched into chat context.
+        if (require('./vault-exclusions').isSecurityPath(entry.name)) continue;
         searchDir(path.join(dirPath, entry.name), depth + 1);
       } else if (entry.name.endsWith('.md')) {
         const fullPath = path.join(dirPath, entry.name);
