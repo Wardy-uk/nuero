@@ -75,7 +75,8 @@ export function DraftsView({ data, openKey = null, openMode = null, readOnly = f
   return (
     <section className="drafts" aria-label="Drafts">
       <h1 className="drafts__title">Drafts</h1>
-      <p className="drafts__sub">What SAiM has prepared and the work it has set up for you — kept until you finish it. Nothing is saved, booked or sent until you confirm it.</p>
+      {/* ⚠ Not "nothing is saved or booked until you confirm" — the page shows saved drafts and booked time below. */}
+      <p className="drafts__sub">Nothing is saved, booked or sent without your confirmation. Once confirmed, your draft and planned work stay here until you finish or abandon them.</p>
       {readOnly && <p className="drafts__sub">This screen shows Drafts; it can’t act on them.</p>}
       {(data.gaps || []).map((g, i) => <p key={i} className="drafts__gap">{g}</p>)}
       {message && <p className="drafts__msg" role="status">{message}</p>}

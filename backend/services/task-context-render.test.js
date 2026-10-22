@@ -200,3 +200,18 @@ test('the task card says WHY nothing is pinned while automatic linking is off', 
   const out = html(React.createElement(TC.default, { taskId: 31, call, editable: true, initial: data({ automatic: { enabled: false, say: 'x' } }) }));
   assert.match(out, /Automatic linking is off until the vault cleanup is done — you can link context by hand/);
 });
+
+test('Drafts intro: never claims nothing is saved or booked while saved, booked work is on the page', async () => {
+  const D = await load('saim/app/src/views/Drafts.jsx');
+  const work = [{ moveKey: 'saim-move:v2:project-note:task:350', recordId: 'r1', title: 'Nova call metrics', kindLabel: 'Private working draft', path: 'Projects/Working/Nova (private draft).md',
+    task: { id: 350, text: 'Nick to build call/productivity metrics in Nova', status: 'open' }, block: { date: '2026-10-23', start: '10:30', end: '11:00', label: 'Friday 23 October, 10:30–11:00' },
+    status: 'Draft saved · scheduled for Friday 23 October, 10:30' }];
+  const data = { ok: true, items: [], sections: { confirm: [], work, communication: [], history: [] }, gaps: [] };
+  for (const readOnly of [false, true]) { // desktop/phone, and the kiosk
+    const out = html(React.createElement(D.DraftsView, { data, readOnly, onOpen: () => {}, onClose: () => {}, renderItem: () => null }));
+    assert.match(out, /Draft saved · scheduled for Friday 23 October/, 'positive control: saved, booked work is shown');
+    assert.doesNotMatch(out, /until you confirm it/i);
+    assert.doesNotMatch(out, /nothing is (saved|booked)[^.]*until/i, 'the contradiction cannot come back in other words');
+    assert.match(out, /Nothing is saved, booked or sent without your confirmation\. Once confirmed, your draft and planned work stay here until you finish or abandon them\./);
+  }
+});
