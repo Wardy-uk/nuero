@@ -378,8 +378,11 @@ async function checkMeetingAlerts() {
     const in10 = now + 10 * 60 * 1000;
     const in15 = now + 15 * 60 * 1000;
 
+    const mf = require('./meeting-finish');
+    const skipped = mf.list(now);
     const upcoming = calendar.filter(e => {
       if (e.is_all_day) return false;
+      if (mf.isSkipped(e, skipped)) return false; // he said he is not going
       const start = new Date(e.start_time).getTime();
       return start > in10 && start <= in15;
     });

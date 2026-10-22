@@ -95,6 +95,33 @@ function keyFor(event) {
 }
 
 /**
+ * Has Nick said he is not going to this occurrence? PURE.
+ *
+ * Takes either shape: the attention calendar's `{id, start}` or a raw
+ * `calendar_cache` row's `{event_id, start_time}`. ⚠ Every reader that works off
+ * the RAW cache (decision-engine's meeting card, the 10-minute alert, the
+ * prepared-move planner) must ask this — `applyTo` only covers readers that go
+ * through `attention._calendarInput`, and on 22 Oct 2026 the meeting card, the
+ * prep nudge, the 10-minute push and a prepared meeting-prep move all fired for
+ * a meeting he had said he was not going to.
+ */
+function isSkipped(event, entries) {
+  if (!isObj(event) || !isObj(entries)) return false;
+  const key = keyFor({
+    id: event.id != null ? event.id : event.event_id,
+    start: event.start != null ? event.start : event.start_time,
+    subject: event.subject,
+  });
+  const hit = key ? entries[key] : null;
+  return isObj(hit) && hit.notAttending === true;
+}
+
+/** `isSkipped` against the live store. Never throws — an unreadable store skips nothing. */
+function skippedNow(event, now = new Date()) {
+  return isSkipped(event, list(now));
+}
+
+/**
  * Drop entries whose meeting was due to end before `now`. PURE.
  *
  * At that point the calendar says the same thing the override does, so the
@@ -244,6 +271,8 @@ function resume(key, now = new Date()) {
 
 module.exports = {
   keyFor,
+  isSkipped,
+  skippedNow,
   prune,
   applyTo,
   list,

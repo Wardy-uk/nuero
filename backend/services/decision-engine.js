@@ -271,10 +271,14 @@ function collectMeetings(ctx) {
 
   const now = new Date();
   const twoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  // "I'm not going" — read once per pass, never per event.
+  let skipped = {};
+  try { skipped = require('./meeting-finish').list(now); } catch { skipped = {}; }
 
   for (const event of ctx.calendar) {
     if (event.is_all_day) continue;
     if (isNotForAttention(event)) continue;
+    if (require('./meeting-finish').isSkipped(event, skipped)) continue;
     const start = new Date(event.start_time);
     if (start <= now || start > twoHours) continue;
 

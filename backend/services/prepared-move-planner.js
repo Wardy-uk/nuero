@@ -403,6 +403,7 @@ async function gather(n, ctx) {
     const ev = deps.meetingEvent(n.source.eventId);
     if (!ev) return { ok: false, withhold: 'gone', why: 'That meeting is no longer in your calendar.' };
     if (ev.show_as === 'cancelled') return { ok: false, withhold: 'gone', why: 'That meeting has been cancelled.' };
+    if (require('./meeting-finish').skippedNow(ev)) return { ok: false, withhold: 'gone', why: 'You said you’re not going to that meeting.' };
     if (ev.attendees_other !== 1) return { ok: false, withhold: 'not-a-commitment', why: 'Nobody else is in it.' };
     if (ONE_TO_ONE.test(ev.subject || '')) return { ok: false, withhold: 'employment-route', why: '1-2-1 preparation is NOVA’s.' };
     if (ledger.hrSensitivity(ev.subject || '', ev.subject || '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-meeting-title'], why: 'Its title reads as an employment matter.' };
@@ -896,6 +897,7 @@ function prescreen(n, deps, nowMs) {
   if (n.kind === 'meeting-prep') {
     const ev = deps.meetingEvent(n.source.eventId);
     if (!ev || ev.show_as === 'cancelled' || ev.attendees_other !== 1) return 'not-a-commitment';
+    if (require('./meeting-finish').skippedNow(ev)) return 'gone';
     if (ONE_TO_ONE.test(ev.subject || '') || ledger.hrSensitivity(ev.subject || '', ev.subject || '').sensitive) return 'employment-route';
     const st = String(ev.start_time).slice(0, 16);
     if (require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16)) - nowMs < MIN_MEETING_LEAD_MIN * 60000) return 'too-soon';
@@ -972,6 +974,7 @@ async function recheck(packet, { deps: over = {} } = {}) {
   if (s.kind === 'meeting-prep') {
     const ev = deps.meetingEvent(s.source.eventId);
     if (!ev || ev.show_as === 'cancelled') return { ok: false, why: 'the meeting is no longer in your calendar' };
+    if (require('./meeting-finish').skippedNow(ev)) return { ok: false, why: 'you said you’re not going to that meeting' };
     if (String(ev.start_time).slice(0, 16) !== String(s.forum && s.forum.start)) return { ok: false, why: 'the meeting has moved since this was prepared' };
     return { ok: true };
   }
