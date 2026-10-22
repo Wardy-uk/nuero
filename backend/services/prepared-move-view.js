@@ -205,6 +205,8 @@ function outstandingFrom(active, now = Date.now()) {
   const rows = [];
   for (const rec of active || []) {
     const s = (rec.packet || {}).selected || {};
+    // Prep for a meeting that has started is no longer open work (22 Oct 2026).
+    if (require('./prepared-move-planner').meetingStarted(s, now)) continue;
     const booked = st.scheduledFor(rec.moveKey);
     let state; let say;
     if (s.plan === 'ask') { state = 'needs-answer'; say = 'Needs an answer from you before I can go on.'; }

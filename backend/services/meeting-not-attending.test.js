@@ -61,3 +61,13 @@ test('meeting prep stops being offered once the meeting has started', async () =
   assert.equal(r.ok, false);
   assert.match(r.why, /already started/);
 });
+
+test('the "Also open" list drops prep for a meeting that has started', () => {
+  const { outstandingFrom } = require('./prepared-move-view');
+  const rec = (id, start) => ({ id, version: 1, moveKey: `k-${id}`, packet: { origin: 'scan', selected: { kind: 'meeting-prep', plan: 'draft', title: id, forum: { start } } } });
+  const now = Date.parse('2026-10-22T16:20:00Z'); // 17:20 London
+  const rows = outstandingFrom([rec('past', '2026-10-22T16:00'), rec('later', '2026-10-23T10:00')], now);
+  const ids = rows.map((r) => r.recordId);
+  assert.ok(ids.includes('later'), 'positive control');
+  assert.ok(!ids.includes('past'));
+});

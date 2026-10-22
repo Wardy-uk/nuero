@@ -951,6 +951,14 @@ async function eligibleNow({ now = Date.now(), deps: over = {} } = {}) {
  * still exists and is still owed, nothing else has taken it forward, and the
  * draft still screens clean. Used by the fresh checks before any write.
  */
+/** PURE-ish (clock only). Has the meeting a meeting-prep move is for already started? Unknown → false. */
+function meetingStarted(selected, nowMs = Date.now()) {
+  const st = String((selected && selected.forum && selected.forum.start) || '').slice(0, 16);
+  if (!selected || selected.kind !== 'meeting-prep' || st.length < 16) return false;
+  const startMs = require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16));
+  return Number.isFinite(startMs) && startMs <= nowMs;
+}
+
 async function recheck(packet, { deps: over = {} } = {}) {
   const deps = { ...DEFAULT_DEPS, ...over };
   const s = packet && packet.selected;
@@ -978,9 +986,7 @@ async function recheck(packet, { deps: over = {} } = {}) {
     if (String(ev.start_time).slice(0, 16) !== String(s.forum && s.forum.start)) return { ok: false, why: 'the meeting has moved since this was prepared' };
     // Prep for a meeting that has started is no longer prep (22 Oct 2026: the
     // 16:00 prep was still on the Surface at 17:20, under the next diary item).
-    const st = String(ev.start_time).slice(0, 16);
-    const startMs = require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16));
-    if (Number.isFinite(startMs) && startMs <= Date.now()) return { ok: false, why: 'the meeting has already started' };
+    if (meetingStarted(s)) return { ok: false, why: 'the meeting has already started' };
     return { ok: true };
   }
   if (s.screens && s.screens.employment && s.screens.employment.mode === 'private-draft' && s.plan === 'draft') {
@@ -1002,7 +1008,7 @@ async function recheck(packet, { deps: over = {} } = {}) {
   return { ok: true };
 }
 
-module.exports = {
+module.exports = { meetingStarted,
   CONTRACT, KINDS, DO_ADAPTERS, DENY_FOLDERS, BLOCK_MINUTES, ANSWER_MAX, MIN_MEETING_LEAD_MIN,
   moveKeyFor, quickEligible, safeTitle, ungrounded, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
   planAndStore, recheck, prescreen, promiseMode, destinationFor, MUST_NOT_PRIVATE, eligibleNow, rowIdsFor, projectFolders, nextSlot, SLOT_WORKING_DAYS, DEFAULT_DEPS,
