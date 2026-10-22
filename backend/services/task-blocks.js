@@ -432,6 +432,18 @@ function vaultRoot() {
  * absent note: "Nick has not written it up" and "the vault is not mounted" are
  * different facts and only one of them should hold a task open.
  */
+/**
+ * An outcome note that was ARCHIVED (22 Oct 2026 cleanup: 82 empty stubs of
+ * closed blocks moved to Archive/ and `note_path` repointed there). It is the
+ * block's history, kept readable, and NEVER written to, recreated or substituted
+ * by a search — writing a checklist into an archived file, or finding another
+ * block's stub by task id and treating it as this one, would both be wrong.
+ */
+function isArchivedNote(notePath) {
+  const p = String(notePath || '').replace(/\\/g, '/');
+  return p.startsWith('Archive/') || p.includes('/Archive/');
+}
+
 function readOutcomeNote(block) {
   const root = vaultRoot();
   if (!root) return { raw: null, foundPath: null, error: 'OBSIDIAN_VAULT_PATH not set' };
@@ -445,6 +457,9 @@ function readOutcomeNote(block) {
   } catch (e) {
     return { raw: null, foundPath: null, error: e.message };
   }
+
+  // An archived note is not searched for elsewhere: it is where the record is.
+  if (isArchivedNote(block.note_path)) return { raw: null, foundPath: null, error: null, archived: true };
 
   // Moved or renamed — find it by the ids it carries.
   const taskIds = db.listTaskBlockItems(block.id).map(i => i.task_id);
@@ -500,6 +515,7 @@ function findOutcomeByTaskIds(root, taskIds, dateKey) {
 function writeStub(task, block) {
   const root = vaultRoot();
   if (!root) return { written: false, reason: 'OBSIDIAN_VAULT_PATH not set' };
+  if (isArchivedNote(block.note_path)) return { written: false, reason: 'the outcome note is archived' };
 
   const full = path.join(root, block.note_path);
   try {
@@ -1167,6 +1183,7 @@ function writeChecklistToNote(blockId) {
   const items = db.listTaskBlockItems(blockId);
   if (items.length < 2) return;   // a single-task note carries no checklist
 
+  if (isArchivedNote(block.note_path)) return;   // history: never rewritten
   const note = readOutcomeNote(block);
   if (note.error || note.raw == null) return;
 
@@ -1234,6 +1251,7 @@ function release(blockId, reason, { completeTask = true } = {}) {
 function createNote(blockId) {
   const block = db.getTaskBlockRow(blockId);
   if (!block) return { ok: false, error: `No block #${blockId}` };
+  if (isArchivedNote(block.note_path)) return { ok: false, created: false, notePath: block.note_path, reason: 'archived', error: 'This block’s outcome note was archived (it was empty) — nothing to create' };
 
   const items = db.listTaskBlockItems(blockId);
   if (!items.length) return { ok: false, error: 'That block has no tasks in it' };
@@ -2395,6 +2413,7 @@ function liveBlock(rows = [], now = new Date(), { leadMinutes = BLOCK_LEAD_MINUT
 }
 
 module.exports = {
+  isArchivedNote,
   BLOCK_LEAD_MINUTES,
   blockMoves,
   followCalendar,

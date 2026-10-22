@@ -592,7 +592,7 @@ server.tool('list_people', 'List all people in the vault', {}, async () => {
 // ═══════════════════════════════════════════════════════
 
 server.tool('vault_lint',
-  'Read-only vault health scan: broken [[links]], orphans (no links in/out), under-linked People notes, and stale notes. Writes a dated report to Documents/System/Vault Audit/. Touches nothing else.',
+  'Read-only vault health scan: broken [[links]], orphans (no links in/out), under-linked People notes, and stale notes. NEURO keeps the report in its database (GET /api/vault-hygiene/reports) — nothing is written into the vault.',
   {},
   async () => {
     const data = await neuroApi('/api/vault-hygiene/lint', { timeout: 30000 });

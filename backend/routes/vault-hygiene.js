@@ -6,7 +6,9 @@
  * files through vault-hooks so embeddings/entities stay in sync — the whole point
  * of NEURO owning this rather than a throwaway script.
  *
- *   GET  /lint                  read-only health scan (+ dated report)
+ *   GET  /lint                  read-only health scan (+ a report stored in NEURO)
+ *   GET  /reports               the stored reports, newest first (no bodies)
+ *   GET  /reports/:id           one stored report, with its markdown
  *   POST /contextual-link/plan  propose links (cards) — read-only
  *   POST /contextual-link/apply append "## Mentioned" blocks (backed up, idempotent)
  *   GET  /alias-suggest         propose People aliases for near-match variants
@@ -149,6 +151,24 @@ router.get('/alias-suggest', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/vault-hygiene/reports — vault-hygiene and PLAUD reconciliation
+// reports, which NEURO stores in its database rather than as dated vault notes
+// (22 Oct 2026). Newest first, without bodies; ?kind= narrows to one kind.
+router.get('/reports', (req, res) => {
+  try {
+    const reports = require('../services/audit-reports').list({ kind: req.query.kind || null, limit: req.query.limit });
+    res.json({ ok: true, reports });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/vault-hygiene/reports/:id — one stored report with its markdown.
+router.get('/reports/:id', (req, res) => {
+  if (!/^\d+$/.test(String(req.params.id))) return res.status(400).json({ error: 'id must be a number' });
+  const r = require('../services/audit-reports').get(req.params.id);
+  if (!r) return res.status(404).json({ error: 'No such report' });
+  res.json({ ok: true, report: r });
 });
 
 module.exports = router;

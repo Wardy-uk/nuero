@@ -173,7 +173,7 @@ test('identical SAiM lines on one day fold into ONE entry with a count', () => {
   assert.equal(out[0].summary, '3 times that day.');
 });
 
-test('the hygiene sweep writes nothing on a no-change night, and never a dated file', () => {
+test('the hygiene sweep writes nothing into the vault on a no-change night', () => {
   const vh = require('./vault-hygiene');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-sweep-'));
   const r1 = vh.nightlySweep(root, { apply: true });
@@ -183,21 +183,9 @@ test('the hygiene sweep writes nothing on a no-change night, and never a dated f
   assert.equal(fs.existsSync(path.join(root, 'Documents', 'System', 'Vault Audit')), false, 'no report folder on a no-op');
 });
 
-test('the rolling sweep file is rewritten only when its content would change', () => {
-  const vh = require('./vault-hygiene');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-sweep2-'));
-  const dir = path.join(root, 'Documents', 'System', 'Vault Audit');
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'Hygiene Sweep.md');
-  // A rolling file left by an earlier night that kept nothing.
-  fs.writeFileSync(file, '# Hygiene Sweep — last change 2026-10-01\r\n\r\n- Summary-N duplicates archived: **2**\r\n');
-  const before = fs.readFileSync(file, 'utf-8');
-  const r = vh.nightlySweep(root, { apply: true });
-  assert.equal(r.written, false);
-  assert.equal(fs.readFileSync(file, 'utf-8'), before, 'the last real change stays on the page');
-  assert.equal(r.reportPath, 'Documents/System/Vault Audit/Hygiene Sweep.md');
-  assert.deepEqual(fs.readdirSync(dir), ['Hygiene Sweep.md'], 'no dated sweep file appears beside it');
-});
+// The rolling `Hygiene Sweep.md` this file used to pin is gone too: since pass 2
+// of the cleanup (22 Oct 2026) the sweep's report lives in NEURO's database —
+// see vault-cleanup-pass2.test.js.
 
 test('source: no generated report writes the [[Logs]] footer or a dated sweep name', () => {
   for (const f of ['imports.js', 'plaud-sync.js', 'knowledge-memory.js', 'vault-hygiene.js']) {

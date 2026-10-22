@@ -1383,7 +1383,6 @@ function getStatus() {
 // pipeline as syncPlaudRecordings.
 // ═══════════════════════════════════════════════════════
 
-const REPORT_FOLDER = 'Documents/System/Vault Audit';
 // Active scan skips Archive (the whole point) + non-note/system dirs.
 const RECONCILE_EXCLUDE = new Set(['Archive', '.obsidian', '.git', '.trash', '.stfolder', '.stversions', '.sync', '.claude', 'Templates', 'Scripts', 'node_modules', 'Conflicts']);
 
@@ -1513,11 +1512,13 @@ async function reconcilePlaudRecordings({ minJaccard = 0.5, write = true } = {})
       '| Date | PLAUD ID | Title |', '|---|---|---|',
       ...missing.map((m) => `| ${m.date} | \`${m.id}\` | ${m.title.replace(/\|/g, '\\|')} |`),
     ];
-    const dir = path.join(getVaultPath(), REPORT_FOLDER);
-    fs.mkdirSync(dir, { recursive: true });
-    const outPath = path.join(dir, `PLAUD Missing Reconciliation ${new Date().toISOString().slice(0, 10)}.md`);
-    fs.writeFileSync(outPath, lines.join('\n') + '\n', 'utf-8');
-    reportPath = path.relative(getVaultPath(), outPath).replace(/\\/g, '/');
+    // Stored in NEURO's database, not as a dated vault note (22 Oct 2026 — see
+    // services/audit-reports.js). `reportPath` is now its reference.
+    reportPath = require('./audit-reports').record({
+      kind: 'plaud-missing-reconciliation',
+      title: `PLAUD Missing Reconciliation ${new Date().toISOString().slice(0, 10)}`,
+      markdown: lines.join('\n') + '\n',
+    });
   }
 
   return {

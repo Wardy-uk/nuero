@@ -72,7 +72,7 @@ const OPTIONS = [
     title: 'Scan the graph',
     effect: 'read',
     what: 'Walks every note and works out which links are broken, which notes nothing links to, which people are mentioned in prose but never linked, and which notes have gone stale.',
-    changes: 'Nothing in your notes. It writes one dated report into Documents/System/Vault Audit/.',
+    changes: 'Nothing in your notes. NEURO keeps the report itself (Reports, below) — nothing is written into the vault.',
     wont: 'It never edits, moves or deletes a note, and it never follows up on what it finds.',
     note: 'A link into Archive/ is NOT counted as broken — archiving is correct behaviour, and counting it buried the real breaks under three times as many false ones.',
     run: () => callJson('/api/vault-hygiene/lint'),
@@ -83,7 +83,7 @@ const OPTIONS = [
     title: 'Preview link repairs',
     effect: 'read',
     what: 'Takes every broken link and works out which ones point at a note that still exists under a different name, and which point at something that exists nowhere at all.',
-    changes: 'Nothing in your notes. It writes a dated Fix Plan into Documents/System/Vault Audit/, and the machine-readable version to Scripts/.lint-plan.json.',
+    changes: 'Nothing in your notes. NEURO keeps the Fix Plan report (Reports, below); the machine-readable version goes to Scripts/.lint-plan.json, which the apply step reads.',
     wont: 'It repoints nothing. Where two notes match a broken name equally well it proposes nothing at all — a tie is a skip, not a coin toss.',
     note: 'A link into Archive/ and a link to a note that exists nowhere are counted apart, because they are different problems: the first points at something you archived on purpose, the second is usually a name that was never written.',
     run: () => post('/api/vault-hygiene/fix/plan'),
@@ -273,7 +273,7 @@ export default function BrainHealthPanel() {
           </div>
           <div className="brain__scanned">
             {lint.data.scanned} notes scanned
-            {lint.data.reportPath && <> · report written to <code>{lint.data.reportPath}</code></>}
+            {lint.data.reportPath && <> · report kept in NEURO (Reports, below)</>}
           </div>
         </>
       )}
@@ -296,6 +296,9 @@ export default function BrainHealthPanel() {
 
       {/* Task context's nightly scan: off until Nick enables it after the vault cleanup. */}
       <TaskContextActivation />
+
+      {/* Reports NEURO keeps instead of writing dated pages into the vault (22 Oct 2026). */}
+      <StoredReports />
 
       {/* ── The jobs ─────────────────────────────────────────────────────── */}
       <div className="brain__h brain__h--section">Jobs</div>
@@ -389,8 +392,8 @@ export default function BrainHealthPanel() {
                 {option.extra && option.extra(state.result) && (
                   <span className="brain__result-extra">{option.extra(state.result)}</span>
                 )}
-                {state.result.reportPath && (
-                  <span className="brain__result-extra">Report: {state.result.reportPath}</span>
+                {(state.result.reportPath || state.result.changelogPath) && (
+                  <span className="brain__result-extra">Report kept in NEURO — see Reports, below.</span>
                 )}
                 {/* A pick whose link has changed since the preview matches
                     nothing. Saying so is the difference between "I applied
@@ -613,5 +616,45 @@ function Count({ n, label, hint, muted }) {
       <span className="brain__l">{label}</span>
       <span className="brain__hint">{hint}</span>
     </div>
+  );
+}
+
+/**
+ * The reports vault-hygiene and PLAUD reconciliation used to write as dated
+ * notes in Documents/System/Vault Audit/. NEURO keeps them now; this lists
+ * them and opens one. Read-only.
+ */
+export function StoredReports() {
+  const [state, setState] = useState({ loading: true, error: null, reports: [] });
+  const [open, setOpen] = useState(null);
+  useEffect(() => {
+    callJson('/api/vault-hygiene/reports?limit=30')
+      .then((r) => setState({ loading: false, error: null, reports: r.reports || [] }))
+      .catch((e) => setState({ loading: false, error: e.message, reports: [] }));
+  }, []);
+  async function show(id) {
+    if (open && open.id === id) { setOpen(null); return; }
+    try { setOpen((await callJson(`/api/vault-hygiene/reports/${id}`)).report); } catch (e) { setOpen({ id, title: 'Could not open', markdown: e.message }); }
+  }
+  return (
+    <section className="brain__reports" aria-label="Reports">
+      <div className="brain__h brain__h--section">Reports</div>
+      <p className="brain__note">Kept by NEURO, not written into the vault. The newest of each kind is first.</p>
+      {state.loading && <div className="brain__note">Loading reports…</div>}
+      {state.error && <div className="brain__note brain__note--err">Couldn’t read the reports: {state.error}.</div>}
+      {!state.loading && !state.error && state.reports.length === 0 && <div className="brain__note">No reports yet — the next scan or tidy job will keep one here.</div>}
+      {state.reports.length > 0 && (
+        <ul className="brain__report-list">
+          {state.reports.map((r) => (
+            <li key={r.id}>
+              <button type="button" className="brain__report" onClick={() => show(r.id)} aria-expanded={!!(open && open.id === r.id)}>
+                {r.title}
+              </button>
+              {open && open.id === r.id && <pre className="brain__report-body">{open.markdown}</pre>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
