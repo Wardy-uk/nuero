@@ -1,3 +1,16 @@
+# Session Handoff — 2026-10-22 (vault cleanup pass 2 — DONE)
+
+## Done and deployed (origin/main, pi5)
+- 247 of 257 archived with backups + record; 10 preflight failures left in place (see `docs/vault-cleanup-pass2-2026-10-22.md`).
+- Vault Audit writers → NEURO's database (Brain Health → Reports). Archived outcome notes read-only in task-blocks.
+- Live DB migrated (backup at /mnt/data/backups/vault-cleanup-2026-10-22-pass2/agent-before-migration.db); behaviour snapshot identical.
+- Security review/ walled off from NEURO (c7fda2b7). Credentials still need ROTATING.
+
+## Waiting on Nick
+1. Rotate the credentials in Security review/.
+2. Enable task-context linking in Brain Health when ready (the backfill).
+3. Remaining triage questions (Plaud duplicates, parked projects, captures) — `docs/vault-triage-2026-10-22.md` (branch vault-triage, unpushed).
+
 # Session Handoff — 2026-10-22 (approved vault cleanup — executed)
 
 ## Done and deployed (origin/main, pi5)
