@@ -179,3 +179,24 @@ test('the SAiM scenes keep the locked readout (not the workspace cards)', () => 
   assert.doesNotMatch(out, /kmw__card/);
   assert.match(out, /kmw__week/);
 });
+
+test('Brain Health: automatic context linking is OFF and says it is waiting; enabling quotes the backfill and needs the tick', async () => {
+  const act = await load('frontend/src/components/TaskContextActivation.jsx');
+  const status = { ok: true, enabled: false, say: 'Automatic context linking is off — it is waiting for the vault cleanup to be approved and done.', enableSay: 'Enabling scans every open task against the whole vault NOW (the backfill)…', schedule: 'Every night at 03:40' };
+  const idle = html(React.createElement(act.ActivationView, { status }));
+  assert.match(idle, /waiting for the vault cleanup/);
+  assert.match(idle, /Enable automatic context linking…/);
+  assert.doesNotMatch(idle, /Run the backfill and enable/, 'one press never enables it');
+  const confirm = html(React.createElement(act.ActivationView, { status, step: 'confirm', ticked: false }));
+  assert.match(confirm, /What happens when you enable it:/);
+  assert.match(confirm, /\(the backfill\)/);
+  assert.match(confirm, /<button[^>]*disabled=""[^>]*>Run the backfill and enable/, 'disabled until the cleanup tick');
+  assert.doesNotMatch(html(React.createElement(act.ActivationView, { status, step: 'confirm', ticked: true })), /disabled=""[^>]*>Run the backfill/);
+  const on = html(React.createElement(act.ActivationView, { status: { ...status, enabled: true, say: 'Automatic context linking is on — every night at 03:40.' } }));
+  assert.match(on, /Turn automatic linking off/);
+});
+
+test('the task card says WHY nothing is pinned while automatic linking is off', () => {
+  const out = html(React.createElement(TC.default, { taskId: 31, call, editable: true, initial: data({ automatic: { enabled: false, say: 'x' } }) }));
+  assert.match(out, /Automatic linking is off until the vault cleanup is done — you can link context by hand/);
+});

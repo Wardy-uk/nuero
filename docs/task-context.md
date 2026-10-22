@@ -30,8 +30,19 @@ a link, or an empty run.
 ## The nightly scan
 
 Durable job `task-context-scan`, **03:40 every night** (catch-up `latest`), registered in
-`scheduler.start()` beside the other whole-vault/external jobs. Manual run: `POST
-/api/task-context/scan` (Nick only). Idempotent: an unchanged vault and task list change no row.
+`scheduler.start()` beside the other whole-vault/external jobs. Idempotent: an unchanged vault and
+task list change no row.
+
+⚠ **OFF BY DEFAULT — deploying never performs the backfill.** Until Nick enables it
+(`agent_state.task_context_activation`), the job returns `{ skipped: 'not-enabled' }` and every
+scan door (`runScan`, `POST /scan`) refuses with 409 — no scan, no pin, no suggestion, no stale
+mark, no run receipt, not even a table. `GET /api/task-context/status` and NEURO → **Brain
+Health → Automatic context linking** say it is waiting for the vault cleanup. Enabling there is
+two steps (the second quotes exactly what happens and needs the "cleanup is done" tick) →
+`POST /api/task-context/activate {confirm: true}` turns it on and runs **the backfill** at once;
+if the backfill fails nothing is enabled. Then 03:40 nightly. `POST /deactivate` turns it off;
+links stay. Activate, deactivate and scan are machine-refused and interactive in the gateway.
+Manual links and removals made before activation are kept by the backfill.
 
 **Pinned automatically** (explicit evidence, or a title with independent support):
 - the note the task was **raised in** (`origin_path`);
@@ -104,5 +115,6 @@ A body with any unnamed field (a list, an `items` array) is refused with 400.
 
 ## Backfill
 
-Not run. It waits for the vault cleanup (`docs/vault-cleanup-manifest-2026-10-22.md`) to be
-approved and done, then is one press of `POST /api/task-context/scan` from NEURO.
+Not run, and deployment cannot run it. It waits for the vault cleanup
+(`docs/vault-cleanup-manifest-2026-10-22.md`) to be approved and done; then Nick enables
+automatic context linking in Brain Health, which runs it.

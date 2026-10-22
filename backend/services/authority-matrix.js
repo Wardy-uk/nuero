@@ -139,6 +139,9 @@ const ROUTE_RULES = Object.freeze([
   // open to a chat on Nick's explicit word (domain default); running the whole-vault
   // scan is his alone — the gateway marks it interactive.
   R('POST', '/api/task-context/scan', 'internal.state', { machine: 'refuse' }),
+  // Turning automatic linking on runs the backfill; on or off, it is Nick's decision alone.
+  R('POST', '/api/task-context/activate', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/task-context/deactivate', 'internal.state', { machine: 'refuse' }),
   // 20 Oct 2026: what SAiM may do — every route, reads included, is Nick's.
   R('GET', '/api/saim-authority/status', 'saim.authority'),
   R('POST', '/api/saim-authority/grant/preview', 'saim.authority'),

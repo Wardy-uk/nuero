@@ -115,7 +115,33 @@ router.post('/scan', (req, res) => {
     if (bad) return res.status(400).json({ ok: false, error: bad });
     const r = svc().runScan({ trigger: 'manual' });
     if (r.busy) return res.status(409).json(r);
-    send(res, r.ok ? r : { ...r, status: 500 });
+    send(res, r.ok ? r : { ...r, status: r.status || 500 });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// GET /api/task-context/status — is automatic (nightly) task context linking on? Off until Nick enables it after the vault cleanup; says what enabling would do
+router.get('/status', (req, res) => {
+  try { res.json(svc().status()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/task-context/activate — Nick turns on automatic nightly task context linking. Runs the BACKFILL immediately (body.confirm must be true). Refused to machine clients.
+router.post('/activate', (req, res) => {
+  try {
+    if (byOf(req) !== 'nick') return res.status(403).json({ ok: false, error: 'Only Nick, in NEURO, can turn on automatic context linking.' });
+    const { confirm } = req.body || {};
+    const bad = strict(req.body, ['confirm']);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    send(res, svc().activate({ by: 'nick', confirm }));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/task-context/deactivate — Nick turns automatic nightly task context linking off again; every link stays as it is. Refused to machine clients.
+router.post('/deactivate', (req, res) => {
+  try {
+    if (byOf(req) !== 'nick') return res.status(403).json({ ok: false, error: 'Only Nick, in NEURO, can turn automatic context linking off.' });
+    const bad = strict(req.body, []);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    send(res, svc().deactivate({ by: 'nick' }));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

@@ -163,11 +163,72 @@ test('reads before any scan create no table and answer empty', () => {
   assert.equal(tc._internals._exists(), false, 'a read must not create the tables');
 });
 
-test('nightly scan: explicit evidence and supported titles pin; vague matches and excluded material never appear', () => {
+// ── The activation boundary: deploying must not perform the backfill ─────────
+
+test('DEFAULT after deployment: the 03:40 job and every scan door do NOTHING — no table, no link, no receipt, no vault write', async () => {
   const before = snapshotVault();
-  const r = tc.runScan({ trigger: 'test' });
+  const st = tc.status();
+  assert.equal(st.enabled, false);
+  assert.match(st.say, /waiting for the vault cleanup/);
+  assert.match(st.enableSay, /backfill/);
+  tc.registerJob();
+  const job = require('./runtime-jobs')._jobs.get('task-context-scan');
+  assert.equal(job.cron, '40 3 * * *', 'registered and visible');
+  assert.deepEqual(await job.run(), { skipped: 'not-enabled', say: tc.WAITING_SAY }, 'the scheduled run is a recorded no-op, not a failure');
+  const direct = tc.runScan({ trigger: 'nightly' });
+  assert.equal(direct.ok, false);
+  assert.equal(direct.disabled, true);
+  assert.equal(tc._internals._exists(), false, 'not even a table');
+  const http1 = await call('POST', '/scan', {});
+  assert.equal(http1.status, 409, 'Nick pressing scan before enabling is refused too — the backfill has ONE door');
+  assert.equal((await call('GET', '/status')).json.enabled, false);
+  // the switch: never by a machine, never without the confirmation
+  assert.equal(tc.activate({ by: 'machine:mcp-local', confirm: true }).status, 403);
+  assert.equal(tc.activate({ by: 'nick' }).status, 400);
+  assert.equal((await call('POST', '/activate', { confirm: true }, MACHINE)).status, 403);
+  assert.equal((await call('POST', '/activate', { confirm: true }, { 'X-NEURO-PIN': 'pin-1234', 'X-Neuro-Machine-Client': 'mcp-local' })).status, 403);
+  assert.equal((await call('POST', '/activate', { confirm: true, now: 1 })).status, 400, 'an unnamed field is refused');
+  assert.equal(tc.status().enabled, false);
+  assert.equal(tc._internals._exists(), false);
+  assert.deepEqual(snapshotVault(), before);
+});
+
+let G;
+test('manual linking works before activation; a removal made then is kept', () => {
+  G = taskStore.createTask({ text: 'Review the triage checklist draft wording', source: 'test', origin_path: DRAFT });
+  let r = tc.link({ taskId: E.id, type: 'note', ref: IDEAS });
   assert.equal(r.ok, true, r.error);
-  assert.deepEqual(snapshotVault(), before, 'the scan wrote nothing to the vault');
+  assert.equal(r.link.origin, 'manual');
+  // G was raised in DRAFT, so the scan WOULD pin it; Nick links and then removes it first.
+  r = tc.link({ taskId: G.id, type: 'note', ref: DRAFT });
+  assert.equal(tc.remove({ taskId: G.id, linkId: r.link.id }).ok, true);
+  assert.equal(tc.forTask(E.id).automatic.enabled, false);
+  assert.match(tc.forTask(E.id).automatic.say, /waiting for the vault cleanup/);
+  assert.equal(db.get(`SELECT COUNT(*) AS n FROM task_context_runs`).n, 0, 'manual linking writes no run receipt');
+  assert.equal(db.get(`SELECT COUNT(*) AS n FROM task_context_links WHERE origin = 'nightly-scan'`).n, 0, 'nothing automatic yet');
+});
+
+test('Nick enables it: the backfill runs once, then the job runs at 03:40; manual links and removals survive', () => {
+  const before = snapshotVault();
+  const on = tc.activate({ by: 'nick', confirm: true });
+  assert.equal(on.ok, true, on.error);
+  assert.deepEqual(snapshotVault(), before, 'the backfill wrote nothing to the vault');
+  const st = tc.status();
+  assert.equal(st.enabled, true);
+  assert.equal(st.backfill.runId, on.runId);
+  assert.equal(db.get(`SELECT trigger FROM task_context_runs WHERE id = ?`, [on.runId]).trigger, 'backfill');
+  assert.equal(tc.activate({ by: 'nick', confirm: true }).already, true, 'a second press does not run a second backfill');
+  // preserved
+  const e = tc.forTask(E.id).pinned.find((p) => p.ref === IDEAS);
+  assert.equal(e && e.origin, 'manual');
+  assert.ok(![...tc.forTask(G.id).pinned, ...tc.forTask(G.id).suggestions].some((p) => p.ref === DRAFT), 'the removal made before activation is kept');
+  // remove E's manual link again so the later manual-link tests start where they did
+  tc.remove({ taskId: E.id, linkId: e.id });
+});
+
+test('the backfill: explicit evidence and supported titles pin; vague matches and excluded material never appear', () => {
+  // What the first ENABLED run (the backfill, above) did — its own receipt.
+  const r = { ok: true, receipt: tc.status().backfill.receipt };
 
   const a = tc.forTask(A.id);
   const pinned = new Map(a.pinned.map((p) => [p.ref, p]));
@@ -411,4 +472,19 @@ test('scope naming: one ordinary word is not a project; an acronym or a Capitali
   assert.deepEqual(n('payments in Tally'), ['Tally']);
   assert.deepEqual(n('tally the totals'), []);
   assert.deepEqual(n('review support operations rota'), ['Support Operations']);
+});
+
+test('turning it off stops the nightly job and keeps every link exactly as it is', async () => {
+  const rows = JSON.stringify(linkRows());
+  assert.equal((await call('POST', '/deactivate', {}, MACHINE)).status, 403, 'not a machine’s decision');
+  const off = await call('POST', '/deactivate', {});
+  assert.equal(off.status, 200);
+  assert.equal(tc.status().enabled, false);
+  const job = require('./runtime-jobs')._jobs.get('task-context-scan');
+  assert.equal((await job.run()).skipped, 'not-enabled');
+  assert.equal(JSON.stringify(linkRows()), rows, 'switching off touches no link');
+  const gw = await import('../../mcp-server/remote/api-policy.js');
+  assert.ok(gw.interactive.post_task_context_activate && gw.interactive.post_task_context_deactivate, 'interactive in the gateway');
+  const matrix = require('./authority-matrix');
+  for (const p of ['/api/task-context/activate', '/api/task-context/deactivate', '/api/task-context/scan']) assert.equal(matrix.machineDecision('POST', p).allow, false, p);
 });

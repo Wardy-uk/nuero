@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import './BrainHealthPanel.css';
+import TaskContextActivation from './TaskContextActivation.jsx';
 
 /**
  * Brain Health — vault-graph maintenance, moved out of SAiM (31 Aug 2026).
@@ -292,6 +293,9 @@ export default function BrainHealthPanel() {
           </div>
         </div>
       )}
+
+      {/* Task context's nightly scan: off until Nick enables it after the vault cleanup. */}
+      <TaskContextActivation />
 
       {/* ── The jobs ─────────────────────────────────────────────────────── */}
       <div className="brain__h brain__h--section">Jobs</div>

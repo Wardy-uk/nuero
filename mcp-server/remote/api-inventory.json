@@ -5697,6 +5697,22 @@
     "stream": false
   },
   {
+    "id": "get_task_context_status",
+    "method": "GET",
+    "route": "/api/task-context/status",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 123,
+    "description": "GET /api/task-context/status. is automatic (nightly) task context linking on? Off until Nick enables it after the vault cleanup; says what enabling would do",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_task_context_suggestions",
     "method": "GET",
     "route": "/api/task-context/suggestions",
@@ -14135,6 +14151,40 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_activate",
+    "method": "POST",
+    "route": "/api/task-context/activate",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 128,
+    "description": "POST /api/task-context/activate. Nick turns on automatic nightly task context linking. Runs the BACKFILL immediately (body.confirm must be true). Refused to machine clients.",
+    "params": [],
+    "query": [],
+    "body": [
+      "confirm"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_deactivate",
+    "method": "POST",
+    "route": "/api/task-context/deactivate",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 139,
+    "description": "POST /api/task-context/deactivate. Nick turns automatic nightly task context linking off again; every link stays as it is. Refused to machine clients.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

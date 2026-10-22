@@ -426,3 +426,11 @@
   font-style: italic;
 }
 .brain__alias code { font-size: 11px; }
+
+/* Automatic context linking (22 Oct 2026) — off until Nick enables it. */
+.brain__ctx { margin: 18px 0 6px; }
+.brain__note--wait { border-left: 3px solid var(--warning, #d69042); padding-left: 10px; }
+.brain__confirm { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border, #2a3340); border-radius: 8px; }
+.brain__confirm p { margin: 0 0 8px; line-height: 1.45; }
+.brain__tick { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 10px; }
+.brain__confirm-row { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -211,6 +211,70 @@ function _projectLinksByTask(scopes) {
   return out;
 }
 
+// ── activation: the scan is OFF until Nick turns it on (22 Oct 2026) ─────────
+//
+// ⚠ Deploying this must not silently perform the backfill. The first automatic run
+// over the current vault IS the backfill, and that waits until the vault cleanup is
+// approved and done. So the scheduled job is registered and visible but does
+// nothing — no scan, no pins, no suggestions, no stale marks, no run receipt, not
+// even a table — until Nick enables it in NEURO. Enabling runs the backfill there
+// and then, deliberately; the 03:40 job continues from the next night. Manual
+// linking and search work throughout. A machine can neither enable it nor scan.
+
+const ACTIVATION_KEY = 'task_context_activation';
+const WAITING_SAY = 'Automatic context linking is off — it is waiting for the vault cleanup to be approved and done. The first run after you enable it is the backfill.';
+const ENABLE_SAY = 'Enabling scans every open task against the whole vault NOW (the backfill), pins only high-confidence context, keeps lower-confidence matches as suggestions, and then runs every night at 03:40. Nothing is written to the vault. Links you made by hand and links you removed are kept as they are.';
+
+function activation() {
+  let a = null;
+  try { a = JSON.parse(db.getState(ACTIVATION_KEY) || 'null'); } catch { a = null; }
+  return a && typeof a === 'object' ? a : { enabled: false };
+}
+function enabled() { return activation().enabled === true; }
+
+/** READ. Whether automatic linking runs, and what Nick would be agreeing to. Creates nothing. */
+function status() {
+  const a = activation();
+  return {
+    ok: true, enabled: a.enabled === true, enabledAt: a.enabledAt || null, enabledBy: a.enabledBy || null,
+    disabledAt: a.disabledAt || null, backfill: a.backfill || null, schedule: 'Every night at 03:40',
+    say: a.enabled === true ? `Automatic context linking is on — every night at 03:40${a.backfill && a.backfill.at ? `; the backfill ran ${a.backfill.at}` : ''}.` : WAITING_SAY,
+    enableSay: ENABLE_SAY,
+    lastRun: lastRun(),
+  };
+}
+
+/**
+ * Nick turns automatic linking on. Runs the backfill NOW; if it fails, nothing is
+ * enabled (an "on" switch over a scan that never ran is a light nobody earned).
+ * Refused to anyone but Nick, and refused without the explicit confirmation.
+ */
+function activate({ by = 'nick', confirm = false, now = Date.now() } = {}) {
+  if (by !== 'nick') return { ok: false, status: 403, error: 'Only Nick, in NEURO, can turn on automatic context linking.' };
+  if (confirm !== true) return { ok: false, status: 400, error: 'Confirm first — enabling runs the backfill straight away.', enableSay: ENABLE_SAY };
+  if (enabled()) return { ok: true, already: true, status: status() };
+  const prev = activation();
+  db.setState(ACTIVATION_KEY, JSON.stringify({ ...prev, enabled: true, enabledAt: iso(now), enabledBy: by, disabledAt: null }));
+  const r = runScan({ now, trigger: 'backfill' });
+  if (!r.ok) {
+    db.setState(ACTIVATION_KEY, JSON.stringify({ ...prev, enabled: false }));
+    return { ok: false, status: r.busy ? 409 : 500, error: `The backfill did not complete, so automatic linking was NOT turned on: ${r.error || 'unknown'}`, receipt: r.receipt || null };
+  }
+  db.setState(ACTIVATION_KEY, JSON.stringify({ enabled: true, enabledAt: iso(now), enabledBy: by, disabledAt: null, backfill: { runId: r.runId, at: iso(now), receipt: r.receipt } }));
+  _log('task-context-enabled', { by, runId: r.runId });
+  return { ok: true, backfill: r.receipt, runId: r.runId, status: status() };
+}
+
+/** Nick turns it off again. Links stay exactly as they are. */
+function deactivate({ by = 'nick', now = Date.now() } = {}) {
+  if (by !== 'nick') return { ok: false, status: 403, error: 'Only Nick, in NEURO, can turn automatic context linking off.' };
+  const a = activation();
+  if (!a.enabled) return { ok: true, already: true, status: status() };
+  db.setState(ACTIVATION_KEY, JSON.stringify({ ...a, enabled: false, disabledAt: iso(now) }));
+  _log('task-context-disabled', { by });
+  return { ok: true, status: status() };
+}
+
 // ── the nightly scan ─────────────────────────────────────────────────────────
 
 let _running = false;
@@ -220,6 +284,10 @@ let _running = false;
  * Writes ONLY NEURO's own tables; returns the compact receipt it also stores.
  */
 function runScan({ now = Date.now(), trigger = 'nightly' } = {}) {
+  // ⚠ The activation boundary. Checked BEFORE ensure(): a disabled scan creates no
+  // table, writes no receipt and touches no link. There is no exemption: activate()
+  // turns the switch on first, then runs the backfill through this same door.
+  if (!enabled()) return { ok: false, disabled: true, status: 409, error: WAITING_SAY };
   const v = vaultRoot();
   if (_running) return { ok: false, busy: true, error: 'A scan is already running.' };
   ensure();
@@ -436,7 +504,9 @@ function _task(taskId) {
 function forTask(taskId) {
   const t = _task(taskId);
   if (!t) return { ok: false, status: 404, error: 'No such task.' };
-  const out = { ok: true, contract: model.CONTRACT, taskId: t.id, task: { id: t.id, text: t.text, status: t.status }, pinned: [], suggestions: [], stale: [], question: null, lastScan: null };
+  const auto = enabled();
+  const out = { ok: true, contract: model.CONTRACT, taskId: t.id, task: { id: t.id, text: t.text, status: t.status }, pinned: [], suggestions: [], stale: [], question: null, lastScan: null,
+    automatic: { enabled: auto, say: auto ? null : WAITING_SAY } };
   if (!_exists()) { out.lastScan = null; return out; }
   const rows = db.all(`SELECT * FROM task_context_links WHERE task_id = ? AND state != 'removed' ORDER BY (origin = 'nightly-scan'), confidence DESC, updated_at DESC`, [t.id]).map(_row);
   out.pinned = rows.filter((r) => r.state === 'pinned');
@@ -679,8 +749,10 @@ function registerJob() {
     maxLagMs: 20 * 3600000,
     maxAttempts: 1,
     timeoutMs: 10 * 60 * 1000,
-    why: 'Task context: pin genuinely related vault notes, projects and areas to open tasks. Idempotent; writes NEURO tables only, never the vault.',
+    why: 'Task context: pin genuinely related vault notes, projects and areas to open tasks. Idempotent; writes NEURO tables only, never the vault. Does nothing until Nick enables it (the first enabled run is the backfill).',
     run: async () => {
+      // Off by default: a recorded no-op, never a failure and never a scan.
+      if (!enabled()) return { skipped: 'not-enabled', say: WAITING_SAY };
       const r = runScan({ trigger: 'nightly' });
       if (!r.ok && !r.busy) throw new Error(r.error || 'scan failed');
       return r.receipt;
@@ -689,7 +761,7 @@ function registerJob() {
 }
 
 module.exports = {
-  ensure, vaultRoot, buildIndex, listScopes, runScan, forTask, pinnedFor, suggestions, lastRun, runs,
+  ensure, vaultRoot, buildIndex, listScopes, runScan, status, activate, deactivate, WAITING_SAY, ENABLE_SAY, forTask, pinnedFor, suggestions, lastRun, runs,
   resolveTarget, link, remove, pin, dismissQuestion, search, registerJob,
   _internals: { _exists, _row },
 };
