@@ -116,6 +116,26 @@ documents, `.trash`, `.obsidian-pi-sync`, `Archive/SAiM Import Reports`, `Focus 
 `.git`. Writers outside Vault Audit are unchanged: task blocks still create an outcome stub per
 block, and the Friday weekly review still creates a page with placeholders.
 
-## Deployment
+## Deployment (22 Oct 2026, after this report)
 
-See the final section, appended after deployment.
+- `main` at `c9399b16` (code `f006e0eb` + this report) on pi5: frontend built, backend suite
+  **7,779 tests, 0 failures**, `neuro-backend` restarted, MCP gateway rebuilt (healthy; inventory now
+  has the report routes). Automatic task-context linking still **off**; nothing called it.
+- Live database backed up first to `/mnt/data/backups/vault-cleanup-2026-10-22-pass2/agent-before-migration.db`.
+  Migration dry run, then apply: 85 task_blocks repointed, 929 embedding / 1,178 entity / 923
+  note-link rows removed, 4 note-link targets repointed, 4 extraction-memory keys removed
+  (`Ideas/Neuro-1792524622351.md`, W28/W35/W37 reviews). One stale entry in NEURO's
+  over-long-notes cache (`embeddings_truncated`, Support Hub's AI Agent spec) removed and index
+  coverage recomputed.
+- Re-scan of every text column afterwards: no table points at an old path; the only remaining
+  matches are the new archive paths themselves and two notes whose TEXT mentions a Support Hub
+  path (`Projects/_about.md`, `Decision Log/vault-moves.md`) — mentions, not pointers.
+- Live checks: a scan through `/api/vault-hygiene/lint` stored `neuro:vault-audit/1`, a second scan
+  replaced it, and `Documents/System/Vault Audit` stayed at 3 files; asking NEURO to recreate an
+  archived block's note answers "archived" and writes nothing (the archived file's SHA-256 is
+  unchanged). Behaviour snapshot before/after deploy **identical**: open task blocks, task list,
+  Drafts sections, Now, projects (39), task-context off.
+- Sync: the Windows Obsidian client stalled with 78 moves unsent (no push for ~30 min — the known
+  silent-wedge failure). It was restarted after backing up the only two files changed since the
+  stall (both NEURO-generated task mirrors); the backlog drained in under a minute and Windows and
+  the Pi agree (no original reappeared).
