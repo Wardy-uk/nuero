@@ -6,7 +6,7 @@ After=network-online.target
 Type=simple
 # SAIM_TABLETS / SAIM_DISPLAY_URL / SAIM_TABLET_NIGHT live here (pi5).
 EnvironmentFile=/etc/saim-tablets.env
-ExecStart=/usr/bin/python3 -u /home/nickw/nuero/saim/sensor/saim-tablet-backlight.py
+ExecStart=/usr/bin/python3 -u /mnt/data/nuero/saim/sensor/saim-tablet-backlight.py
 Restart=always
 RestartSec=10
 # nickw holds the ADB keys the tablets have authorised.
