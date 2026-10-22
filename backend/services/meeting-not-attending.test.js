@@ -45,3 +45,19 @@ test('a meeting he is not going to produces no meeting card (so no prep nudge, n
   mf.resume(r.key);
   assert.equal(mf.skippedNow(row('skip')), false, 'resume brings it back');
 });
+
+test('meeting prep stops being offered once the meeting has started', async () => {
+  const { recheck } = require('./prepared-move-planner');
+  const london = (ms) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+  };
+  const packet = (startLocal) => ({ selected: { kind: 'meeting-prep', title: 'MWU BYM Call', source: { eventId: 'E9' }, forum: { start: startLocal } } });
+  const deps = (startLocal) => ({ meetingEvent: () => ({ event_id: 'E9', subject: 'MWU BYM Call', start_time: `${startLocal}:00.0000000`, show_as: 'busy', attendees_other: 1 }) });
+  const past = london(Date.now() - 60 * 60000);
+  const future = london(Date.now() + 3 * 60 * 60000);
+  assert.equal((await recheck(packet(future), { deps: deps(future) })).ok, true, 'positive control: a meeting still to come keeps its prep');
+  const r = await recheck(packet(past), { deps: deps(past) });
+  assert.equal(r.ok, false);
+  assert.match(r.why, /already started/);
+});

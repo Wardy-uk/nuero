@@ -976,6 +976,11 @@ async function recheck(packet, { deps: over = {} } = {}) {
     if (!ev || ev.show_as === 'cancelled') return { ok: false, why: 'the meeting is no longer in your calendar' };
     if (require('./meeting-finish').skippedNow(ev)) return { ok: false, why: 'you said you’re not going to that meeting' };
     if (String(ev.start_time).slice(0, 16) !== String(s.forum && s.forum.start)) return { ok: false, why: 'the meeting has moved since this was prepared' };
+    // Prep for a meeting that has started is no longer prep (22 Oct 2026: the
+    // 16:00 prep was still on the Surface at 17:20, under the next diary item).
+    const st = String(ev.start_time).slice(0, 16);
+    const startMs = require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16));
+    if (Number.isFinite(startMs) && startMs <= Date.now()) return { ok: false, why: 'the meeting has already started' };
     return { ok: true };
   }
   if (s.screens && s.screens.employment && s.screens.employment.mode === 'private-draft' && s.plan === 'draft') {
