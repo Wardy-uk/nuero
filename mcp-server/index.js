@@ -91,7 +91,11 @@ async function neuroApi(path, options = {}) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`NEURO API ${res.status}: ${body.substring(0, 200)}`);
+    const err = new Error(`NEURO API ${res.status}: ${body.substring(0, 200)}`);
+    // The whole answer rides along for a tool that must read it (a 409 "which one?").
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
   return res.json();
 }
@@ -807,6 +811,74 @@ server.tool('create_task', 'Create a task in NEURO (the source of truth for task
   const verb = data?.created === false ? 'Folded into existing task' : 'Task created';
   return { content: [{ type: 'text', text: `${verb}${data?.taskId ? ` #${data.taskId}` : ''}: ${text}` }] };
 });
+
+// ═══════════════════════════════════════════════════════
+// Tools: Task context (22 Oct 2026) — vault notes, projects and areas pinned to a task.
+// Reading is free; linking/unlinking is ONE item, only on Nick's explicit word, and
+// never writes the vault. Running the nightly scan is his alone (refused to this server).
+// ═══════════════════════════════════════════════════════
+
+function contextLine(it) {
+  const bits = [`${it.title} [${it.type}${it.restricted ? ', restricted' : ''}] — ${it.originLabel}`, `  ${it.reason}`];
+  if (it.preview) bits.push(`  "${it.preview}"`);
+  if (it.staleSay) bits.push(`  ${it.staleSay}`);
+  bits.push(`  link #${it.id} · ${it.ref}`);
+  return bits.join('\n');
+}
+
+server.tool('get_task_context',
+  'Read the context pinned to a NEURO task: related vault notes, projects and areas, each with WHY it is linked and whether the nightly scan found it or Nick linked it; plus suggestions (NOT pinned), stale links and any question the scan asked. Restricted notes are title-only — do not try to read their content.',
+  { taskId: z.number().int().describe('NEURO task id') },
+  async ({ taskId }) => {
+    const d = await neuroApi(`/api/task-context/tasks/${taskId}`);
+    const out = [`Task #${d.taskId}: ${d.task.text}`];
+    out.push(d.pinned.length ? `\nPinned (${d.pinned.length}):\n${d.pinned.map(contextLine).join('\n')}` : '\nNothing pinned.');
+    if (d.suggestions.length) out.push(`\nSuggestions — not pinned; pin one only if Nick says so (${d.suggestions.length}):\n${d.suggestions.map(contextLine).join('\n')}`);
+    if (d.stale.length) out.push(`\nNo longer available (${d.stale.length}):\n${d.stale.map(contextLine).join('\n')}`);
+    if (d.question) out.push(`\nSAiM asked: ${d.question.text} Options: ${d.question.options.map((o) => `${o.title} (${o.ref})`).join(', ')}`);
+    out.push(d.lastScan ? `\nLast scan ${d.lastScan.finishedAt || d.lastScan.startedAt}${d.lastScan.ok ? '' : ' (failed)'}.` : '\nThe nightly scan has not run yet.');
+    return { content: [{ type: 'text', text: out.join('\n') }] };
+  });
+
+server.tool('search_task_context',
+  'Search for context that COULD be linked to a task: vault notes by title/path, and projects/areas by name. Read only.',
+  { q: z.string().min(2).describe('Words to look for'), taskId: z.number().int().optional().describe('Marks what is already linked to this task') },
+  async ({ q, taskId }) => {
+    const d = await neuroApi(`/api/task-context/search?q=${encodeURIComponent(q)}${taskId ? `&taskId=${taskId}` : ''}`);
+    const rows = [...d.scopes.map((s) => `${s.type}: ${s.title} (${s.ref})${s.linked ? ' — linked' : ''}`), ...d.notes.map((n) => `note: ${n.title} (${n.ref})${n.restricted ? ' — restricted' : ''}${n.linked ? ' — linked' : ''}`)];
+    return { content: [{ type: 'text', text: rows.length ? `${rows.join('\n')}${d.more ? `\n…and ${d.more} more notes` : ''}${d.complete ? '' : '\n(the vault search stopped early)'}` : `Nothing matches "${q}".` }] };
+  });
+
+server.tool('link_task_context',
+  'Link ONE vault note, project or area to a task as context. Call ONLY when Nick explicitly asks for that item to be linked — never in bulk, never on your own initiative. If more than one thing fits, the answer is a question: ask Nick which, then call again with the exact ref. Never writes the vault.',
+  {
+    taskId: z.number().int().describe('NEURO task id'),
+    type: z.enum(['note', 'project', 'area']),
+    ref: z.string().describe('A vault path (e.g. "Projects/NOVA/Plan.md") or a name'),
+  },
+  async ({ taskId, type, ref }) => {
+    try {
+      const d = await neuroApi(`/api/task-context/tasks/${taskId}/links`, { method: 'POST', body: JSON.stringify({ type, ref }) });
+      return { content: [{ type: 'text', text: `${d.already ? 'Already linked' : 'Linked'}:\n${contextLine(d.link)}` }] };
+    } catch (e) {
+      if (e.status === 409) {
+        try {
+          const c = JSON.parse(e.body || '{}').needsChoice;
+          if (c) return { content: [{ type: 'text', text: `Not linked — ${c.question}\n${c.options.map((o) => `- ${o.title} (${o.ref})`).join('\n')}\nAsk Nick which one, then call again with that exact ref.` }] };
+        } catch { /* fall through: the 409 body was cut */ }
+        return { content: [{ type: 'text', text: 'Not linked — more than one thing fits. Use search_task_context to find the exact path, then ask Nick which.' }] };
+      }
+      throw e;
+    }
+  });
+
+server.tool('unlink_task_context',
+  'Remove one context link from a task (or dismiss a suggestion). ONLY when Nick explicitly asks. The removal is remembered — the nightly scan will not re-add it.',
+  { taskId: z.number().int(), linkId: z.number().int().describe('The link # shown by get_task_context') },
+  async ({ taskId, linkId }) => {
+    const d = await neuroApi(`/api/task-context/tasks/${taskId}/links/${linkId}/remove`, { method: 'POST', body: '{}' });
+    return { content: [{ type: 'text', text: `${d.already ? 'Already removed' : 'Removed'}: ${d.link.title}` }] };
+  });
 
 // ═══════════════════════════════════════════════════════
 // Tools: 1:1 Meeting Workflow

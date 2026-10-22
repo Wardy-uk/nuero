@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
+import { ContextItem } from '../../../shared-ui/TaskContext.jsx';
 import './MeetingPrep.css';
 
 // Meeting prep / calendar = glance at what's next and its prep before you walk in.
@@ -167,6 +168,20 @@ export default function MeetingPrep({ context = null }) {
             <div className="mp__block">
               <LitLabel className="mp__h">Topics</LitLabel>
               <ul className="mp__list">{prep.suggestedTopics.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+
+          {/* Task context (22 Oct 2026): open tasks this meeting touches, with what is
+              pinned to them — only items the sheet does not already show. */}
+          {prep?.taskContext?.length > 0 && (
+            <div className="mp__block mp__block--context">
+              <LitLabel className="mp__h">Context for related tasks</LitLabel>
+              {prep.taskContext.map((t) => (
+                <div className="mp__ctx" key={t.taskId}>
+                  <div className="mp__ctx-task">{t.text}</div>
+                  <ul className="tctx__list">{t.items.map((it) => <ContextItem key={it.id} item={it} compact />)}</ul>
+                </div>
+              ))}
             </div>
           )}
 

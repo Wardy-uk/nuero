@@ -1,3 +1,17 @@
+# Session Handoff — 2026-10-22 (Task context MVP + Holding the week cards)
+
+## Done — COMMITTED on branch `saim-task-context` (worktree ../nuero-task-context). NOT pushed, NOT deployed.
+- Task context: nightly scan (durable `task-context-scan`, 03:40), pinned/suggested/stale/removed links in NEURO's DB, manual note/project/area links, surfaces (task card, Now focus task, prepared moves, meeting prep, kiosk read-only), MCP (remote ops + 4 local tools). Model + rules: `docs/task-context.md`; CLAUDE.md entry.
+- Holding the week: three cards restored on NEURO's Now with real routes (Monday report → weekly-risk, each judgement promise → its task).
+- Vault cleanup MANIFEST (audit only, nothing changed): `docs/vault-cleanup-manifest-2026-10-22.md`.
+
+## Waiting on Nick
+1. Approve (or edit) the cleanup manifest. Then: stop the writers (empty import reports, `## SAiM Actions`, dated hygiene sweeps) → archive the candidates on WINDOWS → run the backfill (`POST /api/task-context/scan` from NEURO).
+2. Review + merge the branch, then deploy the normal way (NOT done here). After deploy: the 03:40 job runs nightly; first run is the backfill unless triggered by hand.
+
+## Known, pre-existing (not this branch)
+- Backend suite: 58 failures in this worktree are identical on clean origin/main (worktree has no node_modules — render/fake-indexeddb/iOS-sibling tests). mcp-server: 2 pre-existing (D&D junction test, stale VANTAGE inventory).
+
 # Session Handoff — 2026-10-12 (Hike safety → personal email identity)
 
 ## Done and deployed (origin/main 5581392, pi5, VESTA on Netlify)

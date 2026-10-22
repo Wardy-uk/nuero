@@ -145,12 +145,20 @@ const EXACT_DOORS = new Set([
  * resolves back inside an allowed segment is still someone trying, and this is
  * the one place where guessing charitably is expensive.
  */
-function isAllowed(pathname) {
+// ⚠ READ-ONLY doors (22 Oct 2026): a GET to exactly one shape, nothing else on
+// the segment. Task context: the kiosk may SHOW a task's pinned context (the
+// shared views draw it), but `task-context` also holds search, link, unlink and
+// the whole-vault scan — none with a screen here, so the segment stays closed and
+// a method other than GET never matches.
+const READ_ONLY_DOORS = [/^\/task-context\/tasks\/\d+$/];
+
+function isAllowed(pathname, method = null) {
   const p = String(pathname || '');
   if (!p.startsWith('/')) return false;
   if (p.includes('..') || p.includes(String.fromCharCode(92))) return false;
   const bare = p.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
   if (EXACT_DOORS.has(bare)) return true;
+  if ((method === 'GET' || method === 'HEAD') && READ_ONLY_DOORS.some((re) => re.test(bare))) return true;
   const segment = p.slice(1).split(/[/?#]/)[0];
   return DOORS.has(segment);
 }
@@ -162,7 +170,7 @@ function createRouter(options = {}) {
   const timeoutMs = Number(env.SAIM_NEURO_TIMEOUT_MS) || 15000;
 
   router.use(async (req, res) => {
-    if (!isAllowed(req.path)) {
+    if (!isAllowed(req.path, req.method)) {
       // Named, so a missing door reads as a decision rather than a 404 from a
       // route that does not exist upstream either.
       return res.status(403).json({

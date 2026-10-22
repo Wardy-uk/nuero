@@ -138,6 +138,17 @@ const MONDAY_LINE = {
   unknown: 'NEURO couldn’t read the report’s records.',
 };
 
+// A Monday report that needs nothing more from Nick: sent, and read back.
+const MONDAY_SETTLED = new Set(['sent-verified-on-time', 'sent-verified-late']);
+const MONDAY_ACTION = {
+  due: 'Write and send it',
+  late: 'Write and send it now',
+  'written-no-send-record': 'Send it, or record that you did',
+  'sent-unverified': 'Check it in Sent Items',
+  unknown: 'Open the Monday report',
+};
+const shortWhenIso = (iso) => { const ms = Date.parse(iso); return Number.isFinite(ms) ? score.londonLabel(ms) : ''; };
+
 /** PURE. */
 function mondayLine(m) {
   if (!m) return null;
@@ -173,7 +184,16 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
     out.trend = sc.previous && sc.previous.ratio ? trendLine(sc.ratio, sc.previous.ratio) : null;
   }
   if (sc && sc.counts && sc.counts.reDated) out.reDated = `${num(sc.counts.reDated)} re-dated this week.`;
-  if (sc && sc.mondayReport) out.monday = { label: 'Monday report', line: mondayLine(sc.mondayReport), state: sc.mondayReport.state };
+  // NEURO's Now cards (22 Oct 2026): where "Keeping my word" goes when tapped.
+  out.kept = { action: { label: 'See your promises', view: 'commitments' } };
+  if (sc && sc.mondayReport) {
+    const m = sc.mondayReport;
+    out.monday = { label: 'Monday report', line: mondayLine(m), state: m.state, settled: MONDAY_SETTLED.has(m.state), receipt: null, action: null };
+    const proof = (m.evidence || []).find((e) => e.kind === 'verified-send');
+    if (proof && proof.provenBy) out.monday.receipt = `Read back in Sent Items ${shortWhenIso(proof.provenBy)}.`;
+    // The ACTUAL outstanding action, never decoration: a report not yet settled opens where it is written and sent.
+    if (!out.monday.settled) out.monday.action = { label: MONDAY_ACTION[m.state] || 'Open the Monday report', view: 'weekly-risk' };
+  }
 
   // Next protected time: the earliest booked block still ahead, from the bench or today's receipt.
   const ahead = [];
@@ -186,10 +206,21 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
   if (future.length) out.next = { label: 'Next', strong: shortWhen(future[0].date, future[0].start), line: `${future[0].title}. Protected time.` };
 
   // What only Nick can say: ticked with no delivery evidence, or waiting for him.
+  // Each one carries its task, so the card can open it (22 Oct 2026); an employment
+  // matter is counted and routed but never named (promise-score already withholds its text).
   const keys = new Set();
-  for (const e of (sc && sc.entries) || []) if (e.outcome === 'unverified') keys.add(e.key);
-  for (const it of (workbench && workbench.items) || []) if (it.preparation && it.preparation.state === 'waiting-for-Nick') keys.add(it.key);
-  if (keys.size) out.judgement = { label: 'Needs your judgement', strong: `${num(keys.size)} promise${keys.size === 1 ? '' : 's'}`, line: 'Only you can say whether they were delivered.' };
+  const items = [];
+  for (const e of (sc && sc.entries) || []) {
+    if (e.outcome !== 'unverified' || keys.has(e.key)) continue;
+    keys.add(e.key);
+    items.push({ key: e.key, taskId: (e.taskIds && e.taskIds[0]) || null, title: e.sensitive ? null : (e.text || null), sensitive: Boolean(e.sensitive), why: 'Ticked, with no proof it was delivered.' });
+  }
+  for (const it of (workbench && workbench.items) || []) {
+    if (!(it.preparation && it.preparation.state === 'waiting-for-Nick') || keys.has(it.key)) continue;
+    keys.add(it.key);
+    items.push({ key: it.key, taskId: it.leadTaskId || (it.taskIds && it.taskIds[0]) || null, title: it.title || null, sensitive: false, why: 'Waiting for your answer.' });
+  }
+  if (keys.size) out.judgement = { label: 'Needs your judgement', strong: `${num(keys.size)} promise${keys.size === 1 ? '' : 's'}`, line: 'Only you can say whether they were delivered.', items: items.slice(0, 5), more: Math.max(0, items.length - 5) };
   return out;
 }
 

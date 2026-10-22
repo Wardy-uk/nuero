@@ -135,6 +135,10 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/prepared-moves/answer', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/request', 'saim.prepared-move'),
   R('POST', '/api/prepared-moves/confirm', 'saim.prepared-move'),
+  // 22 Oct 2026: task context. Linking/unlinking ONE item is NEURO's own state and
+  // open to a chat on Nick's explicit word (domain default); running the whole-vault
+  // scan is his alone — the gateway marks it interactive.
+  R('POST', '/api/task-context/scan', 'internal.state', { machine: 'refuse' }),
   // 20 Oct 2026: what SAiM may do — every route, reads included, is Nick's.
   R('GET', '/api/saim-authority/status', 'saim.authority'),
   R('POST', '/api/saim-authority/grant/preview', 'saim.authority'),
@@ -428,7 +432,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   'weekly-risk': 'internal.state', soap: 'internal.state', wins: 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
-  outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write',
+  outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

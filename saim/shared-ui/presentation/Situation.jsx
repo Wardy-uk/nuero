@@ -343,7 +343,7 @@ export default function Situation({
       {/* Keyed on the mode so a change of situation recomposes with a fade
           (and nothing at all under reduced motion). */}
       <div className="sit__body" key={plan.mode}>
-        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} workspace={workspace} />}
+        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} workspace={workspace} onOpen={workspace && plan.actions ? onOpen : null} />}
         {plan.blocks.map((blk, i) => {
           switch (blk.type) {
             case 'situation':

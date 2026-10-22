@@ -788,3 +788,40 @@
 @media (max-width: 600px) {
   .adhd__now--situation { padding: 1rem 0.85rem; }
 }
+
+/* ── Holding the week: three cards (22 Oct 2026, restoring what the fold removed) ──
+   Keeping my word · Monday report · Needs your judgement — each a compact
+   information/action card. Desktop: stacked in the readout column. A narrow
+   workspace: side by side when they fit, else one per row — never squeezed. */
+.adhd__now--situation .sit.sit--workspace.sit--kmw:not(.sit--phone):not(.sit--watch) .sit__body {
+  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+}
+.adhd__now--situation .kmw__cards { display: grid; gap: 10px; margin-top: 10px; }
+.adhd__now--situation .kmw__card {
+  border: 1px solid var(--kmw-line, rgba(214, 144, 66, 0.46));
+  border-radius: 10px; padding: 11px 13px 12px; background: rgba(214, 144, 66, 0.05);
+  min-width: 0;
+}
+.adhd__now--situation .kmw__card-title { margin: 0 0 4px; font: 700 10px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--kmw-amber, #d69042); }
+.adhd__now--situation .kmw__card .kmw__figure { font-size: 38px; margin: 4px 0 6px; }
+.adhd__now--situation .kmw__card .kmw__figure--note { font-size: 20px; letter-spacing: -0.01em; line-height: 1.15; }
+.adhd__now--situation .kmw__card .kmw__line { margin: 3px 0; overflow-wrap: anywhere; }
+.adhd__now--situation .kmw__card .kmw__strong { margin: 2px 0 3px; font-size: 15px; line-height: 1.3; }
+.adhd__now--situation .kmw__card--late .kmw__strong,
+.adhd__now--situation .kmw__card--unknown .kmw__strong { color: var(--kmw-gold, #f2b95f); }
+.adhd__now--situation .kmw__card-go {
+  margin-top: 7px; padding: 5px 0; border: 0; background: none; cursor: pointer;
+  font: 600 12px/1.3 -apple-system, system-ui, sans-serif; color: var(--kmw-gold, #f2b95f); text-align: left;
+}
+.adhd__now--situation .kmw__card-go:hover, .adhd__now--situation .kmw__judge-item:hover { text-decoration: underline; }
+.adhd__now--situation .kmw__judge-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.adhd__now--situation .kmw__judge-item {
+  display: block; width: 100%; padding: 5px 0; border: 0; border-top: 1px solid var(--kmw-line, rgba(214, 144, 66, 0.3));
+  background: none; text-align: left; cursor: pointer; color: var(--kmw-ink, #f0eee7); font: 13px/1.35 Georgia, serif; overflow-wrap: anywhere;
+}
+.adhd__now--situation span.kmw__judge-item { cursor: default; }
+.adhd__now--situation .kmw__judge-why { display: block; font: 11px/1.4 -apple-system, system-ui, sans-serif; color: var(--kmw-dim, #a5a49a); }
+@container now (max-width: 720px) {
+  .adhd__now--situation .kmw__cards { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .adhd__now--situation .kmw__card .kmw__figure { font-size: 30px; }
+}

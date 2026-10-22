@@ -206,7 +206,9 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
 
   useEffect(() => {
     if (initialOpenPath) {
-      openFileHandler(initialOpenPath);
+      // A folder (a task-context project or area scope) opens as a listing; a note opens as itself.
+      if (/\.md$/i.test(initialOpenPath)) openFileHandler(initialOpenPath);
+      else loadDir(initialOpenPath);
       if (onClearInitialPath) onClearInitialPath();
     }
   }, [initialOpenPath]);

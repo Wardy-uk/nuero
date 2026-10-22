@@ -1386,6 +1386,9 @@ function start() {
     require('./weather-jobs').register();
     // Home energy (Bright / Glowmarkt) — same reason: these reach the internet.
     require('./energy-jobs').register();
+    // Task context (22 Oct 2026): the nightly 03:40 scan reads the WHOLE vault,
+    // so it is kept out of registerDurableJobs() for the same reason.
+    require('./task-context').registerJob();
     // The shared family Google calendar (18 Oct 2026): re-read every 5 min so a
     // change made on a phone reaches the wall. Reaches Google, so here.
     require('./runtime-jobs').defineJob({

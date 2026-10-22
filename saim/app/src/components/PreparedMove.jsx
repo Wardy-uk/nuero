@@ -3,6 +3,7 @@ import { apiUrl, authHeaders } from '../api';
 import { loadWithRetry, load, askToConfirm, confirm, receiptLines, newSessionId, makeCall, makeReady, respond, answer, park, interviewOf, outstandingOf, boundaryOf } from '../preparedMove.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
+import TaskContext from '../../../shared-ui/TaskContext.jsx';
 import './PreparedMove.css';
 
 // SAiM's prepared MOMENT (20 Oct 2026) — not a card. Evidence has condensed
@@ -298,7 +299,7 @@ function EmbeddedBoundary({ boundary, onOpenAuthority, onAgain = null, busy = fa
   );
 }
 
-function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false, drafts = false }) {
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false, drafts = false, renderContext = null }) {
   const { view } = state; const move = view.move;
   const d = move.deliverable || {};
   const [deferDays, setDeferDays] = useState(1);
@@ -370,6 +371,8 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
           <ul className="pmo__evidence">{facts.map((f, i) => <li key={i}>{f.text} <span className="pmo__sub">— {f.kind === 'you' ? 'you said' : f.cite}</span></li>)}</ul>
         </details>
       )}
+
+      {renderContext && move.taskId != null && renderContext(move.taskId)}
 
       {!held && move.plan !== 'ask' && <div className="pmo__choice">{choice()}</div>}
       {held && <p className="pmo__sub">{(view.held && view.held.say) || 'Prepared for your next working morning.'}</p>}
@@ -500,7 +503,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false, drafts = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false, drafts = false, renderContext = null }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -521,7 +524,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
-  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} drafts={drafts} />;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} drafts={drafts} renderContext={renderContext} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -804,7 +807,7 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, drafts = false, initial = null, onChanged = null, onPrepared = null }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, drafts = false, initial = null, onChanged = null, onPrepared = null, hideContextFor = null, onOpenContext = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   // The kiosk can SHOW a prepared move but never confirm or write (its shell
   // declares the platform; no device sniffing).
@@ -871,6 +874,8 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       readOnly={readOnly}
       embedded={embedded}
       drafts={drafts}
+      // The task's pinned context (22 Oct 2026) — not when the page already shows it for this task.
+      renderContext={(taskId) => (hideContextFor != null && Number(hideContextFor) === Number(taskId) ? null : <TaskContext taskId={taskId} call={call} compact onOpen={onOpenContext} label="Context for this task" />)}
       onMakeReady={() => run(async () => {
         const next = await makeReady(call, { offer: state.offer });
         // The exact item just prepared — the shell opens ITS Drafts entry.

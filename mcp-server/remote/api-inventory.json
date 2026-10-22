@@ -5575,7 +5575,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 277,
+    "line": 278,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5653,6 +5653,79 @@
       "minutes",
       "startTime"
     ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_context_runs",
+    "method": "GET",
+    "route": "/api/task-context/runs",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 65,
+    "description": "GET /api/task-context/runs. receipts of recent task context scans: what was scanned, pinned, suggested, refreshed, marked stale and skipped, and why",
+    "params": [],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_context_search",
+    "method": "GET",
+    "route": "/api/task-context/search",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 49,
+    "description": "GET /api/task-context/search. search candidate context to link to a task: vault notes by title/path, projects and areas by name (q required; taskId marks what is already linked)",
+    "params": [],
+    "query": [
+      "q",
+      "taskId"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_context_suggestions",
+    "method": "GET",
+    "route": "/api/task-context/suggestions",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 57,
+    "description": "GET /api/task-context/suggestions. task context suggestions the nightly scan made but did not pin, and questions it asked instead of guessing, across open tasks",
+    "params": [],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_context_tasks_by_taskId",
+    "method": "GET",
+    "route": "/api/task-context/tasks/:taskId",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 44,
+    "description": "GET /api/task-context/tasks/:taskId. a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -14062,6 +14135,99 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_scan",
+    "method": "POST",
+    "route": "/api/task-context/scan",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 111,
+    "description": "POST /api/task-context/scan. run the nightly task context scan now (Nick only; refused to machine clients). Writes NEURO's own tables, never the vault.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_tasks_by_taskId_links",
+    "method": "POST",
+    "route": "/api/task-context/tasks/:taskId/links",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 73,
+    "description": "POST /api/task-context/tasks/:taskId/links. link ONE vault note, project or area to a task as context (type: note|project|area; ref: a vault path or a name). Only when Nick explicitly asks. Ambiguous → 409 with a question and options, never a guess. Never writes the vault.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [
+      "ref",
+      "type"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_tasks_by_taskId_links_by_linkId_pin",
+    "method": "POST",
+    "route": "/api/task-context/tasks/:taskId/links/:linkId/pin",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 93,
+    "description": "POST /api/task-context/tasks/:taskId/links/:linkId/pin. accept a task context suggestion: pin it to the task. Only when Nick explicitly asks.",
+    "params": [
+      "taskId",
+      "linkId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_tasks_by_taskId_links_by_linkId_remove",
+    "method": "POST",
+    "route": "/api/task-context/tasks/:taskId/links/:linkId/remove",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 84,
+    "description": "POST /api/task-context/tasks/:taskId/links/:linkId/remove. unlink / unpin task context, or dismiss a suggestion. Kept as removed so the nightly scan never re-adds it. Only when Nick explicitly asks.",
+    "params": [
+      "taskId",
+      "linkId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_context_tasks_by_taskId_question_dismiss",
+    "method": "POST",
+    "route": "/api/task-context/tasks/:taskId/question/dismiss",
+    "domain": "task-context",
+    "source": "routes/task-context.js",
+    "line": 102,
+    "description": "POST /api/task-context/tasks/:taskId/question/dismiss. answer \"neither\" to the task context scan's question (which project/area); it is not asked again unless the options change",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

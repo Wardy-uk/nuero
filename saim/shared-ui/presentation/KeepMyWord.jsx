@@ -22,39 +22,88 @@ import './KeepMyWord.css';
 //   or a send: a held thread NAMES what is missing and offers no way round it. No URL lives here, so a
 //   shell without a credential path (the kiosk) simply passes no handler.
 
-// A Monday report that needs nothing from Nick (sent, and read back) changes no choice now.
-const MONDAY_SETTLED = new Set(['sent-verified-on-time', 'sent-verified-late']);
-
 /**
- * NEURO's Now page (22 Oct 2026): the SAME readout, made to earn its space in a
- * working surface — the figure (or the honest "not measured yet"), the week's
- * re-dates, a Monday report ONLY when it still needs something, and the promises
- * awaiting judgement as one line (there is no action for them yet, so no card).
- * The SAiM scenes keep the locked readout above.
+ * NEURO's Now page (22 Oct 2026, restored the same day): the readout as THREE
+ * compact cards, each an answer with its route — never placeholders and never
+ * folded into one paragraph (the earlier fold hid the Monday report and turned
+ * the judgement count into a line with nowhere to go).
+ *
+ *   Keeping my word      the figure, or the honest "not measured yet" WITH its reason
+ *   Monday report        status, the read-back receipt, or the actual next action
+ *   Needs your judgement the real count and each promise, opening its task
+ *
+ * A card with no data says so in one line. `onOpen` is the shell's: { kind:'view', view }
+ * or { kind:'task', taskId } — absent (a kiosk), the cards render without buttons.
+ * The SAiM scenes keep the locked readout below.
  */
-function WorkspaceReadout({ readout }) {
+function WorkspaceReadout({ readout, onOpen = null }) {
   const j = readout.judgement;
-  const m = readout.monday && readout.monday.line && !MONDAY_SETTLED.has(readout.monday.state) ? readout.monday : null;
+  const m = readout.monday;
+  const go = (target) => (onOpen && target ? () => onOpen(target) : null);
+  const keptGo = go(readout.kept && readout.kept.action ? { kind: 'view', view: readout.kept.action.view } : null);
+  const mondayGo = go(m && m.action ? { kind: 'view', view: m.action.view } : null);
   return (
     <aside className="kmw__week kmw__week--workspace" aria-label="Holding the week">
       <p className="kmw__label">{readout.label}</p>
-      {readout.figure
-        ? <p className="kmw__figure">{readout.figure}</p>
-        : readout.figureNote ? <p className="kmw__figure kmw__figure--note">{readout.figureNote}</p> : null}
-      {readout.figure
-        ? (readout.line && <p className="kmw__line">{readout.line}{readout.trend && <><br /><span className="kmw__trend">{readout.trend}</span></>}</p>)
-        : (readout.line && <details className="kmw__how"><summary>How this is counted</summary><p className="kmw__line">{readout.line}</p></details>)}
-      {readout.reDated && <p className="kmw__line kmw__line--quiet">{readout.reDated}</p>}
-      {m && <p className={`kmw__line kmw__monday kmw__monday--${m.state}`}><span className="kmw__inline-label">{m.label}</span> {m.line}</p>}
-      {readout.next && <p className="kmw__line"><span className="kmw__inline-label">{readout.next.label}</span> <strong>{readout.next.strong}</strong> {readout.next.line}</p>}
-      {j && <p className="kmw__line kmw__line--quiet"><strong>{j.strong}</strong> · {j.label}</p>}
+      <div className="kmw__cards">
+        <section className="kmw__card kmw__card--kept" aria-label="Keeping my word">
+          <h3 className="kmw__card-title">Keeping my word</h3>
+          {readout.figure
+            ? <p className="kmw__figure">{readout.figure}</p>
+            : <p className="kmw__figure kmw__figure--note">{readout.figureNote || 'Not measured yet'}</p>}
+          {readout.line && <p className="kmw__line">{readout.line}</p>}
+          {readout.trend && <p className="kmw__line kmw__trend">{readout.trend}</p>}
+          {readout.reDated && <p className="kmw__line kmw__line--quiet">{readout.reDated}</p>}
+          {readout.next && <p className="kmw__line"><span className="kmw__inline-label">{readout.next.label}</span> <strong>{readout.next.strong}</strong> {readout.next.line}</p>}
+          {keptGo && <button type="button" className="kmw__card-go" onClick={keptGo}>{readout.kept.action.label} →</button>}
+        </section>
+
+        <section className={`kmw__card kmw__card--monday${m ? ` kmw__card--${m.state}` : ''}`} aria-label="Monday report">
+          <h3 className="kmw__card-title">Monday report</h3>
+          {m ? (
+            <>
+              <p className={`kmw__strong kmw__monday kmw__monday--${m.state}`}>{m.line || 'No status recorded.'}</p>
+              {m.receipt && <p className="kmw__line kmw__line--quiet">{m.receipt}</p>}
+              {m.settled && !m.receipt && <p className="kmw__line kmw__line--quiet">Nothing more is needed this week.</p>}
+              {mondayGo && <button type="button" className="kmw__card-go" onClick={mondayGo}>{m.action.label} →</button>}
+              {!mondayGo && m.action && <p className="kmw__line">{m.action.label}.</p>}
+            </>
+          ) : <p className="kmw__line">NEURO couldn’t read this week’s report.</p>}
+        </section>
+
+        <section className="kmw__card kmw__card--judgement" aria-label="Needs your judgement">
+          <h3 className="kmw__card-title">Needs your judgement</h3>
+          {j ? (
+            <>
+              <p className="kmw__strong">{j.strong}</p>
+              <p className="kmw__line">{j.line}</p>
+              {Array.isArray(j.items) && j.items.length > 0 && (
+                <ul className="kmw__judge-list">
+                  {j.items.map((it) => {
+                    const label = it.sensitive ? 'An employment matter — not named here' : (it.title || 'A promise');
+                    const open = go(it.taskId ? { kind: 'task', taskId: it.taskId } : null);
+                    return (
+                      <li key={it.key}>
+                        {open
+                          ? <button type="button" className="kmw__judge-item" onClick={open}>{label}<span className="kmw__judge-why">{it.why}</span></button>
+                          : <span className="kmw__judge-item">{label}<span className="kmw__judge-why">{it.why}</span></span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {j.more > 0 && <p className="kmw__line kmw__line--quiet">and {j.more} more.</p>}
+            </>
+          ) : <p className="kmw__line">Nothing is waiting on your judgement.</p>}
+        </section>
+      </div>
     </aside>
   );
 }
 
-export function KmwReadout({ readout, compact = false, workspace = false }) {
+export function KmwReadout({ readout, compact = false, workspace = false, onOpen = null }) {
   if (!readout) return null;
-  if (workspace) return <WorkspaceReadout readout={readout} />;
+  if (workspace) return <WorkspaceReadout readout={readout} onOpen={onOpen} />;
   return (
     <aside className={`kmw__week${compact ? ' kmw__week--compact' : ''}`} aria-label="Holding the week">
       <p className="kmw__label">{readout.label}</p>

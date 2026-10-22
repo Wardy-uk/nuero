@@ -145,6 +145,9 @@ async function v2View(record, { now = Date.now(), duty = null, checks = null } =
     origin: pkt.origin || null, forum: s.forum || null, privateDraft: s.privateDraft || null, interview: s.interview || null,
     respond: _respondChoices(), decidedAt: (pkt.decision || {}).decidedAt || null, evidenceExpiresAt: record.evidenceExpiresAt,
     checkedAt: record.checkedAt || record.createdAt,
+    // The task this move is for (project-note and promise moves), so a surface can show its
+    // pinned context (22 Oct 2026). Null for an email reply or meeting prep — they have no task.
+    taskId: s.source && s.source.taskId != null ? Number(s.source.taskId) : null,
   };
   const d = duty || { onDuty: false, why: 'unknown' };
   if (!require('./prepared-move-exec').dutyPermits(d, record)) return { held: { reason: d.why, say: require('./prepared-move').HELD_SAY }, move: { ...common, held: true, options: [], prepared: { headline: require('./prepared-move').HELD_SAY, detail: s.headline } } };

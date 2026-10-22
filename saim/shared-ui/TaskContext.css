@@ -1,0 +1,38 @@
+/* TaskContext (22 Oct 2026). Colour comes from the surface it sits on — inherit,
+   currentColor and neutral alpha only — so it reads on NEURO's desk, SAiM's night
+   ground and the prep sheet alike, and adds nothing to SAiM's colour vocabulary. */
+.tctx { margin: 10px 0 4px; padding: 10px 0 0; border-top: 1px solid rgba(127, 127, 127, 0.28); font-size: 13px; line-height: 1.4; color: inherit; }
+.tctx--compact { margin: 8px 0 0; }
+.tctx__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tctx__label { margin: 0 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
+.tctx__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tctx__item { min-width: 0; }
+.tctx__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.tctx__title { font-weight: 600; color: inherit; background: none; border: 0; padding: 0; text-align: left; font: inherit; font-weight: 600; overflow-wrap: anywhere; }
+button.tctx__title { cursor: pointer; text-decoration: underline; text-decoration-color: rgba(127, 127, 127, 0.5); text-underline-offset: 2px; }
+.tctx__badge { font-size: 10px; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(127, 127, 127, 0.4); opacity: 0.85; white-space: nowrap; }
+.tctx__badge--manual { border-style: solid; font-weight: 700; }
+.tctx__badge--auto { border-style: dashed; }
+.tctx__reason, .tctx__preview, .tctx__restricted, .tctx__quiet, .tctx__msg { margin: 2px 0 0; opacity: 0.8; overflow-wrap: anywhere; }
+.tctx__preview { font-style: italic; opacity: 0.7; }
+.tctx__restricted { font-size: 12px; }
+.tctx__gap { margin: 2px 0 0; }
+.tctx__scope { list-style: none; margin: 4px 0 0 10px; padding: 0; display: grid; gap: 2px; }
+.tctx__scope-link { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: rgba(127, 127, 127, 0.5); }
+.tctx__scope-why { display: block; font-size: 11px; opacity: 0.65; }
+.tctx button:not(.tctx__title):not(.tctx__scope-link) { font: inherit; font-size: 12px; color: inherit; background: rgba(127, 127, 127, 0.12); border: 1px solid rgba(127, 127, 127, 0.35); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.tctx button:disabled { opacity: 0.5; cursor: default; }
+.tctx__remove { margin-top: 4px; }
+.tctx .tctx__quietbtn { background: none; }
+.tctx__row { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.tctx__fold { margin-top: 8px; }
+.tctx__fold summary { cursor: pointer; opacity: 0.8; }
+.tctx__fold .tctx__list { margin-top: 6px; }
+.tctx__ask { margin: 6px 0 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tctx__ask p { flex-basis: 100%; margin: 0 0 2px; font-weight: 600; }
+.tctx__add { margin-top: 8px; }
+.tctx__add-form { display: flex; gap: 6px; flex-wrap: wrap; }
+.tctx__add-form input { flex: 1 1 180px; min-width: 0; font: inherit; padding: 4px 8px; color: inherit; background: rgba(127, 127, 127, 0.08); border: 1px solid rgba(127, 127, 127, 0.4); border-radius: 6px; }
+.tctx__add-form select { font: inherit; color: inherit; background: rgba(127, 127, 127, 0.08); border: 1px solid rgba(127, 127, 127, 0.4); border-radius: 6px; padding: 3px 6px; }
+.tctx__results { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.tctx__results button, .tctx__ask button { text-align: left; }

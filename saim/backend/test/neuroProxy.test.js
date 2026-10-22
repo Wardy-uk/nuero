@@ -115,6 +115,19 @@ test('⚠ matching is on the WHOLE first segment, never a prefix', () => {
   assert.equal(isAllowed('/push-anything'), false);
 });
 
+test('⚠ task context: the kiosk may READ one task’s context, and do nothing else on that segment', () => {
+  assert.equal(isAllowed('/task-context/tasks/42', 'GET'), true);
+  assert.equal(isAllowed('/task-context/tasks/42?x=1', 'GET'), true);
+  // every write, the search and the whole-vault scan stay closed
+  assert.equal(isAllowed('/task-context/tasks/42', 'POST'), false);
+  assert.equal(isAllowed('/task-context/tasks/42/links', 'POST'), false);
+  assert.equal(isAllowed('/task-context/tasks/42/links', 'GET'), false);
+  assert.equal(isAllowed('/task-context/scan', 'POST'), false);
+  assert.equal(isAllowed('/task-context/search', 'GET'), false);
+  assert.equal(isAllowed('/task-context/tasks/42'), false, 'no method → no read-only door');
+  assert.equal(isAllowed('/task-context/tasks/../scan', 'GET'), false);
+});
+
 test('⚠ traversal is refused outright, not normalised', () => {
   // A `..` that resolves back inside an allowed segment is still someone
   // trying, and this is the one place where reading it charitably is expensive.

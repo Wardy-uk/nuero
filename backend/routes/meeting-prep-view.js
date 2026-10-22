@@ -587,6 +587,30 @@ function _buildPrep(meeting) {
     prep.suggestedTopics.push('Agree next actions and timeline');
   }
 
+  // 7b. Task context (22 Oct 2026): open tasks this meeting touches — raised in a note
+  // prep already shows, or naming an attendee in FULL — with their pinned context.
+  // Only items the sheet does not already show; only when there is any; a read failure
+  // is a named gap, never an empty block. Skipped for a broadcast (>8 people), like waitingOn.
+  prep.taskContext = [];
+  try {
+    if (matchedPeople.length > 0 && matchedPeople.length <= 8) {
+      const tcm = require('../services/task-context-model');
+      const shown = new Set((prep.vaultContext || []).map((v) => v.source));
+      for (const a of prep.attendees || []) for (const it of a.agreedLastTime || []) if (it.sourcePath) shown.add(it.sourcePath);
+      const open = require('../db/database').listTaskRows({ status: 'all', includeDone: false }).filter((r) => r.status === 'open' || r.status === 'in-progress');
+      const ids = tcm.tasksForMeeting(open, { people: matchedPeople, notePaths: shown });
+      const pinned = require('../services/task-context').pinnedFor(ids, { limit: 3 });
+      for (const id of ids) {
+        const items = (pinned.get(id) || []).filter((it) => !shown.has(it.ref));
+        if (!items.length) continue;
+        prep.taskContext.push({ taskId: id, text: (open.find((t) => t.id === id) || {}).text || '', items });
+        if (prep.taskContext.length >= 3) break;
+      }
+    }
+  } catch (e) {
+    prep.gaps.push({ input: 'task-context', why: e.message });
+  }
+
   // 8. Checklist (context-aware)
   prep.checklist = ['Review agenda'];
   if (prep.attendees.length > 0) prep.checklist.push('Check attendee vault notes');

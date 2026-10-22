@@ -108,6 +108,7 @@ const LifeSourcesPage = lifePage('LifeSourcesPage');
 
 import { canonicalView, VANTAGE_URL } from './viewIds';
 import ViewTabs from './components/ViewTabs';
+import { registerVaultOpener } from './openVault';
 
 /** KPI Tracker moved to VANTAGE (Build 10L) — departmental, not personal. */
 function MovedToVantage() {
@@ -268,6 +269,11 @@ function AuthenticatedApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [vaultOpenPath, setVaultOpenPath] = useState(null);
+  // Task context opens a note or folder from inside any card (frontend/src/openVault.js).
+  useEffect(() => {
+    registerVaultOpener((p) => { setVaultOpenPath(p); setActiveView('vault'); setChatOpen(false); });
+    return () => registerVaultOpener(null);
+  }, []);
   const [navContext, setNavContext] = useState(() => readNueroLaunchIntent().context); // context passed from Focus to drill-down views
   const [weekendOverride, setWeekendOverride] = useState(false);
   const weekend = isWeekend() && !weekendOverride;

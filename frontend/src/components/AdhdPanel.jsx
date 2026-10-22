@@ -17,6 +17,8 @@ import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs
 // the SAME component, record, authority check, confirmation and executor as
 // SAiM Home — never a second save path (26 Oct 2026).
 import PromiseSave from '../../../saim/app/src/components/PromiseSave.jsx';
+import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
+import { openInVault } from '../openVault';
 // "Make this ready" after a Now row's own action — the SAME control and /eligible list the phone uses (22 Oct 2026).
 import MakeReady from '../../../saim/app/src/components/MakeReady.jsx';
 import { loadEligible } from '../../../saim/app/src/makeReady.mjs';
@@ -34,6 +36,15 @@ export function leadIsThePromise(card, kmw) {
   if (!card || !t) return false;
   if (card.meta && card.meta.taskId != null && t.taskId != null && Number(card.meta.taskId) === Number(t.taskId)) return true;
   return Boolean(card.open && t.key && card.open.ref === `promise:${t.key}`);
+}
+
+/** PURE. Which ONE task Now shows context for (22 Oct 2026) — never a list. */
+export function focusTaskOf(session, blockNow) {
+  if (session && session.taskId != null) return Number(session.taskId);
+  const tasks = (blockNow && blockNow.tasks) || [];
+  const running = tasks.find((t) => t.running && t.taskId != null);
+  if (running) return Number(running.taskId);
+  return tasks.length === 1 && tasks[0].taskId != null ? Number(tasks[0].taskId) : null;
 }
 
 // apiFetch hands back a raw Response and sets no Content-Type, so every JSON
@@ -516,6 +527,8 @@ export default function AdhdPanel({ onNavigate }) {
   if (!data) return null;
 
   const { shape, momentum, winsToday, avoidance, quickWins, session, recovery, signals, blockNow } = data;
+  // The task in focus: the running session's, else the running block task, else a block's only task.
+  const focusTaskId = focusTaskOf(session && !recovery ? session : null, blockNow);
 
   return (
     <div className="adhd">
@@ -787,6 +800,14 @@ export default function AdhdPanel({ onNavigate }) {
         </section>
       )}
 
+      {/* Context for the ONE task in focus (22 Oct 2026). Compact, pinned items only,
+          and nothing at all when it has none — other tasks' context stays on their cards. */}
+      {focusTaskId != null && (
+        <div className="adhd__focus-context">
+          <TaskContext taskId={focusTaskId} call={desktopCall} onOpen={openInVault} compact label="Context for this task" />
+        </div>
+      )}
+
       <WhileHere data={cohort} onNavigate={onNavigate} />
       <DeskLaunch work={work} onOpen={openOnDesk} states={deskStates} />
 
@@ -823,7 +844,9 @@ export default function AdhdPanel({ onNavigate }) {
               if (!onNavigate || !it) return;
               if (it.kind === 'event') onNavigate('calendar');
               else if (it.kind === 'commitment') onNavigate('commitments');
-              else if (it.kind === 'task') onNavigate('todos');
+              // A readout card's route (22 Oct 2026): a view, or the exact task it is about.
+              else if (it.kind === 'view' && it.view) onNavigate(it.view);
+              else if (it.kind === 'task') onNavigate('todos', it.taskId != null ? { taskId: it.taskId, fromFocus: true } : null);
             }}
             onCorrect={async (doing) => {
               try { await api('/api/signals/life/declare', { method: 'POST', body: JSON.stringify({ doing }) }); } catch { /* the question stays */ }
@@ -856,7 +879,7 @@ export default function AdhdPanel({ onNavigate }) {
               } catch { return { ok: false, error: 'NEURO didn’t answer.' }; }
             }}
             onOpenActions={onNavigate ? () => onNavigate('actions') : null}
-            renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} />}
+            renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} hideContextFor={focusTaskId} onOpenContext={openInVault} />}
             renderItemExtra={(it) => {
               const e = eligibleFor(it);
               return e ? <MakeReady item={e} call={desktopCall} onOpenDraft={onNavigate ? (recordId) => onNavigate('drafts', recordId ? { recordId } : null) : null} /> : null;

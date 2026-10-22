@@ -17,6 +17,9 @@ import { pinFromContext, findPinned } from '../taskPin';
 import TaskDedupe from './TaskDedupe';
 import TaskBlocks, { BlockTimeControl } from './TaskBlocks';
 import TaskTriage from './TaskTriage.jsx';
+import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
+import { desktopCall } from '../desktopCall';
+import { openInVault } from '../openVault';
 import './TodoPanel.css';
 import { useWorkOnly } from '../workOnly';
 
@@ -1270,7 +1273,17 @@ function taskIdBadge(todo) {
  */
 function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
   if (todo.task_id) {
-    return <TaskControls todo={todo} busy={busy} onPatch={onPatch} onRefresh={onRefresh} />;
+    // Context (22 Oct 2026) sits under the task's own controls — one place, so the
+    // list card and the Must Move lane card cannot disagree about it.
+    return (
+      <>
+        <TaskControls todo={todo} busy={busy} onPatch={onPatch} onRefresh={onRefresh} />
+        {/* ⚠ stopPropagation: a click inside would otherwise bubble to the row and collapse the card. */}
+        <div className="todo-context" onClick={(e) => e.stopPropagation()}>
+          <TaskContext taskId={todo.task_id} call={desktopCall} onOpen={openInVault} editable />
+        </div>
+      </>
+    );
   }
   // A Microsoft task is editable too — Microsoft still owns it, so the edit is
   // a PATCH to Graph rather than anything stored locally.

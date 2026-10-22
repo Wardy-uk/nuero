@@ -394,7 +394,11 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // 'saim-authority' (20 Oct 2026): what SAiM may do is changed from Nick's own
 // phone or desk app — never from the always-on kiosk, which holds SAiM's
 // credential and is reachable by anyone in the room.
-const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority']);
+// `task-context` (22 Oct 2026): the segment holds search, link, unlink and the
+// whole-vault scan, none of which belongs behind the kiosk touchscreen. The ONE read
+// the shared views make there — GET /task-context/tasks/<id> — is a GET-only door
+// (neuroProxy READ_ONLY_DOORS), pinned by saim/backend's neuroProxy tests.
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context']);
 
 /**
  * The kiosk's allowlist, read from `neuroProxy.js`.

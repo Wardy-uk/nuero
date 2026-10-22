@@ -27,6 +27,9 @@ export const interactive = {
   post_prepared_moves_request: 'Asking to confirm a prepared move is Nick, in NEURO, looking at exactly what it would write. An agent cannot do it.',
   post_promises_by_key_prepare: 'Drafting an email about a promise is Nick’s press in NEURO; sending it still needs his approval code.',
   post_prepared_moves_confirm: 'Confirming a prepared move writes to Nick\'s calendar and vault. Only Nick can confirm it, in NEURO.',
+  // 22 Oct 2026: task context. Reading, searching and linking/unlinking one item are
+  // open to chats (on Nick's explicit word); running the whole-vault scan is his.
+  post_task_context_scan: 'Running the task context scan over the whole vault is Nick, in NEURO. Read its receipts with get_task_context_runs instead.',
   // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
   get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',
   post_saim_authority_grant_preview: 'Giving SAiM authority to act is Nick, in SAiM, reading exactly what it would allow. An agent cannot do it.',
@@ -237,6 +240,13 @@ const SESSION_NOTE = 'Opens a standup conversation driven by NEURO\'s own AI (st
 // that exists and is not discoverable as the right one is a route nobody uses.
 const RECORD_NOTE = 'THE canonical way to complete this ritual when you have already run it with the user in conversation. Do not use capture_note / post_capture_note for a standup or EOD: that files prose the ritual system cannot see. This writes NEURO\'s own daily-note format (the same one its native standup writes), preserves everything else already in the note, and is idempotent — calling it again replaces today\'s ritual rather than duplicating it.';
 export const notes = {
+  // Task context (22 Oct 2026). Literal keywords, for the same substring-match reason as below.
+  get_task_context_tasks_by_taskId: 'task-context.read. Search keywords: task context, pinned context, related notes, linked notes, project for task, why is this linked. Returns pinned items (title, type note|project|area, one-line reason, automatic or linked-by-you), suggestions, stale links and any open question. Restricted notes come back by title only (preview withheld) — do not try to read their content.',
+  get_task_context_search: 'task-context.search. Search keywords: find context, search notes for task, link note candidates. query.q (2+ chars) matches note titles/paths and project/area names; pass query.taskId to mark what is already linked.',
+  get_task_context_suggestions: 'task-context.suggestions. Search keywords: context suggestions, unpinned matches, scan questions. Suggestions are NOT pinned — show them to the user; pin one only when they say so.',
+  post_task_context_tasks_by_taskId_links: 'task-context.link. Search keywords: add context, link note to task, attach note, link project, link area, pin context. Link exactly ONE item, and only when the user explicitly asks for that item to be linked — never in bulk, never on your own initiative. body.type is note|project|area; body.ref a vault path or a name. HTTP 409 with needsChoice means more than one thing fits: ask the user which, then call again with the exact ref. Never writes the vault.',
+  post_task_context_tasks_by_taskId_links_by_linkId_remove: 'task-context.unlink. Search keywords: remove context, unlink note, unpin, not related. Only when the user explicitly asks. The removal is remembered: the nightly scan will not re-add it.',
+  post_task_context_tasks_by_taskId_links_by_linkId_pin: 'task-context.pin. Search keywords: accept suggestion, pin suggestion. Only when the user explicitly says the suggestion belongs.',
   post_medical_records: 'Prefer the typed medical_records_save tool: same route, but it reads every record back and only reports saved when the stored values match. GP comments ("No further action") go in followUp, not status.',
   post_standup_session_by_kind_start: SESSION_NOTE,
   post_standup_session_by_kind_reply: SESSION_NOTE,
