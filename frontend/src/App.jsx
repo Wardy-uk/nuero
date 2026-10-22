@@ -419,7 +419,7 @@ function AuthenticatedApp() {
       case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel focusContext={navContext} />;
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
-      case 'brain-health': return <BrainHealthPanel />;
+      case 'brain-health': return <BrainHealthPanel onNavigate={handleNavigate} />;
       case 'plaud-transcripts': return <PlaudTranscriptsPanel />;
       case 'hike-safety': return <HikeSafetyPanel />;
       case 'weather': return <WeatherPanel />;

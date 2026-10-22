@@ -10,6 +10,7 @@ import './AdminPanel.css';
 import NotionSyncPanel from './NotionSyncPanel';
 import VestaAccounts from './VestaAccounts';
 import PersonalMailCard from './PersonalMailCard';
+import TaskContextActivation from './TaskContextActivation.jsx';
 import { signInOutcome, DeviceCodePanel } from './MicrosoftSignIn';
 
 
@@ -1116,6 +1117,11 @@ export default function AdminPanel({ pushState = {} }) {
 
       <CollapsibleSection title="AI & SAiM">
         <AiSettingsSection />
+      </CollapsibleSection>
+
+      {/* The ONLY place automatic context linking is turned on or off (22 Oct 2026). */}
+      <CollapsibleSection title="Automatic context linking" defaultOpen>
+        <TaskContextActivation />
       </CollapsibleSection>
 
       <CollapsibleSection title="Microsoft 365 Authentication" hint={status.microsoft?.authenticated ? 'connected' : 'not connected'}>

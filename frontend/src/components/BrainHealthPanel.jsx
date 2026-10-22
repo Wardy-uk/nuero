@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import './BrainHealthPanel.css';
-import TaskContextActivation from './TaskContextActivation.jsx';
+import TaskContextStatus from './TaskContextStatus.jsx';
 
 /**
  * Brain Health — vault-graph maintenance, moved out of SAiM (31 Aug 2026).
@@ -205,7 +205,7 @@ const EFFECT_LABEL = {
   fetch: 'Downloads from PLAUD',
 };
 
-export default function BrainHealthPanel() {
+export default function BrainHealthPanel({ onNavigate = null }) {
   const [lint, setLint] = useState({ loading: true, error: null, data: null });
   const [runs, setRuns] = useState({});      // key -> { running, result, error, at }
   const [expanded, setExpanded] = useState(null);
@@ -294,8 +294,8 @@ export default function BrainHealthPanel() {
         </div>
       )}
 
-      {/* Task context's nightly scan: off until Nick enables it after the vault cleanup. */}
-      <TaskContextActivation />
+      {/* Task context's nightly scan — status only; the switch lives in Settings. */}
+      <TaskContextStatus onNavigate={onNavigate} />
 
       {/* Reports NEURO keeps instead of writing dated pages into the vault (22 Oct 2026). */}
       <StoredReports />

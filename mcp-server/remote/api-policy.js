@@ -31,8 +31,8 @@ export const interactive = {
   // open to chats (on Nick's explicit word); running the whole-vault scan is his.
   post_task_context_scan: 'Running the task context scan over the whole vault is Nick, in NEURO. Read its receipts with get_task_context_runs instead.',
   post_prepared_moves_drafts_outcome: 'Abandoning or restoring a saved draft is Nick’s decision about his own work, in NEURO → Drafts.',
-  post_task_context_activate: 'Turning on automatic context linking runs the backfill over the whole vault. Only Nick can do it, in NEURO → Brain Health, after the vault cleanup. Read get_task_context_status instead.',
-  post_task_context_deactivate: 'Turning automatic context linking off is Nick’s decision, in NEURO → Brain Health.',
+  post_task_context_activate: 'Turning on automatic context linking runs the backfill over the whole vault. Only Nick can do it, in NEURO → Settings, after the vault cleanup. Read get_task_context_status instead.',
+  post_task_context_deactivate: 'Turning automatic context linking off is Nick’s decision, in NEURO → Settings.',
   // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
   get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',
   post_saim_authority_grant_preview: 'Giving SAiM authority to act is Nick, in SAiM, reading exactly what it would allow. An agent cannot do it.',

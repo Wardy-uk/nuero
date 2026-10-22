@@ -1,0 +1,22 @@
+/* Automatic context linking — the Settings control (22 Oct 2026). */
+.ctxset { display: flex; flex-direction: column; gap: 10px; }
+.ctxset__head { display: flex; gap: 10px; align-items: flex-start; }
+.ctxset__state { flex: none; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); }
+.ctxset__state--on { color: var(--success, #3fb950); border-color: var(--success, #3fb950); }
+.ctxset__state--off { color: var(--text-muted); }
+.ctxset__note { margin: 0; color: var(--text-primary); line-height: 1.45; }
+.ctxset__note--wait { border-left: 3px solid var(--warning, #d69042); padding-left: 10px; }
+.ctxset__note--err { color: var(--danger, #f85149); }
+.ctxset__what, .ctxset__aside { margin: 0; color: var(--text-muted); line-height: 1.45; }
+.ctxset__facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+.ctxset__facts dt { color: var(--text-muted); }
+.ctxset__facts dd { margin: 0; color: var(--text-primary); }
+.ctxset__confirm { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
+.ctxset__confirm p { margin: 0; }
+.ctxset__tick { display: flex; gap: 8px; align-items: flex-start; }
+.ctxset__row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ctxset__btn { align-self: flex-start; background: transparent; color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
+.ctxset__btn:hover:not(:disabled) { border-color: var(--accent); }
+.ctxset__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ctxset__btn--write { border-color: var(--warning, #d69042); }
+@media (max-width: 600px) { .ctxset__facts { grid-template-columns: 1fr; } .ctxset__facts dd { margin-bottom: 6px; } }

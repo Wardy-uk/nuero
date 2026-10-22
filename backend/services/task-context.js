@@ -223,8 +223,30 @@ function _projectLinksByTask(scopes) {
 
 const ACTIVATION_KEY = 'task_context_activation';
 // The vault cleanup it waited for was done on 22 Oct 2026; the gate itself is unchanged —
-// it stays off until Nick enables it on Brain Health.
-const WAITING_SAY = 'Automatic context linking is off until you enable it here. The vault cleanup it was waiting for is done (22 Oct 2026). The first run after you enable it is the backfill.';
+// it stays off until Nick enables it in Settings (the ONE place this preference is set;
+// Brain Health only reports it — 22 Oct 2026).
+const WAITING_SAY = 'Automatic context linking is off until you enable it in NEURO → Settings. You can still link notes to a task by hand. The vault cleanup it was waiting for is done (22 Oct 2026). The first run after you enable it is the backfill.';
+const RUN_AT = { hour: 3, minute: 40 }; // matches the durable job's cron '40 3 * * *' (Europe/London)
+
+/** PURE. The next 03:40 Europe/London strictly after `now`, as an ISO instant. */
+function nextRunAt(now = Date.now()) {
+  const em = require('./energy-model');
+  const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const offsetMs = (ms) => {
+    const p = {}; for (const x of fmt.formatToParts(new Date(ms))) p[x.type] = x.value;
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(ms / 60000) * 60000;
+  };
+  // A London wall-clock time to an instant: subtract London's offset (0 or 1h) at that moment.
+  const at = (day) => {
+    const [y, m, d] = day.split('-').map(Number);
+    const guess = Date.UTC(y, m - 1, d, RUN_AT.hour, RUN_AT.minute);
+    return guess - offsetMs(guess - offsetMs(guess));
+  };
+  const today = em.londonDay(now);
+  let t = at(today);
+  if (t <= now) t = at(em.addDays(today, 1));
+  return new Date(t).toISOString();
+}
 const ENABLE_SAY = 'Enabling scans every open task against the whole vault NOW (the backfill), pins only high-confidence context, keeps lower-confidence matches as suggestions, and then runs every night at 03:40. Nothing is written to the vault. Links you made by hand and links you removed are kept as they are.';
 
 function activation() {
@@ -235,15 +257,35 @@ function activation() {
 function enabled() { return activation().enabled === true; }
 
 /** READ. Whether automatic linking runs, and what Nick would be agreeing to. Creates nothing. */
-function status() {
+function status({ now = Date.now() } = {}) {
   const a = activation();
+  const on = a.enabled === true;
+  const last = lastRun();
   return {
-    ok: true, enabled: a.enabled === true, enabledAt: a.enabledAt || null, enabledBy: a.enabledBy || null,
+    ok: true, enabled: on, enabledAt: a.enabledAt || null, enabledBy: a.enabledBy || null,
     disabledAt: a.disabledAt || null, backfill: a.backfill || null, schedule: 'Every night at 03:40',
-    say: a.enabled === true ? `Automatic context linking is on — every night at 03:40${a.backfill && a.backfill.at ? `; the backfill ran ${a.backfill.at}` : ''}.` : WAITING_SAY,
+    say: on ? `Automatic context linking is on — every night at 03:40${a.backfill && a.backfill.at ? `; the backfill ran ${a.backfill.at}` : ''}.` : WAITING_SAY,
     enableSay: ENABLE_SAY,
-    lastRun: lastRun(),
+    whatItDoes: 'Each night NEURO compares every open task with the vault and pins only high-confidence notes, projects and areas to it; weaker matches stay as suggestions. It never writes the vault, and never touches a link you made or removed by hand.',
+    // Only a scheduled job has a next run; off means none (never a time it will not keep).
+    nextRun: on ? nextRunAt(now) : null,
+    lastRun: last,
+    lastResult: last ? lastResultSay(last) : null,
+    manageIn: 'settings',
   };
+}
+
+/** PURE. One sentence about the last scan, from its own receipt — never padded. */
+function lastResultSay(run) {
+  if (!run) return null;
+  if (!run.ok) return `The last scan failed${run.error ? `: ${run.error}` : ''}.`;
+  const r = run.receipt || {};
+  const n = (k) => (Number.isFinite(r[k]) ? r[k] : null);
+  const parts = [];
+  if (n('tasks') != null) parts.push(`${n('tasks')} open task${n('tasks') === 1 ? '' : 's'}`);
+  if (n('pinned') != null) parts.push(`${n('pinned')} pinned`);
+  if (n('suggested') != null) parts.push(`${n('suggested')} suggested`);
+  return parts.length ? `Last scan: ${parts.join(', ')}.` : 'Last scan finished.';
 }
 
 /**
@@ -763,7 +805,7 @@ function registerJob() {
 }
 
 module.exports = {
-  ensure, vaultRoot, buildIndex, listScopes, runScan, status, activate, deactivate, WAITING_SAY, ENABLE_SAY, forTask, pinnedFor, suggestions, lastRun, runs,
+  ensure, vaultRoot, buildIndex, listScopes, runScan, status, activate, deactivate, WAITING_SAY, ENABLE_SAY, nextRunAt, lastResultSay, forTask, pinnedFor, suggestions, lastRun, runs,
   resolveTarget, link, remove, pin, dismissQuestion, search, registerJob,
   _internals: { _exists, _row },
 };
