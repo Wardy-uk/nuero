@@ -182,7 +182,7 @@ export default function TaskContext({ taskId, call, onOpen = null, compact = fal
       )}
       {pinned.length
         ? <ul className="tctx__list">{pinned.map((it) => <ContextItem key={it.id} item={it} onOpen={onOpen} onRemove={remove} busy={busy} />)}</ul>
-        : <p className="tctx__quiet">No context pinned yet.{d.automatic && d.automatic.enabled === false ? ' Automatic linking is off until the vault cleanup is done — you can link context by hand.' : (d.lastScan ? '' : ' The nightly scan hasn’t run.')}</p>}
+        : <p className="tctx__quiet">No context pinned yet.{d.automatic && d.automatic.enabled === false ? ' Automatic linking is off until you turn it on in NEURO → Brain Health — you can link context by hand.' : (d.lastScan ? '' : ' The nightly scan hasn’t run.')}</p>}
       {stale.length > 0 && (
         <details className="tctx__fold">
           <summary>{stale.length} no longer available</summary>

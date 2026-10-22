@@ -37,7 +37,8 @@ task list change no row.
 (`agent_state.task_context_activation`), the job returns `{ skipped: 'not-enabled' }` and every
 scan door (`runScan`, `POST /scan`) refuses with 409 — no scan, no pin, no suggestion, no stale
 mark, no run receipt, not even a table. `GET /api/task-context/status` and NEURO → **Brain
-Health → Automatic context linking** say it is waiting for the vault cleanup. Enabling there is
+Health → Automatic context linking** say it is off until Nick enables it (the vault cleanup it
+waited for was done on 22 Oct 2026). Enabling there is
 two steps (the second quotes exactly what happens and needs the "cleanup is done" tick) →
 `POST /api/task-context/activate {confirm: true}` turns it on and runs **the backfill** at once;
 if the backfill fails nothing is enabled. Then 03:40 nightly. `POST /deactivate` turns it off;

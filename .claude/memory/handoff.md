@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-22 (approved vault cleanup — executed)
+
+## Done and deployed (origin/main, pi5)
+- Writers stopped (96661fbd, c861bbff + the task-context wording commit): no empty import reports, no `## SAiM Actions` in Daily notes (Activity → SAiM log instead), one rolling Hygiene Sweep.md, Vault Audit retention, no `[[Logs]]` footers.
+- Windows vault cleanup applied: 57 archived, 64 edited, record `Documents/System/Vault Audit/Vault Cleanup 2026-10-22.md` (+ JSON in `Scripts/.lint-backups/vault-cleanup-2026-10-22/`, copy on pi5 `/mnt/data/backups/vault-cleanup-2026-10-22/`).
+- Automatic task-context linking still OFF; nothing called its routes.
+
+## Waiting on Nick
+1. NEURO → Brain Health → Automatic context linking → "Enable automatic context linking…" → tick → "Run the backfill and enable".
+2. `Daily/2026-04-04.md` keeps three `- [ ] Skills matrix` lines that sat inside the old SARA section — delete by hand if they are noise.
+
 # Session Handoff — 2026-10-22 (Task context MVP + Holding the week cards)
 
 ## Done — COMMITTED on branch `saim-task-context` (worktree ../nuero-task-context). NOT pushed, NOT deployed.

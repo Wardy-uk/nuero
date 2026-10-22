@@ -1,7 +1,7 @@
 # Vault cleanup manifest — 22 Oct 2026 (AUDIT ONLY)
 
-**Status: proposal. Nothing has been deleted, moved, rewritten, archived or consolidated.**
-The task-context backfill waits until Nick approves this manifest and the cleanup is done.
+**Status: APPROVED and EXECUTED 22 Oct 2026** — see "Execution record" at the end. Nothing was
+hard-deleted. The task-context backfill still waits for Nick to enable it in NEURO → Brain Health.
 
 Measured read-only against the Windows vault (`C:\Users\NickW\Documents\Nicks knowledge base`,
 canonical) on 22 Oct 2026: 2,210 files, 2,021 markdown notes. Reproduce with
@@ -143,3 +143,41 @@ its footer, so the MOC claims to collect logs and lists none of the 38 current o
 ⚠ The vault is synced (Obsidian Sync, Windows canonical). Do the cleanup **on Windows**.
 Keep any bulk edit out of `action-candidates` extraction: a bulk machine write through
 vault-hooks once raised 108 spurious candidates (15 Oct 2026).
+
+---
+
+## Execution record (22 Oct 2026)
+
+**Phase 1 — writers stopped** (deployed `96661fbd`, `c861bbff`):
+- `knowledge-memory.writeDailyImportReport` writes NO file when nothing was consolidated,
+  enriched or flagged (import routes alone stay in `activity_log`); no `[[Logs]]` footer.
+  Reports age out to `Archive/SAiM Import Reports/` after 30 days — but only from
+  **2026-11-21**, so the reports that existed at the cleanup are kept 30 days from it.
+- `next-action-engine` / `suggestion-engine` write NOTHING into Daily notes; the rows are in
+  `activity_log` (now carrying the reason) and render under NEURO → Activity → **SAiM log**
+  (folded per day, never in "All", never counted in the day's summary).
+- `vault-hygiene.nightlySweep` keeps ONE rolling `Hygiene Sweep.md`, rewritten only when the
+  sweep changed something or its kept list changed; `retainVaultAudit` moves superseded Vault
+  Audit reports to `Archive/Vault Audit/` by the rules in section 3. No generated report writes
+  `_Part of [[Logs]]_` any more.
+- Pinned by `backend/services/vault-noise-writers.test.js` (14; six rules mutation-checked).
+
+**Phase 2 — Windows vault cleanup** (`cleanup.py`, dry run then apply; preflight re-audit
+matched this manifest exactly — 27 empty / 11 non-empty import reports, 63 Daily notes, 78
+Vault Audit files, the same two identical-content groups):
+- Archived 57: 27 empty import reports → `Archive/SAiM Import Reports/`; 27 Vault Audit
+  reports (15 dated sweeps older than 14 days, 3 Lint Reports, 3 Contextual Linking Plans,
+  2 Fix Plans, 1 Alias Suggestions, 3 PLAUD Missing Reconciliations) → `Archive/Vault Audit/`;
+  the Heidi Power duplicate and two copies of the Neuro crash log →
+  `Archive/Duplicates (vault cleanup 2026-10-22)/` (HR original and `Ideas/Neuro.md` kept,
+  unchanged; no backlinks except old audit reports).
+- Edited 64: the `## SAiM/SARA Actions` section removed from all 63 Daily notes (764 generated
+  lines); `Documents/Vault/Logs.md` stale section replaced with a pointer to the folders.
+- Exception: `Daily/2026-04-04.md` — three `- [ ] Skills matrix` checkbox lines sat inside the
+  section; they were KEPT in place (not provably generated).
+- Every original copied first to `Scripts/.lint-backups/vault-cleanup-2026-10-22/`; record
+  with SHA-256 before/after for all 121 files in `Documents/System/Vault Audit/Vault Cleanup
+  2026-10-22.md` + `cleanup-record.json`. A copy of backups + archives is on pi5 at
+  `/mnt/data/backups/vault-cleanup-2026-10-22/` (Obsidian Sync excludes `Archive/` and
+  dot-folders, so on the Pi replica only the removals and edits appear).
+- Untouched by design: Plaud consolidation, unique-content meeting duplicates, Notion mirrors.

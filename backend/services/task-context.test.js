@@ -169,7 +169,7 @@ test('DEFAULT after deployment: the 03:40 job and every scan door do NOTHING —
   const before = snapshotVault();
   const st = tc.status();
   assert.equal(st.enabled, false);
-  assert.match(st.say, /waiting for the vault cleanup/);
+  assert.match(st.say, /off until you enable it here/);
   assert.match(st.enableSay, /backfill/);
   tc.registerJob();
   const job = require('./runtime-jobs')._jobs.get('task-context-scan');
@@ -203,7 +203,7 @@ test('manual linking works before activation; a removal made then is kept', () =
   r = tc.link({ taskId: G.id, type: 'note', ref: DRAFT });
   assert.equal(tc.remove({ taskId: G.id, linkId: r.link.id }).ok, true);
   assert.equal(tc.forTask(E.id).automatic.enabled, false);
-  assert.match(tc.forTask(E.id).automatic.say, /waiting for the vault cleanup/);
+  assert.match(tc.forTask(E.id).automatic.say, /off until you enable it here/);
   assert.equal(db.get(`SELECT COUNT(*) AS n FROM task_context_runs`).n, 0, 'manual linking writes no run receipt');
   assert.equal(db.get(`SELECT COUNT(*) AS n FROM task_context_links WHERE origin = 'nightly-scan'`).n, 0, 'nothing automatic yet');
 });

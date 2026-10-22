@@ -222,7 +222,9 @@ function _projectLinksByTask(scopes) {
 // linking and search work throughout. A machine can neither enable it nor scan.
 
 const ACTIVATION_KEY = 'task_context_activation';
-const WAITING_SAY = 'Automatic context linking is off — it is waiting for the vault cleanup to be approved and done. The first run after you enable it is the backfill.';
+// The vault cleanup it waited for was done on 22 Oct 2026; the gate itself is unchanged —
+// it stays off until Nick enables it on Brain Health.
+const WAITING_SAY = 'Automatic context linking is off until you enable it here. The vault cleanup it was waiting for is done (22 Oct 2026). The first run after you enable it is the backfill.';
 const ENABLE_SAY = 'Enabling scans every open task against the whole vault NOW (the backfill), pins only high-confidence context, keeps lower-confidence matches as suggestions, and then runs every night at 03:40. Nothing is written to the vault. Links you made by hand and links you removed are kept as they are.';
 
 function activation() {
