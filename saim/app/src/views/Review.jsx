@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { describeStorage, clearLocalData, SCHEMA_VERSION } from '../mobile/localStore';
 import { pending as pendingOps, subscribe, flush } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
+import { makeCall } from '../preparedMove.mjs';
+import { loadDrafts, draftsLine } from '../drafts.mjs';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import './Review.css';
 
@@ -31,7 +33,23 @@ function defaultMode(now = new Date()) {
   return 'morning';
 }
 
-export default function Review() {
+// Drafts first (22 Oct 2026): the one place SAiM's prepared work waits, reached from
+// here without re-expanding the tab bar. Its count is read from the same list.
+export function DraftsEntry({ drafts, onOpen }) {
+  if (!onOpen) return null;
+  const line = drafts && drafts.ok ? (draftsLine(drafts.counts) || (drafts.items.length ? `${drafts.items.length} held` : 'Nothing waiting')) : drafts ? 'Couldn’t read — open to see why' : '';
+  return (
+    <button type="button" className="rev__drafts" onClick={onOpen} data-testid="review-drafts">
+      <span className="rev__drafts-title">Drafts</span>
+      <span className="rev__drafts-sub">{line}</span>
+    </button>
+  );
+}
+
+export default function Review({ onNavigate = null }) {
+  const draftsCall = useMemo(() => makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), []);
+  const [drafts, setDrafts] = useState(null);
+  useEffect(() => { let live = true; loadDrafts(draftsCall).then((d) => { if (live) setDrafts(d); }); return () => { live = false; }; }, [draftsCall]);
   const { snapshot, freshness, fetchedAt, error, busy, refresh } = useNickNow();
   const [mode, setMode] = useState(() => defaultMode());
   const [storage, setStorage] = useState(null);
@@ -74,6 +92,7 @@ export default function Review() {
   return (
     <section className="rev">
       <h1 className="view__title">Review</h1>
+      <DraftsEntry drafts={drafts} onOpen={onNavigate ? () => onNavigate('drafts') : null} />
       <p className="view__lede">
         {s ? `Snapshot from ${stampFor(s.generatedAt) || '—'}` : 'Loading…'}
       </p>

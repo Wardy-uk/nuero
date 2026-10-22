@@ -284,14 +284,14 @@ test('eligible Now items: email, future meeting and task carry their exact ref a
 test('Make this ready: the button only on a row the server named; nothing on the kiosk; Now places it AFTER the row’s own action', async () => {
   const esbuild = require('esbuild'); const React = require('react'); const { renderToString } = require('react-dom/server');
   const APP = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src');
-  const out = await esbuild.build({ entryPoints: [path.join(APP, 'components', 'MakeReady.jsx')], bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic', external: ['react', 'react-dom', 'react/jsx-runtime'], logLevel: 'silent' });
+  const out = await esbuild.build({ entryPoints: [path.join(APP, 'components', 'MakeReady.jsx')], bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic', external: ['react', 'react-dom', 'react/jsx-runtime'], loader: { '.css': 'empty' }, logLevel: 'silent' });
   const mod = { exports: {} }; new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
   const V = mod.exports.MakeReadyView;
   const h = (p) => renderToString(React.createElement(V, { onPress() {}, onOpen() {}, ...p }));
   assert.equal(h({ item: null }), '', 'no item → no button');
   assert.equal(h({ item: { ref: 'held:x', label: 'Draft the reply' }, readOnly: true }), '', 'kiosk → no button');
   assert.match(h({ item: { ref: 'held:x', label: 'Draft the reply' } }), />Draft the reply</);
-  assert.match(h({ item: { ref: 'held:x', label: 'x' }, result: { kind: 'prepared', headline: 'I drafted the reply to Sam.' } }), /I drafted the reply to Sam\.[\s\S]*See it on the SAiM home/);
+  assert.match(h({ item: { ref: 'held:x', label: 'x' }, result: { kind: 'prepared', headline: 'I drafted the reply to Sam.' } }), /I drafted the reply to Sam\.[\s\S]*Open it in Drafts/);
   const flow = await import(pathToFileURL(path.join(APP, 'makeReady.mjs')).href);
   const m = flow.eligibleIndex({ ok: true, items: [{ ref: 'held:a', rowIds: ['attention:email-urgent', 'task:7'] }] });
   assert.equal(m.get('task:7').ref, 'held:a'); assert.equal(m.get('task:8'), undefined);

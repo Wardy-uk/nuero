@@ -357,7 +357,8 @@ test('the capacity card opens the draft at its next question; a card with no pro
 
 test('the phone shell opens THAT draft, and draws no button that would do nothing', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'views', 'Surface.jsx'), 'utf8');
-  assert.match(src, /setShowMove\(\{ recordId: o\.recordId, n: Date\.now\(\) \}\)/);
+  // Since 22 Oct 2026 a draft opens on its exact entry in Drafts (a private draft's opens stay on its card).
+  assert.match(src, /onNavigate\?\.\('drafts', \{ context: \{ recordId: o\.recordId \} \}\)/);
   assert.match(src, /canOpen=\{canOpen\}/);
   const as = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
   assert.equal((as.match(/\(!canOpen \|\| canOpen\(/g) || []).length, 2);

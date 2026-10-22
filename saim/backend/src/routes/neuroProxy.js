@@ -131,6 +131,10 @@ const EXACT_DOORS = new Set([
   // the goal, annotation and classification WRITES into his life model, which
   // have no screen here and do not belong behind an unauthenticated touchscreen.
   '/canonical/now',
+  // Drafts (22 Oct 2026): the wall may SHOW the list. EXACT, not the segment:
+  // `prepared-moves` also holds prepare, answer, request and confirm — every one
+  // of them an act, and the kiosk acts on none of them (Drafts renders read-only).
+  '/prepared-moves/drafts',
 ]);
 
 /**

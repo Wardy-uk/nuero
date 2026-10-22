@@ -10,6 +10,11 @@ import './MeetingControls.css';
  * nothing to the calendar. Undo is always offered — a wrong press costs SAiM
  * speaking up in a real meeting.
  */
+// What SAiM recorded, in plain words (22 Oct 2026) — and what it did NOT do.
+export function recorded(m) {
+  return `Recorded: you’re not attending “${(m && m.subject) || 'that meeting'}”. SAiM won’t treat it as a meeting you’re in. Nothing was declined or sent, and no one’s calendar was changed.`;
+}
+
 export default function MeetingControls({ meeting = null, nextMeeting = null, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null); // { key, line }
@@ -48,13 +53,13 @@ export default function MeetingControls({ meeting = null, nextMeeting = null, on
           <button type="button" className="mtg-btn" disabled={busy}
             onClick={() => post('finished', meeting.key, `“${meeting.subject || 'Meeting'}” marked over.`)}>It’s over</button>
           <button type="button" className="mtg-btn" disabled={busy}
-            onClick={() => post('not-attending', meeting.key, `Not in “${meeting.subject || 'that meeting'}”.`)}>I’m not in it</button>
+            onClick={() => post('not-attending', meeting.key, recorded(meeting))}>I’m not attending</button>
         </>
       ) : (
         <>
           <span className="mtg-text">Next: <strong>{nextMeeting.subject || 'a meeting'}</strong>{nextMeeting.time ? ` at ${nextMeeting.time}` : ''}</span>
           <button type="button" className="mtg-btn" disabled={busy}
-            onClick={() => post('not-attending', nextMeeting.key, `Not going to “${nextMeeting.subject || 'that meeting'}”.`)}>I’m not going</button>
+            onClick={() => post('not-attending', nextMeeting.key, recorded(nextMeeting))}>I’m not attending</button>
         </>
       )}
       {err && <span className="mtg-err">Not saved — {err}</span>}

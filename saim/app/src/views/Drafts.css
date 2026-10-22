@@ -1,0 +1,26 @@
+/* Drafts (22 Oct 2026) — one list, one status and at most one action per item.
+   Colours from SAiM's vocabulary: still human (#e9b46a) = needs your answer; her light = ready;
+   GAP (#f0d6a6) = waiting for allowance, notice it, nothing is broken; muted = held.
+   Uses the full width it is given; no narrow centred column. */
+.drafts { padding: 16px; display: flex; flex-direction: column; gap: 12px; color: #e6edf3; }
+.drafts__title { margin: 0; font-size: 22px; font-weight: 600; }
+.drafts__sub, .drafts__empty { margin: 0; color: #8b98a8; font-size: 14px; line-height: 1.45; }
+.drafts__gap { margin: 0; color: #f0d6a6; font-size: 14px; }
+.drafts__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.drafts__row { border: 1px solid rgba(255,255,255,0.12); border-left-width: 3px; border-radius: 8px; padding: 12px 14px; background: rgba(255,255,255,0.03); }
+.drafts__row--ask { border-left-color: #e9b46a; }
+.drafts__row--ready { border-left-color: rgb(var(--saim-rgb, 132, 166, 222)); }
+.drafts__row--wait { border-left-color: #f0d6a6; }
+.drafts__row--held { border-left-color: #8b98a8; }
+.drafts__head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.drafts__status { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.drafts__status--ask { color: #e9b46a; }
+.drafts__status--ready { color: rgb(var(--saim-rgb, 132, 166, 222)); }
+.drafts__status--wait { color: #f0d6a6; }
+.drafts__status--held { color: #8b98a8; }
+.drafts__kind { font-size: 12px; color: #8b98a8; }
+.drafts__name { margin: 6px 0 2px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.drafts__say { margin: 0; font-size: 14px; color: #e6edf3; overflow-wrap: anywhere; }
+.drafts__go, .drafts__close { margin-top: 10px; min-height: 40px; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(88,166,255,0.6); background: rgba(56,139,253,0.15); color: #e6edf3; font: inherit; font-size: 14px; cursor: pointer; }
+.drafts__close { border-color: rgba(255,255,255,0.2); background: transparent; }
+.drafts__item { margin-top: 10px; }

@@ -161,7 +161,7 @@ function Details({ items, mode, open }) {
   );
 }
 
-function NextRow({ item, onOpen, actions }) {
+function NextRow({ item, onOpen, actions, extra = null }) {
   const inner = (
     <>
       {item.when && <span className="sit__when">{item.when}</span>}
@@ -174,6 +174,8 @@ function NextRow({ item, onOpen, actions }) {
       {actions && onOpen ? (
         <button type="button" className="sit__next-btn" onClick={() => onOpen(item)}>{inner}</button>
       ) : <span className="sit__next-btn">{inner}</span>}
+      {/* AFTER the row's own action (22 Oct 2026): e.g. "Make this ready" for the exact item. */}
+      {extra}
     </li>
   );
 }
@@ -220,6 +222,8 @@ export default function Situation({
   // Keep my word: take a held promise forward as a prepared move. Absent → no control.
   onPromiseMove = null,
   onOpenActions = null,
+  // A control after a row's normal action — the shell's, for THAT item only ("Make this ready"). Null → none.
+  renderItemExtra = null,
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card
   // ({ recordId } → element). Absent (the SAiM shells) → the card points nowhere else.
   renderPromiseSave = null,
@@ -275,7 +279,9 @@ export default function Situation({
   // its entry when it follows a lead.
   const preparedEl = !prepared ? null : (
     <details className={`sit__prepared${fold ? ' sit__prepared--entry' : ' sit__prepared--shown'}`} open={fold ? undefined : true}>
-      <summary className="sit__prepared-entry">{(preparedMoment && preparedMoment.entry) || 'Prepared work'}</summary>
+      {/* An OFFER folded under a lead (a meeting) is a CONTROL, not a passive bubble (22 Oct 2026):
+          "See what SAiM can make ready" opens the exact item with its own button. Never on a wall. */}
+      <summary className={`sit__prepared-entry${preparedMoment && preparedMoment.control && plan.actions ? ' sit__prepared-entry--control' : ''}`}>{(preparedMoment && preparedMoment.entry) || 'Prepared work'}</summary>
       {prepared}
     </details>
   );
@@ -359,6 +365,7 @@ export default function Situation({
                       <span className="sit__object-tag">Needs you</span>
                       <p className="sit__object-title">{it.title}</p>
                       {it.summary && <p className="sit__object-sub">{it.summary}</p>}
+                      {plan.actions && renderItemExtra ? renderItemExtra(it) : null}
                     </article>
                   ))}
                   {blk.overflow > 0 && <p className="sit__more">and {blk.overflow} more</p>}
@@ -370,7 +377,7 @@ export default function Situation({
               const it = blk.items[0];
               return [(
                 <div key={i} className="sit__objects">
-                  {renderPrimary ? renderPrimary(it) : (
+                  {renderPrimary ? <>{renderPrimary(it)}{plan.actions && renderItemExtra ? renderItemExtra(it) : null}</> : (
                     <article className={`sit__object sit__object--${it.priority === 'P0' ? 'p0' : 'p1'}`}>
                       <span className="sit__object-tag">{it.priority === 'P0' ? 'Needs you' : 'Now'}</span>
                       <p className="sit__object-title">{it.title}</p>
@@ -404,7 +411,7 @@ export default function Situation({
                   {/* Under a focal "Next" object the rest of the list is what comes after it. */}
                   <h3 className="sit__label">{plan.blocks.some((b) => b.type === 'focal') ? 'Later' : 'Next'}</h3>
                   <ul className="sit__nextlist">
-                    {blk.items.map((it) => <NextRow key={it.id} item={it} onOpen={onOpen} actions={plan.actions} />)}
+                    {blk.items.map((it) => <NextRow key={it.id} item={it} onOpen={onOpen} actions={plan.actions} extra={plan.actions && renderItemExtra ? renderItemExtra(it) : null} />)}
                   </ul>
                   {blk.overflow > 0 && !ambient && <p className="sit__more">{blk.overflow} more later</p>}
                 </div>

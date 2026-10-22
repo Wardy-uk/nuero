@@ -1,0 +1,7 @@
+/* "Make this ready" — the row control on Now (phone) AND NEURO desktop's Now (22 Oct 2026),
+   so its look travels with the component rather than with one shell's stylesheet. */
+.mr { margin-top: 0.45rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.mr__say { margin: 0; font-size: 0.92rem; line-height: 1.4; overflow-wrap: anywhere; }
+.mr__btn { font: inherit; font-size: 0.9rem; padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid var(--line, rgba(255, 255, 255, 0.22)); background: transparent; color: inherit; cursor: pointer; }
+.mr__btn--go { font-weight: 600; }
+.mr__btn:disabled { opacity: 0.6; cursor: wait; }

@@ -434,7 +434,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     // open THAT — the draft on Home, or the promise card where SAiM asks.
     const o = card && card.open;
     if (o && o.kind === 'promise') {
-      if (o.recordId && o.show === 'draft') { setShowMove({ recordId: o.recordId, n: Date.now() }); return; }
+      // "Open the draft" goes to THAT record in Drafts — the one place prepared work waits (22 Oct 2026).
+      if (o.recordId && o.show === 'draft') { onNavigate?.('drafts', { context: { recordId: o.recordId } }); return; }
       const el = typeof document !== 'undefined' && o.ref ? document.querySelector(`[data-promise-ref="${String(o.ref).replace(/"/g, '')}"]`) : null;
       if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
       return;
@@ -698,7 +699,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       hideSecondary={Boolean(exchange)}
       // SAiM's one prepared decision. It renders nothing unless NEURO says a
       // trustworthy move exists, and writes nothing without Nick's press.
-      prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} show={showMove} />}
+      // A press on the offer prepares THAT item and opens its exact Drafts entry (22 Oct 2026).
+      prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} show={showMove} onPrepared={(recordId) => onNavigate?.('drafts', { context: { recordId } })} />}
       preparedMoment={preparedMoment}
       // Keep my word: prepare the governed delivery note; approval stays in Actions on the desktop.
       onPrepareDelivery={(key) => prepareDelivery(key)}
@@ -707,6 +709,18 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         // The interview AND the governed save happen ON the promise card (26 Oct 2026):
         // nothing here depends on this press's answer to show the save later.
         return promiseMove(op);
+      }}
+      // "I'm not attending" (22 Oct 2026): the SAME route the spoken command uses, for the exact
+      // meeting on screen. Nothing is declined, sent, or written to any calendar; Undo resumes it.
+      onNotAttending={async (m, { undo = false } = {}) => {
+        try {
+          const r = await apiFetch(`/api/attention/meeting/${undo ? 'resume' : 'not-attending'}`, { method: 'POST', body: JSON.stringify({ key: m.key }) });
+          await load({ quiet: true });
+          return r && r.ok ? { ok: true } : { ok: false, error: (r && r.error) || 'NEURO refused it' };
+        } catch (e) {
+          const inBody = String(e.message || '').match(/"error"\s*:\s*"([^"]+)"/);
+          return { ok: false, error: inBody ? inBody[1] : String(e.message || 'NEURO didn’t answer') };
+        }
       }}
       // The private draft's save step, pinned to its record — shown on every load.
       renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} onChanged={() => load({ quiet: true })} />}

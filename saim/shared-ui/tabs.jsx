@@ -38,6 +38,7 @@ import Standup from '../app/src/views/Standup';
 import Controls from '../app/src/views/Controls';
 import Household from '../app/src/views/Household';
 import Authority from '../app/src/views/Authority';
+import Drafts from '../app/src/views/Drafts';
 
 export const PRIMARY = [
   { id: 'capture', label: 'Capture', icon: '➕', Component: Capture },
@@ -52,6 +53,8 @@ export const SECONDARY = [
   // 'today' and 'focus' were removed (Build 10E, 3 Oct 2026). Both were second
   // answers to "what should I do now?" — the Surface and Now answer it
   // canonically. Old links resolve through RETIRED_TABS in action-surfaces.
+  // Drafts (22 Oct 2026): secondary, so the main bar stays three — reached first from Review.
+  { id: 'drafts', label: 'Drafts', icon: '✎', Component: Drafts },
   { id: 'tasks', label: 'Tasks', icon: '✓', Component: Tasks },
   { id: 'voice', label: 'Voice', icon: '🎙️', Component: Capture }, // jumps straight into recording
   { id: 'chat', label: 'Chat', icon: '💬', Component: Chat },

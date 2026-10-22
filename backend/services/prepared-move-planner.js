@@ -939,7 +939,7 @@ async function eligibleNow({ now = Date.now(), deps: over = {} } = {}) {
     if (prescreen(n, deps, nowMs)) continue;
     const q = quickEligible(c.item);
     const prior = deps.latest(moveKey);
-    out.push({ ref: c.ref, kind: n.kind, label: q.label, title: n.title, rowIds: rowIdsFor(c, n), prepared: Boolean(prior && Date.parse(prior.evidenceExpiresAt) > nowMs) });
+    out.push({ ref: c.ref, kind: n.kind, label: q.label, title: n.title, rowIds: rowIdsFor(c, n), prepared: Boolean(prior && Date.parse(prior.evidenceExpiresAt) > nowMs), recordId: prior && Date.parse(prior.evidenceExpiresAt) > nowMs ? prior.id : null });
   }
   return { onDuty: true, items: out };
 }

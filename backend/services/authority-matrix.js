@@ -128,6 +128,7 @@ const ROUTE_RULES = Object.freeze([
   // both Nick's. Machine clients are refused; the gateway marks both interactive.
   R('GET', '/api/prepared-moves/current', 'read'),
   R('GET', '/api/prepared-moves/eligible', 'read'),
+  R('GET', '/api/prepared-moves/drafts', 'read'),
   R('GET', '/api/prepared-moves/promises', 'read'),
   R('POST', '/api/prepared-moves/prepare', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/respond', 'saim.prepared-move.propose'),

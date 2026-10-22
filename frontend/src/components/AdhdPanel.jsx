@@ -17,17 +17,12 @@ import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs
 // the SAME component, record, authority check, confirmation and executor as
 // SAiM Home — never a second save path (26 Oct 2026).
 import PromiseSave from '../../../saim/app/src/components/PromiseSave.jsx';
+// "Make this ready" after a Now row's own action — the SAME control and /eligible list the phone uses (22 Oct 2026).
+import MakeReady from '../../../saim/app/src/components/MakeReady.jsx';
+import { loadEligible } from '../../../saim/app/src/makeReady.mjs';
+import { desktopCall } from '../desktopCall';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
-
-// The prepared-move client's `call` shape ({status, body}) over NEURO's own
-// authenticated fetch, so the shared component talks to the routes it already uses.
-async function desktopCall(path, { method = 'GET', body } = {}) {
-  const res = await apiFetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
-  let parsed = null;
-  try { parsed = await res.json(); } catch { parsed = null; }
-  return { status: res.status, body: parsed };
-}
 
 // apiFetch hands back a raw Response and sets no Content-Type, so every JSON
 // call needs this wrapper. Throwing on non-2xx keeps a failed load from
@@ -264,6 +259,18 @@ export default function AdhdPanel({ onNavigate }) {
   // Work only (13 Oct 2026): the server leaves personal life out of Now.
   const [workOnly] = useWorkOnly();
   const attention = useAttention({ interval: 30000, path: workOnly ? '/api/canonical/now?workOnly=1' : '/api/canonical/now' });
+  // Which Now rows SAiM can make ready — the SERVER's list, each with its exact ref (GET /api/prepared-moves/eligible).
+  // Re-read whenever Now is; a failed read offers nothing, never a guess.
+  const [eligible, setEligible] = useState(() => new Map());
+  useEffect(() => {
+    let live = true;
+    loadEligible(desktopCall).then((m) => { if (live) setEligible(m); });
+    return () => { live = false; };
+  }, [attention.data]);
+  const eligibleFor = (it) => {
+    const ref = it && it.actionRef;
+    return (ref && ref.cardId && eligible.get(`attention:${ref.cardId}`)) || (it && it.id && eligible.get(`attention:${it.id}`)) || null;
+  };
   const [busy, setBusy] = useState({});
   const [win, setWin] = useState('');
 
@@ -832,6 +839,10 @@ export default function AdhdPanel({ onNavigate }) {
             }}
             onOpenActions={onNavigate ? () => onNavigate('actions') : null}
             renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} />}
+            renderItemExtra={(it) => {
+              const e = eligibleFor(it);
+              return e ? <MakeReady item={e} call={desktopCall} onOpenDraft={onNavigate ? (recordId) => onNavigate('drafts', recordId ? { recordId } : null) : null} /> : null;
+            }}
           />
         </section>
       ) : (

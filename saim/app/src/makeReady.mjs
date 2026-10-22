@@ -35,9 +35,9 @@ export async function makeItReady(call, item) {
     return { kind: 'note', message: 'I couldn’t reach NEURO. Nothing was changed.' };
   }
   const b = (r && r.body) || {};
-  if (r && r.status === 200 && b.ok && b.move) return { kind: 'prepared', headline: (b.move.prepared && b.move.prepared.headline) || 'It’s ready to review.', plan: b.move.plan || null };
-  if (r && r.status === 200 && b.ok) return { kind: 'note', message: b.say || 'It is already prepared — it’s on your SAiM home.' };
+  if (r && r.status === 200 && b.ok && b.move) return { kind: 'prepared', headline: (b.move.prepared && b.move.prepared.headline) || 'It’s ready to review.', plan: b.move.plan || null, recordId: b.move.recordId || null };
+  if (r && r.status === 200 && b.ok) return { kind: 'note', message: b.say || 'It is already prepared — it’s in Drafts.' };
   // SAiM already has one move ready: say so, and point at it. Nothing was prepared or changed.
-  if (b.outcome === 'already-active') return { kind: 'already', message: b.error || 'SAiM already has something ready for you. It’s on your SAiM home.' };
+  if (b.outcome === 'already-active') return { kind: 'already', message: b.error || 'SAiM already has something ready for you. It’s in Drafts.' };
   return { kind: 'note', message: b.error || 'SAiM couldn’t take that forward. Nothing was changed.' };
 }

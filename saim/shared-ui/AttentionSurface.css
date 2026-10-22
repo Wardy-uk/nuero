@@ -625,3 +625,8 @@
 
 /* The system's own word for what happened — never "sent". */
 .surface__deskstate { opacity: 0.62; font-size: 0.78rem; }
+
+/* "I'm not attending" — recorded, in plain words, with Undo (22 Oct 2026). */
+.surface__recorded { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); }
+.surface__recorded-say { margin: 0; flex: 1 1 260px; font-size: 0.95rem; }
+.surface__recorded-err { margin: 0; color: #ffb4b4; font-size: 0.9rem; } /* FAULT: not recorded, he can retry */

@@ -181,6 +181,9 @@ export default function AttentionSurface({
   onPromiseMove = null,
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card. null = none.
   renderPromiseSave = null,
+  // "I'm not attending" for the meeting on screen (22 Oct 2026): the shell records it on
+  // the existing route ({ key }) → { ok, error }. Null (the kiosk, the watch) → no control.
+  onNotAttending = null,
   // Would the shell's onOpen do anything for this card? Unset = yes (the old behaviour).
   // A button that does nothing is not drawn — "Open State of Play" on a phone (25 Oct 2026).
   canOpen = null,
@@ -218,6 +221,9 @@ export default function AttentionSurface({
   // because a completed card is resolved and leaves the feed on the next read —
   // the answer to "did that close the task?" must outlive the thing it is about.
   const [outcome, setOutcome] = useState(null);
+  const [notAttended, setNotAttended] = useState(null); // { key, subject } once recorded — with Undo
+  const [naBusy, setNaBusy] = useState(false);
+  const [naErr, setNaErr] = useState(null);
 
   if (!data) {
     return (
@@ -268,6 +274,8 @@ export default function AttentionSurface({
     // The running meeting as NEURO names it ({ key, subject, scheduledEnd }) —
     // what "Capture from this meeting" may say it is about. Null → it names none.
     meeting = null,
+    // The next real meeting today ({ key, subject, time }) — named only when it IS the one on screen.
+    nextMeeting = null,
   } = data;
 
   // The desk apps worth offering NOW — composed server-side from explicit links
@@ -584,8 +592,9 @@ export default function AttentionSurface({
     // The ONE next step (21 Oct 2026): SAiM's own hand-off for a meeting, as a
     // control — only where this shell can complete it. Calm stays quiet.
     const step = nextStep({
-      handoff, presentation, context, meeting,
+      handoff, presentation, context, meeting, nextMeeting,
       can: {
+        notAttending: Boolean(onNotAttending) && prof !== 'kiosk' && prof !== 'watch',
         external: prof !== 'kiosk' && prof !== 'watch' && typeof window !== 'undefined',
         // ⚠ No capture on a wall: the kiosk keeps its read-only home, and an
         //   input it cannot complete is worse than none.
@@ -600,12 +609,35 @@ export default function AttentionSurface({
       else if (r.type === 'tab') onNavigate(r.tab, r.context ? { context: r.context } : undefined);
       else if (r.type === 'desk') onDeskOpen(r.app);
     };
+    // "I'm not attending" — the EXISTING route, for exactly the meeting shown. It writes
+    // nothing to any calendar and sends nothing; it only stops SAiM treating it as his.
+    const notAttend = async (m, undo = false) => {
+      setNaBusy(true); setNaErr(null);
+      try {
+        const r = await onNotAttending(m, { undo });
+        if (!r || !r.ok) throw new Error((r && r.error) || 'NEURO refused it');
+        setNotAttended(undo ? null : m);
+      } catch (e) { setNaErr(`${undo ? 'Not undone' : 'Not recorded'} — ${e.message}. Nothing was changed.`); }
+      setNaBusy(false);
+    };
     const stepEl = step ? (
       <div className="sit__step" role="group" aria-label="Next step">
-        <button type="button" className="sit__chip sit__chip--yes sit__step-go" onClick={() => runStep(step.primary)}>{step.primary.label}</button>
+        {step.primary && <button type="button" className="sit__chip sit__chip--yes sit__step-go" onClick={() => runStep(step.primary)}>{step.primary.label}</button>}
         {step.alternatives.map((a) => (
           <button key={a.label} type="button" className="sit__chip sit__chip--quiet sit__step-alt" onClick={() => runStep(a)}>{a.label}</button>
         ))}
+        {step.notAttending && !notAttended && (
+          <button type="button" className="sit__chip sit__chip--quiet sit__step-skip" disabled={naBusy} onClick={() => notAttend(step.notAttending)} data-meeting-key={step.notAttending.key}>I’m not attending</button>
+        )}
+      </div>
+    ) : null;
+    const notAttendedEl = (notAttended || naErr) ? (
+      <div className="surface__recorded" role="status">
+        {notAttended && (
+          <p className="surface__recorded-say">Recorded: you’re not attending “{notAttended.subject || 'that meeting'}”. SAiM won’t treat it as a meeting you’re in. Nothing was declined or sent, and no one’s calendar was changed.</p>
+        )}
+        {notAttended && <button type="button" className="sit__chip sit__chip--quiet" disabled={naBusy} onClick={() => notAttend(notAttended, true)}>Undo</button>}
+        {naErr && <p className="surface__recorded-err">{naErr}</p>}
       </div>
     ) : null;
     return (
@@ -631,7 +663,7 @@ export default function AttentionSurface({
           onCorrect={onLifeAnswer ? (doing) => onLifeAnswer(doing) : null}
           onNotNow={onLifeAnswer ? () => onLifeAnswer(null) : null}
           correcting={lifeBusy}
-          lead={sayOverride || beforeSay || (outcome ? (
+          lead={notAttendedEl || sayOverride || beforeSay || (outcome ? (
             <button type="button" className={`surface__outcome surface__outcome--${outcome.tone}`} onClick={() => setOutcome(null)} aria-label="Clear this note">
               <span className="surface__outcomelead">{outcome.lead}</span>
               {outcome.sub && <span className="surface__outcomesub">{outcome.sub}</span>}

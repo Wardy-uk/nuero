@@ -68,11 +68,29 @@ function meetingRef(meeting) {
 }
 
 /**
+ * PURE. The meeting "I'm not attending" may name: EXACTLY the one on screen.
+ *   in a meeting  → the running meeting NEURO named ({ key, subject })
+ *   before one    → `nextMeeting`, ONLY when SAiM's own hand-off for this moment
+ *                   names the same event (its prep link's event id is in the key)
+ *   otherwise     → null: no button, because nothing proves which meeting is shown.
+ */
+export function notAttendingTarget({ inMeeting, preMeeting, meeting, nextMeeting, dests }) {
+  if (inMeeting) {
+    const m = meetingRef(meeting);
+    return m ? { key: m.key, subject: m.subject } : null;
+  }
+  if (!preMeeting || !nextMeeting || typeof nextMeeting.key !== 'string' || !nextMeeting.key) return null;
+  const ids = (dests || []).map((d) => d && d.target && d.target.role === 'prep' ? prepEventId(d.target.href) : null).filter(Boolean);
+  if (!ids.some((id) => nextMeeting.key.startsWith(`id:${id}::`))) return null;
+  return { key: nextMeeting.key, subject: typeof nextMeeting.subject === 'string' ? nextMeeting.subject : null };
+}
+
+/**
  * The step for the moment:
  *   { primary, alternatives, why }  — one clear action, then at most two others
  *   null                            — nothing honest to offer here
  */
-export function nextStep({ handoff = null, presentation = null, context = null, meeting = null, can = {} } = {}) {
+export function nextStep({ handoff = null, presentation = null, context = null, meeting = null, nextMeeting = null, can = {} } = {}) {
   const activity = context && context.activity;
   const mode = presentation && presentation.mode;
   const inMeeting = mode === 'in-meeting' || activity === 'in-meeting';
@@ -94,14 +112,17 @@ export function nextStep({ handoff = null, presentation = null, context = null, 
   const capture = inMeeting && can.tab && can.tab('capture')
     ? { label: CAPTURE_LABEL, run: { type: 'tab', tab: 'capture', context: { meeting: meetingRef(meeting) } } }
     : null;
+  // "I'm not attending" (22 Oct 2026): a QUIET control beside these, for the exact meeting
+  // shown — offered only where the shell can record it (never the kiosk or watch).
+  const notAttending = can.notAttending ? notAttendingTarget({ inMeeting, preMeeting, meeting, nextMeeting, dests }) : null;
   if (acts.length) {
     const alternatives = acts.slice(1, 2);
     if (capture) alternatives.push(capture);
-    return { primary: acts[0], alternatives, why: h.why || null };
+    return { primary: acts[0], alternatives, why: h.why || null, notAttending };
   }
-  if (capture) return { primary: capture, alternatives: [], why: null };
+  if (capture) return { primary: capture, alternatives: [], why: null, notAttending };
   if (preMeeting && can.tab && can.tab('prep')) {
-    return { primary: { label: 'Open meeting prep', run: { type: 'tab', tab: 'prep', context: null } }, alternatives: [], why: null };
+    return { primary: { label: 'Open meeting prep', run: { type: 'tab', tab: 'prep', context: null } }, alternatives: [], why: null, notAttending };
   }
-  return null;
+  return notAttending ? { primary: null, alternatives: [], why: null, notAttending } : null;
 }

@@ -298,7 +298,7 @@ function EmbeddedBoundary({ boundary, onOpenAuthority, onAgain = null, busy = fa
   );
 }
 
-function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false }) {
+function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgain, onRespond, onAnswer, onOpenAuthority, onShow, onPark, onAskOption, embedded = false, drafts = false }) {
   const { view } = state; const move = view.move;
   const d = move.deliverable || {};
   const [deferDays, setDeferDays] = useState(1);
@@ -384,7 +384,8 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
         {(move.freshness || []).length > 0 && <ul className="pmo__sub">{move.freshness.map((f, i) => <li key={i}>{f.ref}: {f.ageHours == null ? 'unreadable' : `${f.ageHours}h old`} (limit {f.maxHours}h)</li>)}</ul>}
         {move.why && move.why.willNot && move.why.willNot.length > 0 && <><p className="pmo__prooflabel">SAiM will not</p><ul>{move.why.willNot.map((b, i) => <li key={i}>{b}</li>)}</ul></>}
       </details>
-      {!embedded && <Outstanding view={view} busy={busy} onShow={onShow} />}
+      {/* In Drafts the list IS the outstanding list — never a second one under the item. */}
+      {!embedded && !drafts && <Outstanding view={view} busy={busy} onShow={onShow} />}
     </section>
   );
 
@@ -403,7 +404,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
       );
     }
     if (state.kind === 'responded') return <p className="pmo__sub" role="status">{state.message}</p>;
-    if (state.kind === 'boundary' && embedded) return <EmbeddedBoundary boundary={state.boundary} onOpenAuthority={onOpenAuthority} onAgain={onAgain} busy={busy} />;
+    if (state.kind === 'boundary' && (embedded || drafts)) return <EmbeddedBoundary boundary={state.boundary} onOpenAuthority={onOpenAuthority} onAgain={onAgain} busy={busy} />;
     if (state.kind === 'boundary') {
       return (
         <div className="pmo__act pmo__act--boundary" role="status">
@@ -439,7 +440,8 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
       );
     }
     // Embedded: a standing boundary is shown FIRST, with its route — never a save button that cannot work.
-    const standing = embedded ? boundaryOf(view) : null;
+    // Drafts too (22 Oct 2026): "Waiting for allowance" opens on the boundary and its route.
+    const standing = (embedded || drafts) ? boundaryOf(view) : null;
     if (standing && standing.gate !== 'used') return <EmbeddedBoundary boundary={standing} onOpenAuthority={onOpenAuthority} onAgain={onAgain} busy={busy} />;
     if (embedded && ivOpen) {
       const unf = (move.options || []).find((o) => o.id === 'unfinished');
@@ -498,7 +500,7 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
 }
 
 /** PURE view: everything on screen comes from `state`. */
-export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false }) {
+export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, onAgain, onOpenAuthority = null, onDrill = null, onMakeReady = null, onRespond = null, onAnswer = null, onShow = null, onPark = null, onAskOption = null, busy = false, now = Date.now(), debug = false, heldFolded = false, readOnly = false, embedded = false, drafts = false }) {
   if (!state || state.kind === 'loading') return null;
   if (state.kind === 'pending') return debug ? <p className="pm__dev">prepared move: pending (not ready in time — asking again)</p> : null;
   if (state.kind === 'hidden') {
@@ -519,7 +521,7 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
-  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} />;
+  if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} drafts={drafts} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
   //    no path, no choice — nothing that implies something is about to happen.
@@ -789,7 +791,9 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
 export function momentOf(state) {
   // An OFFER is never a moment that leads — it folds behind a real lead (a
   // meeting, a P0) like a held move, so it can never interrupt.
-  if (state && state.kind === 'offer') return { kind: 'held', entry: 'Something SAiM could make ready' };
+  // ⚠ Its entry is a CONTROL (22 Oct 2026): "Something SAiM could make ready" was a
+  // passive bubble that named nothing. It opens on the exact item and its button.
+  if (state && state.kind === 'offer') return { kind: 'held', entry: 'See what SAiM can make ready', control: true };
   const v = state && state.view; const m = v && v.move;
   if (!m || state.kind === 'hidden' || state.kind === 'pending' || state.kind === 'loading') return null;
   if (m.version === 2 && !(v.held || m.held)) return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry: m.plan === 'ask' ? 'SAiM needs one thing from you' : 'Prepared work' };
@@ -800,14 +804,15 @@ export function momentOf(state) {
   return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry };
 }
 
-export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, onChanged = null }) {
+export default function PreparedMove({ call: injectedCall = null, onMoment = null, onOpenAuthority = null, heldFolded = false, readOnly: readOnlyProp = null, show = null, recordId: pinned = null, embedded = false, drafts = false, initial = null, onChanged = null, onPrepared = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   // The kiosk can SHOW a prepared move but never confirm or write (its shell
   // declares the platform; no device sniffing).
   const readOnly = useMemo(() => (readOnlyProp != null ? readOnlyProp : platformNow() === 'kiosk'), [readOnlyProp]);
   const sessionId = useMemo(() => newSessionId(), []);
   const debug = useMemo(() => isDebugView(), []);
-  const [state, setState] = useState({ kind: 'loading' });
+  // `initial`: a state the SHELL already reached on Nick's press (Drafts' "Open the confirmation"), so no effect here ever requests anything.
+  const [state, setState] = useState(() => initial || { kind: 'loading' });
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(Date.now());
   // Tell the Surface what kind of moment this is, so an actionable move is never
@@ -820,6 +825,7 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
   // times, quietly. Never a write — the read stores and mints nothing.
   useEffect(() => {
     let live = true;
+    if (initial) return () => { live = false; };
     // A pinned record (the desktop promise card) is read BY ID — never "whatever is current".
     (pinned ? load(call, { recordId: pinned }) : loadWithRetry(call, { onState: (s) => { if (live) setState(s); }, alive: () => live })).then((s) => { if (live) setState(s); });
     return () => { live = false; };
@@ -832,7 +838,17 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
   }, [state.kind]);
 
   // A drill-in survives a press: the boundary or receipt shows where he is.
-  const run = async (fn) => { setBusy(true); try { const next = await fn(); setState((s) => ({ ...next, drill: s.drill || null })); if (next && (next.kind === 'receipt' || next.kind === 'responded') && onChanged) onChanged(next); } finally { setBusy(false); } };
+  const idOf = (st) => (st && st.view && st.view.move && st.view.move.recordId) || null;
+  const run = async (fn) => {
+    setBusy(true);
+    const before = idOf(state);
+    try {
+      const next = await fn();
+      setState((s) => ({ ...next, drill: s.drill || null }));
+      // A receipt, a response, or an answer/park that made a NEW version: whoever lists it reads again.
+      if (next && onChanged && (next.kind === 'receipt' || next.kind === 'responded' || (idOf(next) && idOf(next) !== before))) onChanged(next);
+    } finally { setBusy(false); }
+  };
   const root = useRef(null);
   const first = useRef(true);
   // The Surface asks for ONE record (25 Oct 2026): a card's "open" for a
@@ -854,7 +870,14 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       heldFolded={heldFolded}
       readOnly={readOnly}
       embedded={embedded}
-      onMakeReady={() => run(() => makeReady(call, { offer: state.offer }))}
+      drafts={drafts}
+      onMakeReady={() => run(async () => {
+        const next = await makeReady(call, { offer: state.offer });
+        // The exact item just prepared — the shell opens ITS Drafts entry.
+        const rid = next && next.preparedRecordId;
+        if (rid && onPrepared) onPrepared(rid);
+        return next;
+      })}
       onRespond={(response, extra) => run(() => respond(call, { view: state.view, response, ...extra }))}
       onAnswer={(questionId, text) => run(() => answer(call, { view: state.view, questionId, text }))}
       onPark={(questionId) => run(() => park(call, { view: state.view, questionId }))}

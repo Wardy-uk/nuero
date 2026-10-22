@@ -402,7 +402,7 @@ export default function App() {
             sitting on the Ritual tab re-opens it as EOD instead of being
             ignored by the view's mount-time default. */}
         <ActiveView
-          key={`${active}:${intentKind || ''}:${navContext ? (navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
+          key={`${active}:${intentKind || ''}:${navContext ? (navContext.recordId || navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
           autoRecord={active === 'voice'}
           context={navContext}
           intentKind={intentKind}

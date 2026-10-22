@@ -52,6 +52,8 @@ const lazyLoad = (load) => lazy(() => load().then((m) => {
 }));
 
 const Dashboard = lazyLoad(() => import('./components/Dashboard'));
+// Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
+const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
 const PeopleBoard = lazyLoad(() => import('./components/PeopleBoard'));
 const StandupEditor = lazyLoad(() => import('./components/StandupEditor'));
 const TodoPanel = lazyLoad(() => import('./components/TodoPanel'));
@@ -393,6 +395,7 @@ function AuthenticatedApp() {
     switch (activeView) {
       case 'state': return <StateOfPlay onNavigate={handleNavigate} />;
       case 'today': return <AdhdPanel onNavigate={handleNavigate} />;
+      case 'drafts': return <DraftsPage context={navContext} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
       // EOD is the same screen with the end-of-day half already open. It had no

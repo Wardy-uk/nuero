@@ -676,7 +676,8 @@ export default function Now({ onNavigate }) {
     if (!readOnly) loadEligible(prepCall).then((m) => { if (alive) setReady(m); });
     return () => { alive = false; };
   }, [prepCall, readOnly, fetchedAt]);
-  const mr = (id) => (ready.get(id) ? <MakeReady item={ready.get(id)} call={prepCall} readOnly={readOnly} onNavigate={onNavigate} /> : null);
+  // A press prepares THAT item and opens its exact Drafts entry (22 Oct 2026).
+  const mr = (id) => (ready.get(id) ? <MakeReady item={ready.get(id)} call={prepCall} readOnly={readOnly} onOpenDraft={onNavigate ? (recordId) => onNavigate('drafts', { context: recordId ? { recordId } : null }) : null} /> : null);
   useEffect(() => {
     let live = true;
     apiFetch('/api/performance/today').then((d) => { if (live) setExertion(d); }).catch(() => {});

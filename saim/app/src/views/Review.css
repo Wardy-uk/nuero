@@ -140,3 +140,8 @@
   font: inherit;
   font-size: 0.9rem;
 }
+
+/* Drafts — the first item in Review (22 Oct 2026). */
+.rev__drafts { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 12px; margin: 4px 0 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid rgba(88,166,255,0.45); background: rgba(56,139,253,0.12); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.rev__drafts-title { font-size: 17px; font-weight: 700; }
+.rev__drafts-sub { font-size: 14px; opacity: 0.85; }

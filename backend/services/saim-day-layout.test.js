@@ -51,7 +51,7 @@ async function bundle(entry) {
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
   return mod.exports;
 }
-const CSS = ['App.css', 'views/Authority.css', 'views/Now.css'].map((f) => fs.readFileSync(path.join(APP, f), 'utf8')).join('\n');
+const CSS = ['App.css', 'views/Authority.css', 'views/Now.css', 'components/MakeReady.css'].map((f) => fs.readFileSync(path.join(APP, f), 'utf8')).join('\n');
 const SIZES = [[390, 844], [1024, 552], [1440, 900], [1920, 1080]];
 
 /** The PWA shell as App.jsx draws it: the More menu (closed) and the four-item bar. */

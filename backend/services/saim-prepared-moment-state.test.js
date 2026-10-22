@@ -130,7 +130,7 @@ test('momentOf reads the move’s state: actionable / held / nothing — and the
   assert.deepEqual(PM.momentOf(view({ held: true, prepared: { headline: 'x' } }, { held: { say: 'x' } })), { kind: 'held', entry: 'Prepared for your next working morning' });
   for (const k of ['loading', 'pending', 'hidden']) assert.equal(PM.momentOf({ kind: k }), null, k);
   const surface = fs.readFileSync(path.join(APP, 'views', 'Surface.jsx'), 'utf8');
-  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} onOpenAuthority=\{\(\) => onNavigate\?\.\('authority'\)\} show=\{showMove\} \/>\}/);
+  assert.match(surface, /prepared=\{<PreparedMove onMoment=\{setPreparedMoment\} onOpenAuthority=\{\(\) => onNavigate\?\.\('authority'\)\} show=\{showMove\} onPrepared=\{\(recordId\) => onNavigate\?\.\('drafts', \{ context: \{ recordId \} \}\)\} \/>\}/);
   assert.match(surface, /preparedMoment=\{preparedMoment\}/);
   const as = fs.readFileSync(path.join(SHARED, 'AttentionSurface.jsx'), 'utf8');
   assert.match(as, /preparedMoment=\{preparedMoment\}/, 'AttentionSurface hands it to Situation');

@@ -151,7 +151,13 @@ export async function makeReady(call, { offer }) {
     return { kind: 'refused', message: 'I couldn’t reach NEURO. Nothing was changed.', again: true };
   }
   const b = r.body || {};
-  if (r.status === 200 && b.ok && b.move) return load(call);
+  // ⚠ The record THIS press prepared, by id (22 Oct 2026) — never "whatever is current
+  // now", which can be another proposal; the shell opens exactly this one in Drafts.
+  if (r.status === 200 && b.ok && b.move) {
+    const preparedRecordId = b.move.recordId || null;
+    const next = await load(call, preparedRecordId ? { recordId: preparedRecordId } : {});
+    return { ...next, preparedRecordId };
+  }
   if (r.status === 200 && b.ok) return { kind: 'note', message: b.say || 'Nothing to prepare for that right now.' };
   return { kind: 'note', message: b.error || 'SAiM couldn’t prepare that. Nothing was changed.' };
 }

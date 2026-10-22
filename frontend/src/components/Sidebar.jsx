@@ -15,6 +15,8 @@ const PRIMARY_ITEMS = [
   // collapsed group, or its badge is invisible) and Commitments (both
   // directions, from the world model).
   { id: 'today',       label: 'Now',         icon: '◐' },
+  // Drafts (22 Oct 2026): every unfinished thing SAiM has prepared, in one place — where Now's "make ready" lands.
+  { id: 'drafts',      label: 'Drafts',      icon: '✎' },
   // The list Nick works from every day — primary, beside the promises behind it (13 Oct 2026).
   { id: 'todos',       label: 'Tasks',       icon: '☑' },
   { id: 'capture',     label: 'Capture',     icon: '+' },

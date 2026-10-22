@@ -88,6 +88,15 @@ router.get('/current', async (req, res) => {
   }
 });
 
+// GET /api/prepared-moves/drafts — Drafts: every active, unfinished prepared item in one list (private working drafts, prepared notes, reply drafts, meeting prep), however it began. Each with one plain status — needs your answer, ready to save, ready to confirm, waiting for allowance, held (with the precise reason) — and at most one action. Read only: nothing is stored, minted or sent.
+router.get('/drafts', async (req, res) => {
+  try {
+    res.json(await require('../services/prepared-drafts').list());
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/prepared-moves/eligible — which Now items SAiM can make ready (make this ready, draft the reply, meeting prep): each with its exact ref for /prepare and the Now row ids it is drawn as. Held, personal, employment and ineligible items are left out. Read only.
 router.get('/eligible', async (req, res) => {
   try {
