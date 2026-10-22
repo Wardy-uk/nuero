@@ -26,7 +26,7 @@
 .drafts__item { margin-top: 10px; }
 
 /* Sections (22 Oct 2026): confirmation · saved work · communication · history. */
-.drafts__section { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 22px 0 8px; opacity: 0.85; }
+.drafts__section, .drafts__today-h { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 22px 0 8px; opacity: 0.85; }
 .drafts__empty--small { font-size: 13px; opacity: 0.75; margin: 0 0 6px; }
 .drafts__path, .drafts__meta { margin: 3px 0; font-size: 13px; overflow-wrap: anywhere; }
 .drafts__path code { font-size: 12px; }

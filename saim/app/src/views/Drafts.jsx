@@ -69,14 +69,14 @@ export function TodayHistory({ today, readOnly = false, onOpenNote = null }) {
   const items = today.items || [];
   return (
     <section className="drafts__today" id="drafts-today" aria-label="Today">
-      <h2 className="drafts__section">Today</h2>
+      <h2 className="drafts__today-h">Today</h2>
       {today.known === false && <p className="drafts__gap">I couldn’t read all of today’s records ({(today.gaps || []).map((g) => g.source).join(', ')}) — this list may be short.</p>}
       {items.length === 0 ? (
         <p className="drafts__empty drafts__empty--small">Nothing prepared or confirmed today.</p>
       ) : (
         <ul className="drafts__today-list">
           {items.map((h) => (
-            <li key={h.moveKey} className={`drafts__today-row drafts__today-row--${h.stage}`} data-move-key={h.moveKey} data-stage={h.stage}>
+            <li key={h.moveKey} className={`drafts__today-row drafts__today-row--${h.stage}`} data-today-key={h.moveKey} data-stage={h.stage}>
               <span className="drafts__today-time">{h.atSay || '—'}</span>
               <span className="drafts__today-body">
                 <span className={`drafts__status drafts__status--${STAGE_TONE[h.stage] || 'held'}`}>{h.stageSay}</span>
