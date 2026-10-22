@@ -543,20 +543,33 @@ const RUNNING = new Set();
 /**
  * PURE. May this move go ahead under this duty reading? On duty: yes. Off duty —
  * outside working hours ONLY, never on leave and never when duty is unreadable —
- * a PRIVATE DRAFT Nick started himself from the promise card (only his press on
- * /prepare creates one; machines are refused there) may still be saved: he has
- * just worked through its interview, and holding his own save "for the next
- * working morning" stranded him (Nick, 21 Oct 2026). Every other gate — switch,
- * stop, allowance, fresh checks, a one-use confirmation — still applies, and every
- * other move stays held off duty. ONE rule for the view, /request, /confirm and
- * the executor, so a save shown is a save that can be carried out.
+ * ONE kind of record only (Nick, 21 Oct 2026): a PRIVATE PROMISE DRAFT that Nick
+ * started HIMSELF from the promise card. All four must hold:
+ *   - prepared-move v2;
+ *   - a private draft (`selected.privateDraft`);
+ *   - linked to a promise (`selected.source.promiseKey`);
+ *   - its immutable `firstOrigin` is exactly 'manual'.
+ * ⚠ `firstOrigin`, never `origin`: every answer or park re-plans the draft as a new
+ * version with `origin: 'answer'`, and `firstOrigin` is carried forward unchanged
+ * (routes/prepared-moves /answer). A promise key is NOT evidence of a manual start —
+ * /prepare also serves the API token / MCP (`firstOrigin: 'mcp'`), and the scan
+ * stamps 'scan'; both stay held off duty. A record with no `firstOrigin` stays held.
+ * Every other gate — the server switch, the stop, the daily allowance, the fresh
+ * calendar/leave checks, the solo-only block, a one-use human confirmation — still
+ * applies. ONE rule for the view, /request, /confirm and the executor, so a save
+ * shown is a save that can be carried out.
  */
 function dutyPermits(duty, record) {
   if (duty && duty.onDuty === true) return true;
   if (!duty || duty.why !== 'off-duty') return false;
   const pkt = record && record.packet;
   const s = pkt && pkt.selected;
-  return Boolean(pkt && pkt.contract === 'prepared-move-v2' && s && s.privateDraft && s.source && s.source.promiseKey);
+  return Boolean(
+    pkt && pkt.contract === 'prepared-move-v2'
+    && s && s.privateDraft
+    && s.source && typeof s.source.promiseKey === 'string' && s.source.promiseKey
+    && pkt.firstOrigin === 'manual'
+  );
 }
 
 async function _executeHeld({ record, w, option, grantId, adapters, kind, checks, now, budget }) {

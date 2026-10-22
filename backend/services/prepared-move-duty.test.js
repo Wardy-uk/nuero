@@ -1,31 +1,41 @@
 'use strict';
 
-// exec.dutyPermits — the ONE off-duty exception, and how narrow it is (26 Oct 2026).
-// A private draft Nick started from his promise card may be saved outside working
-// hours; nothing else moves off duty, and leave or an unreadable duty holds everything.
+// exec.dutyPermits — the ONE off-duty exception, and how narrow it is (21–22 Oct 2026).
+// Off duty, only a v2 private PROMISE draft whose immutable firstOrigin is exactly
+// 'manual' may go ahead; never on leave, never with duty unreadable. A promise key
+// alone is NOT evidence of a manual start. (The route-level proof, through the view,
+// /request, /confirm and the executor, is routes/prepared-moves-off-duty.test.js.)
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { dutyPermits } = require('./prepared-move-exec');
 
-const rec = (selected, contract = 'prepared-move-v2') => ({ packet: { contract, selected } });
-const PRIVATE = rec({ privateDraft: { label: 'x' }, source: { promiseKey: 'promise:322' } });
+const rec = ({ contract = 'prepared-move-v2', origin = 'answer', firstOrigin = 'manual', privateDraft = { label: 'x' }, promiseKey = 'promise:322', kind = 'project-note' } = {}) => ({
+  packet: { contract, origin, ...(firstOrigin === null ? {} : { firstOrigin }), selected: { kind, ...(privateDraft ? { privateDraft } : {}), source: promiseKey ? { promiseKey } : {} } },
+});
+const OFF = { onDuty: false, why: 'off-duty' };
 
 test('on duty: any move', () => {
-  assert.equal(dutyPermits({ onDuty: true, why: 'working' }, rec({ kind: 'project-note' })), true);
-  assert.equal(dutyPermits({ onDuty: true, why: 'working' }, PRIVATE), true);
+  assert.equal(dutyPermits({ onDuty: true, why: 'working' }, rec({ privateDraft: null, firstOrigin: 'scan' })), true);
+  assert.equal(dutyPermits({ onDuty: true, why: 'working' }, rec()), true);
 });
-test('off duty (outside working hours): ONLY a promise-card private draft', () => {
-  const off = { onDuty: false, why: 'off-duty' };
-  assert.equal(dutyPermits(off, PRIVATE), true);
-  assert.equal(dutyPermits(off, rec({ kind: 'project-note', source: { promiseKey: 'promise:322' } })), false, 'an ordinary promise move stays held');
-  assert.equal(dutyPermits(off, rec({ privateDraft: { label: 'x' }, source: {} })), false, 'a private draft not from a promise card stays held');
-  assert.equal(dutyPermits(off, rec({ privateDraft: { label: 'x' }, source: { promiseKey: 'promise:322' } }, 'prepared-move-v1')), false, 'never a v1 packet');
-  assert.equal(dutyPermits(off, null), false);
+test('off duty: a v2 private promise draft Nick started himself (firstOrigin manual) — and nothing else', () => {
+  assert.equal(dutyPermits(OFF, rec()), true, 'manual, re-planned by answers: eligible');
+  assert.equal(dutyPermits(OFF, rec({ origin: 'manual' })), true, 'manual, as first prepared: eligible');
+  assert.equal(dutyPermits(OFF, rec({ firstOrigin: 'scan' })), false, 'scan-created');
+  assert.equal(dutyPermits(OFF, rec({ firstOrigin: 'mcp' })), false, 'MCP/API-created');
+  assert.equal(dutyPermits(OFF, rec({ firstOrigin: 'answer' })), false, 'an answer is never a start');
+  assert.equal(dutyPermits(OFF, rec({ firstOrigin: null, origin: 'manual' })), false, 'no firstOrigin recorded → held (never inferred from origin)');
+  assert.equal(dutyPermits(OFF, rec({ firstOrigin: 'Manual' })), false, 'exactly "manual"');
+  assert.equal(dutyPermits(OFF, rec({ promiseKey: null })), false, 'not linked to a promise');
+  assert.equal(dutyPermits(OFF, rec({ privateDraft: null })), false, 'an ordinary promise move');
+  for (const kind of ['meeting-prep', 'email-reply']) assert.equal(dutyPermits(OFF, rec({ kind, privateDraft: null })), false, kind);
+  assert.equal(dutyPermits(OFF, rec({ contract: 'prepared-move-v1' })), false, 'never a v1 packet');
+  assert.equal(dutyPermits(OFF, null), false);
 });
-test('on leave, or duty unreadable: nothing, not even his private draft', () => {
-  assert.equal(dutyPermits({ onDuty: false, why: 'leave' }, PRIVATE), false);
-  assert.equal(dutyPermits({ onDuty: false, why: 'unknown' }, PRIVATE), false);
-  assert.equal(dutyPermits(null, PRIVATE), false);
-  assert.equal(dutyPermits(undefined, PRIVATE), false);
+test('on leave, or duty unreadable: nothing, not even his manual private draft', () => {
+  assert.equal(dutyPermits({ onDuty: false, why: 'leave' }, rec()), false);
+  assert.equal(dutyPermits({ onDuty: false, why: 'unknown' }, rec()), false);
+  assert.equal(dutyPermits(null, rec()), false);
+  assert.equal(dutyPermits(undefined, rec()), false);
 });
