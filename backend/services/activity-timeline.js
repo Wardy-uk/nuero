@@ -36,7 +36,7 @@ const db = require('../db/database');
 
 const CATEGORIES = Object.freeze(['sensed', 'investigated', 'decided', 'prepared', 'acted', 'verified', 'recovered', 'blocked', 'configured']);
 const ACTORS = Object.freeze(['neuro', 'nick', 'external-system', 'system-runtime']);
-const FILTERS = Object.freeze(['all', 'investigations', 'actions', 'sources', 'decisions', 'problems', 'approvals']);
+const FILTERS = Object.freeze(['all', 'investigations', 'actions', 'sources', 'decisions', 'problems', 'approvals', 'saim-log']);
 const FAILED_STATUSES = Object.freeze(['failed', 'uncertain', 'blocked', 'refused', 'inconclusive']);
 const MAX_ENTRIES = 500;
 
@@ -384,6 +384,46 @@ function fromFlagChanges(rows) {
       headline: `You switched "${d.label || d.key}" ${d.to ? 'on' : 'off'}`, status: d.to ? 'on' : 'off', metadata: { key: d.key },
     });
   });
+}
+
+/**
+ * SAiM's own log — what used to be written as `## SAiM Actions` lines into
+ * Nick's daily note (stopped 22 Oct 2026: 763 machine lines in 63 notes, read
+ * back by nothing). The rows were always in activity_log; this renders them
+ * on demand, under their own filter, and never in "All" — they are the noise
+ * the cleanup removed, not things NEURO did that are worth a line.
+ *
+ * Identical lines on one day fold into ONE entry with a count, because the
+ * same meeting-prep line was logged at 10, 5 and 1 minutes out.
+ */
+const SAIM_LOG_TYPES = Object.freeze(['saim_auto_action', 'saim_action', 'saim_outcome']);
+function _saimLogText(type, d) {
+  if (type === 'saim_outcome') return `Completed: ${d.detail || d.type || 'something'}`;
+  if (type === 'saim_action') {
+    const what = d.label || d.reason || d.type || 'an action';
+    const why = d.label && d.reason ? `: ${d.reason}` : '';
+    return d.status === 'failed' ? `Tried ${what}${why} — failed` : `${what}${why}`;
+  }
+  return d.detail || d.type || 'SAiM auto-action';
+}
+function fromSaimLog(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const d = _json(r.event_data, {}) || {};
+    const text = _saimLogText(r.event_type, d);
+    const k = `${r.date_key}|${r.event_type}|${text}`;
+    const g = groups.get(k) || { first: r.created_at, last: r.created_at, n: 0, d, type: r.event_type, text, firstId: r.id };
+    g.n += 1;
+    if (r.created_at > g.last) g.last = r.created_at;
+    if (r.created_at < g.first) { g.first = r.created_at; }
+    groups.set(k, g);
+  }
+  return [...groups.values()].map((g) => entry({
+    id: `saimlog:${g.firstId}`, occurredAt: _sqliteIso(g.last), category: 'acted', type: 'saim.log', actor: 'neuro',
+    headline: g.text, summary: g.n > 1 ? `${g.n} times that day.` : null,
+    status: g.d.status === 'failed' ? 'failed' : null,
+    metadata: { kind: g.type, count: g.n },
+  }));
 }
 
 function fromEventLog(rows) {
@@ -742,6 +782,10 @@ function collect({ fromIso, toIso }) {
             status: d.mode, metadata: { mode: d.mode, basis: d.basis || null } });
         })];
     }, gaps),
+    ..._safe('activity_log', () => {
+      const day = (iso) => String(iso).slice(0, 10);
+      return fromSaimLog(db.all(`SELECT id, event_type, event_data, date_key, created_at FROM activity_log WHERE event_type IN (${SAIM_LOG_TYPES.map(() => '?').join(',')}) AND date_key >= ? AND date_key <= ?`, [...SAIM_LOG_TYPES, day(fromIso), day(toIso)]));
+    }, gaps),
     ..._safe('event_log', () => fromEventLog(db.all(`SELECT event_id, type, occurred_at, payload FROM event_log WHERE type IN ('runtime.job.skipped','runtime.job.failed','source.lifecycle.changed','native.queue.replayed','native.queue.degraded') AND ${between('occurred_at')}`, w)), gaps),
     ..._safe('goal_loop_events', () => fromGoalLoop(db.all(`SELECT * FROM goal_loop_events WHERE ${between('at')}`, w)), gaps),
     ..._safe('personal_date_events', () => fromPersonalDates(db.all(`SELECT * FROM personal_date_events WHERE ${between('at')}`, w)), gaps),
@@ -755,7 +799,10 @@ function collect({ fromIso, toIso }) {
 
 /** Pure. Which entries does a filter keep? */
 function matches(e, filter) {
+  // SAiM's log is shown on demand only — never in "All" or any other view.
+  if (e.type === 'saim.log') return filter === 'saim-log';
   switch (filter) {
+    case 'saim-log': return false;
     case 'investigations': return !!e.investigationRef || e.type.startsWith('investigation.');
     case 'actions': return ['acted', 'prepared'].includes(e.category) || (e.category === 'verified' && !!e.actionRef) || e.type.startsWith('selfheal.');
     case 'sources': return e.sourceRefs.length > 0;
@@ -850,7 +897,7 @@ function read({ now = Date.now(), from = null, to = null, filter = 'all', limit 
   const f = FILTERS.includes(filter) ? filter : 'all';
   const { entries, gaps } = collect({ fromIso, toIso });
   const startToday = _localDayStartIso(nowMs);
-  const today = summarise(collect({ fromIso: startToday, toIso: new Date(nowMs).toISOString() }).entries);
+  const today = summarise(collect({ fromIso: startToday, toIso: new Date(nowMs).toISOString() }).entries.filter((e) => e.type !== 'saim.log'));
   const kept = entries.filter((e) => matches(e, f));
   return {
     contract: 'activity-v1', from: fromIso, to: toIso, filter: f, filters: FILTERS,
@@ -860,6 +907,6 @@ function read({ now = Date.now(), from = null, to = null, filter = 'all', limit 
 
 module.exports = {
   CATEGORIES, ACTORS, FILTERS, PENDING, AUTONOMY_SWITCHES, autonomy,
-  entry, fromNativeBuilds, fromPersonalDates, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromEventLog, fromGoalLoop, fromPersonalOps,
+  entry, fromNativeBuilds, fromPersonalDates, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromSaimLog, fromEventLog, fromGoalLoop, fromPersonalOps,
   collect, matches, summarise, read,
 };

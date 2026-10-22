@@ -19,6 +19,8 @@ import './Canonical.css';
 const FILTER_LABELS = {
   all: 'All', investigations: 'Investigations', actions: 'Actions', sources: 'Sources',
   decisions: 'Decisions', problems: 'Blocked / failed', approvals: 'My approvals',
+  // What used to be written into Daily notes as `## SAiM Actions` (22 Oct 2026).
+  'saim-log': 'SAiM log',
 };
 const CATEGORY_WORD = {
   sensed: 'noticed', investigated: 'investigated', decided: 'decided', prepared: 'prepared',

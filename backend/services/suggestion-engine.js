@@ -29,7 +29,6 @@ const db = require('../db/database');
 // Only for its `kind` classification — the presenter does not require this file
 // back (its test reads the source as text), so there is no cycle here.
 const actionPresenter = require('./action-presenter');
-const legacyNames = require('./legacy-names');
 
 const SAIM_MODE = process.env.SAIM_MODE || 'suggest';
 const JIRA_BASE = process.env.JIRA_BASE_URL || '';
@@ -870,25 +869,13 @@ function logActionExecution(action, result) {
       type: action.type,
       status: result.ok ? 'executed' : 'failed',
       detail: result.detail,
+      reason: action.reason || null,
     });
   } catch {}
 
-  if (result.ok) {
-    try {
-      const obsidian = require('./obsidian');
-      const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      const line = `- ${time} — ${action.reason || action.type}`;
-
-      const daily = obsidian.readTodayDailyNote() || '';
-      // Either spelling — see `_appendToDailySection`. A note written this
-      // morning still says `## SARA Actions`.
-      if (legacyNames.headingAliases('## SAiM Actions').some((h) => daily.includes(h))) {
-        obsidian.appendToDailyNote(line + '\n');
-      } else {
-        obsidian.appendToDailyNote(`\n\n## SAiM Actions\n${line}\n`);
-      }
-    } catch {}
-  }
+  // ⚠ No `## SAiM Actions` line in the daily note any more (22 Oct 2026 vault
+  // cleanup) — the activity_log row above IS the record, and NEURO → Activity →
+  // SAiM log renders it on demand.
 }
 
 module.exports = {

@@ -21,7 +21,6 @@
 
 const db = require('../db/database');
 const actionSurfaces = require('../../shared/action-surfaces.cjs');
-const legacyNames = require('./legacy-names');
 
 const JIRA_BASE = process.env.JIRA_BASE_URL || '';
 const { decorateSurfaceSupport } = actionSurfaces;
@@ -33,13 +32,10 @@ const SAFE_AUTO_ACTIONS = {
   meeting_prep_log: {
     match: (item) => item.type === 'meeting' && item.meta?.minutesAway != null && item.meta.minutesAway <= 15,
     execute: (item) => {
-      try {
-        const obsidian = require('./obsidian');
-        const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        const line = `- ${time} — Meeting prep: "${item.title}" in ${item.meta.minutesAway} min`;
-        _appendToDailySection(obsidian, '## SAiM Actions', line);
-        return { type: 'meeting_prep_log', detail: `Logged prep for "${item.title}"` };
-      } catch { return null; }
+      // ⚠ Recorded in activity_log only (via _logAutoAction), NEVER in the daily
+      // note (22 Oct 2026 vault cleanup): nothing read the lines back, and they
+      // were 763 machine lines interleaved with Nick's own notes.
+      return { type: 'meeting_prep_log', detail: `Meeting prep: "${item.title}" in ${item.meta.minutesAway} min` };
     },
     cooldown: 30 * 60 * 1000, // Don't re-log same meeting within 30 min
   },
@@ -52,14 +48,12 @@ const SAFE_AUTO_ACTIONS = {
              (ctx.observations || []).length > 0;
     },
     execute: (item, ctx) => {
-      try {
-        const obsidian = require('./obsidian');
-        const obs = (ctx.observations || []).slice(0, 5);
-        const lines = obs.map(o => `  - ${o.type}: ${o.detail || ''}`).join('\n');
-        const block = `- SAiM observed today:\n${lines}`;
-        _appendToDailySection(obsidian, '## SAiM Actions', block);
-        return { type: 'observation_log', detail: `Logged ${obs.length} observations` };
-      } catch { return null; }
+      const obs = (ctx.observations || []).slice(0, 5);
+      // activity_log only — never the daily note (see meeting_prep_log).
+      return {
+        type: 'observation_log',
+        detail: `SAiM observed today: ${obs.map(o => `${o.type}${o.detail ? ` — ${o.detail}` : ''}`).join('; ')}`,
+      };
     },
     cooldown: 4 * 60 * 60 * 1000, // Once per 4h
   },
@@ -284,13 +278,7 @@ function executeAction(action) {
  * Called when the user navigates back to Focus after handling something.
  */
 function logOutcome(actionType, detail) {
-  try {
-    const obsidian = require('./obsidian');
-    const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    const line = `- ${time} — Completed: ${detail}`;
-    _appendToDailySection(obsidian, '## SAiM Actions', line);
-  } catch {}
-
+  // activity_log only — never the daily note (22 Oct 2026).
   try {
     db.logActivity('saim_outcome', { type: actionType, detail });
   } catch {}
@@ -298,20 +286,6 @@ function logOutcome(actionType, detail) {
 
 
 // ── Helpers ──
-
-function _appendToDailySection(obsidian, section, content) {
-  const daily = obsidian.readTodayDailyNote() || '';
-  // ⚠ Today's note may already carry the PRE-RENAME heading (`## SARA Actions`),
-  // written this morning by the old code. Match on either spelling and append
-  // under whichever is there: heading-not-found would open a SECOND section on
-  // the same note, so one day's actions would read as two separate logs.
-  const present = legacyNames.headingAliases(section).find((h) => daily.includes(h));
-  if (present) {
-    obsidian.appendToDailyNote(content + '\n');
-  } else {
-    obsidian.appendToDailyNote(`\n\n${section}\n${content}\n`);
-  }
-}
 
 function _logAutoAction(result) {
   try {
@@ -328,16 +302,11 @@ function _logActionExecution(action) {
       type: action.type,
       target: action.target,
       label: action.label,
+      reason: action.reason || null,
       status: 'executed',
     });
   } catch {}
-
-  try {
-    const obsidian = require('./obsidian');
-    const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    const line = `- ${time} — ${action.label}: ${action.reason}`;
-    _appendToDailySection(obsidian, '## SAiM Actions', line);
-  } catch {}
+  // Never the daily note (22 Oct 2026) — NEURO → Activity → SAiM log renders it.
 }
 
 

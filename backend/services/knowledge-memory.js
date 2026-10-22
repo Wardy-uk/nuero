@@ -2340,19 +2340,82 @@ function buildDailyImportReport(dateKey = isoDate()) {
   return lines.join('\n');
 }
 
+/**
+ * The day's counts, read from the SAME inputs buildDailyImportReport renders.
+ * "Nothing to report" is no consolidation, no enrichment and nothing needing
+ * review. Import ROUTES alone do not earn a vault page: they are recorded in
+ * activity_log (`imports_sweep`) and that is where they stay.
+ */
+function dailyImportCounts(dateKey = isoDate()) {
+  const events = db.getActivityForDate(dateKey);
+  const parse = (event) => { try { return JSON.parse(event.event_data || '{}'); } catch { return {}; } };
+  const sweeps = events.filter((e) => e.event_type === 'imports_sweep').map(parse);
+  const enrichEvents = events.filter((e) => e.event_type === 'import_ai_enriched').length;
+  return {
+    consolidated: events.filter((e) => e.event_type === 'import_consolidated').length,
+    // Same fallback the report itself uses: notes enriched today, if no event.
+    enrichments: enrichEvents > 0 ? enrichEvents : getAiEnrichmentNotesForDate(dateKey).length,
+    routed: sweeps.reduce((sum, sweep) => sum + (sweep.routed || 0), 0),
+    flagged: sweeps.reduce((sum, sweep) => sum + (sweep.flagged || 0), 0),
+  };
+}
+
+function importReportIsEmpty(counts) {
+  return !counts.consolidated && !counts.enrichments && !counts.flagged;
+}
+
+/** Meaningful reports are kept 30 days, then MOVED to Archive (never deleted). */
+const IMPORT_REPORT_RETAIN_DAYS = 30;
+const IMPORT_REPORT_ARCHIVE = 'Archive/SAiM Import Reports';
+
+function archiveOldImportReports({ now = new Date(), vault = VAULT_PATH() } = {}) {
+  const moved = [];
+  if (!vault) return moved;
+  const folder = path.join(vault, REPORT_DIR);
+  let names = [];
+  try { names = fs.readdirSync(folder); } catch { return moved; }
+  const cutoff = new Date(now.getTime() - IMPORT_REPORT_RETAIN_DAYS * 86400000);
+  const cutKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+  for (const name of names) {
+    const m = /^(\d{4}-\d{2}-\d{2})\.md$/.exec(name);
+    if (!m || m[1] >= cutKey) continue;
+    const dest = path.join(vault, IMPORT_REPORT_ARCHIVE);
+    fs.mkdirSync(dest, { recursive: true });
+    const target = path.join(dest, name);
+    if (fs.existsSync(target)) continue; // never overwrite an archived copy
+    fs.renameSync(path.join(folder, name), target);
+    moved.push(`${IMPORT_REPORT_ARCHIVE}/${name}`);
+  }
+  return moved;
+}
+
 function writeDailyImportReport(dateKey = isoDate()) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
     return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
   }
 
+  let archived = [];
+  try { archived = archiveOldImportReports({ vault }); } catch (e) { console.warn('[KnowledgeMemory] Import report retention failed:', e.message); }
+
+  const counts = dailyImportCounts(dateKey);
+  const markdown = buildDailyImportReport(dateKey);
+  // ⚠ A day with nothing to report writes NO file (22 Oct 2026 vault cleanup:
+  // 27 of 38 reports said only "nothing happened"). The activity is still in
+  // activity_log, and GET /api/knowledge-memory/report rebuilds it from there.
+  if (importReportIsEmpty(counts)) {
+    return { status: 'skipped', reason: 'nothing-to-report', counts, path: null, markdown, archived };
+  }
+
   const folder = path.join(vault, REPORT_DIR);
   fs.mkdirSync(folder, { recursive: true });
   const targetPath = `${REPORT_DIR}/${dateKey}.md`;
   const fullPath = path.join(vault, targetPath);
-  fs.writeFileSync(fullPath, `${buildDailyImportReport(dateKey)}\n\n_Part of [[Logs]]_\n`, 'utf-8');
+  // No `_Part of [[Logs]]_` footer any more: that index lists none of them.
+  fs.writeFileSync(fullPath, `${markdown}
+`, 'utf-8');
   try { vaultHooks.onVaultWrite(fullPath, 'import-daily-report'); } catch {}
-  return { status: 'ok', path: targetPath, markdown: buildDailyImportReport(dateKey) };
+  return { status: 'ok', path: targetPath, markdown, counts, archived };
 }
 
 async function consolidateAllImports({ limit = 25, includeConsolidatedPlaud = false } = {}) {
@@ -2728,5 +2791,9 @@ module.exports = {
   enrichManagedNotes,
   buildDailyImportReport,
   writeDailyImportReport,
+  dailyImportCounts,
+  importReportIsEmpty,
+  archiveOldImportReports,
+  IMPORT_REPORT_RETAIN_DAYS,
   ensureVaultOperatingModelDoc
 };
