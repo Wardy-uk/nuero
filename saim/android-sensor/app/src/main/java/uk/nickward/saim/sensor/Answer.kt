@@ -25,7 +25,7 @@ object Answer {
     fun normalise(s: String): String =
         s.lowercase()
             .replace(Regex("[^a-z ]"), " ")
-            .replace(Regex("\s+"), " ")
+            .replace(Regex(" +"), " ")
             .trim()
 
     fun of(phrase: String): String? {
