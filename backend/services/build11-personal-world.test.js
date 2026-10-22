@@ -577,6 +577,26 @@ test('33. a duplicate create is blocked — by the preparer, and by the database
   [a.commitmentId, new Date(NOW + 1000).toISOString(), new Date(NOW + 1000).toISOString()]), /UNIQUE/, 'a second live row for one booking, at a different moment, is still refused');
 });
 
+test('31c. a create verifies by the event id Microsoft returned, even when the marker search misses it', async () => {
+  // Live 21 Oct 2026: Graph's extended-property $filter never found an event
+  // that carried the exact marker, so a booked 1-2-1 sat "executed" for a day.
+  const a = prepInvite({ title: 'Index miss check', start: '2026-11-05T10:00', end: '2026-11-05T10:30' });
+  assert.equal(approve(a).ok, true);
+  const realFind = calApi.findByMarker;
+  calApi.findByMarker = async () => ({ ok: true, events: [] });
+  try {
+    const r = await ex.execute(a.actionId, { now: NOW + 2 * MIN, deps: calDeps() });
+    assert.equal(r.status, 'verified', JSON.stringify(r));
+    // An id whose event carries a DIFFERENT marker never verifies.
+    const b = prepInvite({ title: 'Wrong marker check', start: '2026-11-06T10:00', end: '2026-11-06T10:30' });
+    assert.equal(approve(b).ok, true);
+    const realCreate = calApi.createEvent;
+    calApi.createEvent = async (draft, opts) => { const out = await realCreate(draft, opts); out.event.marker = 'neuro:someone-else:1'; return out; };
+    try { await ex.execute(b.actionId, { now: NOW + 2 * MIN, deps: calDeps() }); } finally { calApi.createEvent = realCreate; }
+    assert.equal(pa.get(b.actionId).status, 'executed', 'not verified on an id alone');
+  } finally { calApi.findByMarker = realFind; }
+});
+
 test('34. an UNCERTAIN create is verified, never retried — the event it did make is found by its marker', async () => {
   const a = prepInvite({ title: 'Timeout check', start: '2026-11-03T10:00', end: '2026-11-03T10:30' });
   assert.equal(approve(a).ok, true);

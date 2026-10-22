@@ -959,11 +959,23 @@ async function _verifyCalendar(action, d, nowMs) {
   let found = null;
   let outcome;
   if (policy.sendMode === 'calendar-create') {
-    const r = await cal.findByMarker(handle);
-    if (!r || !r.ok) { outcome = 'provider_unavailable'; proof.category = (r && r.category) || 'unavailable'; }
-    else if (r.events.length === 0) outcome = 'not_found';
-    else if (r.events.length > 1) { outcome = 'ambiguous'; proof.count = r.events.length; }
-    else found = { exists: true, event: r.events[0] };
+    // ⚠ Read by the event id Microsoft returned when we have it. The marker
+    // $filter goes through Graph's search index, which can miss an event for
+    // good: pa_b0b529381ea2fe9c (21 Oct 2026) sat "executed" for a day while
+    // the event carried the exact marker. The judge still requires the marker
+    // to match, so a recorded id can never verify the wrong event. The search
+    // stays for a create with no id (a timed-out POST).
+    const byId = attempt.draft_id ? await cal.readEvent(attempt.draft_id) : null;
+    if (byId && byId.ok && byId.exists && byId.event && byId.event.marker === handle) {
+      found = { exists: true, event: byId.event };
+      proof.readBy = 'id';
+    } else {
+      const r = await cal.findByMarker(handle);
+      if (!r || !r.ok) { outcome = 'provider_unavailable'; proof.category = (r && r.category) || 'unavailable'; }
+      else if (r.events.length === 0) outcome = 'not_found';
+      else if (r.events.length > 1) { outcome = 'ambiguous'; proof.count = r.events.length; }
+      else found = { exists: true, event: r.events[0] };
+    }
   } else {
     const r = await cal.readEvent(action.target.eventId);
     if (!r || !r.ok) { outcome = 'provider_unavailable'; proof.category = (r && r.category) || 'unavailable'; }
