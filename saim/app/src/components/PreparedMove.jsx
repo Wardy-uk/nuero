@@ -61,8 +61,8 @@ export function ReceiptBlock({ receipt: r, busy = false, onAgain = null, onOpenN
   return (
     <div className={`pmo__act pmo__act--${tone}`} role="status" data-receipt-kind={kind}>
       {kind === 'practice' && <p className="pmo__practice">Practice run — nothing real was changed. This ran against a sandbox, not your calendar or your notes.</p>}
-      <p className="pmo__actlead">{receiptLead(r)}</p>
-      <p>{r.plain}</p>
+      {kind !== 'practice' && <p className="pmo__actlead">{receiptLead(r)}</p>}
+      <p>{kind === 'practice' ? String(r.plain || '').replace(/^Practice run — nothing real was changed\.\s*/, '') : r.plain}</p>
       <ul className="pmo__receipt">
         {receiptLines(r).map((l, i) => (
           <li key={i} className={l.ok ? 'pmo__ok' : 'pmo__notok'}>
