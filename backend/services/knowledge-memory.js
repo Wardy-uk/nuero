@@ -2367,6 +2367,10 @@ function importReportIsEmpty(counts) {
 /** Meaningful reports are kept 30 days, then MOVED to Archive (never deleted). */
 const IMPORT_REPORT_RETAIN_DAYS = 30;
 const IMPORT_REPORT_ARCHIVE = 'Archive/SAiM Import Reports';
+// ⚠ The reports that existed at the 22 Oct 2026 cleanup are kept 30 days FROM
+// THE CLEANUP (Nick's approval: "retain current non-empty Import Reports for 30
+// days"), so the age rule only starts on this date. Before it, nothing moves.
+const IMPORT_REPORT_RETENTION_FROM = '2026-11-21';
 
 function archiveOldImportReports({ now = new Date(), vault = VAULT_PATH() } = {}) {
   const moved = [];
@@ -2374,6 +2378,8 @@ function archiveOldImportReports({ now = new Date(), vault = VAULT_PATH() } = {}
   const folder = path.join(vault, REPORT_DIR);
   let names = [];
   try { names = fs.readdirSync(folder); } catch { return moved; }
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (todayKey < IMPORT_REPORT_RETENTION_FROM) return moved;
   const cutoff = new Date(now.getTime() - IMPORT_REPORT_RETAIN_DAYS * 86400000);
   const cutKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
   for (const name of names) {
@@ -2795,5 +2801,6 @@ module.exports = {
   importReportIsEmpty,
   archiveOldImportReports,
   IMPORT_REPORT_RETAIN_DAYS,
+  IMPORT_REPORT_RETENTION_FROM,
   ensureVaultOperatingModelDoc
 };

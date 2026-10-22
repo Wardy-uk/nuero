@@ -76,21 +76,61 @@ test('a day with real activity still writes its report — without the [[Logs]] 
   assert.ok(!text.includes('[[Logs]]'), 'generated reports no longer link back to Documents/Vault/Logs.md');
 });
 
-test('reports older than 30 days are MOVED to Archive, never deleted; newer ones stay', () => {
+test('reports that existed at the cleanup are kept 30 days FROM it: nothing moves before 21 Nov 2026', () => {
   const km = require('./knowledge-memory');
   const dir = path.join(VAULT, 'Documents', 'System', 'SAiM Import Reports');
   fs.mkdirSync(dir, { recursive: true });
-  const old = localKey(new Date(Date.now() - 40 * 86400000));
-  const recent = localKey(new Date(Date.now() - 10 * 86400000));
+  fs.writeFileSync(path.join(dir, '2026-09-16.md'), 'a real report\n');
+  assert.deepEqual(km.archiveOldImportReports({ now: new Date('2026-10-22T13:00:00') }), []);
+  assert.deepEqual(km.archiveOldImportReports({ now: new Date('2026-11-20T23:00:00') }), []);
+  assert.ok(fs.existsSync(path.join(dir, '2026-09-16.md')));
+});
+
+test('after that, reports older than 30 days are MOVED to Archive, never deleted; newer ones stay', () => {
+  const km = require('./knowledge-memory');
+  const dir = path.join(VAULT, 'Documents', 'System', 'SAiM Import Reports');
+  fs.mkdirSync(dir, { recursive: true });
+  const now = new Date('2026-12-20T12:00:00');
+  const old = localKey(new Date(now.getTime() - 40 * 86400000));
+  const recent = localKey(new Date(now.getTime() - 10 * 86400000));
   fs.writeFileSync(path.join(dir, `${old}.md`), 'old\n');
   fs.writeFileSync(path.join(dir, `${recent}.md`), 'recent\n');
   fs.writeFileSync(path.join(dir, 'Plaud Cleanup - 2025-01-01.md'), 'not a dated daily report\n');
-  const moved = km.archiveOldImportReports();
+  const moved = km.archiveOldImportReports({ now });
   assert.ok(moved.includes(`Archive/SAiM Import Reports/${old}.md`), moved.join(', '));
   assert.ok(!moved.includes(`Archive/SAiM Import Reports/${recent}.md`));
   assert.equal(fs.readFileSync(path.join(VAULT, 'Archive', 'SAiM Import Reports', `${old}.md`), 'utf-8'), 'old\n');
   assert.ok(fs.existsSync(path.join(dir, `${recent}.md`)));
   assert.ok(fs.existsSync(path.join(dir, 'Plaud Cleanup - 2025-01-01.md')), 'only YYYY-MM-DD daily reports are aged');
+});
+
+test('Vault Audit retention: the approved rules, and audit trails are never touched', () => {
+  const vh = require('./vault-hygiene');
+  const names = [
+    'Hygiene Sweep 2026-10-07.md', 'Hygiene Sweep 2026-10-08.md', 'Hygiene Sweep.md',
+    'Lint Report 2026-09-14.md', 'Lint Report 2026-09-22.md',
+    'Fix Plan 2026-08-01.md',                       // the only one = the latest: kept however old
+    'PLAUD Missing Reconciliation 2026-09-21.md', 'PLAUD Missing Reconciliation 2026-09-22.md',
+    'Contextual Links Applied 2026-07-01.md', 'Connect Changelog 2026-07-08.md', 'Lint Fix Changelog 2026-09-14.md', 'People gaps.md',
+  ];
+  const plan = vh.planVaultAuditRetention(names, '2026-10-22').map((p) => p.name);
+  assert.deepEqual(plan, ['Hygiene Sweep 2026-10-07.md', 'Lint Report 2026-09-14.md', 'PLAUD Missing Reconciliation 2026-09-21.md']);
+});
+
+test('Vault Audit retention moves to Archive/Vault Audit and never overwrites', () => {
+  const vh = require('./vault-hygiene');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-retain-'));
+  const dir = path.join(root, 'Documents', 'System', 'Vault Audit');
+  const arch = path.join(root, 'Archive', 'Vault Audit');
+  fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(arch, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'Hygiene Sweep 2026-09-01.md'), 'a\n');
+  fs.writeFileSync(path.join(dir, 'Hygiene Sweep 2026-09-02.md'), 'b\n');
+  fs.writeFileSync(path.join(arch, 'Hygiene Sweep 2026-09-02.md'), 'already archived\n');
+  const r = vh.retainVaultAudit(root, { todayKey: '2026-10-22' });
+  assert.deepEqual(r.moved.map((m) => m.to), ['Archive/Vault Audit/Hygiene Sweep 2026-09-01.md']);
+  assert.equal(r.skipped.length, 1);
+  assert.equal(fs.readFileSync(path.join(arch, 'Hygiene Sweep 2026-09-02.md'), 'utf-8'), 'already archived\n');
+  assert.ok(fs.existsSync(path.join(dir, 'Hygiene Sweep 2026-09-02.md')), 'left in place rather than overwrite');
 });
 
 test('SAiM actions reach activity_log and NEVER a Daily note', () => {

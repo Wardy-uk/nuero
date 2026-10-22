@@ -1475,7 +1475,77 @@ function nightlySweep(root, { apply = true } = {}) {
     ensureDir(path.join(root, ...REPORT_REL));
     fs.writeFileSync(outPath, body, 'utf8');
   }
-  return { dedup, orphans, empties, written, reportPath: written || existing !== null ? rel(root, outPath) : null };
+  // Superseded Vault Audit reports age out to Archive/ — moved, never deleted.
+  let retention = { planned: [], moved: [], skipped: [] };
+  try { retention = retainVaultAudit(root, { apply }); } catch (e) { retention.error = e.message; }
+  return { dedup, orphans, empties, written, retention, reportPath: written || existing !== null ? rel(root, outPath) : null };
+}
+
+// ── Vault Audit retention (approved 22 Oct 2026 vault-cleanup manifest) ─────
+//
+// Reports in Documents/System/Vault Audit/ that a later run supersedes are
+// MOVED to Archive/Vault Audit/ once they age out — never deleted, never
+// overwritten. Audit trails of vault writes (Contextual Links Applied, Connect
+// Changelog, Lint Fix Changelog) and the rolling pages (Hygiene Sweep.md,
+// People gaps.md) match no rule, so they are never touched: they are the
+// record of what was changed and how to reverse it.
+const AUDIT_ARCHIVE_REL = ['Archive', 'Vault Audit'];
+const AUDIT_RETENTION = Object.freeze([
+  { kind: 'Hygiene Sweep', re: /^Hygiene Sweep (\d{4}-\d{2}-\d{2})\.md$/, keepDays: 14, keepLatest: false,
+    why: 'dated nightly hygiene sweep, older than 14 days — replaced by the rolling Hygiene Sweep.md' },
+  { kind: 'Lint Report', re: /^Lint Report (\d{4}-\d{2}-\d{2})\.md$/, keepDays: 30, keepLatest: true,
+    why: 'superseded lint report, older than 30 days (the latest is kept)' },
+  { kind: 'Contextual Linking Plan', re: /^Contextual Linking Plan (\d{4}-\d{2}-\d{2})\.md$/, keepDays: 30, keepLatest: true,
+    why: 'superseded linking plan, older than 30 days (the latest is kept)' },
+  { kind: 'Fix Plan', re: /^Fix Plan (\d{4}-\d{2}-\d{2})\.md$/, keepDays: 30, keepLatest: true,
+    why: 'superseded fix plan, older than 30 days (the latest is kept)' },
+  { kind: 'Alias Suggestions', re: /^Alias Suggestions (\d{4}-\d{2}-\d{2})\.md$/, keepDays: 30, keepLatest: true,
+    why: 'superseded alias suggestions, older than 30 days (the latest is kept)' },
+  { kind: 'PLAUD Missing Reconciliation', re: /^PLAUD Missing Reconciliation (\d{4}-\d{2}-\d{2})\.md$/, keepDays: 30, keepLatest: false,
+    why: 'one-off PLAUD recovery report, older than 30 days' },
+]);
+
+function _dayKeyMinus(todayKey, days) {
+  const d = new Date(Date.UTC(+todayKey.slice(0, 4), +todayKey.slice(5, 7) - 1, +todayKey.slice(8, 10)));
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** PURE. Which Vault Audit file names age out on `todayKey` (local YYYY-MM-DD), and why. */
+function planVaultAuditRetention(names, todayKey) {
+  const out = [];
+  for (const rule of AUDIT_RETENTION) {
+    const dated = names.map((n) => { const m = rule.re.exec(n); return m ? { name: n, day: m[1] } : null; }).filter(Boolean)
+      .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+    const latest = dated.length ? dated[dated.length - 1].name : null;
+    const cut = _dayKeyMinus(todayKey, rule.keepDays);
+    for (const f of dated) {
+      if (f.day >= cut) continue;
+      if (rule.keepLatest && f.name === latest) continue;
+      out.push({ name: f.name, kind: rule.kind, why: rule.why });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Move what ages out to Archive/Vault Audit/. `apply:false` only reports. */
+function retainVaultAudit(root, { apply = true, todayKey = todayStr() } = {}) {
+  const dir = path.join(root, ...REPORT_REL);
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return { planned: [], moved: [], skipped: [] }; }
+  const planned = planVaultAuditRetention(names, todayKey);
+  const moved = []; const skipped = [];
+  if (apply && planned.length) {
+    const dest = path.join(root, ...AUDIT_ARCHIVE_REL);
+    ensureDir(dest);
+    for (const p of planned) {
+      const to = path.join(dest, p.name);
+      if (fs.existsSync(to)) { skipped.push({ ...p, reason: 'already in the archive — left in place' }); continue; }
+      fs.renameSync(path.join(dir, p.name), to);
+      moved.push({ ...p, from: rel(root, path.join(dir, p.name)), to: rel(root, to) });
+    }
+  }
+  return { planned, moved, skipped };
 }
 
 // ── PLAUD "Summary" note rename ──────────────────────────────────────────────
@@ -1737,6 +1807,9 @@ module.exports = {
   graphConfig,
   dedupSummaries,
   nightlySweep,
+  planVaultAuditRetention,
+  retainVaultAudit,
+  AUDIT_RETENTION,
   // exported for tests / reuse
   DEFAULT_CTX_ROOTS,
   CTX_FORBIDDEN_ROOTS,
