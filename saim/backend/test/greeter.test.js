@@ -238,3 +238,23 @@ test('delivery: a satellite hears "Sam", not the written name', async () => {
   const spoke = calls.find((c) => c.url.includes('/api/services/'));
   assert.equal(spoke.body.message, 'Morning, Nick. Sam here.');
 });
+
+test('the test-speech route queues FIXED words for the room sensor and refuses repeats', async () => {
+  const express = require('express');
+  const pending = require('../src/greeting/pending');
+  pending.reset();
+  const app = express();
+  app.use('/api/presence', require('../src/routes/presence'));
+  const server = app.listen(0);
+  try {
+    const base = `http://127.0.0.1:${server.address().port}/api/presence`;
+    const post = (body) => fetch(`${base}/greeting/test`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await post({ room: 'living-room', text: 'say something rude' });
+    assert.equal(r.status, 200);
+    const g = pending.take('living-room');
+    assert.ok(g && /testing the living room speaker/.test(g.text), 'the fixed sentence, not the caller\'s');
+    assert.ok(!/rude/.test(g.text));
+    assert.equal((await post({ room: 'living-room' })).status, 429);
+    assert.equal((await post({ room: '../x' })).status, 400);
+  } finally { server.close(); }
+});

@@ -43,6 +43,7 @@ const { resolveRoom, displayState, offsiteDisplayState } = require('../presence/
 const nightDisplay = require('../display/night');
 const household = require('../display/household');
 const pendingGreetings = require('../greeting/pending');
+const { spokenForm } = require('../../../../shared/spoken.cjs');
 const neuroConfig = require('../integrations/neuroConfig');
 
 profiles.load();
@@ -253,6 +254,23 @@ router.get('/greeting-audio/:id', async (req, res) => {
 });
 
 // POST /api/presence/sensor — one room sensor's latest reading.
+// POST /api/presence/greeting/test {room} — a test sentence for one room's
+// tablet, to check it speaks (22 Oct 2026). FIXED words, never caller text:
+// this backend has no login, and a route that spoke anything it was sent would
+// let anyone on the network put words in the house's mouth. The tablet collects
+// it with its next reading (within a few seconds), like an arrival greeting.
+const lastTestSay = new Map();
+router.post('/greeting/test', express.json({ limit: '1kb' }), (req, res) => {
+  const room = String((req.body && req.body.room) || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,40}$/.test(room)) return res.status(400).json({ ok: false, reason: 'room required' });
+  const now = Date.now();
+  if (now - (lastTestSay.get(room) || 0) < 30_000) return res.status(429).json({ ok: false, reason: 'once every 30 seconds' });
+  lastTestSay.set(room, now);
+  const words = `This is SAiM, testing the ${room.replace(/-/g, ' ')} speaker.`;
+  const g = pendingGreetings.put(room, spokenForm(words));
+  return res.json({ ok: true, room, id: g.id, words, note: 'collected by the room sensor with its next reading' });
+});
+
 router.post('/sensor', express.json({ limit: '16kb' }), (req, res) => {
   if (SENSOR_TOKEN && req.get('X-Saim-Sensor-Token') !== SENSOR_TOKEN) {
     return res.status(401).json({ ok: false, reason: 'bad sensor token' });
