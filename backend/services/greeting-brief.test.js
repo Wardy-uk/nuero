@@ -198,3 +198,18 @@ test('a training spike is the LOWEST rank, first greeting only, and a ratio — 
   assert.equal(briefLine({ now: NOW, firstToday: false, training }), null);
   assert.equal(briefLine({ now: NOW, firstToday: true, training: { ...training, state: 'building' } }), null);
 });
+
+// -- A shared room hears only what is safe to say aloud (22 Oct 2026) -------
+
+test('the living room hears only the cold room and the weather, never his work or his body', () => {
+  const { roomKinds } = require('./greeting');
+  const allowKinds = roomKinds('living-room', {});
+  assert.deepEqual(allowKinds, ['cold', 'weather']);
+  const lastNight = { known: true, asleepHours: 9.62, notable: true, usualLine: 'usually 7h52 on a Sunday' };
+  const everything = { now: NOW, firstToday: true, agenda: meeting(), primary: critical, rooms: coldRoom, weather: rain, lastNight };
+  assert.equal(briefLine({ ...everything, allowKinds }).kind, 'cold', 'skips the meeting and the breach');
+  assert.equal(briefLine({ ...everything, rooms: null, allowKinds }).kind, 'weather');
+  assert.equal(briefLine({ now: NOW, firstToday: true, agenda: meeting(), primary: critical, lastNight, allowKinds }), null, 'nothing allowed = silence');
+  assert.equal(roomKinds('study', {}), null, 'his own room hears everything');
+  assert.deepEqual(roomKinds('bedroom', { GREET_ROOM_KINDS: 'bedroom=weather' }), ['weather']);
+});

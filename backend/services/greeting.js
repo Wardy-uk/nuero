@@ -166,9 +166,12 @@ function briefLine({
   lastNight = null,
   training = null,
   recentKinds = [],
+  allowKinds = null,
 } = {}) {
   const said = new Set(Array.isArray(recentKinds) ? recentKinds : []);
-  const fresh = (kind, line) => (line && !said.has(kind) ? { kind, line } : null);
+  // A room that may only hear some kinds (a SHARED room — see roomKinds below).
+  const allowed = Array.isArray(allowKinds) ? new Set(allowKinds) : null;
+  const fresh = (kind, line) => (line && !said.has(kind) && (!allowed || allowed.has(kind)) ? { kind, line } : null);
 
   // 1. A MEETING ABOUT TO START. The most time-bound thing there is, and the
   //    one he would be annoyed to be told about afterwards.
@@ -326,6 +329,22 @@ function recordGreeting(ledger, { room, client, now, opener, lead, briefKind = n
   return next;
 }
 
+// ⚠ WHAT A SHARED ROOM MAY HEAR (Nick, 22 Oct 2026). The living room has other
+// people in it, so its greeting is limited to the cold room and the weather: a
+// meeting title or a breaching ticket would read his work aloud, and his sleep
+// and exertion are his. `GREET_ROOM_KINDS="living-room=cold,weather;bedroom=…"`
+// overrides; a room not listed hears every kind.
+const DEFAULT_ROOM_KINDS = { 'living-room': ['cold', 'weather'] };
+function roomKinds(room, env = process.env) {
+  if (!room) return null;
+  const map = { ...DEFAULT_ROOM_KINDS };
+  for (const pair of String(env.GREET_ROOM_KINDS || '').split(';')) {
+    const [k, v] = pair.split('=').map((x) => (x || '').trim());
+    if (k && v != null) map[k.toLowerCase()] = v.split(',').map((x) => x.trim()).filter(Boolean);
+  }
+  return map[String(room).toLowerCase()] || null;
+}
+
 /**
  * Claim a greeting for an arrival: gate it, compose it, record it.
  *
@@ -391,6 +410,7 @@ async function claim({ room, client = null, now = new Date(), preview = false } 
       //   about the weather on the way in, she finds something else next time
       //   or says nothing - the rule the opener and lead pools already follow.
       recentKinds: Array.isArray(ledger.recentKinds) ? ledger.recentKinds : [],
+      allowKinds: roomKinds(room),
     });
   } catch (e) {
     console.warn('[Greeting] attention unavailable:', e.message);
@@ -426,6 +446,7 @@ let _briefOverride = null;
 function _setBriefOverride(fn) { _briefOverride = typeof fn === 'function' ? fn : null; }
 
 module.exports = {
+  roomKinds,
   _setBriefOverride,
   claim, decide, compose, isWorkHours, dayPart, recordGreeting, pick,
   briefLine, MEETING_SOON_MINUTES,
