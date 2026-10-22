@@ -171,7 +171,7 @@ export async function respond(call, { view, response, days = null, reason = null
     return { kind: 'refused', view, message: 'I couldn’t reach NEURO. Nothing was changed.', again: true };
   }
   const b = r.body || {};
-  if (r.status === 200 && b.ok) return { kind: 'responded', view, response, message: response === 'decline' ? 'Understood — I won’t offer this one again.' : `Put off until ${String(b.until || '').slice(0, 10)}.` };
+  if (r.status === 200 && b.ok) return { kind: 'responded', view, response, message: response === 'decline' ? 'Gone — I won’t offer this one again.' : `Put off until ${String(b.until || '').slice(0, 10)}.` };
   return { kind: 'refused', view, message: b.error || 'NEURO refused that. Nothing was changed.', again: true };
 }
 

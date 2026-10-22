@@ -135,3 +135,25 @@ test('momentOf reads the move’s state: actionable / held / nothing — and the
   const as = fs.readFileSync(path.join(SHARED, 'AttentionSurface.jsx'), 'utf8');
   assert.match(as, /preparedMoment=\{preparedMoment\}/, 'AttentionSurface hands it to Situation');
 });
+
+// "Not relevant — get rid of it" (22 Oct 2026, Nick: "its not relevant — I want
+// to get rid of it"). One visible tap, not two folds deep; once answered the
+// move stops leading the Surface and the card shrinks to one line.
+test('a prepared move can be thrown away in one tap, and then stops leading', () => {
+  const move = { version: 2, recordId: 'pm_0123456789abcdef0123', recordVersion: 1, kind: 'meeting-prep', plan: 'draft', options: [{ id: 'approve', writes: ['a note'] }], prepared: { headline: 'I’ve made Thursday ready.' }, deliverable: {} };
+  const calls = [];
+  const view = (state) => renderToString(React.createElement(PM.PreparedMoveView, { state, busy: false, now: 0, onRespond: (...a) => calls.push(a) }));
+  const ready = text(view({ kind: 'ready', view: { move } }));
+  assert.match(ready, /Not relevant — get rid of it/, 'the button is on the card, not folded away');
+  const ro = text(renderToString(React.createElement(PM.PreparedMoveView, { state: { kind: 'ready', view: { move } }, readOnly: true, onRespond() {} })));
+  assert.doesNotMatch(ro, /get rid of it/, 'never on the read-only kiosk');
+  assert.equal(PM.momentOf({ kind: 'ready', view: { move } }).kind, 'actionable');
+  const gone = { kind: 'responded', view: { move }, response: 'decline', message: 'Gone — I won’t offer this one again.' };
+  assert.equal(PM.momentOf(gone), null, 'answered → no longer the Surface headline');
+  const after = text(view(gone));
+  assert.match(after, /Gone/);
+  assert.doesNotMatch(after, /Thursday ready/, 'the card shrinks to its one line');
+  const src = fs.readFileSync(path.join(APP, 'components', 'PreparedMove.jsx'), 'utf8');
+  assert.match(src, /onRespond\('decline', \{ reason: 'not-useful' \}\)/, 'it is the existing decline, with a reason the store accepts');
+  assert.ok(require('./prepared-move-store').DECLINE_REASONS.includes('not-useful'));
+});

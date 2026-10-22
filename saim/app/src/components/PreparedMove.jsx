@@ -316,6 +316,11 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
     <section className="pmo pmo2" aria-label="Something SAiM has prepared">
       {!embedded && move.privateDraft && <p className="pmo2__private" role="note">{move.privateDraft.label}</p>}
       {!embedded && <p className="pmo__say">{move.prepared && move.prepared.headline}</p>}
+      {!embedded && !readOnly && !['confirming', 'receipt'].includes(state.kind) && (
+        <div className="pmo__buttons pmo2__dismiss">
+          <button type="button" className="pmo__btn" disabled={busy} onClick={() => onRespond('decline', { reason: 'not-useful' })}>Not relevant — get rid of it</button>
+        </div>
+      )}
       {!embedded && move.privateDraft && <p className="pmo__sub pmo2__privatewhy">{move.privateDraft.cannot} {move.privateDraft.can}</p>}
       {!embedded && move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
       {!embedded && !held && move.plan === 'draft' && <Interview move={move} busy={busy} readOnly={readOnly} onAnswer={onAnswer} onPark={onPark} onAskOption={state.kind === 'confirming' ? null : onAskOption} />}
@@ -524,6 +529,8 @@ export function PreparedMoveView({ state, onChoose, onAsk, onConfirm, onCancel, 
   const { view } = state;
   const move = view && view.move;
   if (!move) return null;
+  // Answered (put off / not relevant): say so in one line and get out of the way.
+  if (state.kind === 'responded') return <p className="pmo__sub pmo2__note" role="status">{state.message}</p>;
   if (move.version === 2) return <V2Move state={state} busy={busy} now={now} readOnly={readOnly} onAsk={onAsk} onConfirm={onConfirm} onCancel={onCancel} onAgain={onAgain} onRespond={onRespond} onAnswer={onAnswer} onOpenAuthority={onOpenAuthority} onShow={onShow} onPark={onPark} onAskOption={onAskOption} embedded={embedded} drafts={drafts} renderContext={renderContext} />;
 
   // ── Held: the page set aside for the morning, and one sentence. No time,
@@ -798,7 +805,7 @@ export function momentOf(state) {
   // passive bubble that named nothing. It opens on the exact item and its button.
   if (state && state.kind === 'offer') return { kind: 'held', entry: 'See what SAiM can make ready', control: true };
   const v = state && state.view; const m = v && v.move;
-  if (!m || state.kind === 'hidden' || state.kind === 'pending' || state.kind === 'loading') return null;
+  if (!m || state.kind === 'hidden' || state.kind === 'pending' || state.kind === 'loading' || state.kind === 'responded') return null;
   if (m.version === 2 && !(v.held || m.held)) return { kind: 'actionable', headline: (m.moment && m.moment.headline) || m.prepared.headline, entry: m.plan === 'ask' ? 'SAiM needs one thing from you' : 'Prepared work' };
   if (v.held || m.held) return { kind: 'held', entry: 'Prepared for your next working morning' };
   const f = m.forum && m.forum.start ? parts(m.forum.start.slice(0, 10)) : null;
