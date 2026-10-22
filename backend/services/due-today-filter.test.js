@@ -51,7 +51,8 @@ test.before(async () => {
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
         build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-          contents: 'export const apiUrl = p => p;\nexport default { apiUrl };', loader: 'js',
+          // apiFetch too: TodoPanel's task context reaches it through desktopCall (22 Oct 2026).
+          contents: 'export const apiUrl = p => p;\nexport const apiFetch = async () => ({ ok: false, status: 503, json: async () => ({}) });\nexport default { apiUrl };', loader: 'js',
         }));
       },
     }],
