@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch, chatStream } from '../api';
+import { apiFetch, chatStream, apiUrl, authHeaders } from '../api';
+import { makeCall } from '../preparedMove.mjs';
+import { performCardTarget, kindsFor } from '../../../shared-ui/presentation/cardOpen.mjs';
 import actionSurfaces from '../../../../shared/action-surfaces.cjs';
 // ⚠ The matcher, not a parser. The server composes the exact phrases that mean
 // each sentence; this compares what was said against that list. See
@@ -704,6 +706,21 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       preparedMoment={preparedMoment}
       // Keep my word: prepare the governed delivery note; approval stays in Actions on the desktop.
       onPrepareDelivery={(key) => prepareDelivery(key)}
+      // Holding the week (22 Oct 2026): the phone opens each card's record and performs what it
+      // can — the draft in Obsidian, the block in Outlook, starting the block, drafting a delivery
+      // note (nothing sent). A NEURO screen or an exact task is NAMED, never opened as a guess.
+      // The kiosk inspects records and performs nothing (Situation also enforces it by profile).
+      cardKinds={platformNow() === 'kiosk' ? [] : kindsFor({ openNote: true, openUrl: true, call: true })}
+      onCardOpen={platformNow() === 'kiosk' ? null : async (target) => {
+        const call = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+        const r = await performCardTarget(target, {
+          call,
+          openNote: ({ path, obsidianUrl }) => { if (!obsidianUrl) return `This screen can’t open it — in Obsidian it is at ${path}.`; window.location.href = obsidianUrl; return null; },
+          openUrl: (href) => { try { window.open(href, '_blank', 'noopener'); } catch { /* the link is still shown */ } },
+        });
+        if (r) load({ quiet: true });
+        return r;
+      }}
       // Keep my word: take a held promise forward — asks, in place, what SAiM needs; stores a proposal only.
       onPromiseMove={async (op) => {
         // The interview AND the governed save happen ON the promise card (26 Oct 2026):

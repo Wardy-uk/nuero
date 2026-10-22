@@ -406,6 +406,9 @@ const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-
 const KIOSK_NEVER_CALLS = new Map([
   // Drafts: abandon / restore a saved draft. Drafts is read-only on the kiosk (no buttons).
   ['/api/prepared-moves/drafts/outcome', 'saim/app/src/views/Drafts.jsx'],
+  // Holding the week: "Draft the delivery note" from a card. The kiosk passes no
+  // onCardOpen (Surface) and Situation refuses card actions on the kiosk profile.
+  ['/api/promises/${encodeURIComponent(target.key)}/prepare', 'saim/shared-ui/presentation/cardOpen.mjs'],
 ]);
 
 /**

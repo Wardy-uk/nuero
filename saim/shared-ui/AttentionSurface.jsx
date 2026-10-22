@@ -179,6 +179,9 @@ export default function AttentionSurface({
   onPrepareDelivery = null,
   // Keep my word: take a held promise forward as a prepared move (ask / answer). null = no control.
   onPromiseMove = null,
+  // Holding the week (22 Oct 2026): perform a card target (→ { ok, say }) and the kinds this shell can. Null → records only.
+  onCardOpen = null,
+  cardKinds = null,
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card. null = none.
   renderPromiseSave = null,
   // "I'm not attending" for the meeting on screen (22 Oct 2026): the shell records it on
@@ -678,6 +681,8 @@ export default function AttentionSurface({
           preparedMoment={preparedMoment}
           onPrepareDelivery={onPrepareDelivery}
           onPromiseMove={onPromiseMove}
+          onCardOpen={onCardOpen}
+          cardKinds={cardKinds}
           onOpenActions={onOpenActions}
           renderPromiseSave={renderPromiseSave}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}

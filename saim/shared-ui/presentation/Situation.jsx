@@ -222,6 +222,9 @@ export default function Situation({
   // Keep my word: take a held promise forward as a prepared move. Absent → no control.
   onPromiseMove = null,
   onOpenActions = null,
+  // Holding the week (22 Oct 2026): the shell performs a card target (→ { ok, say }) and says which kinds it can.
+  onCardOpen = null,
+  cardKinds = null,
   // A control after a row's normal action — the shell's, for THAT item only ("Make this ready"). Null → none.
   renderItemExtra = null,
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card
@@ -343,7 +346,7 @@ export default function Situation({
       {/* Keyed on the mode so a change of situation recomposes with a fade
           (and nothing at all under reduced motion). */}
       <div className="sit__body" key={plan.mode}>
-        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} workspace={workspace} onOpen={workspace && plan.actions ? onOpen : null} />}
+        {kmw && <KmwReadout readout={kmw.readout} compact={plan.profile === 'phone'} workspace={workspace} onOpen={workspace && plan.actions ? onOpen : null} onCardOpen={plan.actions && plan.profile !== 'kiosk' ? onCardOpen : null} cardKinds={plan.actions && plan.profile !== 'kiosk' ? cardKinds : []} readOnly={!plan.actions || plan.profile === 'kiosk'} />}
         {plan.blocks.map((blk, i) => {
           switch (blk.type) {
             case 'situation':

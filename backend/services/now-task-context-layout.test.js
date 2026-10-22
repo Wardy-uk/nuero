@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Holding the week's three cards and task context, in a REAL BROWSER
+ * Holding the week's four cards and task context, in a REAL BROWSER
  * (Electron's Chromium) at desktop and phone sizes (22 Oct 2026).
  *
  * The REAL AdhdPanel (Now) and the REAL expanded TodoItem (the task card) are
@@ -9,12 +9,13 @@
  * request; it writes nothing, so a press only shows which route it reaches.
  *
  * Asserted:
- *   - three distinct cards (Keeping my word · Monday report · Needs your
+ *   - four distinct cards (Keeping my word · Monday report · Next · Needs your
  *     judgement), none overlapping, none past the viewport; side column on
  *     desktop, stacked full width on phone; readable text;
  *   - honest states when there is no data (unmeasured explains itself, a settled
  *     report shows its receipt, "nothing waiting");
- *   - the cards' buttons reach their routes (the Monday report, the exact task);
+ *   - the cards' buttons reach their routes (the Monday report, all commitments);
+ *     each card's own record is covered by holding-week-cards.test.js;
  *   - Now shows context for the ONE task in focus, once, and none when no task
  *     is in focus; a restricted note shows no preview;
  *   - the task card shows the editable Context section with its suggestion;
@@ -245,7 +246,7 @@ app.whenReady().then(async () => {
     win.setContentSize(w, h); await sleep(300);
     if (w === 1440 && !job.hash) {
       m.pressed = {};
-      for (const sel of ['.kmw__card--monday .kmw__card-go', '.kmw__judge-item', '.kmw__card--kept .kmw__card-go']) {
+      for (const sel of ['.kmw__card--monday .kmw__card-go', '.kmw__card--kept .kmw__card-link']) {
         m.pressed[sel] = await js('(() => { const b = document.querySelector(' + JSON.stringify(sel) + '); if (!b || b.tagName !== "BUTTON") return false; b.click(); return true; })()');
         await sleep(300);
       }
@@ -270,12 +271,12 @@ app.whenReady().then(async () => {
 const sizes = (name) => { const r = results[name]; assert.ok(r && !r.error, `${name}: ${r && r.error}`); return r.sizes; };
 const overlaps = (a, b) => a.x < b.x + b.w - 1 && b.x < a.x + a.w - 1 && a.y < b.y + b.h - 1 && b.y < a.y + a.h - 1;
 
-test('Holding the week: three distinct cards, no overlap, nothing past the edge, at desktop and phone', (t) => {
+test('Holding the week: four distinct cards, no overlap, nothing past the edge, at desktop and phone', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   for (const name of ['cards-full', 'cards-honest']) {
     for (const s of sizes(name)) {
-      assert.deepEqual(s.cards.map((c) => c.title), ['Keeping my word', 'Monday report', 'Needs your judgement'], `${name} ${s.size}`);
-      for (let i = 0; i < 3; i += 1) for (let j = i + 1; j < 3; j += 1) assert.ok(!overlaps(s.cards[i], s.cards[j]), `${name} ${s.size}: cards ${i}/${j} overlap`);
+      assert.deepEqual(s.cards.map((c) => c.title), ['Keeping my word', 'Monday report', 'Next', 'Needs your judgement'], `${name} ${s.size}`);
+      for (let i = 0; i < 4; i += 1) for (let j = i + 1; j < 4; j += 1) assert.ok(!overlaps(s.cards[i], s.cards[j]), `${name} ${s.size}: cards ${i}/${j} overlap`);
       assert.equal(s.sw, s.vw, `${name} ${s.size}: no horizontal scroll`);
       assert.deepEqual(s.over, [], `${name} ${s.size}: nothing past the right edge`);
       assert.ok(s.minFont >= 10, `${name} ${s.size}: readable (${s.minFont}px)`);
@@ -286,7 +287,7 @@ test('Holding the week: three distinct cards, no overlap, nothing past the edge,
       }
       if (s.vw < 500) {
         for (const c of s.cards) assert.ok(c.w >= s.vw * 0.75, `${name} ${s.size}: ${c.title} is full width on a phone (${c.w})`);
-        assert.ok(s.cards[1].y >= s.cards[0].y + s.cards[0].h - 1 && s.cards[2].y >= s.cards[1].y + s.cards[1].h - 1, `${name} ${s.size}: stacked`);
+        for (let i = 1; i < 4; i += 1) assert.ok(s.cards[i].y >= s.cards[i - 1].y + s.cards[i - 1].h - 1, `${name} ${s.size}: stacked`);
       }
     }
   }
@@ -298,23 +299,22 @@ test('the cards carry real answers — and say so honestly when there is none', 
   assert.match(full[0], /3 \/ 4/);
   assert.match(full[1], /Not written or sent, and the deadline has passed\./);
   assert.match(full[1], /Write and send it now/);
-  assert.match(full[2], /Two promises/);
-  assert.match(full[2], /Send Kit the onboarding pack/);
-  assert.match(full[2], /An employment matter — not named here/);
+  assert.match(full[2], /No protected time is booked ahead/);
+  assert.match(full[3], /Two promises/);
+  assert.match(full[3], /Review them one at a time \(2\)/, 'the named promises open one at a time (holding-week-cards.test.js)');
   const honest = sizes('cards-honest')[0].cards.map((c) => c.text);
   assert.match(honest[0], /Not measured yet/);
   assert.match(honest[0], /Nothing records a delivery yet/);
   assert.match(honest[1], /Read back in Sent Items/);
-  assert.match(honest[2], /Nothing is waiting on your judgement/);
+  assert.match(honest[3], /Nothing is waiting on your judgement/);
 });
 
-test('the cards reach their routes: the Monday report, the exact task, the promises', (t) => {
+test('the cards reach their routes: the Monday report, all commitments', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   const s = sizes('cards-full')[0];
   assert.ok(Object.values(s.pressed).every(Boolean), JSON.stringify(s.pressed));
   assert.deepEqual(s.navs, [
     { view: 'weekly-risk', context: null },
-    { view: 'todos', context: { taskId: 51, fromFocus: true } },
     { view: 'commitments', context: null },
   ]);
 });

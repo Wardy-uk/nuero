@@ -1325,6 +1325,9 @@ function keepWordBlock(nowMs, deps = {}) {
     authority: require('./authority-budget').brief({ now: nowMs }),
     delivery: { sending, items: Object.fromEntries(require('./promise-delivery').readiness(draftable, { ledger })) },
     moves: _promiseMoves(workbench, nowMs),
+    // Holding the week's Next card (22 Oct 2026): the saved drafts' booked blocks, and the focus session.
+    work: (() => { try { return require('./prepared-drafts').savedWork({ now: nowMs }).work; } catch { return null; } })(),
+    session: (() => { try { return require('./focus-session').current(nowMs); } catch { return null; } })(),
   } };
   return _keepWordMemo.k;
 }

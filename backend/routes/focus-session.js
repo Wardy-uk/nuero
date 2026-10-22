@@ -27,6 +27,14 @@ const router = express.Router();
 const session = require('../services/focus-session');
 const signals = require('../services/initiation-signals');
 
+// Holding the week's Next card reads the session (whether "Start this block" is
+// possible) through Now's per-minute memo: any session write clears that memo
+// alone, so the card never offers to start a block that is already running.
+router.use((req, res, next) => {
+  if (req.method === 'POST') res.on('finish', () => { try { require('../services/canonical-read').invalidateKeepMyWord(); } catch { /* the memo ages out in a minute */ } });
+  next();
+});
+
 router.get('/', (req, res) => {
   try {
     res.json(session.status());

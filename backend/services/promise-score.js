@@ -386,7 +386,19 @@ function _mondayReportNow(nowMs, week) {
       const v = _db().get(`SELECT checked_at, outcome FROM action_verifications WHERE action_id = ? ORDER BY id DESC LIMIT 1`, [sent.actionId]);
       sendProof = v ? { verified: v.outcome === 'verified', provenBy: v.checked_at } : { verified: false };
     }
-    return mondayReport({ week: week.start, dueDay, published: wr.publishedAt(week.start), sent, sendProof, now: nowMs });
+    const out = mondayReport({ week: week.start, dueDay, published: wr.publishedAt(week.start), sent, sendProof, now: nowMs });
+    // The saved report, so the card can show what was actually sent (22 Oct 2026):
+    // subject, time, recipient NAMES (never addresses) and the opening lines.
+    if (sent && sent.sentAt) {
+      const body = String(sent.body || '').replace(/<[^>]+>/g, ' ').replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim();
+      out.report = {
+        subject: sent.subject || null, sentAt: sent.sentAt,
+        recipients: (Array.isArray(sent.recipients) ? sent.recipients : []).map((r) => (typeof r === 'string' ? (r.includes('@') ? null : r) : (r && r.name) || null)).filter(Boolean),
+        excerpt: body ? (body.length > 420 ? `${body.slice(0, 420).replace(/\s+\S*$/, '')}…` : body) : null,
+        reportedByNick: Boolean(sent.reportedByNick),
+      };
+    }
+    return out;
   } catch (e) {
     return mondayReport({ week: week.start, now: nowMs, known: false });
   }

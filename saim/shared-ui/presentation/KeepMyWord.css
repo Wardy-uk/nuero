@@ -220,3 +220,31 @@
 
 /* The governed save step inside the promise card (NEURO desktop, 26 Oct 2026). */
 .kmw__save { margin-top: 10px; }
+
+/* ── Holding the week: cards that lead somewhere (22 Oct 2026) ──────────────── */
+.kmw__card-link { display: inline-block; border: 0; background: transparent; padding: 4px 0; margin-top: 4px; color: var(--kmw-dim); font: 12px Georgia, serif; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; text-align: left; }
+.kmw__card-link:disabled { opacity: .45; cursor: default; }
+.kmw__entry-open { display: inline-block; margin-top: 6px; border: 1px solid var(--kmw-line); background: transparent; color: var(--kmw-ink); padding: 6px 10px; font: 12px Georgia, serif; cursor: pointer; min-height: 32px; }
+/* The drill-in: the exact record behind a card. A drawer on wide screens, the whole screen on a phone. */
+.kmw__sheet { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: flex-end; pointer-events: none; }
+.kmw__sheet-body { pointer-events: auto; width: min(560px, 100%); height: 100%; overflow-y: auto; box-sizing: border-box; padding: 20px 18px 28px; background: #06080c; border-left: 1px solid var(--kmw-line); color: var(--kmw-ink); }
+.kmw__sheet-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.kmw__sheet-h { margin: 14px 0 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: var(--kmw-gold); }
+.kmw__sheet-block { margin-top: 6px; }
+.kmw__sheet-list { margin: 0; padding-left: 18px; font: 12px/1.5 Georgia, serif; color: var(--kmw-dim); }
+.kmw__promises { list-style: none; margin: 0; padding: 0; }
+.kmw__promise { padding: 10px 0; border-bottom: 1px solid var(--kmw-line); }
+.kmw__promise--risk { border-left: 2px solid var(--kmw-amber); padding-left: 10px; }
+.kmw__promise-title { margin: 0 0 3px; font: 400 15px Georgia, serif; color: var(--kmw-ink); overflow-wrap: anywhere; }
+.kmw__excerpt { color: var(--kmw-ink); }
+.kmw__review { margin-top: 8px; padding: 10px 0; border-top: 1px solid var(--kmw-line); }
+.kmw__review-choices { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+.kmw__review-nav { margin-top: 12px; display: flex; justify-content: space-between; gap: 12px; }
+@media (max-width: 600px) { .kmw__sheet-body { width: 100%; border-left: 0; } }
+/* Base look for the card affordances wherever the readout is drawn (the phone and the
+   kiosk too) — NEURO's Now workspace refines these in AdhdPanel.css. */
+.kmw__card-go { display: inline-block; margin-top: 7px; padding: 6px 0; border: 0; background: none; cursor: pointer; font: 600 13px/1.3 -apple-system, system-ui, sans-serif; color: var(--kmw-gold); text-align: left; }
+.kmw__card-go:hover { text-decoration: underline; }
+.kmw__card-go + .kmw__card-link { margin-left: 14px; }
+.kmw__sheet .kmw__card-title { margin: 0; font: 700 10px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--kmw-amber); }
+.kmw__sheet .kmw__card-go { display: block; min-height: 40px; }

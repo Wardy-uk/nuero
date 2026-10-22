@@ -101,9 +101,267 @@ function WorkspaceReadout({ readout, onOpen = null }) {
   );
 }
 
-export function KmwReadout({ readout, compact = false, workspace = false, onOpen = null }) {
+// ── Holding the week: cards that lead somewhere (keep-my-word-cards-v1, 22 Oct 2026) ──
+//
+// Every card has ONE primary affordance, at most one quiet secondary link, and opens
+// the exact record that explains it. The SHELL says what it can perform
+// (`cardKinds`) and does it (`onCardOpen(target)` → { ok, say }); a target a shell
+// cannot perform is never offered as a button — it is named, with where it lives.
+// A read-only shell (the kiosk) can open every card's record and nothing that
+// changes anything: starting a focus session and preparing a delivery note are
+// never offered there. Every word is the server's.
+
+/** Targets that change something — never offered by a read-only shell (pinned equal to the server's list). */
+export const MUTATING_KINDS = ['session-start', 'prepare-delivery'];
+const WHERE = { view: 'in NEURO on the desktop', task: 'in NEURO', note: 'in Obsidian', url: 'in Outlook', 'session-start': 'in NEURO or SAiM on your phone', 'prepare-delivery': 'in NEURO or SAiM on your phone' };
+const CARD_TITLE = { kept: 'Keeping my word', monday: 'Monday report', next: 'Next', judgement: 'Needs your judgement' };
+
+function canDo(target, { cardKinds, readOnly, onCardOpen }) {
+  if (!target) return false;
+  if (target.kind === 'detail') return true;
+  if (readOnly && MUTATING_KINDS.includes(target.kind)) return false;
+  return Boolean(onCardOpen) && (cardKinds || []).includes(target.kind);
+}
+
+/** One affordance: a button when this shell can do it, otherwise the plain fact of where it lives. */
+function Affordance({ a, quiet = false, ctx, onDetail, busy = false, onResult }) {
+  if (!a || !a.open) return null;
+  const run = async () => {
+    if (a.open.kind === 'detail') { onDetail(a.open.record); return; }
+    if (busy) return;
+    try {
+      const r = await ctx.onCardOpen(a.open);
+      if (onResult && r && (r.say || r.error)) onResult({ ok: r.ok !== false, say: r.say || r.error });
+    } catch { if (onResult) onResult({ ok: false, say: 'NEURO didn’t answer — nothing was changed.' }); }
+  };
+  if (canDo(a.open, ctx)) {
+    return <button type="button" className={quiet ? 'kmw__card-link' : 'kmw__card-go'} onClick={run} disabled={busy} data-target={a.open.kind}>{a.label}{quiet ? '' : ' →'}</button>;
+  }
+  if (ctx.readOnly && MUTATING_KINDS.includes(a.open.kind)) return <p className="kmw__line kmw__line--quiet">{a.label} — not from this screen.</p>;
+  return <p className="kmw__line kmw__line--quiet">{a.label} — {WHERE[a.open.kind] || 'elsewhere'}.</p>;
+}
+
+function KeptDetail({ d, ctx, onResult }) {
+  return (
+    <>
+      {d.week && <p className="kmw__line kmw__line--quiet">{d.week}</p>}
+      {d.measured ? <p className="kmw__figure">{d.figure}</p> : <p className="kmw__figure kmw__figure--note">Not measured yet</p>}
+      {(d.missing || []).length > 0 && (
+        <div className="kmw__sheet-block">
+          <p className="kmw__sheet-h">What evidence is missing</p>
+          <ul className="kmw__sheet-list">{d.missing.map((m) => <li key={m}>{m}</li>)}</ul>
+          {(d.affected || []).length > 0 && <p className="kmw__line">This affects {d.affected.length} promise{d.affected.length === 1 ? '' : 's'} below.</p>}
+        </div>
+      )}
+      {d.notCounted && (d.notCounted.say || []).length > 0 && (
+        <div className="kmw__sheet-block"><p className="kmw__sheet-h">Not counted</p><ul className="kmw__sheet-list">{d.notCounted.say.map((s) => <li key={s}>{s}</li>)}</ul></div>
+      )}
+      <p className="kmw__sheet-h">This week’s promises</p>
+      {(d.promises || []).length === 0 ? <p className="kmw__line">No promise falls due this week.</p> : (
+        <ul className="kmw__promises">
+          {d.promises.map((p) => (
+            <li key={p.key} className={`kmw__promise${p.atRisk ? ' kmw__promise--risk' : ''}`} data-key={p.key} data-task-id={p.taskId || ''}>
+              <p className="kmw__promise-title">{p.sensitive ? 'An employment matter — not named here' : (p.title || 'A promise')}</p>
+              <p className="kmw__line">{p.atRisk ? 'At risk · ' : ''}{p.outcomeSay}{p.due ? ` · ${p.due.say}` : ''}</p>
+              {(p.evidence || []).map((e) => <p key={e} className="kmw__line kmw__line--quiet">{e}</p>)}
+              {p.preparation && <p className="kmw__line kmw__line--quiet">{p.preparation}</p>}
+              {p.action && <Affordance a={p.action} ctx={ctx} onDetail={() => {}} onResult={onResult} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function MondayDetail({ d, card, ctx, onResult }) {
+  return (
+    <>
+      {d.rule && <p className="kmw__line">{d.rule.charAt(0).toUpperCase() + d.rule.slice(1)}.</p>}
+      {d.due && <p className="kmw__line kmw__line--quiet">Due {d.due}.</p>}
+      {d.say && <p className="kmw__line">{d.say}</p>}
+      {d.receipt && <div className="kmw__sheet-block"><p className="kmw__sheet-h">Receipt</p><p className="kmw__line">{d.receipt.say}</p></div>}
+      {d.report ? (
+        <div className="kmw__sheet-block">
+          <p className="kmw__sheet-h">The report that was sent</p>
+          {d.report.subject && <p className="kmw__line"><strong>{d.report.subject}</strong></p>}
+          {d.report.sentAtSay && <p className="kmw__line kmw__line--quiet">Sent {d.report.sentAtSay}{d.report.recipients.length ? ` to ${d.report.recipients.join(', ')}` : ''}{d.report.reportedByNick ? ' — recorded by you, not read back' : ''}.</p>}
+          {d.report.excerpt && <p className="kmw__line kmw__excerpt">{d.report.excerpt}</p>}
+        </div>
+      ) : (d.state && d.state.startsWith('sent') ? <p className="kmw__line kmw__line--quiet">The sent words were not kept with the record.</p> : null)}
+      <Affordance a={card.secondary} quiet ctx={ctx} onDetail={() => {}} onResult={onResult} />
+      {card.primary && card.primary.open.kind !== 'detail' && <Affordance a={card.primary} ctx={ctx} onDetail={() => {}} onResult={onResult} />}
+    </>
+  );
+}
+
+function NextDetail({ d, card, ctx, onResult }) {
+  if (!d.block) {
+    return (
+      <>
+        <p className="kmw__line">{d.say}</p>
+        {d.drafts ? <Affordance a={d.drafts} ctx={ctx} onDetail={() => {}} onResult={onResult} /> : <p className="kmw__line kmw__line--quiet">No saved draft is waiting for time either.</p>}
+      </>
+    );
+  }
+  return (
+    <>
+      <p className="kmw__strong">{d.block.when}</p>
+      <p className="kmw__line">{d.block.title}. Protected time, just you.</p>
+      {d.block.outlookUrl && <Affordance a={{ label: 'Open the calendar block', open: { kind: 'url', href: d.block.outlookUrl } }} quiet ctx={ctx} onDetail={() => {}} onResult={onResult} />}
+      <div className="kmw__sheet-block">
+        <p className="kmw__sheet-h">The draft</p>
+        {d.draft ? (
+          <>
+            <p className="kmw__line kmw__path">{d.draft.path}</p>
+            <Affordance a={{ label: 'Open the draft', open: { kind: 'note', path: d.draft.path, obsidianUrl: d.draft.obsidianUrl } }} quiet ctx={ctx} onDetail={() => {}} onResult={onResult} />
+          </>
+        ) : <p className="kmw__line kmw__line--quiet">No draft is saved for this block.</p>}
+      </div>
+      <div className="kmw__sheet-block">
+        <p className="kmw__sheet-h">The task</p>
+        {d.task ? (
+          <>
+            <p className="kmw__line">#{d.task.id}{d.task.text ? ` · ${d.task.text}` : ''}</p>
+            <Affordance a={{ label: 'Open the task', open: { kind: 'task', taskId: d.task.id } }} quiet ctx={ctx} onDetail={() => {}} onResult={onResult} />
+          </>
+        ) : <p className="kmw__line kmw__line--quiet">No task is linked to this block.</p>}
+      </div>
+      {d.session && (d.session.possible
+        ? <Affordance a={card.primary} ctx={ctx} onDetail={() => {}} onResult={onResult} />
+        : <p className="kmw__line">{d.session.why}</p>)}
+    </>
+  );
+}
+
+function JudgementDetail({ d, ctx, onResult }) {
+  const [i, setI] = useState(0);
+  const items = d.items || [];
+  if (!items.length) return <p className="kmw__line">{d.say}</p>;
+  const at = Math.min(i, items.length - 1);
+  const it = items[at];
+  return (
+    <>
+      <p className="kmw__line kmw__line--quiet">{d.say}</p>
+      <div className="kmw__review" data-key={it.key} data-task-id={it.taskId || ''}>
+        <p className="kmw__sheet-h">{at + 1} of {items.length}</p>
+        <p className="kmw__promise-title">{it.sensitive ? 'An employment matter — not named here' : (it.title || 'A promise')}</p>
+        <p className="kmw__line">{it.why}</p>
+        {(it.evidence || []).map((e) => <p key={e} className="kmw__line kmw__line--quiet">{e}</p>)}
+        <div className="kmw__review-choices">
+          {(it.choices || []).map((c) => <Affordance key={c.label} a={c} ctx={ctx} onDetail={() => {}} onResult={onResult} />)}
+        </div>
+        <div className="kmw__review-nav">
+          <button type="button" className="kmw__card-link" disabled={at === 0} onClick={() => setI(at - 1)}>‹ Previous</button>
+          <button type="button" className="kmw__card-link" disabled={at >= items.length - 1} onClick={() => setI(at + 1)}>Next promise ›</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** The drill-in: the exact record behind a card. Opens on every shell, the kiosk included. */
+export function KmwCardSheet({ card, ctx, onClose }) {
+  const [result, setResult] = useState(null);
+  if (!card) return null;
+  const d = card.detail || {};
+  return (
+    <div className="kmw__sheet" role="dialog" aria-modal="true" aria-label={CARD_TITLE[card.id]} data-card={card.id}>
+      <div className="kmw__sheet-body">
+        <div className="kmw__sheet-top">
+          <h3 className="kmw__card-title">{CARD_TITLE[card.id]}</h3>
+          <button type="button" className="kmw__card-link" onClick={onClose}>Close</button>
+        </div>
+        {card.id === 'kept' && <KeptDetail d={d} ctx={ctx} onResult={setResult} />}
+        {card.id === 'monday' && <MondayDetail d={d} card={card} ctx={ctx} onResult={setResult} />}
+        {card.id === 'next' && <NextDetail d={d} card={card} ctx={ctx} onResult={setResult} />}
+        {card.id === 'judgement' && <JudgementDetail d={d} ctx={ctx} onResult={setResult} />}
+        {result && <p className={`kmw__line${result.ok ? '' : ' kmw__draft-error'}`} role="status">{result.say}</p>}
+        {ctx.readOnly && <p className="kmw__line kmw__line--quiet">This screen can show these records; it can’t act on them.</p>}
+      </div>
+    </div>
+  );
+}
+
+/** NEURO's Now workspace: the four cards from `readout.cards`. */
+function CardsReadout({ readout, ctx }) {
+  const [open, setOpen] = useState(null);
+  const [result, setResult] = useState(null);
+  const c = readout.cards;
+  const j = readout.judgement;
+  const m = readout.monday;
+  const nextD = c.next && c.next.detail;
+  const card = (id, body) => {
+    const k = c[id];
+    if (!k) return null;
+    return (
+      <section className={`kmw__card kmw__card--${id}${id === 'monday' && m ? ` kmw__card--${m.state}` : ''}`} aria-label={CARD_TITLE[id]} data-card={id} data-state={k.state}>
+        <h3 className="kmw__card-title">{CARD_TITLE[id]}</h3>
+        {body}
+        <Affordance a={k.primary} ctx={ctx} onDetail={setOpen} onResult={setResult} />
+        {k.secondary && <Affordance a={k.secondary} quiet ctx={ctx} onDetail={setOpen} onResult={setResult} />}
+      </section>
+    );
+  };
+  return (
+    <aside className="kmw__week kmw__week--workspace" aria-label="Holding the week">
+      <p className="kmw__label">{readout.label}</p>
+      <div className="kmw__cards">
+        {card('kept', (
+          <>
+            {readout.figure ? <p className="kmw__figure">{readout.figure}</p> : <p className="kmw__figure kmw__figure--note">{readout.figureNote || 'Not measured yet'}</p>}
+            {readout.line && <p className="kmw__line">{readout.line}</p>}
+            {readout.trend && <p className="kmw__line kmw__trend">{readout.trend}</p>}
+            {readout.reDated && <p className="kmw__line kmw__line--quiet">{readout.reDated}</p>}
+          </>
+        ))}
+        {card('monday', m ? (
+          <>
+            <p className={`kmw__strong kmw__monday kmw__monday--${m.state}`}>{m.line || 'No status recorded.'}</p>
+            {m.receipt && <p className="kmw__line kmw__line--quiet">{m.receipt}</p>}
+          </>
+        ) : <p className="kmw__line">NEURO couldn’t read this week’s report.</p>)}
+        {card('next', nextD && nextD.block ? (
+          <>
+            <p className="kmw__strong">{nextD.block.when}</p>
+            <p className="kmw__line">{nextD.block.title}.</p>
+            {nextD.session && !nextD.session.possible && <p className="kmw__line kmw__line--quiet">{nextD.session.why}</p>}
+          </>
+        ) : <p className="kmw__line">No protected time is booked ahead.</p>)}
+        {card('judgement', j ? (
+          <>
+            <p className="kmw__strong">{j.strong}</p>
+            <p className="kmw__line">{j.line}</p>
+          </>
+        ) : <p className="kmw__line">Nothing is waiting on your judgement.</p>)}
+      </div>
+      {result && <p className={`kmw__line${result.ok ? '' : ' kmw__draft-error'}`} role="status">{result.say}</p>}
+      {open && <KmwCardSheet card={c[open]} ctx={ctx} onClose={() => setOpen(null)} />}
+    </aside>
+  );
+}
+
+// When a card's primary is an action rather than its record, the locked entry opens the record,
+// which holds that action — so it is named for what it opens.
+const LOCKED_LABEL = { kept: 'See this week’s promises', monday: 'Open the Monday report', next: 'Open this block', judgement: 'Review them one at a time' };
+
+/** The locked SAiM readout, with each entry opening the SAME card record (phone, kiosk). */
+function LockedOpen({ readout, id, onOpen }) {
+  const k = readout.cards && readout.cards[id];
+  if (!k) return null;
+  // On the locked scene the entry opens its record; the record holds every action this shell can do.
+  const label = k.primary.open.kind === 'detail' ? k.primary.label : LOCKED_LABEL[id] || 'Open it';
+  return <button type="button" className="kmw__entry-open" onClick={() => onOpen(id)} data-card={id}>{label}</button>;
+}
+
+export function KmwReadout({ readout, compact = false, workspace = false, onOpen = null, onCardOpen = null, cardKinds = null, readOnly = false }) {
+  const [open, setOpen] = useState(null);
   if (!readout) return null;
+  // The shell's card handler; NEURO's Now historically passed its view/task opener as `onOpen`.
+  const ctx = { onCardOpen: onCardOpen || (onOpen ? async (t) => { onOpen(t); return null; } : null), cardKinds: cardKinds || (onOpen ? ['view', 'task'] : []), readOnly };
+  if (workspace && readout.cards) return <CardsReadout readout={readout} ctx={ctx} />;
   if (workspace) return <WorkspaceReadout readout={readout} onOpen={onOpen} />;
+  const lock = readout.cards ? (id) => <LockedOpen readout={readout} id={id} onOpen={setOpen} /> : () => null;
   return (
     <aside className={`kmw__week${compact ? ' kmw__week--compact' : ''}`} aria-label="Holding the week">
       <p className="kmw__label">{readout.label}</p>
@@ -112,29 +370,40 @@ export function KmwReadout({ readout, compact = false, workspace = false, onOpen
         : readout.figureNote ? <p className="kmw__figure kmw__figure--note">{readout.figureNote}</p> : null}
       {readout.line && <p className="kmw__line">{readout.line}{readout.trend && <><br /><span className="kmw__trend">{readout.trend}</span></>}</p>}
       {readout.reDated && <p className="kmw__line kmw__line--quiet">{readout.reDated}</p>}
+      {lock('kept')}
       {readout.monday && readout.monday.line && (
         <>
           <hr className="kmw__rule" />
           <p className="kmw__label">{readout.monday.label}</p>
           <p className={`kmw__line kmw__monday kmw__monday--${readout.monday.state}`}>{readout.monday.line}</p>
+          {lock('monday')}
         </>
       )}
-      {readout.next && (
-        <>
-          <hr className="kmw__rule" />
-          <p className="kmw__label">{readout.next.label}</p>
-          <p className="kmw__strong">{readout.next.strong}</p>
-          <p className="kmw__line">{readout.next.line}</p>
-        </>
-      )}
+      {/* Next: the card's own block when the contract has one (a saved draft's booked time
+          the older readout cannot see), else the readout's line. */}
+      {(() => {
+        const nb = readout.cards && readout.cards.next && readout.cards.next.detail && readout.cards.next.detail.block;
+        if (!nb && !readout.next) return null;
+        return (
+          <>
+            <hr className="kmw__rule" />
+            <p className="kmw__label">Next</p>
+            <p className="kmw__strong">{nb ? nb.when : readout.next.strong}</p>
+            <p className="kmw__line">{nb ? `${nb.title}. Protected time.` : readout.next.line}</p>
+            {lock('next')}
+          </>
+        );
+      })()}
       {readout.judgement && (
         <>
           <hr className="kmw__rule" />
           <p className="kmw__label">{readout.judgement.label}</p>
           <p className="kmw__strong">{readout.judgement.strong}</p>
           <p className="kmw__line">{readout.judgement.line}</p>
+          {lock('judgement')}
         </>
       )}
+      {open && readout.cards && <KmwCardSheet card={readout.cards[open]} ctx={ctx} onClose={() => setOpen(null)} />}
     </aside>
   );
 }

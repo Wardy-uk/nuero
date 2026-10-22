@@ -333,12 +333,16 @@ function threadFrom(workbench, authority, delivery = null, moves = null) {
  *   authority     authority-budget.brief() or null
  *   delivery      { sending, items: { key → promise-delivery.readiness() } } or null
  *   moves         { key → promise-moves.moveFor() } or null — taking a promise forward
+ *   work          prepared-drafts.savedWork().work — saved drafts with their booked block, note and task
+ *   session       focus-session.current() — whether "Start this block" is possible
  *   presentation  the presentation it rides on (for the lead rule)
  */
-function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, moves = null, presentation = null, now = Date.now() } = {}) {
+function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, moves = null, presentation = null, work = null, session = null, now = Date.now() } = {}) {
   const lead = leadFrom(presentation);
   const thread = threadFrom(workbench, authority, delivery, moves);
   const readout = readoutFrom({ score: sc, workbench, receipt, now });
+  // Holding the week's four cards (22 Oct 2026): one target each, and the exact record behind it. Additive.
+  try { readout.cards = require('./keep-my-word-cards').cardsFrom({ score: sc, workbench, delivery, work, receipt, session, now }); } catch { readout.cards = null; }
   const hasMain = Boolean(receipt || thread);
   let state;
   if (lead.lead && hasMain) state = 'folded';

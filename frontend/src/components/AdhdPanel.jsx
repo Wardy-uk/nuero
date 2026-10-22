@@ -13,6 +13,7 @@ import { useWorkOnly } from '../workOnly';
 // DESKTOP profile — richer, but one presentation from NEURO, never re-ranked.
 import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
 import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs';
+import { performCardTarget, kindsFor } from '../../../saim/shared-ui/presentation/cardOpen.mjs';
 // The governed save step for a private draft, drawn IN the Keep my word card:
 // the SAME component, record, authority check, confirmation and executor as
 // SAiM Home — never a second save path (26 Oct 2026).
@@ -847,6 +848,21 @@ export default function AdhdPanel({ onNavigate }) {
               // A readout card's route (22 Oct 2026): a view, or the exact task it is about.
               else if (it.kind === 'view' && it.view) onNavigate(it.view);
               else if (it.kind === 'task') onNavigate('todos', it.taskId != null ? { taskId: it.taskId, fromFocus: true } : null);
+            }}
+            // Holding the week (22 Oct 2026): each card's exact target, performed here — the
+            // view, the exact task, the draft in the Vault, the block in Outlook, or the two
+            // guarded actions (start a focus session; prepare a delivery note — nothing sent).
+            cardKinds={kindsFor({ openView: onNavigate, openTask: onNavigate, openNote: true, openUrl: true, call: desktopCall })}
+            onCardOpen={async (target) => {
+              const r = await performCardTarget(target, {
+                call: desktopCall,
+                openView: (view, ctx) => onNavigate && onNavigate(view, ctx),
+                openTask: (taskId) => onNavigate && onNavigate('todos', { taskId, fromFocus: true }),
+                openNote: ({ path }) => openInVault(path),
+                openUrl: (href) => { try { window.open(href, '_blank', 'noopener'); } catch { /* blocked: the link is still shown */ } },
+              });
+              if (r) attention.refresh();
+              return r;
             }}
             onCorrect={async (doing) => {
               try { await api('/api/signals/life/declare', { method: 'POST', body: JSON.stringify({ doing }) }); } catch { /* the question stays */ }
