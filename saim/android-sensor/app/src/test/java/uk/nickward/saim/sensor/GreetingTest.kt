@@ -47,4 +47,11 @@ class GreetingTest {
         val body = "{\"greeting\":{\"id\":\"g2\",\"text\":\"Hi\",\"audio\":\"//evil.example/x.wav\"}}"
         assertEquals(null, Greeting.parse(body)!!.audio)
     }
+
+    @Test fun aGreetingThatAsksSaysToListen() {
+        val g = Greeting.parse("{\"greeting\":{\"id\":\"a\",\"text\":\"Want it warmed to 20?\",\"listen\":true}}")
+        assertTrue(g!!.listen)
+        val h = Greeting.parse("{\"greeting\":{\"id\":\"b\",\"text\":\"Rain from three.\"}}")
+        assertEquals(false, h!!.listen)
+    }
 }

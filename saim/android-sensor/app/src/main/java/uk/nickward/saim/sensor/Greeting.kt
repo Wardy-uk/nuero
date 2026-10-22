@@ -8,7 +8,7 @@ package uk.nickward.saim.sensor
  * that decides whether SAiM speaks is pinned. Anything malformed is null — silence,
  * never a garbled sentence read aloud.
  */
-data class Greeting(val id: String, val text: String, val audio: String? = null) {
+data class Greeting(val id: String, val text: String, val audio: String? = null, val listen: Boolean = false) {
     companion object {
         private val OBJECT = Regex("\"greeting\"\\s*:\\s*\\{([^{}]*)\\}")
         private fun field(name: String) = Regex("\"$name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
@@ -23,7 +23,10 @@ data class Greeting(val id: String, val text: String, val audio: String? = null)
             // a foreign host — resolved against the URL this sensor already pushes to.
             val audio = field("audio").find(inner)?.groupValues?.get(1)?.let(::unescape)
                 ?.takeIf { it.startsWith("/") && !it.startsWith("//") }
-            return Greeting(id, text, audio)
+            // Optional: the greeting ASKED something ("Want it warmed to 20?"), so
+            // listen for a yes or a no once it has been said. Absent = never listen.
+            val listen = Regex(""""listen"\s*:\s*true""").containsMatchIn(inner)
+            return Greeting(id, text, audio, listen)
         }
 
         /** `/api/...` against the origin of the push URL. Null when it cannot be formed. */

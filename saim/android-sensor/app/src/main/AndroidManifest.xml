@@ -21,8 +21,18 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- A yes or no after SAiM asks something ("Want it warmed to 20?"). The mic
+         opens only after a question, for a few seconds. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <!-- Android 11+: lets isRecognitionAvailable see the speech service. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <!-- Cleartext: the backend is plain HTTP on the home LAN / tailnet, like every other sensor. -->
     <application

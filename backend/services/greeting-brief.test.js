@@ -16,7 +16,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { briefLine, MEETING_SOON_MINUTES } = require('./greeting');
+const { briefLine, compose, MEETING_SOON_MINUTES } = require('./greeting');
 
 const NOW = new Date('2026-09-15T09:00:00');
 
@@ -212,4 +212,20 @@ test('the living room hears only the cold room and the weather, never his work o
   assert.equal(briefLine({ now: NOW, firstToday: true, agenda: meeting(), primary: critical, lastNight, allowKinds }), null, 'nothing allowed = silence');
   assert.equal(roomKinds('study', {}), null, 'his own room hears everything');
   assert.deepEqual(roomKinds('bedroom', { GREET_ROOM_KINDS: 'bedroom=weather' }), ['weather']);
+});
+
+test('a cold room with an offer ASKS, and carries that offer key so a heard "yes" answers it', () => {
+  const rooms = { known: true, offers: [{ kind: 'warm-room', key: 'warm-room:living-room', currentC: 16.6, targetC: 20 }] };
+  const b = briefLine({ now: NOW, rooms });
+  assert.equal(b.kind, 'cold');
+  assert.equal(b.line, "It's 17 in here. Want it warmed to 20?");
+  assert.deepEqual(b.ask, { kind: 'room-offer', key: 'warm-room:living-room' });
+  const words = compose({ now: NOW, room: 'living-room', workHours: false, brief: b, rng: () => 0 });
+  assert.deepEqual(words.ask, b.ask, 'the ask survives into what is spoken');
+});
+
+test('no key or no target: it states the temperature and asks nothing', () => {
+  const b = briefLine({ now: NOW, rooms: coldRoom });
+  assert.equal(b.line, "It's 16 in here.");
+  assert.equal(b.ask, undefined);
 });

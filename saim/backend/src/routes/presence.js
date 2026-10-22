@@ -271,6 +271,60 @@ router.post('/greeting/test', express.json({ limit: '1kb' }), (req, res) => {
   return res.json({ ok: true, room, id: g.id, words, note: 'collected by the room sensor with its next reading' });
 });
 
+// POST /api/presence/greeting/answer {id, room, answer: 'yes'|'no'} — what the
+// room's tablet heard straight after a greeting that ASKED something (22 Oct
+// 2026: "It's 17 in here. Want it warmed to 20?"). The tablet only ever sends a
+// yes or a no it matched itself; it never sends words.
+//
+// ⚠ THE QUESTION IS SPENT ONCE and only by the room that heard it, inside two
+//   minutes (`pending.answer`) — a late, repeated or stray answer is refused.
+// ⚠ IT ACTS THROUGH NEURO'S OWN ROUTE (`/api/rooms/:key/accept|decline`), which
+//   re-derives the offer from a fresh read: an offer that has gone is refused
+//   there, never acted on here. This backend holds the credential, the tablet
+//   holds only its sensor token.
+router.post('/greeting/answer', express.json({ limit: '1kb' }), async (req, res) => {
+  if (SENSOR_TOKEN && req.get('X-Saim-Sensor-Token') !== SENSOR_TOKEN) {
+    return res.status(401).json({ ok: false, reason: 'bad sensor token' });
+  }
+  const b = req.body || {};
+  const id = String(b.id || '');
+  const room = String(b.room || '').trim().toLowerCase();
+  const answer = b.answer === 'yes' || b.answer === 'no' ? b.answer : null;
+  if (!id || !room || !answer) return res.status(400).json({ ok: false, reason: 'id, room and answer (yes|no) required' });
+  const spent = pendingGreetings.answer(id, room);
+  if (!spent) return res.status(409).json({ ok: false, reason: 'nothing to answer — the question has gone' });
+
+  const env = process.env;
+  let say;
+  let done = false;
+  if (!neuroConfigForTts.readiness(env).ready) {
+    say = "I couldn't reach NEURO, so nothing was changed.";
+  } else {
+    const verb = answer === 'yes' ? 'accept' : 'decline';
+    try {
+      const r = await fetch(`${neuroConfigForTts.getBaseUrl(env)}/api/rooms/${encodeURIComponent(spent.ask.key)}/${verb}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...neuroConfigForTts.authHeaders(env) },
+        body: '{}',
+        signal: AbortSignal.timeout(15000),
+      });
+      const out = await r.json().catch(() => null);
+      done = Boolean(r.ok && out && out.ok === true);
+      if (answer === 'no') say = done ? "Okay, I'll leave it." : "I couldn't record that, but nothing was changed.";
+      else if (done) say = (out && out.say) || 'Done.';
+      else say = 'Nothing was changed — ' + ((out && (out.reason || out.error)) || `NEURO answered ${r.status}`) + '.';
+    } catch (e) {
+      say = "I couldn't reach NEURO, so nothing was changed.";
+    }
+  }
+  // Said aloud: "20°C" reads badly on the tablet's voices.
+  const words = spokenForm(String(say).replace(/°C/g, ' degrees').replace(/\s+/g, ' ').trim());
+  pendingGreetings.put(room, words);
+  const greeting = pendingGreetings.take(room);
+  console.log(`[presence] ${room}: heard "${answer}" for ${spent.ask.key} — ${done ? 'done' : 'not done'}`);
+  return res.json({ ok: true, answer, done, greeting });
+});
+
 router.post('/sensor', express.json({ limit: '16kb' }), (req, res) => {
   if (SENSOR_TOKEN && req.get('X-Saim-Sensor-Token') !== SENSOR_TOKEN) {
     return res.status(401).json({ ok: false, reason: 'bad sensor token' });

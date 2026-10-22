@@ -200,7 +200,9 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
     const spoken = spokenForm(c.text);
 
     if (speaker.kind === 'sensor') {
-      pending.put(room, spoken);
+      // A question (the cold-room offer) rides along, so the tablet can listen
+      // for "yes" / "no" straight after it — only sensors can, so only here.
+      pending.put(room, spoken, Date.now(), c.ask && c.ask.kind === 'room-offer' && c.ask.key ? c.ask : null);
       log.log(`[greeter] ${room}: greeting queued for the room's sensor`);
       return { spoken: true, via: 'sensor' };
     }

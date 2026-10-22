@@ -106,6 +106,7 @@ class MainActivity : Activity() {
             b.append("Last push: ").append(push).append(" (${age}s ago)\n")
         }
         SensorService.lastGreeting?.let { b.append("Last greeting: ").append(it).append('\n') }
+        SensorService.lastHeard?.let { b.append("Last heard: ").append(it).append('\n') }
         val r = SensorService.lastReading
         if (r == null) {
             b.append("\nNo reading yet.")
@@ -167,6 +168,9 @@ class MainActivity : Activity() {
         // Android 10 grants it from the same dialog; 11 sends you to Settings for it.
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
+        // The mic, for a yes or no after SAiM asks something (22 Oct 2026). Refusing
+        // it only means she never listens; everything else still works.
+        add(Manifest.permission.RECORD_AUDIO)
     }
 
     // ── tiny view helpers ───────────────────────────────────────────────────

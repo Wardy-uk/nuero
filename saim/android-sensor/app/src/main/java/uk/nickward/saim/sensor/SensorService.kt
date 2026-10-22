@@ -28,7 +28,14 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
+import android.Manifest
+import android.os.Bundle
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
@@ -89,6 +96,11 @@ class SensorService : Service() {
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
     @Volatile private var lastGreetingId: String? = null
+    // What to do when the built-in voice finishes a given utterance (listen for a
+    // yes or no after a question). Keyed on the utterance id so a stale one never fires.
+    @Volatile private var afterSpeech: Pair<String, () -> Unit>? = null
+    // SpeechRecognizer must be created and driven on the MAIN thread.
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -98,7 +110,21 @@ class SensorService : Service() {
         running = true
         tts = TextToSpeech(this) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
-            if (ttsReady) tts?.language = Locale.UK
+            if (ttsReady) {
+                tts?.language = Locale.UK
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) {
+                        val a = afterSpeech
+                        if (a != null && a.first == utteranceId) { afterSpeech = null; a.second() }
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        // A line that was not said is not a question that was asked.
+                        if (afterSpeech?.first == utteranceId) afterSpeech = null
+                    }
+                })
+            }
             else Log.w(TAG, "text-to-speech unavailable (status $status) - greetings will not be spoken")
         }
     }
@@ -369,25 +395,117 @@ class SensorService : Service() {
         // reply carries where to fetch it; Android's own voice is the FALLBACK, so
         // a clip that fails or never arrives still gets the words said.
         val audioUrl = greeting.audio?.let { Greeting.resolve(pushUrl, it) }
+        // ⚠ LISTEN ONLY AFTER A QUESTION, AND ONLY ONCE IT HAS BEEN SAID (22 Oct
+        //   2026). The backend marks the greeting `listen` when it asked something
+        //   ("Want it warmed to 20?"); the mic opens when the words finish, never
+        //   before and never otherwise.
+        val then: (() -> Unit)? = if (greeting.listen) ({ listenForAnswer(greeting, pushUrl) }) else null
         if (audioUrl != null) {
-            playClip(audioUrl) { speakBuiltIn(greeting) }
+            playClip(audioUrl, then) { speakBuiltIn(greeting, then) }
         } else {
-            speakBuiltIn(greeting)
+            speakBuiltIn(greeting, then)
         }
     }
 
-    private fun speakBuiltIn(greeting: Greeting) {
+    private fun speakBuiltIn(greeting: Greeting, then: (() -> Unit)? = null) {
         if (!ttsReady) {
             Log.w(TAG, "greeting received but text-to-speech is not ready")
             return
         }
+        afterSpeech = if (then != null) greeting.id to then else null
         tts?.speak(greeting.text, TextToSpeech.QUEUE_FLUSH, null, greeting.id)
+    }
+
+    /**
+     * Listen once, briefly, for a yes or a no after SAiM asked something. Only a
+     * whole short answer counts (`Answer`); anything else is nothing, and nothing
+     * is sent. Never fails the service.
+     */
+    private fun listenForAnswer(greeting: Greeting, pushUrl: String) {
+        main.post {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                lastHeard = "not listening - microphone permission not granted"
+                return@post
+            }
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                lastHeard = "not listening - no speech recognition on this tablet"
+                return@post
+            }
+            val sr = try { SpeechRecognizer.createSpeechRecognizer(this) } catch (e: Exception) {
+                lastHeard = "not listening - ${e.message}"
+                return@post
+            }
+            val finished = AtomicBoolean(false)
+            val end = { if (finished.compareAndSet(false, true)) { try { sr.destroy() } catch (_: Exception) {} } }
+            sr.setRecognitionListener(object : RecognitionListener {
+                override fun onResults(results: Bundle?) {
+                    val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
+                    val answer = Answer.classify(heard)
+                    lastHeard = "heard '" + (heard.firstOrNull() ?: "") + "' -> " + (answer ?: "no answer")
+                    end()
+                    if (answer != null) sendAnswer(greeting, answer, pushUrl)
+                }
+                override fun onError(error: Int) { lastHeard = "heard nothing (recogniser $error)"; end() }
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-GB")
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            }
+            try { sr.startListening(intent) } catch (e: Exception) {
+                lastHeard = "not listening - ${e.message}"
+                end()
+                return@post
+            }
+            main.postDelayed({
+                if (!finished.get()) {
+                    try { sr.cancel() } catch (_: Exception) {}
+                    lastHeard = "heard nothing in time"
+                    end()
+                }
+            }, LISTEN_MS)
+        }
+    }
+
+    /** Hand the answer to saim/backend, which acts through NEURO and replies with what to say. */
+    private fun sendAnswer(greeting: Greeting, answer: String, pushUrl: String) {
+        val url = Greeting.resolve(pushUrl, "/api/presence/greeting/answer") ?: return
+        val body = Json.encode(mapOf("id" to greeting.id, "room" to settings.room, "answer" to answer))
+        val token = settings.token
+        pushExecutor.execute {
+            try {
+                val conn = URL(url).openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 5_000
+                conn.readTimeout = 20_000
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                if (token.isNotEmpty()) conn.setRequestProperty("X-Saim-Sensor-Token", token)
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val full = (if (code >= 400) conn.errorStream else conn.inputStream)
+                    ?.bufferedReader()?.use { it.readText() } ?: ""
+                conn.disconnect()
+                lastHeard = "$lastHeard; answer sent ($code)"
+                if (code < 400) speakGreeting(full, pushUrl)
+            } catch (e: Exception) {
+                lastHeard = "$lastHeard; answer failed: ${e.javaClass.simpleName}"
+            }
+        }
     }
 
     private var player: android.media.MediaPlayer? = null
 
     /** Play a clip; on any failure, or if it has not started within 10s, run `fallback` once. */
-    private fun playClip(url: String, fallback: () -> Unit) {
+    private fun playClip(url: String, onDone: (() -> Unit)? = null, fallback: () -> Unit) {
         handler.post {
             val done = java.util.concurrent.atomic.AtomicBoolean(false)
             val fail = { if (done.compareAndSet(false, true)) { player?.release(); player = null; fallback() } }
@@ -404,7 +522,7 @@ class SensorService : Service() {
                 mp.setDataSource(url)
                 mp.setOnPreparedListener { if (done.compareAndSet(false, true)) it.start() }
                 mp.setOnErrorListener { _, _, _ -> fail(); true }
-                mp.setOnCompletionListener { it.release(); if (player === it) player = null }
+                mp.setOnCompletionListener { it.release(); if (player === it) player = null; onDone?.invoke() }
                 mp.prepareAsync()
                 handler.postDelayed({ fail() }, 10_000)
             } catch (e: Exception) {
@@ -515,6 +633,10 @@ class SensorService : Service() {
         @Volatile var lastPushAt: Long = 0
         @Volatile var running: Boolean = false
         @Volatile var lastGreeting: String? = null
+        /** What the tablet last heard after asking, for the status screen. */
+        @Volatile var lastHeard: String? = null
+        /** How long the mic stays open after a question. */
+        const val LISTEN_MS = 8_000L
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SensorService::class.java))

@@ -214,8 +214,17 @@ function briefLine({
   //   Pinned against the producer in the tests.
   const cold = offers.find(o => o && o.kind === 'warm-room' && Number.isFinite(o.currentC));
   if (cold) {
-    const hit = fresh('cold', `It's ${Math.round(cold.currentC)} in here.`);
-    if (hit) return hit;
+    // ⚠ A QUESTION ONLY WHEN THERE IS SOMETHING TO SAY YES TO (22 Oct 2026).
+    //   The offer's own key rides with the line as `ask`, so a room whose
+    //   speaker can listen (the living-room Galaxy) takes "yes" / "no" for THIS
+    //   offer and nothing else. The key is re-derived by NEURO on accept, so a
+    //   late "yes" to an offer that has gone is refused, never acted on.
+    const to = Number.isFinite(cold.targetC) ? Math.round(cold.targetC) : null;
+    const asking = cold.key && to != null;
+    const hit = fresh('cold', asking
+      ? `It's ${Math.round(cold.currentC)} in here. Want it warmed to ${to}?`
+      : `It's ${Math.round(cold.currentC)} in here.`);
+    if (hit) return asking ? { ...hit, ask: { kind: 'room-offer', key: cold.key } } : hit;
   }
 
   // 4. WEATHER THAT IS ABOUT TO MATTER.
@@ -286,7 +295,7 @@ function compose({ now, room, workHours, workTitle, brief = null, ledger = {}, r
   //   fallback for when nothing has earned the slot. Putting both in would make
   //   a briefing out of a greeting, which is the thing JARVIS never does.
   if (brief && brief.line) {
-    return { text: `${opener} ${brief.line}`, opener, lead: null, briefKind: brief.kind || null };
+    return { text: `${opener} ${brief.line}`, opener, lead: null, briefKind: brief.kind || null, ask: brief.ask || null };
   }
 
   const title = workHours && workTitle ? String(workTitle).trim() : '';
@@ -435,6 +444,8 @@ async function claim({ room, client = null, now = new Date(), preview = false } 
     speak: preview ? decision.speak : true,
     why: decision.why,
     text: words.text,
+    // What a "yes" or "no" heard straight after this line would answer, or null.
+    ask: words.ask || null,
     workHours,
     preview: Boolean(preview),
   };
