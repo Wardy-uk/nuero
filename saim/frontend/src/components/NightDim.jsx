@@ -22,7 +22,13 @@ import './NightDim.css';
 
 const FULLY_NIGHT_LEVEL = 8; // of 255
 
-export default function NightDim({ dim, nightActive, onWake }) {
+// ⚠ NIGHT MODE ON THE ROOM SCREENS (22 Oct 2026). Nick: the bedroom Fire was
+// "too bright past lights out". A 0.78 overlay over a backlight left at 88/255
+// is still a lit panel in a dark bedroom. On a wall screen (`face` given) the
+// night is a near-black page with only a faint warm clock, and the backlight
+// itself is taken down to its floor by `saim-tablet-backlight.py` on pi5 (Fully's
+// free version has no JS brightness interface, so `window.fully` is absent).
+export default function NightDim({ dim, nightActive, onWake, face = null }) {
   const restoreTo = useRef(null);
 
   useEffect(() => {
@@ -54,12 +60,17 @@ export default function NightDim({ dim, nightActive, onWake }) {
   }, [nightActive, onWake]);
 
   if (!dim) return null;
+  const clock = face instanceof Date
+    ? `${String(face.getHours()).padStart(2, '0')}:${String(face.getMinutes()).padStart(2, '0')}`
+    : null;
   return (
     <div
-      className="nightdim"
+      className={`nightdim${clock ? ' nightdim--face' : ''}`}
       aria-hidden="true"
       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-    />
+    >
+      {clock && <span className="nightdim__clock">{clock}</span>}
+    </div>
   );
 }

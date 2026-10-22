@@ -544,7 +544,9 @@ export function WallView({ data, now, error = null, onExit = null, cal = null })
  *     the wall asks for one tap and says so until it has it.
  * Re-armed whenever the page comes back; a video iOS paused needs the tap again.
  */
-function useKeepAwake() {
+// `enabled` false = a kiosk browser that is kept on by its own app (Fully):
+// no wake lock, no silent video, nothing asked of a tap.
+function useKeepAwake(enabled = true) {
   const [awake, setAwake] = useState(false);
   const [locked, setLocked] = useState(false);
   const lock = useRef(null);
@@ -554,12 +556,14 @@ function useKeepAwake() {
   // the video never actually played (17 Oct 2026).
   const media = useRef(null);
   useEffect(() => {
+    if (!enabled) return undefined;
     let dead = false;
     import('nosleep.js/src/media.js').then((m) => { if (!dead) media.current = m; }).catch(() => {});
     return () => { dead = true; };
-  }, []);
+  }, [enabled]);
 
   const requestLock = useCallback(async () => {
+    if (!enabled) return;
     try {
       if (navigator.wakeLock && document.visibilityState === 'visible' && !lock.current) {
         lock.current = await navigator.wakeLock.request('screen');
@@ -570,6 +574,7 @@ function useKeepAwake() {
   }, []);
 
   const arm = useCallback(() => {
+    if (!enabled) return;
     requestLock();
     try {
       if (!video.current) {
@@ -597,9 +602,10 @@ function useKeepAwake() {
       const p = video.current.play();
       if (p && p.then) p.then(() => setAwake(true)).catch(() => setAwake(false));
     } catch { setAwake(false); }
-  }, [requestLock]);
+  }, [requestLock, enabled]);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     requestLock();
     const back = () => {
       if (document.visibilityState !== 'visible') return;
@@ -676,7 +682,14 @@ function perfReport() {
 
 const rangeKey = (r) => `${r.from}:${r.days}`;
 
-export default function Wall({ onExit, onSignedOut }) {
+/**
+ * `screen` (22 Oct 2026): the same wall mounted by SAiM's room screens (the
+ * living room and the bedroom), which act as the household. There the kiosk app
+ * keeps the screen on, the kiosk dims it at night, the session lives server-side
+ * (the browser holds no token), and `fusion` carries SAiM into the scene. The
+ * cinema look is the only look, and the footer is the kiosk's job.
+ */
+export default function Wall({ onExit, onSignedOut, screen = false, fusion = null }) {
   const [data, setData] = useState(() => {
     // Draw at once from what this device last had; the network refreshes it.
     try {
@@ -691,7 +704,7 @@ export default function Wall({ onExit, onSignedOut }) {
   const [now, setNow] = useState(() => new Date());
   const [wakeUntil, setWakeUntil] = useState(0);
   const bootDay = useRef(new Date().getDate());
-  const { awake, arm, how } = useKeepAwake();
+  const { awake, arm, how } = useKeepAwake(!screen);
   const updateReady = useNewVersion();
   // What is keeping the screen on, sent with each poll (see /api/v/wall `held`).
   const heldRef = useRef('');
@@ -724,7 +737,7 @@ export default function Wall({ onExit, onSignedOut }) {
       api.writeWallCache(rangeKey(r), next);
     } catch (err) {
       perf.fails++;
-      if (err.expired) return onSignedOut();
+      if (err.expired && !screen) return onSignedOut();
       setError(err.message);
     } finally {
       inFlight.current = false;
@@ -756,11 +769,11 @@ export default function Wall({ onExit, onSignedOut }) {
     return () => { clearInterval(poll); clearInterval(tick); };
   }, [refresh]);
 
-  const look = api.getWallLook();
+  const look = screen ? 'cinema' : api.getWallLook();
   // The cinema look also dims when nobody (no person) is positively home.
   const people = data && data.who && data.who.known ? (data.who.people || []).filter((p) => p.role !== 'companion') : [];
   const empty = look === 'cinema' && people.length > 0 && !people.some((p) => p.state === 'home');
-  const dim = (isNight(now) || empty) && Date.now() > wakeUntil;
+  const dim = !screen && (isNight(now) || empty) && Date.now() > wakeUntil;
   const View = look === 'cinema' ? CinemaView : WallView;
   // Household changes from the cinema sheets. Each goes to NEURO (/api/v) and
   // the wall is re-read afterwards; nothing is changed locally first.
@@ -798,7 +811,7 @@ export default function Wall({ onExit, onSignedOut }) {
            // Every tap re-arms the keep-awake video (it can only start from one).
            if (!awake) arm();
          }}>
-      <View data={data} now={now} onExit={onExit} act={act}
+      <View data={data} now={now} onExit={onExit} act={act} fusion={fusion}
         error={error || (data && data._cachedAt && Date.now() - data._cachedAt > 5 * 60 * 1000
           ? `Updating — showing what I had at ${new Date(data._cachedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`
           : null)}
@@ -808,7 +821,7 @@ export default function Wall({ onExit, onSignedOut }) {
           onToday: () => setOffset(0),
           onView: (v) => { lastTouch.current = Date.now(); setView(v); setOffset(0); },
         }} />
-      <footer className="wall__foot">
+      {!screen && <footer className="wall__foot">
         <span className="wall__awakeinfo">{how ? `Screen kept on: ${how}` : 'Screen not held on'}</span>
         {updateReady && (
           <button className="wall__update" onClick={() => window.location.reload()}>New version — tap to update</button>
@@ -818,8 +831,8 @@ export default function Wall({ onExit, onSignedOut }) {
         </button>
         <button className="wall__refresh" onClick={() => window.location.reload()} aria-label="Refresh">↻ Refresh</button>
         <span className="wall__version">{`v ${api.BUILD_LABEL}`}</span>
-      </footer>
-      {!awake && (
+      </footer>}
+      {!screen && !awake && (
         <button className="wall__awake" onClick={arm}>
           Tap once to keep this screen on
         </button>

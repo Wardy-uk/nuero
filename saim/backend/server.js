@@ -81,6 +81,10 @@ app.use('/api/capture', captureRoute);
 // Gate 2 — a read-only passthrough to NEURO's attention feed. It stores nothing
 // and ranks nothing; NEURO owns the attention decision (docs/attention-contract.md).
 app.use('/api/attention', attentionRoute);
+// The household half of the shared room screens (22 Oct 2026): the family
+// wall's reads and writes, on NEURO's public VESTA mount as the household
+// account, never on Nick's credential. A named set of doors — see household.js.
+app.use('/api/v', require('./src/routes/household'));
 
 // ⚠ MOUNTED LAST, and the order is the mechanism. Every named door above wins;
 // this catches what is left and forwards it to NEURO with SAiM's credential, so

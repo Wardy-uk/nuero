@@ -302,3 +302,10 @@
 .cine__ebar2fill--part { opacity: 0.4; }
 .cine__ebar2fill--none { opacity: 0; }
 .cine__ebar2day { font-size: 11px; color: var(--faint); }
+
+/* SAiM in the scene (22 Oct 2026, the room screens). Her field sits between
+   the photograph and the panels, faint enough not to fight the picture. */
+.cine__saimfield { position: absolute; inset: 0; z-index: 1; opacity: 0.5; pointer-events: none; }
+.cine__saimfield > * { position: absolute; inset: 0; }
+.cine__saimline { margin: 0 0 0.6vh; font-size: clamp(15px, 2.6vh, 28px); color: var(--amber); font-style: italic; }
+.cine__saimcard { position: absolute; top: 2vh; left: 50%; transform: translateX(-50%); z-index: 3; max-width: 46vw; }

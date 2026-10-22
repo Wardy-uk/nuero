@@ -186,7 +186,7 @@ export const interactive = {
   post_soap_recipients: 'Who the SOAP report is emailed to is Nick\'s decision, in NEURO → SOAP report → Distribution list.',
   post_canonical_needs_you_synthetic: 'A synthetic P0 interrupts Nick\'s phone. He starts it himself in NEURO → Set up.',
   ...Object.fromEntries([
-    'post_ai_settings', 'post_feature_flags_by_key', 'post_capture_links', 'delete_capture_links_by_username',
+    'post_ai_settings', 'post_feature_flags_by_key', 'post_capture_links', 'post_capture_links_screen_session', 'delete_capture_links_by_username',
     'post_capture_links_by_username_pin', 'post_capture_links_by_username_scopes', 'post_microsoft_auth',
     'post_notion_sync_token', 'delete_notion_sync_token', 'put_notion_sync_mappings', 'post_notion_sync_unlock',
     'post_prepared_actions_approval_code', 'post_prepared_actions_trust_device', 'post_prepared_actions_devices_by_deviceId_revoke',

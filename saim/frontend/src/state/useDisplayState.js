@@ -56,6 +56,7 @@ export function useDisplayState() {
   // only ever LIFTS a dim early, it can never cause one.
   const [localWakeUntil, setLocalWakeUntil] = useState(0);
   const alive = useRef(true);
+  const lastWall = useRef(false);
 
   useEffect(() => {
     alive.current = true;
@@ -99,6 +100,7 @@ export function useDisplayState() {
   // ⚠ FAILS TOWARDS LIT, like everything here: no verdict, or one from a backend
   // that predates night, means no dim.
   const night = detail && detail.night && typeof detail.night === 'object' ? detail.night : null;
+  if (detail && typeof detail.wall === 'boolean') lastWall.current = detail.wall;
   const dim = Boolean(night && night.dim) && Date.now() >= localWakeUntil;
 
   return {
@@ -112,6 +114,10 @@ export function useDisplayState() {
     // back to this screen's own room, so a shared room never shows work just
     // because the verdict could not be read.
     shared: detail && typeof detail.shared === 'boolean' ? detail.shared : SHARED_FALLBACK.includes(ROOM),
+    // The family wall (22 Oct 2026). Decided by the verdict; while no verdict
+    // can be read the screen keeps whatever it was last told, so a backend
+    // restart does not flip the room's screen to something else and back.
+    wall: lastWall.current,
     night,
     dim,
     wake,

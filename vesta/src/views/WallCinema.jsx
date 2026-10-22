@@ -628,7 +628,11 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
 }
 
 /** PURE view. Exported for the render test. */
-export function CinemaView({ data, now, error = null, onExit = null, cal = null, act = null }) {
+// `fusion` (22 Oct 2026, SAiM's room screens): `field` is her presence, drawn
+// between the photograph and the panels; `line` is the one thing she says,
+// under the date; `card` is what she offers (a room to warm, a light). VESTA's
+// own wall passes none of them and is unchanged.
+export function CinemaView({ data, now, error = null, onExit = null, cal = null, act = null, fusion = null }) {
   const gapFor = (b) => ((data && data.gaps) || []).find((g) => g.block === b)?.why || null;
   const can = (s) => ((data && data.scopes) || []).includes(s);
   const phase = skyPhase(now, data && data.sun);
@@ -649,6 +653,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
     <div className={`cine cine--${phase}`}>
       <Sky phase={phase} />
       <Photo slot={photoSlot(now, data && data.sun)} condition={data && data.station ? data.station.condition : null} />
+      {fusion && fusion.field ? <div className="cine__saimfield" aria-hidden="true">{fusion.field}</div> : null}
       {overlay ? (
         <div className="cine__overlay">
           <Calendar data={data} gap={gapFor('week')} cal={cal} now={now} />
@@ -660,12 +665,14 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
               <div className="cine__clock">{`${hh}:${mm}`}</div>
               <div className="cine__date">{`${DAYS_LONG[now.getDay()]} ${now.getDate()} ${MONTHS_LONG[now.getMonth()]}`}</div>
               <span className="cine__rule" />
+              {fusion && fusion.line ? <p className="cine__saimline">{fusion.line}</p> : null}
               {data && can('house') && <h1 className="cine__headline">{presenceLine(data.who)}</h1>}
               {week && <p className="cine__subline">{nextLine(week[0], now)}</p>}
               {data && can('house') && <Presence who={data.who} onPerson={(p) => setSheet({ kind: 'member', person: p })} />}
             </div>
             {data && can('house') && <Outside station={data.station} onOpen={() => setSheet({ kind: 'weather' })} />}
           </header>
+          {fusion && fusion.card ? <div className="cine__saimcard">{fusion.card}</div> : null}
           {error && <p className="cine__stale" role="status">Can’t reach home — showing what I last had.</p>}
           {!data ? <p className="cine__loading">Getting things…</p> : (
             <>

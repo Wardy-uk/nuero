@@ -24,6 +24,7 @@ import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
 import NightDim from './components/NightDim';
 import HomeBoard from './components/HomeBoard';
+import ScreenWall from './components/ScreenWall';
 import ConnectionStatus from './components/ConnectionStatus';
 import Whereabouts from '../../shared-ui/Whereabouts';
 import { startAutoFlush } from '../../app/src/mobile/outbox';
@@ -116,7 +117,7 @@ function AppShell() {
   // verdict, so this screen, the phone and the widget cannot each invent their
   // own idea of what a missing watch means: watch here → SAiM, watch elsewhere
   // → clock, out of the house → off.
-  const { state: displayState, detail: displayDetail, place, area, shared, night, dim, wake } = useDisplayState();
+  const { state: displayState, detail: displayDetail, place, area, shared, wall, night, dim, wake } = useDisplayState();
   // The room line belongs on HOME screens only; the work Fire has no area.
   const homeArea = place === 'home' ? area : null;
   const locked = displayState === 'locked';
@@ -327,20 +328,25 @@ function AppShell() {
           field anybody can actually see. */}
       {/* Home screens show the household board when he is not in the room; the
           work Fire keeps the clock, because it sits in an office. */}
+      {/* ⚠ A WALL screen (the living room, the bedroom — `SAIM_WALL_SCREENS`)
+          shows the family wall instead of the board: VESTA's cinema view, as
+          the household, with SAiM in the scene (22 Oct 2026). */}
       {showClock && (place === 'home'
-        ? <HomeBoard now={now} area={homeArea} say={displayDetail?.say} />
+        ? (wall
+          ? <ScreenWall say={displayDetail?.say} area={homeArea} />
+          : <HomeBoard now={now} area={homeArea} say={displayDetail?.say} />)
         : <ClockScreen now={now} say={displayDetail?.say} area={homeArea} />)}
       {/* The work button is offered ONLY while he is in the room (the verdict
           is `full`); the board shown while he is elsewhere still swallows every
           tap, so it cannot be opened by whoever is passing. */}
-      {homeView && (
-        <HomeBoard now={now} area={homeArea} onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />
-      )}
+      {homeView && (wall
+        ? <ScreenWall say={displayDetail?.say} area={homeArea} nickHere onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />
+        : <HomeBoard now={now} area={homeArea} onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />)}
       {workShown && !overlayOwnsScreen && (
         <button type="button" className="app__home" onClick={() => setWorkUntil(0)}>Home</button>
       )}
       {locked && <LockScreen reason={displayDetail?.reason} now={now} area={homeArea} />}
-      <NightDim dim={dim} nightActive={Boolean(night && night.active)} onWake={wake} />
+      <NightDim dim={dim} nightActive={Boolean(night && night.active)} onWake={wake} face={wall ? now : null} />
     </div>
   );
 }

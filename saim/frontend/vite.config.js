@@ -1,4 +1,6 @@
 import { execSync } from 'node:child_process';
+import { cpSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { buildVersionPlugin } from '../../shared/build-version.mjs';
 import react from '@vitejs/plugin-react';
@@ -7,6 +9,20 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Dev: Vite serves the frontend and proxies the defined runtime path (/api)
 // to the SAiM backend. Prod: `vite build` emits dist/, which the backend serves.
 const BACKEND = process.env.SAIM_BACKEND_URL || 'http://localhost:3005';
+
+// The family wall (22 Oct 2026). The shared room screens mount VESTA's own wall
+// component, so its photographs travel with this build (they are addressed as
+// `/backgrounds/<name>.v1.jpg`), and the one module the kiosk never needs — the
+// silent keep-awake video, which Fully makes pointless — is stubbed.
+const VESTA_BACKGROUNDS = fileURLToPath(new URL('../../vesta/public/backgrounds', import.meta.url));
+function vestaBackgrounds() {
+  return {
+    name: 'vesta-backgrounds',
+    closeBundle() {
+      if (existsSync(VESTA_BACKGROUNDS)) cpSync(VESTA_BACKGROUNDS, fileURLToPath(new URL('./dist/backgrounds', import.meta.url)), { recursive: true });
+    },
+  };
+}
 
 // Which build is this screen running? (14 Sep 2026)
 //
@@ -33,7 +49,14 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_BUILD_LABEL': JSON.stringify(resolveBuildLabel()),
   },
+  resolve: {
+    // ⚠ One React. The wall lives in vesta/, which may have its own copy
+    // installed; two Reacts in one page break every hook.
+    dedupe: ['react', 'react-dom'],
+    alias: { 'nosleep.js/src/media.js': fileURLToPath(new URL('./src/stubs/nosleep-media.js', import.meta.url)) },
+  },
   plugins: [
+    vestaBackgrounds(),
     // version.json + the loaded entry: the update chip says when a newer
     // build is being served than the one on screen (5 Oct 2026).
     buildVersionPlugin(resolveBuildLabel()),

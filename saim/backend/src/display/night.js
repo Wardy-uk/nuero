@@ -122,14 +122,32 @@ function sharedScreens(env = process.env) {
   return String(raw).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
+// ⚠ WHICH SCREENS SHOW THE FAMILY WALL (22 Oct 2026). Nick: the living room and
+// the bedroom show VESTA's cinema wall fused with SAiM, as the household. A wall
+// screen is ALWAYS treated as shared — it holds the household's login, so his
+// work never belongs on it. Chosen per room on the Pi (`SAIM_WALL_SCREENS`) so a
+// screen can be moved onto it without touching the device itself; the default
+// is the end state.
+const DEFAULT_WALL = ['living-room', 'bedroom'];
+
+function wallScreens(env = process.env) {
+  const raw = env.SAIM_WALL_SCREENS;
+  if (raw == null || !String(raw).trim()) return DEFAULT_WALL.slice();
+  if (String(raw).trim() === 'off') return [];
+  return String(raw).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
 /** Where a screen is. PURE given the offsite test and the env. */
 function placeFor(room, { offsite, env = process.env } = {}) {
-  if (offsite) return { place: 'work', area: null, shared: false };
+  if (offsite) return { place: 'work', area: null, shared: false, wall: false };
+  const key = String(room || '').toLowerCase();
+  const wall = wallScreens(env).includes(key);
   return {
     place: 'home',
     area: screenAreas(env)[room] || null,
-    shared: sharedScreens(env).includes(String(room || '').toLowerCase()),
+    shared: wall || sharedScreens(env).includes(key),
+    wall,
   };
 }
 
-module.exports = { inNight, nightFor, night, wake, placeFor, screenAreas, sharedScreens, DEFAULT_WINDOW, WAKE_MS, _settings: settings };
+module.exports = { inNight, nightFor, night, wake, placeFor, screenAreas, sharedScreens, wallScreens, DEFAULT_WINDOW, WAKE_MS, _settings: settings };

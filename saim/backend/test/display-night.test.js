@@ -49,11 +49,11 @@ test('by day nothing dims, touched or not', () => {
 });
 
 test('home screens know their Home Assistant area; the work screen has none', () => {
-  assert.deepEqual(night.placeFor('study', { offsite: false, env: {} }), { place: 'home', area: 'Office', shared: false });
-  assert.deepEqual(night.placeFor('bedroom', { offsite: false, env: {} }), { place: 'home', area: "Mum's Room", shared: true });
-  assert.deepEqual(night.placeFor('living-room', { offsite: false, env: {} }), { place: 'home', area: 'Living Room', shared: true });
+  assert.deepEqual(night.placeFor('study', { offsite: false, env: {} }), { place: 'home', area: 'Office', shared: false, wall: false });
+  assert.deepEqual(night.placeFor('bedroom', { offsite: false, env: {} }), { place: 'home', area: "Mum's Room", shared: true, wall: true });
+  assert.deepEqual(night.placeFor('living-room', { offsite: false, env: {} }), { place: 'home', area: 'Living Room', shared: true, wall: true });
   // ⚠ The office Fire is not in this house, so it must never be handed a room of it.
-  assert.deepEqual(night.placeFor('office', { offsite: true, env: {} }), { place: 'work', area: null, shared: false });
+  assert.deepEqual(night.placeFor('office', { offsite: true, env: {} }), { place: 'work', area: null, shared: false, wall: false });
 });
 
 test('the area map can be overridden without a code change', () => {
@@ -117,7 +117,18 @@ test('shared screens are the living room and bedroom by default, and overridable
   assert.deepEqual(night.sharedScreens({}), ['living-room', 'bedroom']);
   assert.equal(night.placeFor('kitchen', { offsite: false, env: {} }).shared, false);
   assert.equal(night.placeFor('study', { offsite: false, env: { SAIM_SHARED_SCREENS: 'study' } }).shared, true);
-  assert.equal(night.placeFor('living-room', { offsite: false, env: { SAIM_SHARED_SCREENS: 'study' } }).shared, false);
+  assert.equal(night.placeFor('living-room', { offsite: false, env: { SAIM_SHARED_SCREENS: 'study', SAIM_WALL_SCREENS: 'off' } }).shared, false);
   // an offsite screen is never shared — it is not in this house
   assert.equal(night.placeFor('office', { offsite: true, env: { SAIM_SHARED_SCREENS: 'office' } }).shared, false);
+});
+
+test('wall screens are chosen per room, and a wall screen is always shared', () => {
+  assert.deepEqual(night.wallScreens({}), ['living-room', 'bedroom']);
+  assert.deepEqual(night.wallScreens({ SAIM_WALL_SCREENS: 'off' }), []);
+  const env = { SAIM_WALL_SCREENS: 'study,bedroom', SAIM_SHARED_SCREENS: 'bedroom' };
+  const study = night.placeFor('study', { offsite: false, env });
+  assert.equal(study.wall, true);
+  assert.equal(study.shared, true, 'the household login never shows his work');
+  assert.equal(night.placeFor('living-room', { offsite: false, env }).wall, false);
+  assert.equal(night.placeFor('office', { offsite: true, env: { SAIM_WALL_SCREENS: 'office' } }).wall, false);
 });

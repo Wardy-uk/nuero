@@ -1,0 +1,21 @@
+/* The family wall on a shared room screen fills the panel, above the shell,
+   below the night dim. The wall's own sheet supplies everything else. */
+.screenwall { position: fixed; inset: 0; z-index: 900; background: #0b0a09; }
+.screenwall .wall-shell { height: 100%; }
+.screenwall__offer {
+  display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+  border-radius: 14px; background: rgba(12, 10, 8, 0.82); color: #f6efe7;
+  border: 1px solid rgba(255, 179, 92, 0.45); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.screenwall__offer-say { margin: 0; font-size: clamp(14px, 2.4vh, 22px); }
+.screenwall__offer-acts { display: flex; gap: 8px; flex-shrink: 0; }
+.screenwall__offer-acts button {
+  border: 0; border-radius: 999px; padding: 8px 16px; font-size: clamp(14px, 2.2vh, 20px);
+  background: #ffb35c; color: #1b130a; cursor: pointer;
+}
+.screenwall__offer-acts .screenwall__offer-no { background: rgba(246, 239, 231, 0.14); color: #f6efe7; }
+.screenwall__work {
+  position: fixed; right: 1.2vw; bottom: 1.2vh; z-index: 905;
+  border: 0; border-radius: 999px; padding: 6px 14px; font-size: 14px;
+  background: rgba(12, 10, 8, 0.7); color: rgba(246, 239, 231, 0.8); cursor: pointer;
+}

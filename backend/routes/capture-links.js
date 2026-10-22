@@ -61,6 +61,39 @@ router.get('/scopes', (req, res) => {
   res.json({ ok: true, scopes: capture.SCOPES });
 });
 
+// POST /api/capture-links/screen-session — a household session for the SHARED
+// room screens (living room, bedroom), asked for by the kiosk backend.
+//
+// ⚠ Only the kiosk's OWN credential may ask (`req.attendedSurface === 'kiosk'`,
+// set by api-auth from NEURO_KIOSK_TOKEN). The PIN, the API token and every
+// machine client are refused. The answer is an ordinary VESTA session for one
+// account named in VESTA_SCREEN_ACCOUNTS (default `family`), so the screen sees
+// exactly what that household login sees — the same scopes, the same redaction,
+// the same sliding 12 hours — and revoking or narrowing the account bites on the
+// next request. No PIN is stored anywhere for this. (22 Oct 2026)
+router.post('/screen-session', (req, res) => {
+  if (req.attendedSurface !== 'kiosk') {
+    return res.status(403).json({ ok: false, error: 'Only the room screens may ask for a household session.' });
+  }
+  const username = String((req.body && req.body.username) || '').trim().toLowerCase();
+  const allowed = String(process.env.VESTA_SCREEN_ACCOUNTS || 'family')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (!username || !allowed.includes(username)) {
+    return res.status(403).json({ ok: false, error: 'That account is not one the room screens may use.' });
+  }
+  try {
+    const account = capture.list().find((a) => String(a.username).toLowerCase() === username);
+    if (!account || account.enabled === false) {
+      return res.status(404).json({ ok: false, error: 'No such household account, or it has been revoked.' });
+    }
+    const token = capture.issueSession(account.username);
+    if (!token) return res.status(503).json({ ok: false, error: 'Sessions cannot be signed right now.' });
+    res.json({ ok: true, token, username: account.username, scopes: account.scopes || [] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 /**
  * What an account may see, changed after the fact.
  *
