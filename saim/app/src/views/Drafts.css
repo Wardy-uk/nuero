@@ -24,3 +24,16 @@
 .drafts__go, .drafts__close { margin-top: 10px; min-height: 40px; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(88,166,255,0.6); background: rgba(56,139,253,0.15); color: #e6edf3; font: inherit; font-size: 14px; cursor: pointer; }
 .drafts__close { border-color: rgba(255,255,255,0.2); background: transparent; }
 .drafts__item { margin-top: 10px; }
+
+/* Sections (22 Oct 2026): confirmation · saved work · communication · history. */
+.drafts__section { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 22px 0 8px; opacity: 0.85; }
+.drafts__empty--small { font-size: 13px; opacity: 0.75; margin: 0 0 6px; }
+.drafts__path, .drafts__meta { margin: 3px 0; font-size: 13px; overflow-wrap: anywhere; }
+.drafts__path code { font-size: 12px; }
+.drafts__label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.7; margin-right: 6px; }
+.drafts__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.drafts__actions a.drafts__go { text-decoration: none; display: inline-block; }
+.drafts__go--quiet { opacity: 0.85; }
+.drafts__history { margin-top: 18px; }
+.drafts__history summary { cursor: pointer; opacity: 0.8; }
+.drafts__msg { margin: 8px 0; }

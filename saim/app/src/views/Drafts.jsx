@@ -21,8 +21,42 @@ import './Drafts.css';
 
 const TONE = { 'needs-answer': 'ask', 'ready-to-save': 'ready', 'ready-to-confirm': 'ready', 'waiting-allowance': 'wait', held: 'held' };
 
+/**
+ * PURE. One saved draft in "Ready for you to work on": what it is, exactly where it
+ * lives, its task and its booked time, and direct routes to each (22 Oct 2026).
+ * `onOpenNote` / `onOpenTask` come from the shell; absent, the note opens in
+ * Obsidian and the task is named but not linked. The kiosk shows it read-only.
+ */
+export function WorkRow({ item, readOnly = false, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, history = false }) {
+  const t = item.task;
+  return (
+    <li className={`drafts__row drafts__row--${history ? 'done' : 'work'}`} data-move-key={item.moveKey} data-record-id={item.recordId}>
+      <div className="drafts__head">
+        <span className={`drafts__status drafts__status--${history ? 'held' : 'ready'}`}>{item.status}</span>
+        <span className="drafts__kind">{item.kindLabel}</span>
+      </div>
+      <p className="drafts__name">{item.title}</p>
+      {item.path && <p className="drafts__path"><span className="drafts__label">Saved to</span> <code>{item.path}</code></p>}
+      {t && <p className="drafts__meta"><span className="drafts__label">Task</span> #{t.id}{t.text ? ` · ${t.text}` : ''}{t.status && t.status !== 'open' && t.status !== 'in-progress' ? ` (${t.status})` : ''}</p>}
+      {item.block && <p className="drafts__meta"><span className="drafts__label">Booked</span> {item.block.label}</p>}
+      {!readOnly && (
+        <div className="drafts__actions">
+          {item.path && (onOpenNote
+            ? <button type="button" className="drafts__go" onClick={() => onOpenNote(item)}>Open the draft</button>
+            : item.obsidianUrl && <a className="drafts__go" href={item.obsidianUrl}>Open the draft</a>)}
+          {t && onOpenTask && <button type="button" className="drafts__go drafts__go--quiet" onClick={() => onOpenTask(t)}>Open the task</button>}
+          {item.outlookUrl && <a className="drafts__go drafts__go--quiet" href={item.outlookUrl} target="_blank" rel="noreferrer">View the calendar block</a>}
+          {!history && t && onCompleteTask && t.status !== 'unknown' && <button type="button" className="drafts__go drafts__go--quiet" disabled={busy} onClick={() => onCompleteTask(item)}>Work’s done — tick the task</button>}
+          {!history && onAbandon && <button type="button" className="drafts__go drafts__go--quiet" disabled={busy} onClick={() => onAbandon(item)}>Abandon this draft</button>}
+          {history && item.canRestore && onRestore && <button type="button" className="drafts__go drafts__go--quiet" disabled={busy} onClick={() => onRestore(item)}>Bring it back</button>}
+        </div>
+      )}
+    </li>
+  );
+}
+
 /** PURE view. */
-export function DraftsView({ data, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem }) {
+export function DraftsView({ data, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, message = null }) {
   if (!data) return <section className="drafts" aria-label="Drafts"><h1 className="drafts__title">Drafts</h1><p className="drafts__sub">Reading Drafts…</p></section>;
   if (!data.ok) {
     return (
@@ -33,17 +67,26 @@ export function DraftsView({ data, openKey = null, openMode = null, readOnly = f
     );
   }
   const items = data.items || [];
+  const sec = data.sections || { confirm: items, work: [], communication: [], history: [] };
+  const confirmItems = (sec.confirm || items).filter((r) => r.kind !== 'email-reply');
+  const replyItems = (sec.confirm || items).filter((r) => r.kind === 'email-reply');
+  const rowProps = { readOnly, busy, onOpenNote, onOpenTask, onCompleteTask, onAbandon, onRestore };
+  const nothing = !items.length && !(sec.work || []).length && !(sec.communication || []).length && !(sec.history || []).length;
   return (
     <section className="drafts" aria-label="Drafts">
       <h1 className="drafts__title">Drafts</h1>
-      <p className="drafts__sub">Everything SAiM has prepared that isn’t finished — whoever started it. Nothing here is saved, booked or sent until you confirm it.</p>
+      <p className="drafts__sub">What SAiM has prepared and the work it has set up for you — kept until you finish it. Nothing is saved, booked or sent until you confirm it.</p>
       {readOnly && <p className="drafts__sub">This screen shows Drafts; it can’t act on them.</p>}
       {(data.gaps || []).map((g, i) => <p key={i} className="drafts__gap">{g}</p>)}
-      {items.length === 0 ? (
-        <p className="drafts__empty">Nothing in Drafts. When SAiM prepares something — or you ask it to make a Now item ready — it waits here until you save it, confirm it or put it off.</p>
+      {message && <p className="drafts__msg" role="status">{message}</p>}
+      {nothing && <p className="drafts__empty">Nothing in Drafts. When SAiM prepares something — or you ask it to make a Now item ready — it waits here until you save it, confirm it or put it off.</p>}
+
+      <h2 className="drafts__section" id="drafts-confirm">Needs your confirmation</h2>
+      {confirmItems.length === 0 && replyItems.length === 0 ? (
+        <p className="drafts__empty drafts__empty--small">Nothing needs your confirmation.</p>
       ) : (
         <ul className="drafts__list">
-          {items.map((r) => {
+          {[...confirmItems, ...replyItems].map((r) => {
             const open = openKey === r.moveKey;
             return (
               <li key={r.moveKey} className={`drafts__row drafts__row--${TONE[r.status] || 'held'}${open ? ' drafts__row--open' : ''}`} data-move-key={r.moveKey} data-record-id={r.recordId}>
@@ -67,6 +110,34 @@ export function DraftsView({ data, openKey = null, openMode = null, readOnly = f
           })}
         </ul>
       )}
+
+      <h2 className="drafts__section" id="drafts-work">Ready for you to work on</h2>
+      {(sec.work || []).length === 0 ? (
+        <p className="drafts__empty drafts__empty--small">No saved drafts waiting. A private working draft you save stays here — with its booked time — until you tick its task or abandon it.</p>
+      ) : (
+        <ul className="drafts__list">{sec.work.map((w) => <WorkRow key={w.moveKey} item={w} {...rowProps} />)}</ul>
+      )}
+
+      <h2 className="drafts__section" id="drafts-communication">Communication drafts</h2>
+      {(sec.communication || []).length === 0 ? (
+        <p className="drafts__empty drafts__empty--small">No confirmed reply drafts.</p>
+      ) : (
+        <ul className="drafts__list">
+          {sec.communication.map((c) => (
+            <li key={c.moveKey} className="drafts__row drafts__row--held" data-move-key={c.moveKey}>
+              <div className="drafts__head"><span className="drafts__status drafts__status--held">{c.status}</span><span className="drafts__kind">{c.kindLabel}</span></div>
+              <p className="drafts__name">{c.title}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {(sec.history || []).length > 0 && (
+        <details className="drafts__history">
+          <summary>{sec.history.length} finished or abandoned</summary>
+          <ul className="drafts__list">{sec.history.map((h) => <WorkRow key={h.moveKey} item={h} history {...rowProps} />)}</ul>
+        </details>
+      )}
     </section>
   );
 }
@@ -76,19 +147,21 @@ export function DraftsView({ data, openKey = null, openMode = null, readOnly = f
  * (a Now row just made ready, a card's "Open the draft"). `call` is the shell's
  * authenticated client ({status, body}); the phone builds its own.
  */
-export default function Drafts({ call: injectedCall = null, context = null }) {
+export default function Drafts({ call: injectedCall = null, context = null, onOpenNote = null, onOpenTask = null }) {
   const call = useMemo(() => injectedCall || makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), [injectedCall]);
   const readOnly = useMemo(() => platformNow() === 'kiosk', []);
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(null); // { moveKey, mode, initial? }
   const [opening, setOpening] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
   const reload = useCallback(async () => { const d = await loadDrafts(call); setData(d); return d; }, [call]);
   useEffect(() => {
     let live = true;
     loadDrafts(call).then((d) => {
       if (!live) return;
       setData(d);
-      const f = d.ok ? focusRow(d.items, context) : null;
+      const f = d.ok ? focusRow(d.items, context, (d.sections || {}).work) : null;
       // A LINK opens the item; it never requests a confirmation on its own. Only pressing
       // "Open the confirmation" in the list does (that press is Nick asking for it).
       if (f && f.open && !readOnly) setOpen({ moveKey: f.row.moveKey, mode: f.open === 'confirm' ? 'view' : f.open });
@@ -116,6 +189,32 @@ export default function Drafts({ call: injectedCall = null, context = null }) {
       }}
       opening={opening}
       onClose={() => { setOpen(null); reload(); }}
+      busy={busy}
+      message={message}
+      onOpenNote={onOpenNote}
+      onOpenTask={onOpenTask}
+      // Ticking the task IS Nick saying the work is done; the draft then moves to History.
+      onCompleteTask={async (w) => {
+        setBusy(true); setMessage(null);
+        try {
+          const r = await call(`/api/tasks/${encodeURIComponent(w.task.id)}/complete`, { method: 'POST', body: {} });
+          setMessage(r.status === 200 ? `Ticked task #${w.task.id} — “${w.title}” is in History.` : `NEURO answered ${r.status}; the task was not ticked.`);
+        } catch { setMessage('NEURO didn’t answer; the task was not ticked.'); }
+        await reload(); setBusy(false);
+      }}
+      onAbandon={async (w) => {
+        setBusy(true); setMessage(null);
+        try {
+          const r = await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: w.moveKey, outcome: 'abandoned' } });
+          setMessage(r.body && r.body.ok ? `Abandoned “${w.title}”. The note and any booked block are still there; it is in History.` : ((r.body && r.body.error) || `NEURO answered ${r.status}.`));
+        } catch { setMessage('NEURO didn’t answer; nothing changed.'); }
+        await reload(); setBusy(false);
+      }}
+      onRestore={async (w) => {
+        setBusy(true); setMessage(null);
+        try { await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: w.moveKey, outcome: 'restore' } }); } catch { /* the re-read shows it */ }
+        await reload(); setBusy(false);
+      }}
       renderItem={(r) => <PromiseSave key={r.moveKey} recordId={r.recordId} call={call} drafts initial={(open && open.initial) || null} onChanged={() => reload()} />}
     />
   );

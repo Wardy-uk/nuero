@@ -129,6 +129,8 @@ const ROUTE_RULES = Object.freeze([
   R('GET', '/api/prepared-moves/current', 'read'),
   R('GET', '/api/prepared-moves/eligible', 'read'),
   R('GET', '/api/prepared-moves/drafts', 'read'),
+  // 22 Oct 2026: abandoning (or restoring) a saved draft is Nick's call about his own work.
+  R('POST', '/api/prepared-moves/drafts/outcome', 'saim.prepared-move.propose', { machine: 'refuse' }),
   R('GET', '/api/prepared-moves/promises', 'read'),
   R('POST', '/api/prepared-moves/prepare', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/respond', 'saim.prepared-move.propose'),

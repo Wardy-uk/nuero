@@ -11,7 +11,9 @@ export async function loadDrafts(call) {
   try { r = await call(`${BASE}/drafts`); } catch { return { ok: false, why: 'NEURO didn’t answer' }; }
   const b = (r && r.body) || {};
   if (!r || r.status !== 200 || b.ok !== true || !Array.isArray(b.items)) return { ok: false, why: b.error || (b.gaps || [])[0] || `NEURO answered ${r ? r.status : 'nothing'}` };
-  return { ok: true, items: b.items, counts: b.counts || {}, gaps: b.gaps || [] };
+  // `sections` (22 Oct 2026): saved work, communication drafts and history beside the confirmation list.
+  const sections = b.sections || { confirm: b.items, work: [], communication: [], history: [] };
+  return { ok: true, items: b.items, sections, counts: b.counts || {}, gaps: b.gaps || [] };
 }
 
 /**
@@ -19,11 +21,13 @@ export async function loadDrafts(call) {
  * makes a new version, so a link can name an older record of the same move).
  *   focus = { recordId?, moveKey?, open? } → { row, open } | null
  */
-export function focusRow(items, focus) {
+export function focusRow(items, focus, saved = []) {
   if (!focus || !Array.isArray(items)) return null;
+  // A saved draft (its note written) is in "Ready for you to work on": found, scrolled to, nothing opened.
+  const work = (saved || []).find((r) => (focus.recordId && r.recordId === focus.recordId) || (focus.moveKey && r.moveKey === focus.moveKey));
   const row = items.find((r) => focus.recordId && r.recordId === focus.recordId)
     || items.find((r) => focus.moveKey && r.moveKey === focus.moveKey);
-  if (!row) return null;
+  if (!row) return work ? { row: work, open: null, section: 'work' } : null;
   return { row, open: row.action ? row.action.open : null };
 }
 

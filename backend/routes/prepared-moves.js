@@ -88,10 +88,25 @@ router.get('/current', async (req, res) => {
   }
 });
 
-// GET /api/prepared-moves/drafts — Drafts: every active, unfinished prepared item in one list (private working drafts, prepared notes, reply drafts, meeting prep), however it began. Each with one plain status — needs your answer, ready to save, ready to confirm, waiting for allowance, held (with the precise reason) — and at most one action. Read only: nothing is stored, minted or sent.
+// GET /api/prepared-moves/drafts — Drafts, in sections: needs your confirmation (proposals and reply drafts still to confirm or answer, each with one plain status and at most one action), ready for you to work on (saved private working drafts and saved notes — exact vault path, linked task, booked block — until the task is ticked or the draft abandoned), communication drafts (confirmed replies, in Actions), and history. Read only: nothing is stored, minted or sent.
 router.get('/drafts', async (req, res) => {
   try {
     res.json(await require('../services/prepared-drafts').list());
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/prepared-moves/drafts/outcome — Nick abandons a saved draft (outcome: abandoned) or brings it back (restore). The note and any booked block are left as they are; the work is "done" when he ticks its task. Refused to machine clients.
+router.post('/drafts/outcome', (req, res) => {
+  try {
+    // A stated second guard: the authority matrix already refuses a machine here.
+    if (req.apiClient || caller(req).machine) return res.status(403).json({ ok: false, error: 'Only Nick, in NEURO, can abandon or restore a draft.' });
+    const { moveKey, outcome } = req.body || {};
+    const bad = strict(req.body, ['moveKey', 'outcome']);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    const r = require('../services/prepared-drafts').setOutcome({ moveKey: String(moveKey || ''), outcome, by: 'nick' });
+    res.status(r.ok ? 200 : r.status || 500).json(r);
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

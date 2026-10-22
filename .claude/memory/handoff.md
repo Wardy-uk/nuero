@@ -4,6 +4,8 @@
 - Task context: nightly scan (durable `task-context-scan`, 03:40), pinned/suggested/stale/removed links in NEURO's DB, manual note/project/area links, surfaces (task card, Now focus task, prepared moves, meeting prep, kiosk read-only), MCP (remote ops + 4 local tools). Model + rules: `docs/task-context.md`; CLAUDE.md entry.
 - Holding the week: three cards restored on NEURO's Now with real routes (Monday report → weekly-risk, each judgement promise → its task).
 - Vault cleanup MANIFEST (audit only, nothing changed): `docs/vault-cleanup-manifest-2026-10-22.md`.
+- Correction 1 (42ba7f77): automatic task-context linking is OFF by default; Nick enables it in Brain Health, which runs the backfill. Deploying cannot backfill.
+- Correction 2: Drafts keeps SAVED drafts (sections: confirm / work / communication / history) until the task is ticked or the draft abandoned. Live trace of tasks 350 + 358 in CLAUDE.md.
 
 ## Waiting on Nick
 1. Approve (or edit) the cleanup manifest. Then: stop the writers (empty import reports, `## SAiM Actions`, dated hygiene sweeps) → archive the candidates on WINDOWS → run the backfill (`POST /api/task-context/scan` from NEURO).

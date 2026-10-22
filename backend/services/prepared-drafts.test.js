@@ -113,7 +113,7 @@ test('GET /drafts lists every active item from the store, one status each — an
   const before = snap();
   const r = await call('/api/prepared-moves/drafts');
   assert.equal(r.status, 200);
-  assert.equal(r.body.contract, 'prepared-drafts-v1');
+  assert.equal(r.body.contract, 'prepared-drafts-v2');
   assert.equal(r.body.items.length, store.activeV2({ limit: 50 }).length, 'one row per active move — no second list, no duplicates');
   assert.equal(new Set(r.body.items.map((x) => x.moveKey)).size, r.body.items.length);
   for (const x of r.body.items) {
@@ -160,4 +160,65 @@ test('notAttendingTarget: in a meeting the RUNNING one; before one only the next
   assert.equal(ns.nextStep({ handoff, context: ctx, meeting, nextMeeting, can }).notAttending, null, 'no recorder (kiosk, watch) → no control');
   assert.deepEqual(ns.nextStep({ handoff, context: ctx, meeting, nextMeeting, can: { ...can, notAttending: true } }).notAttending, { key: meeting.key, subject: 'Weekly Ops' });
   assert.deepEqual(ns.nextStep({ handoff, context: ctx, meeting, can: { ...can, notAttending: true } }).primary.label, 'Join in Teams', 'Join stays first');
+});
+
+// ── Saved work (22 Oct 2026): "executor completed" is not "Nick's work completed" ──
+function fakeDb(receipts, { actions = {}, outcomes = [], ledger = {} } = {}) {
+  return {
+    all: (sql) => (/agent_state/.test(sql) ? Object.entries(receipts).map(([k, v]) => ({ key: `saim_move_receipt:${k}`, value: JSON.stringify(v) })) : []),
+    get: (sql, params) => {
+      if (/prepared_actions/.test(sql)) return actions[params[0]] || null;
+      if (/prepared_move_outcomes/.test(sql)) return outcomes.filter((o) => o.move_key === params[0]).slice(-1)[0] || null;
+      if (/external_write_ledger/.test(sql)) return ledger[params[0]] ? { result_json: JSON.stringify({ id: ledger[params[0]] }) } : null;
+      return null;
+    },
+    getState: (k) => (receipts[k.replace('saim_move_receipt:', '')] ? JSON.stringify(receipts[k.replace('saim_move_receipt:', '')]) : null),
+  };
+}
+const fakeStore = (titles) => ({
+  get: (id) => ({ packet: { selected: titles[id] } }),
+  scheduledFor: (k) => (k === 'saim-move:v2:project-note:task:7' ? { date: '2026-10-23', start: '10:30', end: '11:00' } : null),
+});
+
+test('saved work: a saved note is work; a practice run, a failed note and a still-unsaved proposal are not', () => {
+  const pd = require('./prepared-drafts');
+  const R = {
+    'saim-move:v2:project-note:task:7': { recordId: 'r7', moveKey: 'saim-move:v2:project-note:task:7', target: 'live', option: 'approve', at: '2026-10-22T10:32:53Z', steps: [{ step: 'note', status: 'done', target: 'Projects/Working/A (private draft).md' }, { step: 'calendar', status: 'done', target: '2026-10-23 10:30–11:00 “Finish A”' }] },
+    'saim-move:v2:project-note:task:8': { recordId: 'r8', moveKey: 'saim-move:v2:project-note:task:8', target: 'sandbox', steps: [{ step: 'note', status: 'done', target: 'x.md' }] },
+    'saim-move:v2:project-note:task:9': { recordId: 'r9', moveKey: 'saim-move:v2:project-note:task:9', target: 'live', steps: [{ step: 'note', status: 'failed', target: 'y.md' }] },
+  };
+  const w = pd.savedWork({ now: Date.parse('2026-10-22T12:00:00Z'), deps: {
+    db: fakeDb(R, { ledger: { 'saim-move:v2:project-note:task:7:calendar': 'EVT7' } }),
+    store: fakeStore({ r7: { title: 'A', privateDraft: { label: 'x' }, source: { taskId: 7 } } }),
+    getTask: (id) => ({ id, text: 'Task seven', status: 'open' }),
+  } });
+  assert.deepEqual(w.work.map((x) => x.moveKey), ['saim-move:v2:project-note:task:7']);
+  const a = w.work[0];
+  assert.equal(a.status, 'Draft saved · scheduled for Friday 23 October, 10:30');
+  assert.equal(a.block.eventId, 'EVT7');
+  assert.equal(a.task.id, 7);
+  assert.equal(a.kindLabel, 'Private working draft');
+  assert.equal(w.history.length, 0);
+});
+
+test('saved work: the booked time passing does NOT finish the work; only the task or Nick does', () => {
+  const pd = require('./prepared-drafts');
+  const R = { 'saim-move:v2:project-note:task:7': { recordId: 'r7', moveKey: 'saim-move:v2:project-note:task:7', target: 'live', at: '2026-10-22T10:00:00Z', steps: [{ step: 'note', status: 'done', target: 'Projects/Working/A.md' }, { step: 'calendar', status: 'done', target: '2026-10-23 10:30–11:00 “Finish A”' }] } };
+  const deps = (task, outcomes = []) => ({ db: fakeDb(R, { outcomes }), store: fakeStore({ r7: { title: 'A', source: { taskId: 7 } } }), getTask: () => task });
+  const later = Date.parse('2026-10-24T09:00:00Z');
+  const open = pd.savedWork({ now: later, deps: deps({ id: 7, status: 'open' }) });
+  assert.match(open.work[0].status, /has passed — the work is still open/);
+  const done = pd.savedWork({ now: later, deps: deps({ id: 7, status: 'done', completed_at: '2026-10-24' }) });
+  assert.equal(done.work.length, 0); assert.equal(done.history[0].status, 'Done — you ticked the task');
+  const ab = pd.savedWork({ now: later, deps: deps({ id: 7, status: 'open' }, [{ move_key: 'saim-move:v2:project-note:task:7', outcome: 'abandoned', at: '2026-10-24T08:00:00Z' }]) });
+  assert.equal(ab.history[0].outcome, 'abandoned'); assert.equal(ab.history[0].canRestore, true);
+});
+
+test('communication drafts: a confirmed reply is listed apart, with what really happened to it', () => {
+  const pd = require('./prepared-drafts');
+  const R = { 'saim-move:v2:email-reply:email:abc': { recordId: 'rr', moveKey: 'saim-move:v2:email-reply:email:abc', target: 'live', at: '2026-10-22T09:00:00Z', steps: [{ step: 'reply', status: 'done', id: 'pa_1' }] } };
+  const w = (status) => pd.savedWork({ deps: { db: fakeDb(R, { actions: { pa_1: { status } } }), store: fakeStore({ rr: { title: 'Re: renewal', kind: 'email-reply' } }), getTask: () => null } });
+  assert.equal(w('prepared').communication[0].status, 'In Actions — waiting for your approval code. Not sent.');
+  assert.equal(w('verified').communication[0].status, 'Sent — read back in Sent Items');
+  assert.equal(w('prepared').work.length, 0, 'a reply never crowds the saved work');
 });

@@ -633,3 +633,80 @@ test('the card read off canonical Now carries the SAME contract as the route: ca
   assert.equal(t.move.moveKey, m.moveKey);
   assert.deepEqual(t.move.interview.said.map((x) => x.answer), ['Measured monthly']);
 });
+
+// ── Drafts after the REAL saves above (22 Oct 2026) ──────────────────────────
+// Traced on the live DB first: tasks 350 and 358 were saved with a booked block and
+// vanished from Drafts at once (complete receipt + booked block + 2h evidence age,
+// each enough alone). "Executor completed" is not "Nick's work completed".
+
+const vaultSnap = () => { const out = {}; const walk = (d) => { for (const n of fs.readdirSync(d)) { const p = path.join(d, n); if (fs.statSync(p).isDirectory()) walk(p); else out[path.relative(VAULT, p)] = crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex'); } }; walk(VAULT); return out; };
+const unfinishedKey = () => planner.moveKeyFor('project-note', `task:${db.get("SELECT id FROM tasks WHERE text LIKE 'Agree the hybrid WFH incentive targets for the Support Hub%'").id}`);
+const work = (d, key) => d.sections.work.find((w) => w.moveKey === key);
+
+test('Drafts: a saved, SCHEDULED private draft stays in "Ready for you to work on" with its path, task and block — never gone', async () => {
+  const { status, body: d } = await call('/api/prepared-moves/drafts');
+  assert.equal(status, 200);
+  assert.equal(d.contract, 'prepared-drafts-v2');
+  const w = work(d, moveKey());
+  assert.ok(w, `saved draft missing from Drafts: ${JSON.stringify(d.sections.work.map((x) => x.moveKey))}`);
+  assert.equal(w.kindLabel, 'Private working draft');
+  assert.match(w.path, /^Projects\/Working\/.+\(private draft\)\.md$/);
+  assert.ok(fs.existsSync(path.join(VAULT, w.path)), 'the exact saved file');
+  assert.equal(w.task.id, taskId);
+  assert.ok(w.block && /^\d{4}-\d{2}-\d{2}$/.test(w.block.date) && /^\d{2}:\d{2}$/.test(w.block.start), JSON.stringify(w.block));
+  assert.match(w.status, /^Draft saved · scheduled for \w+day \d+ \w+, \d{2}:\d{2}$/);
+  assert.equal(w.block.eventId, 'evt1', 'the event Graph returned, from the ledger');
+  assert.match(w.outlookUrl, /calendar\/item\/evt1$/);
+  assert.match(w.obsidianUrl, /^obsidian:\/\/open\?vault=.+&file=Projects%2FWorking%2F/);
+  assert.ok(!d.sections.confirm.some((x) => x.moveKey === moveKey()), 'not in the confirmation list as well');
+});
+
+test('Drafts: a saved draft with NO block is listed too, and says so', async () => {
+  const d = (await call('/api/prepared-moves/drafts')).body;
+  const u = work(d, unfinishedKey());
+  assert.ok(u, 'the unfinished save is still findable');
+  assert.equal(u.block, null);
+  assert.equal(u.status, 'Unfinished draft saved · no time booked');
+  assert.match(u.path, /^Projects\/Support Hub\//);
+});
+
+test('Drafts survive a restart: a fresh process reads the same saved work', () => {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', `
+    process.env.NEURO_DB_PATH = ${JSON.stringify(process.env.NEURO_DB_PATH)};
+    process.env.OBSIDIAN_VAULT_PATH = ${JSON.stringify(VAULT)};
+    const db = require(${JSON.stringify(path.join(__dirname, '..', 'db', 'database'))});
+    db.init().then(() => { const w = require(${JSON.stringify(path.join(__dirname, '..', 'services', 'prepared-drafts'))}).savedWork(); process.stdout.write('@@' + JSON.stringify(w.work.map((x) => x.moveKey))); });
+  `], { encoding: 'utf8', env: process.env });
+  const keys = JSON.parse((r.stdout || '').split('@@')[1] || '[]');
+  assert.ok(keys.includes(moveKey()) && keys.includes(unfinishedKey()), `${r.stdout} ${r.stderr}`);
+});
+
+test('Drafts: abandoning is Nick’s explicit act, keeps the note and block, moves it to History, and can be undone', async () => {
+  const before = vaultSnap();
+  assert.equal((await call('/api/prepared-moves/drafts/outcome', { method: 'POST', token: true, body: { moveKey: unfinishedKey(), outcome: 'abandoned' } })).status, 403, 'not a machine’s call');
+  assert.equal((await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: unfinishedKey(), outcome: 'done' } })).status, 400, '"done" is ticking the task');
+  assert.equal((await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: 'saim-move:v2:nope', outcome: 'abandoned' } })).status, 404);
+  assert.equal((await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: unfinishedKey(), outcome: 'abandoned' } })).status, 200);
+  let d = (await call('/api/prepared-moves/drafts')).body;
+  assert.ok(!work(d, unfinishedKey()));
+  const h = d.sections.history.find((x) => x.moveKey === unfinishedKey());
+  assert.equal(h.outcome, 'abandoned');
+  assert.equal(h.canRestore, true);
+  assert.match(h.status, /note and any block are still there/);
+  await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: unfinishedKey(), outcome: 'restore' } });
+  d = (await call('/api/prepared-moves/drafts')).body;
+  assert.ok(work(d, unfinishedKey()), 'brought back');
+  assert.deepEqual(vaultSnap(), before, 'abandoning wrote nothing to the vault');
+});
+
+test('Drafts: ticking the task is "the work is done" — the draft moves to History as a compact receipt', async () => {
+  require('../services/task-store').updateTask(taskId, { status: 'done' });
+  const d = (await call('/api/prepared-moves/drafts')).body;
+  assert.ok(!work(d, moveKey()));
+  const h = d.sections.history.find((x) => x.moveKey === moveKey());
+  assert.equal(h.outcome, 'done');
+  assert.equal(h.status, 'Done — you ticked the task');
+  assert.match(h.path, /^Projects\/Working\//, 'still says where it lives');
+  require('../services/task-store').updateTask(taskId, { status: 'open' });
+  assert.ok(work((await call('/api/prepared-moves/drafts')).body, moveKey()), 'reopened → back in work');
+});

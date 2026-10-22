@@ -400,6 +400,14 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // (neuroProxy READ_ONLY_DOORS), pinned by saim/backend's neuroProxy tests.
 const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context']);
 
+// EXACT paths a shared view calls only when it is NOT read-only — the kiosk renders
+// those views read-only (platformNow() === 'kiosk'), so the control that calls them
+// is never drawn there. Each must say so, and each is a path, never a segment.
+const KIOSK_NEVER_CALLS = new Map([
+  // Drafts: abandon / restore a saved draft. Drafts is read-only on the kiosk (no buttons).
+  ['/api/prepared-moves/drafts/outcome', 'saim/app/src/views/Drafts.jsx'],
+]);
+
 /**
  * The kiosk's allowlist, read from `neuroProxy.js`.
  *
@@ -462,6 +470,7 @@ test('every segment the shared SAiM views call is a kiosk door, or declared clos
     const seg = knownPrefix(raw)[0];
     if (!seg) continue;
     if (throughDoor(raw, doors) || named.has(seg) || CLOSED_ON_PURPOSE.has(seg)) continue;
+    if (KIOSK_NEVER_CALLS.get(raw) === where.split(String.fromCharCode(92)).join('/')) continue;
     stranded.push(`${raw} — '${seg}' is not a kiosk door (${where})`);
   }
 

@@ -401,7 +401,7 @@ function AuthenticatedApp() {
     switch (activeView) {
       case 'state': return <StateOfPlay onNavigate={handleNavigate} />;
       case 'today': return <AdhdPanel onNavigate={handleNavigate} />;
-      case 'drafts': return <DraftsPage context={navContext} />;
+      case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
       // EOD is the same screen with the end-of-day half already open. It had no

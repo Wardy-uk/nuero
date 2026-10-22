@@ -14,7 +14,9 @@
  *   ready-to-confirm   "Ready to confirm"        → open the real confirmation
  *   waiting-allowance  "Waiting for allowance"   → open the exact authority boundary
  *   held               "Held"                    → the precise reason; NO action
- * A scheduled item (its block booked) is not unfinished and is not listed.
+ * Those are the "Needs your confirmation" section. A saved item (its note written,
+ * with or without a booked block) is NOT finished — it is in "Ready for you to work
+ * on" (`savedWork`, below) until Nick ticks its task or abandons it.
  */
 
 const STATUS = Object.freeze({
@@ -79,6 +81,128 @@ function shape(rows) {
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0));
 }
 
+// ── Saved work (22 Oct 2026) ─────────────────────────────────────────────────
+//
+// ⚠ "Executor completed" is NOT "Nick's work completed". A saved private working
+// draft — with or without a booked solo block — is PLANNED WORK. Before this, three
+// rules each dropped it from Drafts the moment the save ran: the complete receipt
+// (`completedMove` in activeV2), the booked block (`scheduledFor` here), and the 2h
+// evidence lifetime. Traced on the live DB for tasks 350 and 358 (22 Oct 2026):
+// both saved a note and booked Thursday's block, both tasks still open, both gone
+// from Drafts at once. Saved work now comes from the RECEIPTS, not the active
+// proposals, and stays in "Ready for you to work on" until Nick ticks (or drops)
+// the task, or abandons the draft here — then it is a compact receipt in History.
+
+const OUTCOMES = ['done', 'abandoned', 'restore'];
+const VAULT_NAME = () => process.env.OBSIDIAN_VAULT_NAME || 'Nicks knowledge base';
+const HISTORY_LIMIT = 20;
+const LONDON_DAY = (dateKey) => {
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+};
+
+let _outReady = false;
+function _ensureOutcomes(db) {
+  if (_outReady) return;
+  db.getDb().exec(`CREATE TABLE IF NOT EXISTS prepared_move_outcomes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, move_key TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('done','abandoned','restore')),
+    by TEXT NOT NULL, at TEXT NOT NULL)`);
+  db.getDb().exec(`CREATE TRIGGER IF NOT EXISTS prepared_move_outcomes_no_update BEFORE UPDATE ON prepared_move_outcomes BEGIN SELECT RAISE(ABORT, 'append-only'); END`);
+  _outReady = true;
+}
+function _latestOutcome(db, moveKey) {
+  try { return db.get(`SELECT outcome, by, at FROM prepared_move_outcomes WHERE move_key = ? ORDER BY id DESC LIMIT 1`, [moveKey]); } catch { return null; }
+}
+
+/** Nick abandons a saved draft (or brings it back). Nothing is deleted — not the note, not the block. */
+function setOutcome({ moveKey, outcome, by = 'nick', now = Date.now(), deps = {} } = {}) {
+  const db = deps.db || require('../db/database');
+  if (by !== 'nick') return { ok: false, status: 403, error: 'Only Nick, in NEURO, can abandon or restore a draft.' };
+  if (!OUTCOMES.includes(outcome) || outcome === 'done') return { ok: false, status: 400, error: 'outcome must be abandoned or restore — the work is "done" when you tick its task.' };
+  const r = _receipt(db, moveKey);
+  if (!r) return { ok: false, status: 404, error: 'No saved draft for that move.' };
+  _ensureOutcomes(db);
+  db.run(`INSERT INTO prepared_move_outcomes (move_key, outcome, by, at) VALUES (?,?,?,?)`, [moveKey, outcome, by, new Date(now).toISOString()]);
+  return { ok: true, moveKey, outcome };
+}
+
+function _receipt(db, moveKey) {
+  try { const r = JSON.parse(db.getState(`saim_move_receipt:${moveKey}`) || 'null'); return r && r.target !== 'sandbox' ? r : null; } catch { return null; }
+}
+
+function _eventId(db, moveKey) {
+  try {
+    const row = db.get(`SELECT result_json FROM external_write_ledger WHERE writer = 'saim.move.calendar-block' AND idempotency_key = ? ORDER BY id DESC LIMIT 1`, [`${moveKey}:calendar`]);
+    const j = row && JSON.parse(row.result_json || 'null');
+    return (j && (j.id || j.eventId)) || null;
+  } catch { return null; }
+}
+
+/** PURE. "Draft saved · scheduled for Thursday 23 October, 10:30" (or why not). */
+function workStatus({ block, saved, nowMs }) {
+  const what = saved === 'unfinished' ? 'Unfinished draft saved' : 'Draft saved';
+  if (!block) return `${what} · no time booked`;
+  const when = `${LONDON_DAY(block.date)}, ${block.start}`;
+  let endMs = NaN;
+  try { endMs = require('./promise-score').londonInstant(block.date, block.end); } catch { /* unknown → not "passed" */ }
+  if (Number.isFinite(endMs) && nowMs > endMs) return `${what} · the booked time (${when}) has passed — the work is still open`;
+  return `${what} · scheduled for ${when}`;
+}
+
+/**
+ * READ. Every live, saved prepared move (a note was written), split into work still
+ * open, communication drafts, and history. Writes nothing.
+ */
+function savedWork({ now = Date.now(), deps = {} } = {}) {
+  const db = deps.db || require('../db/database');
+  const store = deps.store || require('./prepared-move-store');
+  const getTask = deps.getTask || ((id) => { try { return require('./task-store').getTask(id); } catch { return null; } });
+  const out = { work: [], communication: [], history: [], gaps: [] };
+  let rows = [];
+  try { rows = db.all(`SELECT key, value FROM agent_state WHERE key LIKE 'saim_move_receipt:saim-move:v2:%'`); } catch (e) { out.gaps.push(`SAiM couldn’t read its saved drafts (${e.message})`); return out; }
+  for (const row of rows) {
+    let r; try { r = JSON.parse(row.value || 'null'); } catch { continue; }
+    if (!r || r.target === 'sandbox' || !r.moveKey) continue;
+    const steps = r.steps || [];
+    const note = steps.find((x) => x && x.step === 'note' && (x.status === 'done' || x.status === 'already-done'));
+    const reply = steps.find((x) => x && x.step === 'reply' && (x.status === 'done' || x.status === 'already-done'));
+    if (!note && !reply) continue; // nothing was saved: still a proposal, or a failed run (the receipt explains it)
+    let rec = null; try { rec = store.get(r.recordId); } catch { rec = null; }
+    const s = (rec && rec.packet && rec.packet.selected) || {};
+    const title = s.title || r.moveKey;
+    if (reply && !note) {
+      let pa = null;
+      try { pa = reply.id ? db.get(`SELECT status, updated_at FROM prepared_actions WHERE id = ?`, [reply.id]) : null; } catch { pa = null; }
+      const paSay = !pa ? 'In Actions' : pa.status === 'verified' || pa.status === 'executed' ? 'Sent — read back in Sent Items' : pa.status === 'rejected' || pa.status === 'superseded' || pa.status === 'cancelled' ? `Not sent (${pa.status})` : 'In Actions — waiting for your approval code. Not sent.';
+      out.communication.push({ moveKey: r.moveKey, recordId: r.recordId, kindLabel: 'Reply draft', title, actionId: reply.id || null, status: paSay, savedAt: r.at || null });
+      continue;
+    }
+    const taskId = s.source && s.source.taskId != null ? Number(s.source.taskId) : null;
+    const t = taskId ? getTask(taskId) : null;
+    const cal = store.scheduledFor(r.moveKey);
+    const block = cal && cal.date ? { date: cal.date, start: cal.start, end: cal.end, label: `${LONDON_DAY(cal.date)}, ${cal.start}–${cal.end}`, eventId: _eventId(db, r.moveKey) } : null;
+    const path = note.target || null;
+    const item = {
+      moveKey: r.moveKey, recordId: r.recordId, title, kindLabel: s.privateDraft ? 'Private working draft' : 'Saved draft', privateDraft: Boolean(s.privateDraft),
+      path, obsidianUrl: path ? `obsidian://open?vault=${encodeURIComponent(VAULT_NAME())}&file=${encodeURIComponent(path.replace(/\.md$/i, ''))}` : null,
+      task: t ? { id: t.id, text: t.text, status: t.status } : (taskId ? { id: taskId, text: null, status: 'unknown' } : null),
+      block, outlookUrl: block && block.eventId ? `https://outlook.office.com/calendar/item/${encodeURIComponent(block.eventId)}` : null,
+      savedAt: r.at || null, saved: r.option === 'unfinished' ? 'unfinished' : 'saved',
+    };
+    const o = _latestOutcome(db, r.moveKey);
+    const taskDone = t && (t.status === 'done' || t.status === 'dropped');
+    if (taskDone) out.history.push({ ...item, outcome: t.status === 'done' ? 'done' : 'dropped', at: t.completed_at || t.updated_at || null, status: t.status === 'done' ? 'Done — you ticked the task' : 'The task was dropped' });
+    else if (o && o.outcome === 'abandoned') out.history.push({ ...item, outcome: 'abandoned', at: o.at, status: 'You abandoned this draft — the note and any block are still there', canRestore: true });
+    else out.work.push({ ...item, status: workStatus({ block, saved: item.saved, nowMs: now }) });
+  }
+  const by = (k) => (a, b) => String(b[k] || '').localeCompare(String(a[k] || ''));
+  out.work.sort((a, b) => (a.block ? `${a.block.date} ${a.block.start}` : '9999').localeCompare(b.block ? `${b.block.date} ${b.block.start}` : '9999') || by('savedAt')(a, b));
+  out.communication.sort(by('savedAt'));
+  out.history = out.history.sort(by('at')).slice(0, HISTORY_LIMIT);
+  return out;
+}
+
 /** Read the list. Writes nothing (no record, no grant, no check stamp). */
 async function list({ now = Date.now(), deps = {} } = {}) {
   const store = deps.store || require('./prepared-move-store');
@@ -106,7 +230,15 @@ async function list({ now = Date.now(), deps = {} } = {}) {
       updatedAt: rec.createdAt || null, ...st,
     });
   }
-  return { ok: true, contract: 'prepared-drafts-v1', generatedAt: new Date(now).toISOString(), items: shape(rows), counts: Object.fromEntries(ORDER.map((k) => [k, rows.filter((r) => r.status === k).length])), gaps };
+  const items = shape(rows);
+  const saved = savedWork({ now, deps });
+  return {
+    ok: true, contract: 'prepared-drafts-v2', generatedAt: new Date(now).toISOString(),
+    items, // = sections.confirm (kept for older clients)
+    sections: { confirm: items, work: saved.work, communication: saved.communication, history: saved.history },
+    counts: { ...Object.fromEntries(ORDER.map((k) => [k, rows.filter((r) => r.status === k).length])), work: saved.work.length, communication: saved.communication.length, history: saved.history.length },
+    gaps: [...gaps, ...saved.gaps],
+  };
 }
 
-module.exports = { STATUS, ORDER, ACTION, HELD_DUTY, kindLabel, statusFor, shape, list };
+module.exports = { STATUS, ORDER, ACTION, HELD_DUTY, kindLabel, statusFor, shape, list, savedWork, workStatus, setOutcome };
