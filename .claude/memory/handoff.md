@@ -1,3 +1,26 @@
+# Session Handoff — 2026-10-22 (AI gate, Settings, receipt truth, Holding the week — LOCAL ONLY)
+
+## Built, committed, NOT pushed or deployed
+Branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`, from main 90a8b826):
+- `4fdf9409` B — automatic context linking controlled in Settings only; Brain Health read-only + Manage in Settings.
+- `83a76771` A — shared NEURO+VANTAGE AI gate (shadow, no cap). VANTAGE half on branch `ai-gate-radar` (`d89aa40`, worktree `Service Desk Continual Improvement/.claude/worktrees/ai-gate`). Inventory: `docs/ai-gate-inventory.md`.
+- `c19548e8`, `61afb66a`, `2f3aa70e` C — receipt truth + Drafts → Today; Settings/receipts browser test.
+- `29c6e2f3` D — Holding the week cards (`keep-my-word-cards-v1`).
+Nothing touched: Pi lock, allowances, context-linking enable/backfill, real governed actions.
+
+## Before deploying
+- Deploy NEURO and VANTAGE together (shared gate file; parity test in each). The ledger lives at `~/.ai-gate/ledger.db` for the user both apps run as on the Pi — check they share a user, or set `AI_GATE_DB_PATH` identically in both `.env`s.
+- VANTAGE on the laptop has no better-sqlite3; its tests pass with `NODE_PATH=…/nuero/node_modules`.
+
+## Waiting on Nick
+1. Daily USD cap (and any per-class/volume caps) before `AI_GATE_MODE=enforce`; one shadow week first.
+2. Radar: keep Sonnet 4.5 at ~10 runs a weekday?
+3. TTS: price/allow `openai/gpt-audio-mini` and pick a `max_tokens`. Triage-shadow Mistral: price or remove.
+4. Still pending from earlier: rotate the credentials in Security review/; enable context linking (now in Settings).
+
+## Known pre-existing failures (also on clean main)
+Ask/Capture byte-identical (CRLF), SOAP executor (CRLF), HiLo real-report + real-PDF route (laptop file).
+
 # Session Handoff — 2026-10-22 (vault cleanup pass 2 — DONE)
 
 ## Done and deployed (origin/main, pi5)
