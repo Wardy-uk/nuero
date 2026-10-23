@@ -266,8 +266,14 @@ router.post('/greeting/test', express.json({ limit: '1kb' }), (req, res) => {
   const now = Date.now();
   if (now - (lastTestSay.get(room) || 0) < 30_000) return res.status(429).json({ ok: false, reason: 'once every 30 seconds' });
   lastTestSay.set(room, now);
-  const words = `This is SAiM, testing the ${room.replace(/-/g, ' ')} speaker.`;
-  const g = pendingGreetings.put(room, spokenForm(words));
+  // `ask: true` tests the listening loop end to end (23 Oct 2026): a question
+  // whose key NEURO does not hold, so a heard "yes" is refused there and nothing
+  // in the house changes — she just says so.
+  const ask = req.body && req.body.ask === true;
+  const words = ask
+    ? `This is SAiM, testing the ${room.replace(/-/g, ' ')} microphone. Say yes, or no thanks.`
+    : `This is SAiM, testing the ${room.replace(/-/g, ' ')} speaker.`;
+  const g = pendingGreetings.put(room, spokenForm(words), Date.now(), ask ? { kind: 'room-offer', key: `test:${room}` } : null);
   return res.json({ ok: true, room, id: g.id, words, note: 'collected by the room sensor with its next reading' });
 });
 
