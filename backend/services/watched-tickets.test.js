@@ -73,6 +73,13 @@ test('the rule drops a bare thank-you and passes anything with trouble or a ques
   assert.equal(wt.judgeByRule('Thanks. Also could you add Jane Smith to the account as an administrator for the Leeds office please').verdict, 'unsure');
 });
 
+test('a comment that is only an attachment (a screenshot) is a follow-up, never a thank-you', () => {
+  assert.equal(wt.judgeByRule('').verdict, 'follow-up');
+  const imageOnly = { type: 'doc', content: [{ type: 'mediaSingle', content: [{ type: 'media', attrs: { id: 'x' } }] }] };
+  assert.equal(wt.adfText(imageOnly).trim(), '');
+  assert.equal(wt.excerptOf(wt.adfText(imageOnly)), '(an attachment, no text)');
+});
+
 test('quoted history below "On … wrote:" is not the customer’s words', () => {
   const t = 'Thanks!\n\nOn Mon, 20 Oct 2026, Hope wrote:\n> Is it still broken?';
   assert.equal(wt.judgeByRule(t).verdict, 'thanks');

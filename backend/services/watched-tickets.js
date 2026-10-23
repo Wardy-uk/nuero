@@ -84,6 +84,7 @@ function ownWords(text) {
 
 function excerptOf(text, n = EXCERPT_CHARS) {
   const s = ownWords(text).replace(/\s+/g, ' ').trim();
+  if (!s) return '(an attachment, no text)';
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
@@ -116,7 +117,10 @@ const TROUBLE = /\b(still|not|no longer|broken|error|errors|issue|issues|problem
  */
 function judgeByRule(text) {
   const own = ownWords(text);
-  if (!own) return { verdict: 'thanks', why: 'no words of their own' };
+  // Measured on live NT tickets (23 Oct 2026): 10 of 29 last customer comments on
+  // resolved tickets were an IMAGE and nothing else — a screenshot. That is the
+  // "it's still doing this" the listen exists for, never a thank-you.
+  if (!own) return { verdict: 'follow-up', why: 'sent an attachment or quoted text only' };
   if (own.includes('?')) return { verdict: 'follow-up', why: 'asks a question' };
   let s = ` ${own.toLowerCase().replace(/[’]/g, "'").replace(/[^a-z' ]+/g, ' ').replace(/\s+/g, ' ')} `;
   for (const p of PLEASANTRIES) s = s.split(` ${p} `).join(' ');
