@@ -5,7 +5,7 @@ Branch `task-agent-do-this` (one commit on top of main, built from a temporary i
 - Proof: route suite 19, render 7, Electron screens 6 (1440/390, screenshots via `TA_SHOTS`), 13/13 mutations caught, full backend suite run with ELECTRON_PATH (see the commit body for the count).
 - pi5 read-only check: `AI_MODE=hybrid`, `ANTHROPIC_API_KEY` set → it would be allowed to run under the existing daily budgets. Anthropic credit NOT checked.
 - Not done / Nick's call: deploy (backend restart, frontend build, saim/app via Netlify, MCP gateway rebuild); model/spend; "Save to vault" for an output (follow-up via prepared-move confirmation).
-- ⚠ A concurrent session was editing report-fixes in the same tree (`App.jsx`, `api-policy.js`, report-fixes/soap/weekly-risk). My commit carries only my hunks; the working-tree copies of my files were left in place for that session's tree — check `git status` before any bare commit.
+- ⚠ A concurrent session was editing report-fixes in the same tree (`App.jsx`, `api-policy.js`, report-fixes/soap/weekly-risk). My commit carries only my hunks, and my changes were then taken back OUT of the shared working tree (files restored only where they were exactly HEAD + mine), so main's tree is as that session left it. To work on this, check out the branch in a fresh clone or worktree (never remove a worktree holding junctions).
 
 # Session Handoff — 2026-10-23 (task-context previews — DEPLOYED 8baeccf6)
 
