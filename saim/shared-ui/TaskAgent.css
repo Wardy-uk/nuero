@@ -38,3 +38,4 @@
 .tagent__check { display: flex; gap: 6px; align-items: center; font-size: 12px; }
 .tagent__ok { font-weight: 600; }
 .tagent__save { margin-top: 8px; }
+.tagent__fixed { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; margin: 4px 0 0; padding: 6px 8px; border: 1px dashed rgba(127, 127, 127, 0.45); border-radius: 6px; opacity: 0.85; max-height: 40vh; overflow: auto; }

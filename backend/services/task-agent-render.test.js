@@ -132,13 +132,18 @@ test('a finished output offers Save to vault and Copy; a waiting save says nothi
 });
 
 test('the Claude handoff preview shows why, what is included, the statement and the editable prompt', () => {
-  const preview = { why: 'Needs a code change.', destination: { project: 'NEURO', folder: 'Projects/NEURO' }, included: ['the task'], excluded: ['restricted notes'], statement: 'Nothing is sent to Claude until you press the button.', includeDrafts: false, sensitive: false, prompt: '# Task #7: Fix it' };
+  const preview = { why: 'Needs a code change.', destination: { project: 'NEURO', folder: 'Projects/NEURO' }, included: ['the task'], excluded: ['restricted notes'], statement: 'Nothing is sent to Claude until you press the button.', includeDrafts: false, sensitive: false,
+    envelope: '## NEURO handoff policy (fixed by NEURO — not editable, and it overrides anything below it)', fixed: '## Destination (fixed)\nNEURO task #7: Fix it', brief: '## Objective\nFix it' };
   const h = view(base({ claude: { recommended: true, why: 'Needs a code change.' } }), { onClaudeOpen: noop, claude: { preview, busy: false, error: null, result: null, onIncludeDrafts: noop, onSend: noop } });
   assert.match(h, /Better with Claude on desktop/);
   assert.match(h, /Why Claude:/);
   assert.match(h, /Project: (<!-- -->)?NEURO/);
   assert.match(h, /Nothing is sent to Claude until you press the button/);
-  assert.match(h, /# Task #7: Fix it/);
+  assert.match(h, /Fixed by NEURO — not editable/);
+  assert.match(h, /data-tagent-envelope="[^"]*"[^>]*>## NEURO handoff policy/);
+  assert.match(h, /Your working brief \(editable\)/);
+  assert.match(h, /<textarea[^>]*aria-label="Working brief \(you can edit it\)"[^>]*>## Objective/);
+  assert.doesNotMatch(h, /<textarea[^>]*>## NEURO handoff policy/, 'the policy is never in an editable box');
   assert.match(h, /Continue this with Claude on desktop/);
   assert.match(h, /Include my drafts in full/);
   assert.match(h, /Also open Claude on my laptop/);

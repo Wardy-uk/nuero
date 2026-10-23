@@ -50,10 +50,12 @@ const defaultCopy = async (t) => {
 };
 
 /** The Claude-desktop handoff: preview first, editable, nothing sent until the press. */
-export function ClaudeHandoff({ preview, busy, error, result, onIncludeDrafts, onSend }) {
-  const [prompt, setPrompt] = useState(preview ? preview.prompt : '');
+// The policy envelope, destination and context are FIXED by NEURO and shown read-only;
+// only the working brief is editable, and the server composes the final prompt.
+export function ClaudeHandoff({ preview, busy, error, result, copied = null, onIncludeDrafts, onSend }) {
+  const [brief, setBrief] = useState(preview ? preview.brief : '');
   const [openOnDesk, setOpenOnDesk] = useState(false);
-  useEffect(() => { setPrompt(preview ? preview.prompt : ''); }, [preview && preview.prompt]);
+  useEffect(() => { setBrief(preview ? preview.brief : ''); }, [preview && preview.brief]);
   if (!preview) return <p className="tagent__meta">Preparing the handoff…</p>;
   return (
     <div className="tagent__claude" data-tagent-claude="preview">
@@ -66,13 +68,18 @@ export function ClaudeHandoff({ preview, busy, error, result, onIncludeDrafts, o
       {!preview.sensitive && (
         <label className="tagent__check"><input type="checkbox" checked={preview.includeDrafts} disabled={busy} onChange={(e) => onIncludeDrafts(e.target.checked)} /> Include my drafts in full</label>
       )}
-      <textarea className="tagent__prompt" rows={14} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="Handoff prompt (you can edit it)" />
+      <p className="tagent__h">Fixed by NEURO — not editable</p>
+      <pre className="tagent__fixed" data-tagent-envelope>{preview.envelope}</pre>
+      <details className="tagent__fold"><summary>Destination and context (fixed)</summary><pre className="tagent__fixed">{preview.fixed}</pre></details>
+      <p className="tagent__h">Your working brief (editable)</p>
+      <textarea className="tagent__prompt" rows={10} value={brief} onChange={(e) => setBrief(e.target.value)} aria-label="Working brief (you can edit it)" />
       <label className="tagent__check"><input type="checkbox" checked={openOnDesk} onChange={(e) => setOpenOnDesk(e.target.checked)} /> Also open Claude on my laptop</label>
       <div className="tagent__row">
-        <button type="button" className="tagent__go" disabled={busy || !prompt.trim()} onClick={() => onSend({ prompt, includeDrafts: preview.includeDrafts, openOnDesk })}>Continue this with Claude on desktop</button>
+        <button type="button" className="tagent__go" disabled={busy || !brief.trim()} onClick={() => onSend({ brief, includeDrafts: preview.includeDrafts, openOnDesk })}>Continue this with Claude on desktop</button>
       </div>
       {error && <p className="tagent__err" role="alert">{error}</p>}
       {result && <p className="tagent__ok" role="status">{result}</p>}
+      {copied && <details className="tagent__fold"><summary>The prompt that was copied</summary><pre className="tagent__fixed">{copied}</pre></details>}
     </div>
   );
 }
@@ -283,13 +290,13 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
     } catch (e) { setError(e.message || 'Request failed.'); return null; } finally { setBusy(false); }
   };
 
-  const sendHandoff = async ({ prompt, includeDrafts, openOnDesk }) => {
-    setClaude((c) => ({ ...c, busy: true, error: null, result: null }));
-    const r = await call(`/api/task-agent/tasks/${enc(taskId)}/handoff`, { method: 'POST', body: { prompt, includeDrafts, openOnDesk } });
+  const sendHandoff = async ({ brief, includeDrafts, openOnDesk }) => {
+    setClaude((c) => ({ ...c, busy: true, error: null, result: null, copied: null }));
+    const r = await call(`/api/task-agent/tasks/${enc(taskId)}/handoff`, { method: 'POST', body: { brief, includeDrafts, openOnDesk } });
     if (r.status === 200 && r.body && r.body.ok) {
       absorb(r.body);
       const copied = await copyText(r.body.prompt);
-      setClaude((c) => ({ ...c, busy: false, result: copied ? 'Copied — paste it into Claude on your desktop.' : 'Ready — copy the prompt above into Claude on your desktop (this device would not let NEURO copy it).' }));
+      setClaude((c) => ({ ...c, busy: false, copied: r.body.prompt, result: copied ? 'Copied — paste it into Claude on your desktop.' : 'Ready — copy the prompt below into Claude on your desktop (this device would not let NEURO copy it).' }));
     } else {
       setClaude((c) => ({ ...c, busy: false, error: (r.body && r.body.error) || `Not handed off (${r.status}).` }));
     }

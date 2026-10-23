@@ -99,15 +99,16 @@ router.get('/tasks/:taskId/handoff/preview', (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// POST /api/task-agent/tasks/:taskId/handoff — Nick presses "Continue this with Claude on desktop": the prompt as he left it (body.prompt) is screened, recorded by hash and returned for his device to copy; body.openOnDesk asks the laptop to open Claude via the existing desk intent. Nothing is sent to Claude. Owner only.
+// POST /api/task-agent/tasks/:taskId/handoff — Nick presses "Continue this with Claude on desktop" with his working brief (body.brief). The brief is screened; the final prompt is composed by NEURO from its fixed policy envelope, destination and context plus the brief, recorded by hash and returned for his device to copy. A whole prompt is never accepted. body.openOnDesk asks the laptop to open Claude via the existing desk intent. Nothing is sent to Claude. Owner only.
 router.post('/tasks/:taskId/handoff', (req, res) => {
   try {
     if (!owner(req, res)) return;
-    const { prompt, includeDrafts, openOnDesk } = req.body;
-    const bad = strict(req.body, ['prompt', 'includeDrafts', 'openOnDesk']);
+    const { brief, includeDrafts, openOnDesk } = req.body;
+    // ⚠ Only the working brief is accepted. A client-supplied prompt, policy, destination or source list is refused, never merged.
+    const bad = strict(req.body, ['brief', 'includeDrafts', 'openOnDesk']);
     if (bad) return res.status(400).json({ ok: false, error: bad });
-    if (typeof prompt !== 'string') return res.status(400).json({ ok: false, error: 'prompt is required' });
-    send(res, svc().handoff(req.params.taskId, { prompt, includeDrafts: includeDrafts === true, openOnDesk: openOnDesk === true }));
+    if (typeof brief !== 'string') return res.status(400).json({ ok: false, error: 'brief is required' });
+    send(res, svc().handoff(req.params.taskId, { brief, includeDrafts: includeDrafts === true, openOnDesk: openOnDesk === true }));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

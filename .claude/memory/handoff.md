@@ -1,3 +1,27 @@
+# Session Handoff — 2026-10-23 ("Do this" task agent, pre-deployment pass — branch `task-agent-do-this`, LOCAL only, NOT deployed)
+
+Work happens in the separate full CLONE at `C:\Users\NickW\Claude\nuero-do-this`, which has its own `npm ci`. It is never a worktree, and the shared tree was not switched. The branch is pushed only to the LOCAL repo `nuero`, not GitHub. ⚠ Do not `rm -rf` the clone: its node_modules hold workspace junctions. Full contract: `docs/task-agent.md`.
+
+- **Live-provider proof: NOT RUN — no disposable key was provided.**
+  - Checked: `TASK_AGENT_LIVE_ANTHROPIC_KEY` is unset (process and user scope), and the key file is absent.
+  - The test is ready. It reads ONLY `%LOCALAPPDATA%\neuro\task-agent-live-anthropic.key` (first line; Nick creates the file himself) or `TASK_AGENT_LIVE_ANTHROPIC_KEY`. It deletes `ANTHROPIC_API_KEY` from its own process.
+  - It proves: a real 401 keeps nothing; a real timeout keeps nothing (shorten-only `TASK_AGENT_REQUEST_TIMEOUT_MS` = 1 ms); the configured model is accepted; a useful result; run and ledger tokens and cost match, in shadow; a repeat press makes no call; no writes anywhere.
+  - Run with `node --test backend/services/task-agent-live.test.js`. The production key was not used, inspected or altered.
+- **Immutable handoff envelope.**
+  - The server owns the policy envelope (`policyEnvelope`, text pinned by a test), the destination, the sanitised context and the record of what NEURO already did. Nick edits only the working brief.
+  - The route accepts `{brief, includeDrafts, openOnDesk}` only. A client `prompt`, `destination`, `sources` or `envelope` field is refused as an unexpected field.
+  - `screenBrief` refuses, each with a reason: secret or restricted requests, authority or confirmation overrides, excluded or extra source paths, destination changes, any contact on a people matter, and pasted restricted excerpts, titles or undrafted drafts.
+  - `composeFinal` builds envelope → fixed context → brief → reminder; the whole prompt is screened again.
+  - Recorded by hash only; no prompt or brief text in activity.
+  - Adversarial tests: 5 categories plus people-matter contact. Envelope mutations: 6 of 6 caught.
+- **Decisions preserved.** Enforcement is OFF and the Do this limit is UNSET (stated: "recorded in shadow mode, not budget-blocked by the gate"). The evening-save rule, task-context classification, previews, linking and links are unchanged. No governed write was made.
+- **Tests.** Focused and gate suites (task-agent 19, task-agent-next 22, render 10, browser 8 Electron, authority-matrix, mcp-inventory, client-routes, ai-gate ×2): 95 pass, 0 fail, 1 skipped (the live test).
+- **Nick's open decisions.**
+  1. A disposable key, to run the live proof.
+  2. The Do this daily limit: recommended 40 requests/day, unset.
+  3. Whether and when to enable gate enforcement (shared with VANTAGE): off.
+  4. Deploy.
+
 # Session Handoff — 2026-10-23 ("Do this" task agent, second pass — branch `task-agent-do-this`, NOT pushed, NOT deployed)
 
 Work happened in a separate full CLONE at `C:\Users\NickW\Claude\nuero-do-this`, with its own `npm ci` (never a worktree; the shared tree was not switched). The branch was pushed only to the LOCAL repo `nuero`, not GitHub. ⚠ Do not `rm -rf` that clone: its node_modules hold workspace junctions. Delete it with the safe-remove hook if needed. Full contract: `docs/task-agent.md`.

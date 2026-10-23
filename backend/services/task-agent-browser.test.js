@@ -118,7 +118,10 @@ const MEASURE = `(() => {
       && !b.closest('details:not([open])') && (typeof b.checkVisibility !== 'function' || b.checkVisibility())),
     saveText: (document.querySelector('.tagent__save') || {}).textContent || '',
     claudePreview: !!document.querySelector('[data-tagent-claude="preview"]'),
-    claudePrompt: (document.querySelector('.tagent__prompt') || {}).value || '',
+    claudeBrief: (document.querySelector('.tagent__prompt') || {}).value || '',
+    claudeEnvelope: (document.querySelector('[data-tagent-envelope]') || {}).textContent || '',
+    claudeEnvelopeEditable: !!document.querySelector('[data-tagent-envelope]') && document.querySelector('[data-tagent-envelope]').tagName !== 'PRE',
+    claudeFixed: [...document.querySelectorAll('.tagent__claude .tagent__fixed')].map((e) => e.textContent).join(' | '),
     claudeRecorded: document.querySelectorAll('[data-tagent-claude-handoff]').length,
     over: [...document.querySelectorAll('.tagent *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).slice(0, 5).map((e) => String(e.className || e.tagName)),
   };
@@ -358,9 +361,13 @@ test('Claude handoff: the preview shows why, what goes and what never goes, the 
   assert.match(preview.text, /Why Claude:.*code change/);
   assert.match(preview.text, /Nothing is sent to Claude until you press the button/);
   assert.match(preview.text, /Never included:.*restricted notes/);
-  assert.match(preview.claudePrompt, /# Task #\d+: Fix the flaky Jira sync test/);
-  assert.match(preview.claudePrompt, /not included/);
-  assert.ok(!preview.claudePrompt.includes('crosses midnight'), 'draft text only if Nick ticks it');
+  assert.match(preview.claudeEnvelope, /NEURO handoff policy \(fixed by NEURO — not editable/);
+  assert.equal(preview.claudeEnvelopeEditable, false, 'the policy is shown read-only, never in an editable box');
+  assert.match(preview.claudeFixed, /NEURO task #\d+: Fix the flaky Jira sync test/);
+  assert.match(preview.claudeFixed, /not included/);
+  assert.match(preview.claudeBrief, /## Objective/, 'only the working brief is editable');
+  assert.ok(!preview.claudeBrief.includes('NEURO handoff policy'));
+  assert.ok(!`${preview.claudeFixed}${preview.claudeBrief}`.includes('crosses midnight'), 'draft text only if Nick ticks it');
   assert.ok(recorded.ok && recorded.claudeRecorded === 1, 'the handoff is recorded on the task attempt');
   clean(preview, 'claude');
   const [p] = sizes('saim-phone-claude');
