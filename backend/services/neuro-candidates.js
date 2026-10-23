@@ -335,7 +335,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
 
   // What the gate held back, with its reason.
   for (const d of p.dropped || []) {
-    candidates.push({ kind: 'held', id: `held:${d.id || d.type}`, title: d.title || d.type || 'Item', facts: { type: d.type || null, why: d.why || null },
+    candidates.push({ kind: 'held', id: `held:${d.id || d.type}`, title: d.title || d.type || 'Item', facts: { type: d.type || null, why: d.why || null, urgency: d.urgency || null, heldFor: d.heldFor || null },
       sphere: d.domain ? sphere(sphereOfDomain(d.domain), 'stated', 'the item states its domain') : WORK_TYPES.has(d.type) ? sphere('work', 'item-type', `a ${d.type} item is work by source`) : sphere(null),
       actions: [], provenance: { source: 'attention.gate', readAt }, known: true });
   }

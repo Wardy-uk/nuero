@@ -26,6 +26,7 @@
  */
 
 const domainsLib = require('../../shared/life-domains.cjs');
+const { heldWork } = require('../../shared/held-work.cjs');
 
 const CONTRACT = 'canonical-v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -666,16 +667,50 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
   const meaningful = !!(decision.primary && decision.primary.kind === 'item') || !!sections.nextEvent || !!needsYou
     || !!sections.commitments || !!sections.tasks || !!sections.blindness || !!crowd;
   const unreadable = (gaps || []).length > 0 || decision.poolAvailable === false;
+  // ⚠ ONE COUNT OF HELD WORK (Brief 002, D-008): what this composer held
+  //   (events, commitments, reminders) PLUS what the attention gate held
+  //   (`heldFor: 'off'`). The two used to be reported apart, so the payload said
+  //   "4 held back" while SAiM held 5, and a held capacity warning sat under
+  //   "Nothing needs you right now." Held work stays held; it is never silent.
+  const onDuty = !!(decision.context && decision.context.duty && decision.context.duty.onDuty === true);
+  const hw = heldWork(decision.dropped, { extra: showWork ? 0 : held.work, onDuty });
   return {
     sections,
-    calm: !meaningful && !unreadable,
+    calm: !meaningful && !unreadable && !hw.urgent,
     calmSay: !meaningful
-      ? (unreadable ? 'Nothing is asking for you — but some of what NEURO looks at could not be read, so this is not an all-clear.' : 'Nothing needs you right now.')
+      ? (unreadable ? 'Nothing is asking for you — but some of what NEURO looks at could not be read, so this is not an all-clear.'
+        : hw.count ? `${hw.say} Nothing else needs you right now.` : 'Nothing needs you right now.')
       : null,
     uncertainty: { unreadable, gaps },
     personalHeld: workOnly ? { count: held.personal, say: held.personal ? `${held.personal} personal item${held.personal === 1 ? '' : 's'} hidden — work only is on.` : null } : null,
-    workHeld: showWork ? null : { count: held.work, say: held.work ? `${held.work} work item${held.work === 1 ? '' : 's'} held back while you're off duty.` : null },
+    workHeld: showWork && !hw.count ? null : { count: hw.count, urgent: hw.urgent, say: hw.say },
   };
+}
+
+/**
+ * PURE (mutates the payload it is given). Puts every canonical-level gap on the
+ * payload's own `gaps`, the list the presentation's honesty and degraded model
+ * reads, and keeps `situation.uncertainty`/`calm` in step. A gap the attention
+ * build already reported is not added twice (matched on `input`).
+ */
+function mergeCanonicalGaps(payload, gaps) {
+  if (!payload) return payload;
+  const have = Array.isArray(payload.gaps) ? payload.gaps : [];
+  const seen = new Set(have.map((g) => g && g.input));
+  const extra = (Array.isArray(gaps) ? gaps : []).filter((g) => g && g.input && !seen.has(g.input) && seen.add(g.input));
+  if (!extra.length) return payload;
+  payload.gaps = [...have, ...extra];
+  const sit = payload.situation;
+  if (sit) {
+    const prior = (sit.uncertainty && Array.isArray(sit.uncertainty.gaps)) ? sit.uncertainty.gaps : [];
+    const known = new Set(prior.map((g) => g && g.input));
+    sit.uncertainty = { unreadable: true, gaps: [...prior, ...extra.filter((g) => !known.has(g.input))] };
+    if (sit.calm) {
+      sit.calm = false;
+      sit.calmSay = 'Nothing is asking for you — but some of what NEURO looks at could not be read, so this is not an all-clear.';
+    }
+  }
+  return payload;
 }
 
 // Work-only mode (13 Oct 2026): the personal blocks Now carries, and the
@@ -1494,6 +1529,11 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
     for (const k of WORK_ONLY_DROPPED) payload[k] = null;
     payload.workOnly = true;
   }
+  // ⚠ LATE GAPS REACH THE PRESENTATION (Brief 002, D-009). Every read above can
+  //   fail without failing Now, and the ones after `composeNow` (environment,
+  //   dates, radar, home, outdoor, leisure, promises) used to vanish, so
+  //   `presentation.situation.honesty.complete` read true over failed reads.
+  mergeCanonicalGaps(payload, gaps);
   // 15 Oct 2026 — the attention contract (docs/saim-attention-policy-contract.md).
   // TWO fields, two owners, never merged:
   //   `candidates` — NEURO's facts and constraints (neuro-candidates-v2);
@@ -1556,7 +1596,7 @@ module.exports = {
   daysBetween, localDate, dueContext, personWorkEvidence, personRelationshipEvidence, commitmentDomains, taskDomains, meetingDomains,
   worldTaskDomains, importanceFor, shapeWorldTask, minutesFrom, unknownEventRelevance, taskIsNowRelevant, UNKNOWN_NEAR_MINUTES,
   shapeCommitment, summariseCommitments, sourceVerdict, shapeSource, sourceMatters, attentionVerdict, shapeFinding,
-  commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly, isKnownNonWork, workOnlyPresentation,
+  commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, mergeCanonicalGaps, noteTitle, coverageByDomain, isKnownWorkOnly, isKnownNonWork, workOnlyPresentation,
   // readers / writers
   keepWordBlock, invalidateKeepMyWord, linkPromiseOpens,
   commitments, commitmentDetail, tasks, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,

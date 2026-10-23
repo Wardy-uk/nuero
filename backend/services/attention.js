@@ -49,6 +49,7 @@
 const { resolveContext, ACTIVITY, isRealMeeting, heldDespiteFree } = require('./context-state');
 const { resolveSaimLiteTab } = require('../../shared/action-surfaces.cjs');
 const { describeDeferral } = require('../../shared/deferral-line.cjs');
+const { isUrgentWork } = require('../../shared/held-work.cjs');
 
 // ⚠ The zone the SCREEN is in, never the host's. The Pi may run in UTC, and a
 // held line printed in UTC beside a diary printed in London is an hour out
@@ -251,6 +252,29 @@ function itemCard(item, now) {
 }
 
 /**
+ * The context the gate actually runs on, once the life read has had its say.
+ * PURE. Extracted from build() (Brief 002) so the on-duty rule pins without I/O.
+ *
+ * NO WORK WHILE HE IS NOT WORKING (Nick, 2 Oct 2026): a steady, away, unknown or
+ * firefighting read, or the EVENING ritual, folds into the day-off pool switch
+ * when `life.showWork === false`. A meeting, a session or the morning standup
+ * is left exactly as it was.
+ *
+ * ⚠ ON A WORKING DAY IN HOURS the fold carries `keepUrgentWork`, so urgent
+ *   capacity or overdue work is never held into an all-clear (D-008).
+ */
+function gateContextFor(context, life) {
+  const ctx = isObject(context) ? context : {};
+  const offRitual = ctx.activity === ACTIVITY.RITUAL && ctx.ritual === 'eod';
+  if (!(life && life.showWork === false
+    && ([ACTIVITY.STEADY, ACTIVITY.AWAY, ACTIVITY.UNKNOWN, ACTIVITY.FIREFIGHTING].includes(ctx.activity) || offRitual))) return ctx;
+  return { ...ctx, activity: ACTIVITY.OFF, label: life.label,
+    summary: life.place && life.place.label ? `${life.label} · ${life.place.label}` : life.label,
+    offWhy: `not working — ${String(life.label).toLowerCase()}`,
+    keepUrgentWork: !!(ctx.duty && ctx.duty.onDuty === true) };
+}
+
+/**
  * Decide what SAiM surfaces, given a context and the decision-engine pool.
  *
  * PURE — no DB, no clock, no I/O. The gating IS the product, so it pins without
@@ -275,12 +299,16 @@ function gate(context, items, now = new Date()) {
   let primary = null;
   let rationale;
 
-  function drop(predicate, why) {
+  // `heldFor` names WHY the gate held an item ('off' = the duty or life read,
+  // 'meeting', 'focus'), and `urgency` rides along, so every surface can count
+  // held work and say so rather than reading a held pool as an all-clear
+  // (Brief 002, shared/held-work.cjs). Both are additive on the entry.
+  function drop(predicate, why, heldFor = null) {
     if (!mayDrop) return;
     const next = [];
     for (const item of kept) {
       if (predicate(item)) next.push(item);
-      else dropped.push({ id: item.id, type: item.type, why });
+      else dropped.push({ id: item.id, type: item.type, why, urgency: item.urgency || null, heldFor });
     }
     kept = next;
   }
@@ -300,7 +328,7 @@ function gate(context, items, now = new Date()) {
       // The one state where speaking up is wrong by default. Nothing is
       // surfaced; nothing is lost — it is all in `dropped` and the pool is
       // unchanged underneath.
-      drop(() => false, 'in a meeting — SAiM stays out of the way');
+      drop(() => false, 'in a meeting — SAiM stays out of the way', 'meeting');
       primary = contextCard('context-in-meeting', ctx.label, ctx.summary);
       rationale = 'In a meeting, so nothing is surfaced and nothing is spoken.';
       break;
@@ -317,7 +345,7 @@ function gate(context, items, now = new Date()) {
 
     case ACTIVITY.IN_FOCUS_SESSION:
       // Protect the session: only a tier-1 interruption earns the screen.
-      drop((i) => i.tier === 1, 'a focus session is running — held until it ends');
+      drop((i) => i.tier === 1, 'a focus session is running — held until it ends', 'focus');
       primary = kept.length ? itemCard(kept.shift(), now) : contextCard('context-focus-session', ctx.label, ctx.summary);
       rationale = 'A focus session is running, so only a tier-1 interruption gets through.';
       break;
@@ -344,9 +372,18 @@ function gate(context, items, now = new Date()) {
       // that context re-ranks and gates but never ADDS still holds — nothing
       // here invents a candidate, it only changes which of decision-engine's
       // own items survive.
-      drop((i) => i._unsuppressable === true || _isPersonal(i), ctx.offWhy || 'not a working day');
+      // ⚠ ON DUTY, URGENT WORK IS NEVER HELD (Brief 002, D-008). When this OFF
+      //   pass exists only because the life read says he is not working on a
+      //   working day in hours (`keepUrgentWork`), a capacity warning or a
+      //   high-urgency overdue card still gets through and leads. Hiding it
+      //   under "Nothing pressing" is the contradiction this rule removes.
+      //   A genuine day off is unchanged: it is held, counted and named.
+      drop((i) => i._unsuppressable === true || _isPersonal(i) || (ctx.keepUrgentWork === true && isUrgentWork(i)),
+        ctx.offWhy || 'not a working day', 'off');
       primary = kept.length ? itemCard(kept.shift(), now) : contextCard('context-off', ctx.label, ctx.summary);
-      rationale = 'Not a working day, so work is held back and only personal or unsuppressable items get through.';
+      rationale = ctx.keepUrgentWork === true
+        ? 'On duty but not working, so work is held back except urgent capacity or overdue work, which still leads.'
+        : 'Not a working day, so work is held back and only personal or unsuppressable items get through.';
       break;
 
     case ACTIVITY.AWAY:
@@ -1071,13 +1108,7 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
   // with "EOD outstanding" and two work tasks). The EOD prompt is work; once
   // the life read says he has stopped, it is held and named like the rest.
   // The MORNING standup is left alone — it is what starts a working day.
-  const offRitual = context.activity === ACTIVITY.RITUAL && context.ritual === 'eod';
-  const gateContext = life && life.showWork === false
-    && ([ACTIVITY.STEADY, ACTIVITY.AWAY, ACTIVITY.UNKNOWN, ACTIVITY.FIREFIGHTING].includes(context.activity) || offRitual)
-    ? { ...context, activity: ACTIVITY.OFF, label: life.label,
-      summary: life.place && life.place.label ? `${life.label} · ${life.place.label}` : life.label,
-      offWhy: `not working — ${String(life.label).toLowerCase()}` }
-    : context;
+  const gateContext = gateContextFor(context, life);
   const gated = gate(gateContext, visible, now);
   // What the screen SAYS about the moment follows the life read too: the crown
   // and the "here" row both read `context.label`, which still said "EOD
@@ -1809,4 +1840,4 @@ function sessionMatchesCard(session, card) {
   }
 }
 
-module.exports = { build, gather, gate, sayLine, agendaFor, currentMeetingEvent, meetingEventByKey, sessionMatchesCard, presenceFromRoom, SECONDARY_MAX };
+module.exports = { build, gather, gate, gateContextFor, sayLine, agendaFor, currentMeetingEvent, meetingEventByKey, sessionMatchesCard, presenceFromRoom, SECONDARY_MAX };

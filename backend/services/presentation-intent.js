@@ -38,6 +38,7 @@
  *   P4 — diagnostics (what could not be read, the laptop, held-back counts)
  */
 
+const { heldWork } = require('../../shared/held-work.cjs');
 const CONTRACT = 'presentation-v1';
 const TZ = process.env.NEURO_TIMEZONE || 'Europe/London';
 
@@ -501,7 +502,19 @@ function composePresentation(p, { now = Date.now() } = {}) {
   // ── Situation (P1): bounded templates, no free text ──
   const partial = gaps.length > 0;
   const nothing = !primary && !needsYou.length;
-  const clearLine = partial ? 'Nothing needs you that I can see.' : 'Nothing needs you right now.';
+  // ⚠ NO UNEXPLAINED ALL-CLEAR (Brief 002, D-008). Two things used to sit under
+  //   "Nothing needs you" / "Nothing pressing": an urgent item the gate kept
+  //   but did not lead with (tracked, P3), and work the duty or life read held
+  //   back. The first is named. The second is counted, with its reason, from
+  //   canonical-read's `workHeld` (which already includes the gate's holds), or
+  //   from the gate itself on a payload that never went through composeNow.
+  const urgentWaiting = tracked.find((t) => ['high', 'critical'].includes(String(t.urgency || '').toLowerCase())) || null;
+  const sw = p.situation && p.situation.workHeld;
+  const heldW = sw && sw.count ? { count: sw.count, urgent: sw.urgent || 0, say: sw.say }
+    : heldWork(p.dropped, { onDuty: !!(ctx.duty && ctx.duty.onDuty === true) });
+  const heldLine = heldW.count ? heldW.say : null;
+  const clearLine = urgentWaiting ? `${urgentWaiting.title} is waiting.`
+    : heldLine || (partial ? 'Nothing needs you that I can see.' : 'Nothing needs you right now.');
   const firstNext = next.find((n) => n.kind === 'event') || null;
   // A commitment or task due today/tomorrow is not "quiet", even with nothing
   // to do this minute — it is the one thing the day is for. Read off the
@@ -569,20 +582,26 @@ function composePresentation(p, { now = Date.now() } = {}) {
         attentionLevel = 'low';
         about = dueSoonSrc.id;
       } else {
-        headline = nothing ? `Quiet ${dayWord}` : (leave ? 'Day off' : clock.weekday);
+        // "Quiet" is withheld while URGENT work is held back: the count says
+        // why the day can stay quiet, and urgent work held is not quiet.
+        headline = nothing && !heldW.urgent && !urgentWaiting ? `Quiet ${dayWord}` : (leave ? 'Day off' : clock.weekday);
         summary = nothing ? clearLine : primary.title;
-        attentionLevel = nothing ? 'none' : 'low';
-        about = nothing ? null : primary.id;
+        attentionLevel = nothing && !heldW.count && !urgentWaiting ? 'none' : 'low';
+        about = nothing ? (urgentWaiting ? urgentWaiting.id : null) : primary.id;
       }
       break;
     }
     case 'working':
       headline = nothing ? `${clock.weekday} ${dayPart(clock.minute)}` : 'Working';
       summary = nothing
-        ? (dueSoon ? `${dueSoon.title} is due ${dueSoon.day}.` : partial ? 'Nothing pressing that I can see.' : 'Nothing pressing right now.')
+        ? (dueSoon ? `${dueSoon.title} is due ${dueSoon.day}.`
+          : urgentWaiting ? `${urgentWaiting.title} is waiting.`
+            : heldLine || (partial ? 'Nothing pressing that I can see.' : 'Nothing pressing right now.'))
         : primary.title;
-      attentionLevel = nothing && !dueSoon ? 'none' : 'low';
-      about = nothing ? (dueSoon ? dueSoonSrc.id : null) : primary.id;
+      attentionLevel = nothing && !dueSoon && !urgentWaiting && !heldW.count ? 'none' : 'low';
+      about = nothing ? (dueSoon ? dueSoonSrc.id : urgentWaiting ? urgentWaiting.id : null) : primary.id;
+      // An urgent item leading a working moment is not a calm one.
+      if (!nothing && ['high', 'critical'].includes(String(primary.urgency || '').toLowerCase())) { tone = 'focused'; attentionLevel = 'elevated'; }
       break;
     default:
       headline = 'All quiet';

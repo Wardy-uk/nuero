@@ -562,7 +562,11 @@ function resolveContext(inputs = {}, now = new Date()) {
   } else {
     activity = ACTIVITY.STEADY;
     label = 'Steady';
-    summary = 'Nothing pressing.';
+    // ⚠ A statement about what THIS read checked, never an all-clear (Brief 002,
+    //   D-008). The attention pool is not one of these inputs, so "Nothing
+    //   pressing." used to sit beside a high-urgency capacity card on the same
+    //   screen. The pool speaks for itself through the gate.
+    summary = 'No meeting, session or ritual is due, and nothing is breaching.';
     reasons.push('Nothing is breaching, no meeting is close, no session is running and no ritual is outstanding.');
     derivedFrom.push(...INPUT_BLOCKS.filter((name) => known(src[name])));
   }

@@ -198,10 +198,32 @@ test('22+23. iOS reads the canonical screens, and its governed queue stays read-
     assert.ok(menu.includes(`"${p}"`), `iOS menu lacks ${p}`);
   }
   assert.doesNotMatch(menu, /"\/api\/focus/, 'iOS menu still reads /api/focus');
-  // The governed queue on iOS is read-only (Build 9 rule, unchanged here).
+  // The governed queue on iOS is read-only (Build 9 rule; D-010, 23 Oct 2026).
+  // STRENGTHENED (Brief 002): it used to look at ActionScreens.swift alone, so
+  // when the queue read moved into NeuroKit and an approve-with-code path was
+  // added in a different file, the guard could only fail on the positive match
+  // and could never see the approve call. Now: the governed queue IS read and
+  // rendered, and NO non-test Swift source anywhere calls the approve route or
+  // the approval challenge.
+  const kitQueue = swiftCode('NeuroKit/Sources/NeuroKit/PreparedActions.swift');
+  assert.match(kitQueue, /"\/api\/prepared-actions/, 'iOS reads the governed queue');
   const actions = swiftCode('Neuro/Features/ActionScreens.swift');
-  assert.match(actions, /prepared-actions/);
-  assert.doesNotMatch(actions, /prepared-actions\/[^"]*\/approve/, 'iOS can approve a governed draft');
+  assert.match(actions, /GovernedQueueSection\(/, 'Actions renders the governed queue');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return ['.git', 'Tests', 'build', 'DerivedData'].includes(e.name) ? [] : walk(p);
+    return e.name.endsWith('.swift') ? [p] : [];
+  });
+  const sources = walk(IOS);
+  assert.ok(sources.length > 50, 'positive control: the walk found the app sources');
+  for (const f of sources) {
+    const src = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const rel = path.relative(IOS, f);
+    assert.doesNotMatch(src, /prepared-actions\/[^"]*\/approve\b/, `${rel} can approve a governed draft`);
+    assert.doesNotMatch(src, /\/approval-challenge/, `${rel} asks for an approval challenge`);
+  }
+  // The older queue: the phone never approves an outbound kind (Build 9).
+  assert.match(actions, /phoneMayApprove/, 'older-queue approval is gated on phoneMayApprove');
 });
 
 test('25 (iOS). no Swift code calls /api/focus; SAiM iOS has no Today/Focus and no task editor', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {

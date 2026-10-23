@@ -169,7 +169,11 @@ test('live Sunday: the duplicate birthday renders ONCE, keeping the richer title
   assert.equal(events[0].title, 'Tracey Allen’s 16th Birthday');
   assert.deepEqual(events[0].mergedFrom, ["Tracey Allen's birthday"]);
   assert.equal(out.situation.headline, 'Quiet Sunday');
-  assert.equal(out.situation.summary, 'Nothing needs you that I can see.');
+  // Brief 002 (D-008): this fixture holds 2 work items back, so the summary
+  // COUNTS them rather than reading as an all-clear. The partial read is still
+  // said by `honesty`.
+  assert.equal(out.situation.summary, "2 work items held back while you're off duty.");
+  assert.equal(out.situation.honesty.complete, false);
   assert.equal(out.correction.asking, true);
   assert.equal(out.ambientState.inferredActivity.basis, 'none');
 });

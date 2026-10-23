@@ -224,7 +224,11 @@ test('iOS reads `pending` from /api/actions and never approves an outbound kind 
   assert.match(model, /public let pending: \[PendingAction\]\?/);
   const screen = iosRead('Neuro/Features/ActionScreens.swift');
   assert.match(screen, /phoneMayApprove/);
-  assert.match(screen, /\/api\/prepared-actions\?limit=50/, 'the governed queue is visible on the phone');
+  // The queue read moved into NeuroKit (`GovernedQueueSection` over
+  // PreparedActions.swift) in the iOS PWA-mirror commit; the positive control
+  // follows it rather than going green by absence (Brief 002).
+  assert.match(screen, /GovernedQueueSection\(/, 'the governed queue is rendered on the phone');
+  assert.match(iosRead('NeuroKit/Sources/NeuroKit/PreparedActions.swift'), /"\/api\/prepared-actions\?limit=/, 'the governed queue is read on the phone');
 });
 
 test('iOS has no route to approve a governed action (read-only by construction)', (t) => {

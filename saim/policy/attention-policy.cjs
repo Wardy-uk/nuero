@@ -28,9 +28,10 @@
 
 const CONTRACTS = require('../../shared/attention-contracts.cjs');
 const D = require('../../shared/display-text.cjs');
+const { heldWork } = require('../../shared/held-work.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-16.5';
+const POLICY_VERSION = '2026-10-23.1';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -382,6 +383,16 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
       lead = leadOf(cands.find((x) => x.id === pick.ref), 'S11c choose', 'Nothing needs you immediately. Pick one thing to focus on.', [`${pick.ref}: first waiting item with a start`]);
       lead.choice = { ref: pick.ref, why: pick.why, action: pick.actions[0] };
     }
+  }
+
+  // ⚠ "Nothing needs you" never stands over held work unsaid (Brief 002, D-008).
+  //   Work the duty or life read held back (gate `heldFor: 'off'`) is counted on
+  //   the lead itself, in the same words every NEURO surface uses. The rule and
+  //   its id are unchanged; only the sentence carries the count.
+  if (lead.rule === 'S11 nothing') {
+    const hw = heldWork(of('held').map((c) => ({ heldFor: c.facts.heldFor, urgency: c.facts.urgency })),
+      { onDuty: !!(k.duty && k.duty.onDuty === true) });
+    if (hw.count) lead.why = `Nothing needs you right now — ${hw.say.charAt(0).toLowerCase()}${hw.say.slice(1)}`;
   }
 
   // Next: the first thing in scope that starts later today.

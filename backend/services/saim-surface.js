@@ -52,6 +52,7 @@
  *
  * CommonJS.
  */
+const { heldWork } = require('../../shared/held-work.cjs');
 
 // The bounded surface set. One per situation, and adding one is a deliberate
 // act — this is a fixed list, never derived from the data, or a screen nobody
@@ -1393,12 +1394,15 @@ function silenceFor(payload) {
       sub: 'So don’t read this as an all-clear.',
     };
   }
+  // ⚠ Held work is COUNTED, never read as an all-clear (Brief 002, D-008).
+  const held = heldWork(p.dropped, { onDuty: !!(p.context && p.context.duty && p.context.duty.onDuty === true) });
   if (p.quiet === true) {
     const summary = typeof p.context?.summary === 'string' && p.context.summary.trim()
       ? p.context.summary.trim()
       : 'Staying out of the way.';
-    return { kind: 'quiet', lead: summary, sub: 'Nothing here needs you.' };
+    return { kind: 'quiet', lead: summary, sub: held.say || 'Nothing here needs you.' };
   }
+  if (held.count) return { kind: 'held', lead: held.say, sub: 'They come back when you’re working.' };
   return { kind: 'clear', lead: 'Nothing pressing.', sub: 'Everything’s where it should be.' };
 }
 
