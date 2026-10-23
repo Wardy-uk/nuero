@@ -159,6 +159,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/task-agent/tasks/:taskId/start', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/answer', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/stop', 'task-agent.run'),
+  R('POST', '/api/task-agent/tasks/:taskId/continue', 'task-agent.run'),
   // Turning automatic linking on runs the backfill; on or off, it is Nick's decision alone.
   R('POST', '/api/task-context/activate', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/task-context/deactivate', 'internal.state', { machine: 'refuse' }),

@@ -117,7 +117,7 @@ function NeedBlock({ need, busy, onAnswer }) {
   );
 }
 
-export function TaskAgentView({ run, workspace = null, budget = null, busy, error, onStart, onAnswer, onStop, onOpenActions, onOpenNote, onSave = null, saving = null, renderSave = null, onCopy = null, claude = null, onClaudeOpen = null, onClaudeClose = null }) {
+export function TaskAgentView({ run, workspace = null, budget = null, busy, error, onStart, onAnswer, onStop, onContinue = null, onOpenActions, onOpenNote, onSave = null, saving = null, renderSave = null, onCopy = null, claude = null, onClaudeOpen = null, onClaudeClose = null }) {
   const [openOut, setOpenOut] = useState(null);
   const outRefs = useRef({});
 
@@ -175,6 +175,19 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
 
       {/* 3. What I need from you — one question, or nothing. */}
       {ws.need && <NeedBlock need={ws.need} busy={busy} onAnswer={onAnswer} />}
+
+      {/* Paused at a per-attempt limit: what was done, what remains, and ONE explicit control. */}
+      {ws.continue && (
+        <div className="tagent__q tagent__cont" data-tagent-continue>
+          <p className="tagent__h">What I need from you</p>
+          <p className="tagent__qtext">Continue working on this?</p>
+          <p className="tagent__qwhy">{ws.continue.say}</p>
+          {(ws.continue.completed || []).length > 0 && <p className="tagent__meta"><strong>Done:</strong> {ws.continue.completed.join(' ')}</p>}
+          {(ws.continue.remaining || []).length > 0 && <p className="tagent__meta"><strong>Remaining:</strong> {ws.continue.remaining.join(' ')}</p>}
+          <p className="tagent__qafter">{ws.continue.cost}</p>
+          {onContinue && <div className="tagent__row"><button type="button" className="tagent__go" disabled={busy} onClick={onContinue}>{ws.continue.label}</button></div>}
+        </div>
+      )}
 
       {(run.outputs || []).length > 0 && (
         <div className="tagent__section">
@@ -343,6 +356,7 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
       onStart={(fresh) => post(`/api/task-agent/tasks/${enc(taskId)}/start`, fresh ? { fresh: true } : {})}
       onAnswer={(a) => post(`/api/task-agent/tasks/${enc(taskId)}/answer`, a)}
       onStop={() => post(`/api/task-agent/tasks/${enc(taskId)}/stop`, {})}
+      onContinue={() => post(`/api/task-agent/tasks/${enc(taskId)}/continue`, {})}
       onOpenActions={onOpenActions}
       onOpenNote={onOpenNote}
       onSave={async (o) => { const b = await post(`/api/task-agent/tasks/${enc(taskId)}/outputs/${enc(o.id)}/save`, {}); if (b) setSaving(o.id); }}

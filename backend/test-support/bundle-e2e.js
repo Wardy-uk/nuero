@@ -73,6 +73,7 @@ async function seed() {
     hr2: mk("Confirm Heidi Example's last working day with HR", { origin_path: HR }),
     amb: mk('Sort out the report'),
     plain: mk('Plan the Q4 support rota cover'),
+    capd: mk('Write up the week 47 cover options'),
   };
   tc.ensure();
   tc.link({ taskId: T.plain.id, type: 'note', ref: PLAN });
@@ -88,12 +89,22 @@ async function seed() {
   }
   script = [reply([tu('ask_nick', { kind: 'ambiguity', question: 'Which report — the weekly risk report or the SOAP report?', why: 'They have different audiences and deadlines.', after: 'NEURO will draft that report’s outline from last week’s figures.', options: ['Weekly risk report', 'SOAP report'] })]), end()];
   await agent.start(T.amb.id, { awaitTurn: true });
+  // An attempt that reaches its per-attempt round limit (3 for this seed) with a useful partial brief.
+  const ts = require('../services/task-agent-settings');
+  ts.save({ attempt: { maxRounds: 3 } });
+  script = [reply([tu('search_vault', { query: 'week 47 cover' })]), reply([tu('save_output', { kind: 'brief', title: 'Week 47 cover options', markdown: '## Options\n- Swap 2nd line\n- Borrow from 1st line' })]),
+    reply([tu('search_vault', { query: 'more cover history' })]), reply([tu('search_vault', { query: 'never sent' })])];
+  await agent.start(T.capd.id, { awaitTurn: true });
+  ts.save({ attempt: { maxRounds: 8 } });
   // In the browser: T.hr2's answer turn, then the plain double press.
   script = [
     reply([tu('save_output', { kind: 'brief', title: 'Heidi Example – End Date Decision Brief', markdown: brief.replace('Open — yours to decide.', 'Nick: 31 December 2026.') })]),
-    reply([tu('finish', { completed: ['Recorded your decision in the private brief'], remaining: ['Issue the letter yourself'] })]), end(),
+    reply([tu('finish', { completed: ['Recorded your decision in the private brief'], remaining: ['Issue the letter yourself'] })]),
     reply([tu('read_note', { path: PLAN })]), reply([tu('save_output', { kind: 'plan', title: 'Q4 rota cover plan', markdown: '- Week 44: early/late split\n- Week 47: swap 2nd line', sources: ['ctx:1'] })]),
-    reply([tu('finish', { completed: ['Drafted the cover plan'], remaining: ['Publish the rota'] })]), end(),
+    reply([tu('finish', { completed: ['Drafted the cover plan'], remaining: ['Publish the rota'] })]),
+    // Continue working on the capped task: one bounded part.
+    reply([tu('save_output', { kind: 'brief', title: 'Week 47 cover options', markdown: '## Options\n- Swap 2nd line (recommended by the notes)\n- Borrow from 1st line' })]),
+    reply([tu('finish', { completed: ['Finished the options brief'], remaining: [] })]),
   ];
   return T;
 }
@@ -111,6 +122,8 @@ const MEASURE = `(() => {
     done: [...document.querySelectorAll('[data-tagent-done] li')].map((e) => e.textContent.trim()),
     doneControls: [...document.querySelectorAll('[data-tagent-done] button')].map((b) => b.textContent.trim()),
     questions: [...document.querySelectorAll('.tagent__qtext')].filter(vis).length,
+    continueButtons: [...document.querySelectorAll('.tagent button')].filter((b) => b.textContent.trim() === 'Continue working').length,
+    continueText: (document.querySelector('[data-tagent-continue]') || {}).textContent || '',
     question: (document.querySelector('.tagent__qtext') || {}).textContent || '',
     after: (document.querySelector('.tagent__qafter') || {}).textContent || '',
     options: [...document.querySelectorAll('.tagent__opts button')].map((b) => b.textContent),
@@ -216,6 +229,10 @@ function electron() {
     'plain-press': nj(T.plain, [[1440, 900]], '[data-tagent="idle"]', [{ click: 'Do this', double: true, wait: '[data-tagent="ready"]', shot: 'ready' }]),
     'plain-neuro-phone': nj(T.plain, [[390, 844]], '[data-tagent="ready"]'),
     'plain-saim-phone': sj(T.plain, '[data-tagent="ready"]'),
+    'cap-desktop': nj(T.capd, [[1440, 900]], '[data-tagent="capped"]'),
+    'cap-neuro-phone': nj(T.capd, [[390, 844]], '[data-tagent="capped"]'),
+    'cap-saim-phone': sj(T.capd, '[data-tagent="capped"]'),
+    'cap-continue': nj(T.capd, [[1440, 900]], '[data-tagent="capped"]', [{ click: 'Continue working', double: true, wait: '[data-tagent="ready"]', shot: 'continued' }]),
   };
   const R = {};
   for (const [name, j] of Object.entries(JOBS)) {
@@ -257,11 +274,22 @@ function electron() {
   });
   check('open brief + trace', () => { const s = S('hr-desktop'); assert.equal(s.steps[0].draftsOpen, 1); assert.equal(s.steps[1].traceOpen, true); assert.ok(s.steps[1].stepsVisible > 0); });
   check('refresh', () => { const s = S('hr-refresh'); assert.equal(s.steps[0].question, s.question); assert.equal(s.steps[0].questions, 1); });
-  check('answer', () => { const a = S('hr2-answer').steps[0]; assert.ok(a.clicked && a.ok); assert.equal(a.statusLine, 'Ready'); assert.equal(a.questions, 0); concise(a, 'answered'); });
+  check('answer', () => { const a = S('hr2-answer').steps[0]; assert.ok(a.clicked && a.ok); assert.equal(a.statusLine, 'Ready for you'); assert.equal(a.questions, 0); concise(a, 'answered'); });
   for (const n of ['amb-saim-phone', 'amb-desktop']) check(n, () => { const s = S(n); concise(s, n); assert.equal(s.statusLine, 'Waiting for your answer'); assert.equal(s.questions, 1); assert.deepEqual(s.options, ['Weekly risk report', 'SOAP report', 'Other — explain']); });
-  check('plain press', () => { const r = S('plain-press').steps[0]; assert.ok(r.clicked && r.ok); concise(r, 'plain'); assert.equal(r.statusLine, 'Ready to save'); assert.equal(r.questions, 0); });
-  for (const n of ['plain-neuro-phone', 'plain-saim-phone']) check(n, () => { const s = S(n); concise(s, n); assert.equal(s.statusLine, 'Ready to save'); });
-  check('no duplicate run', () => assert.equal(calls - callsAfterSeed, 7, 'answer turn (3) + one plain run (4) — the double press made one run'));
+  check('plain press', () => { const r = S('plain-press').steps[0]; assert.ok(r.clicked && r.ok); concise(r, 'plain'); assert.equal(r.statusLine, 'Ready for you'); assert.equal(r.questions, 0); });
+  for (const n of ['plain-neuro-phone', 'plain-saim-phone']) check(n, () => { const s = S(n); concise(s, n); assert.equal(s.statusLine, 'Ready for you'); });
+  for (const n of ['cap-desktop', 'cap-neuro-phone', 'cap-saim-phone']) check(n, () => {
+    const s = S(n); concise(s, n);
+    assert.equal(s.statusLine, 'Paused at this attempt’s limit');
+    assert.equal(s.continueButtons, 1, 'one explicit Continue working control');
+    assert.match(s.continueText, /used this attempt’s 3 model rounds/);
+    assert.match(s.continueText, /Done: Prepared brief: “Week 47 cover options”/);
+    assert.match(s.continueText, /Remaining:/);
+    assert.match(s.continueText, /counts as another run/);
+    assert.ok(s.doneControls.includes('Open brief'), 'the partial brief is kept and openable');
+  });
+  check('continue', () => { const c = S('cap-continue').steps[0]; assert.ok(c.clicked && c.ok); assert.equal(c.statusLine, 'Ready for you'); assert.equal(c.continueButtons, 0); concise(c, 'continued'); });
+  check('no duplicate run', () => assert.equal(calls - callsAfterSeed, 7, 'answer turn (2) + one plain run (3) + one continued part (2) — double presses made one run each'));
   const db = require('../db/database');
   check('one attempt per task', () => { for (const t of Object.values(T)) { const raw = db.getState(`task_agent_run:${t.id}`); assert.ok(raw); } });
 

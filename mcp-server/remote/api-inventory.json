@@ -5711,7 +5711,7 @@
     "route": "/api/task-agent/tasks/:taskId/handoff/preview",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 133,
+    "line": 143,
     "description": "GET /api/task-agent/tasks/:taskId/handoff/preview. the Claude-desktop handoff Nick would send: why, what is included and excluded, the destination, and the editable prompt (query.includeDrafts=1 to include draft text). Sends nothing. Owner only.",
     "params": [
       "taskId"
@@ -14452,6 +14452,7 @@
     "query": [],
     "body": [
       "apiKey",
+      "attempt",
       "clearKey",
       "dailyRuns",
       "dailyUsd",
@@ -14504,12 +14505,30 @@
     "stream": false
   },
   {
+    "id": "post_task_agent_tasks_by_taskId_continue",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/continue",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 113,
+    "description": "POST /api/task-agent/tasks/:taskId/continue. Continue working after a per-attempt limit: one new bounded part, counted as a run.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_task_agent_tasks_by_taskId_handoff",
     "method": "POST",
     "route": "/api/task-agent/tasks/:taskId/handoff",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 141,
+    "line": 151,
     "description": "POST /api/task-agent/tasks/:taskId/handoff. Nick presses \"Continue this with Claude on desktop\" with his working brief (body.brief). The brief is screened; the final prompt is composed by NEURO from its fixed policy envelope, destination and context plus the brief, recorded by hash and returned for ",
     "params": [
       "taskId"
@@ -14531,7 +14550,7 @@
     "route": "/api/task-agent/tasks/:taskId/outputs/:outputId/save",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 122,
+    "line": 132,
     "description": "POST /api/task-agent/tasks/:taskId/outputs/:outputId/save. prepare ONE finished Do this draft to be saved to the vault: stores the existing project-note prepared move and returns its recordId. Saves nothing; the save happens only through /api/prepared-moves/request + /confirm. Owner only.",
     "params": [
       "taskId",
@@ -14570,8 +14589,8 @@
     "route": "/api/task-agent/tasks/:taskId/stop",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 112,
-    "description": "POST /api/task-agent/tasks/:taskId/stop. Nick stops the Do this run; its outputs and prepared actions are kept as they are. Owner only.",
+    "line": 122,
+    "description": "POST /api/task-agent/tasks/:taskId/stop.",
     "params": [
       "taskId"
     ],

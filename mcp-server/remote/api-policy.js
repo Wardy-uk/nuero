@@ -40,6 +40,7 @@ export const interactive = {
   post_task_agent_tasks_by_taskId_start: 'Only Nick can press “Do this” on a task, in NEURO. An agent cannot start NEURO’s task agent.',
   post_task_agent_tasks_by_taskId_answer: 'Answering the task agent’s question is Nick, in NEURO, on that task.',
   post_task_agent_tasks_by_taskId_stop: 'Stopping a “Do this” run is Nick’s decision, in NEURO, on that task.',
+  post_task_agent_tasks_by_taskId_continue: 'Continuing a paused “Do this” attempt spends another run — Nick’s decision, in NEURO, on that task.',
   get_task_agent_tasks_by_taskId_handoff_preview: 'The Claude-desktop handoff preview is Nick’s alone, in NEURO on that task.',
   post_task_agent_tasks_by_taskId_handoff: 'Handing a task to Claude on desktop is Nick’s decision, in NEURO on that task.',
   get_task_agent_settings: 'Do this settings (Anthropic key status, model, daily limits) are Nick’s alone, in NEURO → Settings.',

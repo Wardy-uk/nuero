@@ -56,24 +56,29 @@ const MAX_OUTPUT_TOKENS = 4000;
 const STALE_MS = 10 * 60 * 1000;      // a 'running' run with no heartbeat this long was interrupted
 const MAX_OUTPUTS = 8;
 const MAX_OUTPUT_CHARS = 20000;
-const MAX_READ_CHARS = 8000;
+// A note enters the prompt as a BOUNDED excerpt, never whole because it is permitted:
+// ~1,500 tokens at most per note (the per-attempt note count and input budget bound the rest).
+const MAX_READ_CHARS = 6000;
 // The step log is the attempt's AUDIT: append-only (nothing edits or removes an entry),
 // hidden behind "Activity and evidence". The cap only stops a runaway attempt growing
 // without bound; past it the oldest entries go to the history copy, never silently.
 const MAX_STEPS = 500;
-// Exploration is bounded so a turn ends in work, not in reading (Nick, 23 Oct 2026):
-// at most this many search_vault + read_note calls in one turn, of which at most
-// SEARCH_LIMIT searches. Past the cap the tools say "you have enough — write it".
-const EXPLORE_LIMIT = 6;
-const SEARCH_LIMIT = 2;
+// Exploration is bounded PER ATTEMPT (Settings → "Do this attempt limits"): notes opened,
+// searches, model rounds, total input tokens and worst-case cost. Past a limit the tools
+// say "you have enough — write it"; a request that would cross one is never sent.
+const BUDGET_KEY = (id) => `task_agent_budget:${id}`;
+// Allowance for what one round adds to the next request (tool results), on top of the
+// model's maximum reply, when projecting whether a FURTHER request will still fit.
+const ROUND_GROWTH_TOKENS = 2500;
 // Two questions are "the same" when this share of their content words overlaps.
 const SAME_QUESTION = 0.6;
 const PHASE_KEY = (id) => `task_agent_phase:${id}`;
-const PHASES = Object.freeze({ starting: 'Reading the task', evidence: 'Checking evidence', preparing: 'Preparing the brief', drafting: 'Preparing drafts', finishing: 'Finishing up' });
+// Compact live progress only — never the internal steps.
+const PHASES = Object.freeze({ starting: 'Checking evidence', evidence: 'Checking evidence', preparing: 'Preparing brief', drafting: 'Preparing brief', finishing: 'Preparing brief' });
 
-const STATUS = Object.freeze(['running', 'needs-answer', 'needs-manual', 'needs-decision', 'ready', 'blocked', 'failed', 'interrupted', 'stopped']);
+const STATUS = Object.freeze(['running', 'needs-answer', 'needs-manual', 'needs-decision', 'capped', 'ready', 'blocked', 'failed', 'interrupted', 'stopped']);
 const AWAITING = new Set(['needs-answer', 'needs-manual', 'needs-decision']);
-const SETTLED = new Set(['ready', 'blocked', 'stopped', 'failed', 'interrupted']);
+const SETTLED = new Set(['ready', 'blocked', 'stopped', 'failed', 'interrupted', 'capped']);
 const QUESTION_KINDS = Object.freeze(['ambiguity', 'missing', 'manual', 'authority']);
 const OUTPUT_KINDS = Object.freeze(['draft', 'plan', 'brief', 'checklist', 'agenda', 'breakdown', 'answer', 'investigation', 'notes']);
 
@@ -101,6 +106,7 @@ function deps() {
     prepareCompose: (args) => require('./prepared-actions').prepareCompose(args),
     actionStatus: (id) => { try { return db.get('SELECT action_id, status FROM prepared_actions WHERE action_id = ?', [id]); } catch { return null; } },
     priceOf: (model) => { try { return require('./ai-gate').priceOf(model); } catch { return null; } },
+    worstCaseUsd: (spec) => { try { return require('./ai-gate').worstCaseUsd(spec); } catch { return null; } },
     gateMode: () => (String(process.env.AI_GATE_MODE || 'shadow').toLowerCase() === 'enforce' ? 'enforce' : 'shadow'),
     settings: require('./task-agent-settings'),
     gateToday: () => {
@@ -146,6 +152,22 @@ function _phase(taskId, phase) {
 function _readPhase(taskId) {
   try { const v = JSON.parse(db.getState(PHASE_KEY(taskId)) || 'null'); return v && PHASES[v.phase] ? v : null; } catch { return null; }
 }
+
+// ── the per-attempt budget (kept OUTSIDE the run, so a failed or interrupted turn's
+// spend still counts — the turn itself is transactional, the money is not) ─────
+function _budgetFresh(runId, tranche = 1) { return { runId, tranche, rounds: 0, notes: 0, searches: 0, inputTokens: 0, costUsd: 0, costUnknown: false, stoppedBy: null }; }
+function _budget(run) {
+  try { const b = JSON.parse(db.getState(BUDGET_KEY(run.taskId)) || 'null'); if (b && b.runId === run.id) return b; } catch { /* fresh below */ }
+  return _budgetFresh(run.id, 1);
+}
+function _saveBudget(taskId, b) { try { db.setState(BUDGET_KEY(taskId), JSON.stringify(b)); } catch { /* bookkeeping */ } }
+const LIMIT_SAY = {
+  rounds: (l) => `it used this attempt’s ${l.maxRounds} model rounds`,
+  notes: (l) => `it opened this attempt’s ${l.maxNotes} source notes`,
+  searches: (l) => `it ran this attempt’s ${l.maxSearches} extra searches`,
+  input: (l) => `the next step would have taken it past this attempt’s ${l.maxInputTokens.toLocaleString('en-GB')} input tokens`,
+  cost: (l) => `the next step could have taken it past this attempt’s $${l.maxAttemptUsd.toFixed(2)} cost limit`,
+};
 
 const STOP = new Set('a an and are as at be by can do does for from has have how i in is it its me my of on or should so that the their them this to was we what when which who will with you your neuro nick please'.split(' '));
 /** PURE. Content words of a question, for "have I already asked this?". */
@@ -250,9 +272,12 @@ function userPrompt(run, task) {
   lines.push(`Today is ${new Date(deps().now()).toISOString().slice(0, 10)}.`);
   lines.push('', 'SOURCES NICK HAS LINKED TO THIS TASK (refer to them by key):');
   if (!run.sources.length) lines.push('(none)');
+  // Linked notes contribute a bounded excerpt each, and only up to this attempt's note
+  // limit — the rest are listed by title (read_note can still open one within the limit).
+  let excerpts = 0;
   for (const s of run.sources) {
     lines.push(`[${s.key}] ${s.kind} — ${s.title}${s.restricted ? ' (restricted: excerpt only, do not ask for more)' : ''}${s.readable ? ' (read_note available)' : ''}`);
-    if (s.excerpt) lines.push(`    ${String(s.excerpt).replace(/\s+/g, ' ').slice(0, 600)}`);
+    if (s.excerpt && excerpts < (run.excerptLimit || Infinity)) { excerpts += 1; lines.push(`    ${String(s.excerpt).replace(/\s+/g, ' ').slice(0, 600)}`); }
   }
   if (run.outputs && run.outputs.length) {
     lines.push('', 'OUTPUTS YOU HAVE ALREADY SAVED (update by saving again with the same title):');
@@ -277,6 +302,7 @@ function userPrompt(run, task) {
   } else {
     lines.push('', 'Start the work now.');
   }
+  if (run.budgetLine) lines.push('', run.budgetLine);
   return lines.join('\n');
 }
 
@@ -303,15 +329,19 @@ function addressesIn(text) {
  * prepared during the turn at all; the tool only VALIDATES it and queues it in
  * work.pendingEmails, which _commit prepares once the turn has completed.
  */
-function makeRunTool(work, task, turn) {
+function makeRunTool(work, task, turn, budget = null, limits = null) {
   const d = deps();
+  const B = budget || { notes: 0, searches: 0 };
+  const L = limits || { maxNotes: 6, maxSearches: 3 };
   const readable = new Map(work.sources.filter((s) => s.readable && s.path).map((s) => [s.path, s]));
   const seenText = [task.text, ...work.sources.map((s) => s.excerpt || '')];
   work.readLog = work.readLog || [];
   work.searchLog = work.searchLog || [];
-  const readThisTurn = new Set();
-  const explored = () => (turn.searches || 0) + (turn.reads || 0);
-  const enough = () => { turn.enough = true; return { ok: false, error: 'You have enough to work with. Stop exploring and write the output now with save_output, then finish or ask_nick.' }; };
+  // A note is never read twice in one tranche; a later tranche (after Continue working)
+  // may re-open one, because the model keeps no text between turns — it is not a new note.
+  const readThisTranche = new Set(work.readLog.filter((r) => (r.tranche || 1) === (B.tranche || 1)).map((r) => r.path));
+  const finalNote = () => (turn.finalNext ? { budget: 'FINAL ROUND NEXT: this attempt’s budget allows one more model round. Do not search or read. Save the brief/draft now with save_output, then finish.' } : {});
+  const enough = (why) => { turn.enough = true; if (why && !turn.limitHit) turn.limitHit = why; return { ok: false, error: 'You have enough to work with (this attempt’s limit for that is reached). Stop exploring and write the output now with save_output, then finish or ask_nick.', ...finalNote() }; };
   return async function runTool(name, input = {}) {
     if (turn.stopped && name !== 'finish') return { ok: false, error: 'Waiting for Nick — do not call more tools.' };
     try {
@@ -323,8 +353,9 @@ function makeRunTool(work, task, turn) {
           const qk = q.toLowerCase().replace(/\s+/g, ' ');
           const prior = work.searchLog.find((x) => x.key === qk);
           if (prior) return { ok: true, results: prior.results, repeated: true, note: 'You already ran this search in this attempt — these are the same results.' };
-          if ((turn.searches || 0) >= SEARCH_LIMIT || explored() >= EXPLORE_LIMIT) return enough();
-          turn.searches = (turn.searches || 0) + 1;
+          if (turn.finalNext) return enough(null);
+          if (B.searches >= L.maxSearches) return enough('searches');
+          B.searches += 1; turn.searches = (turn.searches || 0) + 1;
           _phase(work.taskId, 'evidence');
           const raw = await d.search(q);
           const results = [];
@@ -344,7 +375,7 @@ function makeRunTool(work, task, turn) {
           }
           _step(work, 'search', `Searched the vault for “${q}” — ${results.length} usable note${results.length === 1 ? '' : 's'}.`);
           work.searchLog.push({ key: qk, query: q, found: results.length, results });
-          return { ok: true, results };
+          return { ok: true, results, ...finalNote() };
         }
         case 'read_note': {
           const rel = String(input.path || '').replace(/\\/g, '/');
@@ -352,18 +383,19 @@ function makeRunTool(work, task, turn) {
           if (!src) return { ok: false, error: 'That note was not offered to you. Use a linked source path or a search_vault result.' };
           // ⚠ Deduped: never twice in one turn; across turns of the same attempt it is served
           // again (the model keeps no text between turns) but is not a new step.
-          if (readThisTurn.has(rel)) return { ok: false, error: 'You already read this note in this step. Use what you read.' };
+          if (readThisTranche.has(rel)) return { ok: false, error: 'You already read this note in this attempt. Use what you read.' };
           const again = work.readLog.some((r) => r.path === rel);
-          if (!again && explored() >= EXPLORE_LIMIT) return enough();
-          readThisTurn.add(rel);
-          if (!again) turn.reads = (turn.reads || 0) + 1;
+          if (turn.finalNext) return enough(null);
+          if (!again && B.notes >= L.maxNotes) return enough('notes');
+          readThisTranche.add(rel);
+          if (!again) { B.notes += 1; turn.reads = (turn.reads || 0) + 1; }
           _phase(work.taskId, 'evidence');
           const n = d.readNote(rel);
           if (!n.ok) return { ok: false, error: `Cannot read: ${n.why}` };
           src.used = true;
           seenText.push(n.body);
-          if (!again) { work.readLog.push({ path: rel, key: src.key, title: src.title }); _step(work, 'read', `Read “${src.title}”.`); }
-          return { ok: true, key: src.key, title: n.title, text: n.body.slice(0, MAX_READ_CHARS), truncated: n.body.length > MAX_READ_CHARS };
+          if (!again) { work.readLog.push({ path: rel, key: src.key, title: src.title, tranche: B.tranche || 1 }); _step(work, 'read', `Read “${src.title}”.`); }
+          return { ok: true, key: src.key, title: n.title, text: n.body.slice(0, MAX_READ_CHARS), truncated: n.body.length > MAX_READ_CHARS, ...finalNote() };
         }
         case 'save_output': {
           const kind = OUTPUT_KINDS.includes(input.kind) ? input.kind : 'notes';
@@ -385,7 +417,7 @@ function makeRunTool(work, task, turn) {
             work.outputs.push({ id: `o${work.outputs.length + 1}`, kind, title, markdown, sources: cites, createdAt: now, updatedAt: now });
           }
           _step(work, 'output', `${existing ? 'Updated' : 'Wrote'} ${kind}: “${title}”.`);
-          return { ok: true, saved: title, private: true };
+          return { ok: true, saved: title, private: true, ...finalNote() };
         }
         case 'prepare_email': {
           if (work.sensitive && work.sensitive.sensitive) return { ok: false, error: 'Refused: this is an employment / people matter. Prepare the brief and ask Nick for the decision instead.' };
@@ -506,15 +538,54 @@ async function _turn(taskId) {
 
   // ⚠ The turn works on a COPY. Only a completed turn is committed.
   const work = JSON.parse(JSON.stringify(run));
-  const turn = { question: null, finish: null, stopped: false, searches: 0, reads: 0, enough: false };
+  const turn = { question: null, finish: null, stopped: false, searches: 0, reads: 0, enough: false, finalNext: false, limitHit: null };
+  const L = s.attemptLimits ? s.attemptLimits() : { maxRounds: MAX_ROUNDS, maxNotes: 6, maxSearches: 3, maxInputTokens: 80000, maxAttemptUsd: 2, maxOutputTokens: MAX_OUTPUT_TOKENS };
+  const B = _budget(run);
+  const left = (k, used) => Math.max(0, L[k] - used);
+  work.excerptLimit = L.maxNotes;
+  work.budgetLine = `THIS ATTEMPT’S BUDGET (enforced by the server): ${left('maxRounds', B.rounds)} more model round(s), ${left('maxNotes', B.notes)} more note(s) to open, ${left('maxSearches', B.searches)} more search(es). Start from the linked sources. Write the brief as soon as you have enough evidence — do not gather marginal evidence. If the budget runs out NEURO stops and keeps what you saved, so save useful work early.`;
+  // Will a request of `input` tokens (worst-case reply) still fit this attempt's budget?
+  const fits = (input, roundsAfter, inputSoFar, costSoFar) => {
+    if (roundsAfter > L.maxRounds) return 'rounds';
+    if (inputSoFar + input > L.maxInputTokens) return 'input';
+    const worst = d.worstCaseUsd({ provider: 'anthropic', model, maxInputTokens: input, maxOutputTokens: L.maxOutputTokens });
+    if (worst == null || costSoFar + worst > L.maxAttemptUsd) return 'cost';
+    return null;
+  };
   _phase(taskId, 'starting');
   let result;
   try {
-    result = await d.provider.chatWithTools(systemPrompt(work), [{ role: 'user', content: userPrompt(work, task) }], TOOLS, makeRunTool(work, task, turn),
-      { model, maxTokens: MAX_OUTPUT_TOKENS, maxRounds: MAX_ROUNDS, callClass: 'task_agent', requestOptions: { timeout: requestTimeout(), maxRetries: 0 },
+    result = await d.provider.chatWithTools(systemPrompt(work), [{ role: 'user', content: userPrompt(work, task) }], TOOLS, makeRunTool(work, task, turn, B, L),
+      { model, maxTokens: L.maxOutputTokens, maxRounds: Math.max(1, L.maxRounds - B.rounds), callClass: 'task_agent', requestOptions: { timeout: requestTimeout(), maxRetries: 0 },
         apiKey: s.apiKey(),
-        // ⚠ The hard dollar cap: checked before EVERY request of the turn, in shadow mode too.
-        beforeRequest: (spec) => s.guardRequest(spec, { othersInFlight: Math.max(0, RUNNING.size - 1) }) });
+        beforeRequest: (spec) => {
+          // The model has asked its question or reported finish: there is nothing left for
+          // another request to do, so it is not sent (and not paid for).
+          if (turn.stopped) return { stop: true, done: true };
+          // ⚠ The hard DAILY dollar cap: checked before EVERY request of the turn, in shadow mode too.
+          s.guardRequest(spec, { othersInFlight: Math.max(0, RUNNING.size - 1) });
+          // ⚠ The per-ATTEMPT budget: this request must fit, or it is not sent (graceful stop).
+          // A prompt only grows: the next request is at least as big as the last one actually was.
+          const input = Math.max(spec.maxInputTokens, B.lastInput || 0);
+          const over = fits(input, B.rounds + 1, B.inputTokens, B.costUsd);
+          if (over) { B.stoppedBy = over; _saveBudget(taskId, B); return { stop: true, limit: over }; }
+          // Look two requests ahead: if only ONE more will fit after this, say so in the tool
+          // results of this round, so the model writes the brief instead of exploring.
+          const next = input + L.maxOutputTokens + ROUND_GROWTH_TOKENS;
+          const worstNow = d.worstCaseUsd({ provider: 'anthropic', model, maxInputTokens: input, maxOutputTokens: L.maxOutputTokens }) || 0;
+          const worstNext = d.worstCaseUsd({ provider: 'anthropic', model, maxInputTokens: next, maxOutputTokens: L.maxOutputTokens }) || 0;
+          if (fits(next + L.maxOutputTokens + ROUND_GROWTH_TOKENS, B.rounds + 3, B.inputTokens + input + next, B.costUsd + worstNow + worstNext)) turn.finalNext = true;
+          B.rounds += 1;
+          _saveBudget(taskId, B);
+          return null;
+        },
+        onResponse: (u) => {
+          B.inputTokens += u.promptTokens || 0;
+          B.lastInput = u.promptTokens || 0;
+          const c = d.resolveCost({ prompt_tokens: u.promptTokens, completion_tokens: u.completionTokens }, model);
+          if (c && c.costUsd != null) B.costUsd = Math.round((B.costUsd + c.costUsd) * 1e6) / 1e6; else B.costUnknown = true;
+          _saveBudget(taskId, B);
+        } });
   } catch (e) {
     const c = classifyError(e);
     _phase(taskId, null);
@@ -527,6 +598,8 @@ async function _turn(taskId) {
 
   _phase(taskId, null);
   if (turn.enough) work.enough = true;
+  delete work.budgetLine; delete work.excerptLimit;
+  _saveBudget(taskId, B);
   const usage = result.usage || {};
   const cost = d.resolveCost(usage, model);
   work.usage = work.usage || { provider: 'anthropic', model, calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, costUnknown: false };
@@ -569,10 +642,26 @@ async function _turn(taskId) {
   work.summary = turn.finish ? { completed: turn.finish.completed, remaining: turn.finish.remaining }
     : turn.question ? (work.summary || null)
       : (work.summary || { completed: [], remaining: [], said: String(result.text || '').slice(0, 1200) || null });
-  if (result.truncated && !turn.question && !turn.finish) {
+  // ⚠ A per-attempt limit was reached: stop cleanly, keep the private result, say what was
+  // done and what remains, and wait for Nick to press Continue working. Never automatic.
+  const capped = !turn.question && !turn.finish && ((result.stopped && !result.stopped.done) || (result.truncated && B.rounds >= L.maxRounds) || (turn.limitHit && !(work.outputs || []).length));
+  if (capped) {
+    const limit = (result.stopped && !result.stopped.done && result.stopped.limit) || (B.rounds >= L.maxRounds ? 'rounds' : turn.limitHit) || 'rounds';
+    const outs = (work.outputs || []).map((o) => `${o.kind}: “${o.title}”`);
+    work.status = 'capped';
+    work.cap = {
+      limit, tranche: B.tranche || 1, at: _iso(d.now()),
+      say: `NEURO paused because ${(LIMIT_SAY[limit] || LIMIT_SAY.rounds)(L)}.`,
+      completed: outs.length ? [`Prepared ${outs.join(', ')}.`] : ['Gathered evidence; nothing was ready to keep yet.'],
+      remaining: [outs.length ? 'Check the draft; press Continue working only if it needs more.' : 'Press Continue working to let NEURO write the draft from what it has gathered.'],
+    };
+    work.summary = { completed: work.cap.completed, remaining: work.cap.remaining };
+    _step(work, 'note', `Paused at this attempt’s limit (${limit}). Waiting for you to press Continue working.`);
+  } else if (result.truncated && !turn.question && !turn.finish) {
     work.summary.remaining = [...(work.summary.remaining || []), 'The run stopped before reporting — press Do this to continue it.'];
     work.status = 'interrupted';
   }
+  if (!capped) delete work.cap;
   work.error = null; delete work.errorKind;
   work.heartbeatAt = null;
   work.updatedAt = _iso(d.now());
@@ -652,8 +741,11 @@ function view(taskId) {
   });
   const running = RUNNING.has(id);
   const phase = run.status === 'running' ? _readPhase(id) : null;
-  const shaped = { ...run, outputs, handoffs, running, phase: phase ? phase.phase : null };
-  return { ok: true, contract: CONTRACT, taskId: id, budget, run: shaped, workspace: workspaceOf(shaped) };
+  const b = _budget(run);
+  const L = d.settings.attemptLimits ? d.settings.attemptLimits() : null;
+  const attempt = L ? { limits: L, used: { tranche: b.tranche, rounds: b.rounds, notes: b.notes, searches: b.searches, inputTokens: b.inputTokens, costUsd: b.costUsd } } : null;
+  const shaped = { ...run, outputs, handoffs, running, phase: phase ? phase.phase : null, attempt };
+  return { ok: true, contract: CONTRACT, taskId: id, budget, run: shaped, workspace: workspaceOf(shaped, { today: budget && budget.today, daily: budget ? { runs: budget.dailyRuns, usd: budget.dailyUsd } : null }) };
 }
 
 /**
@@ -662,7 +754,7 @@ function view(taskId) {
  * none) — plus a one-line summary for the collapsed "Activity and evidence". Every
  * word is composed here, so the desktop, the NEURO phone and SAiM say the same thing.
  */
-function workspaceOf(run) {
+function workspaceOf(run, ctx = {}) {
   if (!run) return null;
   const sensitive = Boolean(run.sensitive && run.sensitive.sensitive);
   const outputs = run.outputs || [];
@@ -678,7 +770,8 @@ function workspaceOf(run) {
   else if (run.status === 'needs-decision') { state = 'waiting'; label = 'Waiting for your decision'; }
   else if (run.status === 'needs-answer') { state = 'waiting'; label = 'Waiting for your answer'; }
   else if (run.status === 'needs-manual') { state = 'waiting'; label = 'Waiting for you to do one thing'; }
-  else if (run.status === 'ready') { state = 'ready'; label = savable ? 'Ready to save' : (handoffs.length ? 'Ready for your approval' : 'Ready'); }
+  else if (run.status === 'ready') { state = 'ready'; label = 'Ready for you'; }
+  else if (run.status === 'capped') { state = 'capped'; label = 'Paused at this attempt’s limit'; }
   else if (run.status === 'stopped') { state = 'stopped'; label = 'Stopped by you'; }
   else {
     state = 'blocked';
@@ -710,9 +803,23 @@ function workspaceOf(run) {
   } : null;
 
   const steps = (run.steps || []).length;
-  const enough = run.enough && state === 'working' ? 'I have enough to prepare the brief.' : (run.enough ? 'NEURO stopped exploring once it had enough.' : null);
+  const enough = run.enough && state === 'working' ? 'I have enough to prepare the brief.' : (run.enough && state !== 'capped' ? 'NEURO stopped exploring once it had enough.' : null);
+  let cont = null;
+  if (state === 'capped' && run.cap) {
+    const L = run.attempt && run.attempt.limits;
+    const today = ctx.today || null;
+    const daily = ctx.daily || null;
+    const runsLine = today && daily && today.runs != null ? ` (${today.runs} of ${daily.runs} used today)` : '';
+    cont = {
+      say: run.cap.say,
+      completed: run.cap.completed, remaining: run.cap.remaining,
+      label: 'Continue working',
+      cost: `Pressing it starts one more bounded part: it counts as another run${runsLine} and can spend up to $${L ? L.maxAttemptUsd.toFixed(2) : '?'} of today’s Do this budget. NEURO keeps what it has and does not repeat searches or notes.`,
+    };
+  }
   return {
-    status: { state, label, phase, wont, enough },
+    status: { state, label, phase, wont, enough, say: state === 'capped' && run.cap ? run.cap.say : null },
+    continue: cont,
     done: done.slice(0, 3),
     need,
     trace: { summary: `${used} permitted source${used === 1 ? '' : 's'} used · ${steps} internal step${steps === 1 ? '' : 's'}`, sources: used, steps },
@@ -764,6 +871,7 @@ function start(taskId, { fresh = false, awaitTurn = false } = {}) {
     run = _save(_fresh(task, d.forTask(id)));
     kicked = true;
   }
+  if (kicked && run && run.status === 'running') { const b = _budget(run); if (b.runId !== run.id) _saveBudget(id, _budgetFresh(run.id, 1)); }
   const p = kicked ? _kick(id) : (RUNNING.get(id) || null);
   if (kicked) _audit('start', run);
   const done = () => ({ ...view(id), kicked });
@@ -792,6 +900,33 @@ function answer(taskId, { questionId, text, manualDone = false, awaitTurn = fals
   run.updatedAt = run.heartbeatAt;
   _save(run);
   _audit('answer', run, { kind: q.kind });
+  const p = _kick(id);
+  const done = () => ({ ...view(id), kicked: true });
+  return awaitTurn ? p.then(done) : done();
+}
+
+/**
+ * "Continue working": ONE new bounded tranche after a per-attempt limit. Only from the
+ * capped state, only on Nick's press, and it counts as one more run against today's
+ * limit (claimed before anything happens). A repeat press while the tranche runs
+ * returns it as it is — no second claim, no second turn.
+ */
+function continueWorking(taskId, { awaitTurn = false } = {}) {
+  const id = Number(taskId);
+  const run = _settleStale(_load(id));
+  if (!run || run.unreadable) return { ok: false, status: 404, error: 'There is no run for this task.' };
+  if (run.status === 'running') { const p = RUNNING.get(id); const done = () => ({ ...view(id), kicked: false }); return awaitTurn && p ? p.then(done) : done(); }
+  if (run.status !== 'capped') return { ok: false, status: 409, error: 'NEURO has not paused at a limit on this task — there is nothing to continue.' };
+  const d = deps(); const s = d.settings;
+  if (!s.enabled()) return { ok: false, status: 409, limit: 'disabled', error: 'Do this is switched off. Turn it on in Settings → AI & SAiM → Anthropic.' };
+  const c = s.claimRun();
+  if (!c.ok) { _audit('refused-limit', run, { limit: c.limit, continuation: true }); return { ok: false, status: 429, limit: c.limit, resetsAt: c.resetsAt, error: c.say }; }
+  const prev = _budget(run);
+  _saveBudget(id, _budgetFresh(run.id, (prev.tranche || 1) + 1));
+  run.status = 'running'; delete run.cap; run.error = null; run.heartbeatAt = _iso(d.now()); run.updatedAt = run.heartbeatAt;
+  _step(run, 'note', `You pressed Continue working (part ${(prev.tranche || 1) + 1}).`);
+  _save(run);
+  _audit('continue', run, { tranche: (prev.tranche || 1) + 1 });
   const p = _kick(id);
   const done = () => ({ ...view(id), kicked: true });
   return awaitTurn ? p.then(done) : done();
@@ -1091,7 +1226,7 @@ function activeRuns() {
 }
 
 module.exports = {
-  workspaceOf, questionOverlap,
+  workspaceOf, questionOverlap, continueWorking, MAX_READ_CHARS,
   CONTRACT, STATUS, QUESTION_KINDS, OUTPUT_KINDS, TOOLS,
   view, start, answer, stop, activeRuns, prepareSave, handoffPreview, handoff, budgetView,
   sensitivityOf, sourcesFrom, addressesIn, classifyError, policyEnvelope, defaultBrief, fixedContext, composeFinal, screenBrief, BRIEF_RULES, DEFAULT_MODEL,

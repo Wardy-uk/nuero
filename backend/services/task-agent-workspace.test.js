@@ -162,7 +162,8 @@ test('Nick states the date: NEURO records it in the brief and finishes — the d
   assert.ok(lastToolResults.some((r) => /You already asked this and Nick answered: “31 December 2026”/.test(r)), 'the repeat was refused, quoting his answer');
   assert.equal(v.run.status, 'ready');
   assert.equal(v.workspace.need, null, 'no further question');
-  assert.equal(v.workspace.status.label, 'Ready', 'a people-matter brief is not offered for saving');
+  assert.equal(v.workspace.status.label, 'Ready for you');
+  assert.ok(v.run.outputs.every((o) => o.next && o.next.canSave === false), 'a people-matter brief is not offered for saving');
   assert.equal(v.run.answers.length, 1);
 });
 
@@ -176,7 +177,7 @@ test('re-asking IS allowed when new evidence changed the question — and the wo
   assert.match(v.workspace.need.changed, /Chris asked for both/);
 });
 
-test('ordinary task, no question: Ready to save; done is evidence + the draft; the phase was live mid-turn and is gone after', async () => {
+test('ordinary task, no question: Ready for you; done is evidence + the draft; the phase was live mid-turn and is gone after', async () => {
   const phases = [];
   onCreate = async () => { const p = agent.view(T.plain.id); if (p.run) phases.push(p.workspace.status.phase); };
   script = [reply([tu('read_note', { path: PLAN })]), reply([tu('save_output', { kind: 'plan', title: 'Q4 rota cover plan', markdown: '- Week 44\n- Week 47', sources: ['ctx:1'] })]), reply([tu('finish', { completed: ['Drafted the plan'], remaining: [] })]), end()];
@@ -184,16 +185,16 @@ test('ordinary task, no question: Ready to save; done is evidence + the draft; t
   onCreate = null;
   assert.equal(v.run.status, 'ready');
   assert.equal(v.workspace.need, null);
-  assert.equal(v.workspace.status.label, 'Ready to save');
+  assert.equal(v.workspace.status.label, 'Ready for you');
+  assert.ok(v.run.outputs.some((o) => o.next && o.next.canSave), 'its draft can be saved');
   assert.equal(v.workspace.status.phase, null);
   assert.match(v.workspace.done[0].say, /Checked the permitted evidence \(1 source\)/);
   assert.match(v.workspace.done[1].say, /Prepared a private plan: “Q4 rota cover plan”/);
-  assert.ok(phases.includes('Reading the task'), `phase seen while running: ${phases}`);
-  assert.ok(phases.includes('Checking evidence'));
+  assert.ok(phases.includes('Checking evidence'), `phase seen while running: ${phases}`);
   assert.equal(db.getState(`task_agent_phase:${T.plain.id}`), null, 'phase cleared');
 });
 
-test('dedupe: a search is not repeated within the attempt (even across turns); a note is never read twice in one turn', async () => {
+test('dedupe: a search is not repeated within the attempt (even across turns); a note is never read twice in one attempt', async () => {
   searches.length = 0; lastToolResults.length = 0;
   script = [
     reply([tu('search_vault', { query: 'leave week 47' })]),
@@ -206,21 +207,21 @@ test('dedupe: a search is not repeated within the attempt (even across turns); a
   let v = await agent.start(T.dedupe.id, { awaitTurn: true });
   assert.equal(searches.length, 1, 'the identical search ran once');
   assert.ok(lastToolResults.some((r) => /already ran this search/.test(r)));
-  assert.ok(lastToolResults.some((r) => /already read this note in this step/.test(r)));
+  assert.ok(lastToolResults.some((r) => /already read this note in this attempt/.test(r)));
   script = [reply([tu('search_vault', { query: 'leave week 47' })]), reply([tu('save_output', { kind: 'plan', title: 'Week 47 cover', markdown: '- Sam covers' })]), reply([tu('finish', { completed: ['Plan'], remaining: [] })]), end()];
   v = await agent.answer(T.dedupe.id, { questionId: v.workspace.need.id, text: 'Sam', awaitTurn: true });
   assert.equal(searches.length, 1, 'not re-run in the next turn of the same attempt');
   assert.equal(v.run.steps.filter((s) => s.kind === 'read').length, 1, 'one read step for the note');
 });
 
-test('exploration is capped: past the limit the tools say "you have enough", and the workspace says NEURO stopped exploring', async () => {
+test('exploration is capped PER ATTEMPT: the 4th search is refused ("you have enough"), and the workspace says NEURO stopped exploring', async () => {
   searches.length = 0; lastToolResults.length = 0;
   script = [
-    reply([tu('search_vault', { query: 'rota one' })]), reply([tu('search_vault', { query: 'rota two' })]), reply([tu('search_vault', { query: 'rota three' })]),
+    reply([tu('search_vault', { query: 'rota one' })]), reply([tu('search_vault', { query: 'rota two' })]), reply([tu('search_vault', { query: 'rota three' })]), reply([tu('search_vault', { query: 'rota four' })]),
     reply([tu('save_output', { kind: 'investigation', title: 'Rota history', markdown: '- found two notes' })]), reply([tu('finish', { completed: ['Summarised'], remaining: [] })]), end(),
   ];
   const v = await agent.start(T.cap.id, { awaitTurn: true });
-  assert.equal(searches.length, 2, 'at most two searches a turn');
+  assert.equal(searches.length, 3, 'at most three searches an attempt (the default)');
   assert.ok(lastToolResults.some((r) => /You have enough to work with/.test(r)));
   assert.equal(v.run.enough, true);
   assert.match(v.workspace.status.enough, /stopped exploring once it had enough/);

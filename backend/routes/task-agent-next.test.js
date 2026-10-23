@@ -393,7 +393,7 @@ for (const [label, thrown, kind] of [
     v = await state(id);
     assert.equal(v.run.status, 'ready');
     assert.deepEqual(v.run.outputs.map((o) => o.title), ['Whole']);
-    assert.equal(seen.length - n0, 3, 'one clean turn');
+    assert.equal(seen.length - n0, 2, 'one clean turn (no request is sent after finish/ask — it only delivered a tool result)');
     const again = await press(id);
     assert.equal(again.json.kicked, false, 'and no duplicate turn after it');
   });

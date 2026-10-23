@@ -41,3 +41,8 @@
 .tas__status--enabled { border-left-color: var(--success, #3fb950); }
 .tas__status--needs-key, .tas__status--blocked { border-left-color: var(--warning, #d29922); }
 .tas__unsaved { color: var(--warning, #d29922); margin: 6px 0 0; }
+/* Do this attempt limits (advanced) */
+.tas__fold { margin: 14px 0 6px; }
+.tas__fold summary { cursor: pointer; font-weight: 600; }
+.tas__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px 18px; margin-top: 8px; }
+.tas__field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }

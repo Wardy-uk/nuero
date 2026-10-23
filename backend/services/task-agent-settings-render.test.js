@@ -160,3 +160,26 @@ test('a failed connection test shows Anthropic\'s own reason', () => {
   const r = view(S({ configured: true }), { test: { stage: null, result: { ok: false, error: 'Anthropic refused the request (400).', anthropic: { type: 'invalid_request_error', message: 'something specific' }, model: 'claude-sonnet-4-6', ledger: null } } });
   assert.match(r, /Anthropic said: invalid_request_error — something specific/);
 });
+
+test('Do this attempt limits: a folded advanced disclosure, every limit with its rule and default, errors per field', () => {
+  const attemptRules = {
+    maxRounds: { label: 'Model rounds per attempt', say: 'From 2 to 20.' }, maxNotes: { label: 'Source notes per attempt', say: 'From 1 to 20.' },
+    maxSearches: { label: 'Extra searches per attempt', say: 'From 0 to 10.' }, maxInputTokens: { label: 'Input tokens per attempt', say: 'From 10000 to 400000.' },
+    maxAttemptUsd: { label: 'Cost per attempt ($)', say: 'From $0.10.' }, maxOutputTokens: { label: 'Output tokens per round', say: 'From 500 to 8000.' },
+  };
+  const attempt = { maxRounds: 8, maxNotes: 6, maxSearches: 3, maxInputTokens: 80000, maxAttemptUsd: 2, maxOutputTokens: 4000 };
+  const s = S({ attempt, attemptDefaults: attempt, attemptRules, attemptSay: 'These bound ONE attempt, separately from the daily budget and run limit.' });
+  const h = strip(renderToString(React.createElement(TS.TaskAgentSettingsView, {
+    s, draft: { enabled: false, model: s.model, dailyUsd: '1.00', dailyRuns: '10', attempt: { maxRounds: '8', maxNotes: '6', maxSearches: '3', maxInputTokens: '80000', maxAttemptUsd: '2.00', maxOutputTokens: '4000' } },
+    setDraft: noop, keyText: '', setKeyText: noop, busy: false, result: null, errors: [{ field: 'attempt.maxRounds', error: 'From 2 to 20.' }],
+    onSave: noop, onSaveKey: noop, onClearKey: noop, test: { stage: null, estimateUsd: null, result: null }, onTestAsk: noop, onTestConfirm: noop, onTestCancel: noop,
+  })));
+  assert.match(h, /<details class="tas__fold" data-tas-attempt="true"><summary>Do this attempt limits \(advanced\)<\/summary>/, 'folded by default');
+  for (const r of Object.values(attemptRules)) assert.ok(h.includes(r.label), r.label);
+  assert.match(h, /Default 80000\./);
+  assert.match(h, /value="2\.00"/);
+  assert.match(h, /separately from the daily budget/);
+  assert.match(h, /<p class="tas__err">From 2 to 20\.<\/p>/);
+  assert.equal(TS.changedAttempt(s, { attempt: { maxRounds: '8', maxAttemptUsd: '2.00' } }).maxRounds, undefined, 'unchanged values are not sent');
+  assert.deepEqual(TS.changedAttempt(s, { attempt: { maxRounds: '10' } }), { maxRounds: '10' });
+});

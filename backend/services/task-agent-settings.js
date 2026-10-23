@@ -45,6 +45,39 @@ const CAP_SAY = 'These limits are enforced for new Do this runs: a run, or its n
 const CAP_SAY_DISABLED = 'These limits are configured. They are enforced for new Do this runs once Do this is enabled. No task attempts can start while Do this is disabled. They apply only to Do this, and are independent of the wider AI gate, which is still in shadow mode and blocks nothing.';
 const KEY_SAY = 'Anthropic key saved. This is configuration only: it does not turn Do this on.';
 // Stated on screen before save and enforced here (never rounded silently).
+// ── per-ATTEMPT work budget (23 Oct 2026) ─────────────────────────────────────
+// Separate from the DAILY allowance above: however generous the day is, ONE attempt
+// (one "tranche" of work, until it stops or Nick presses Continue working) is bounded,
+// and every bound is checked by the server BEFORE a model request is sent.
+const ATTEMPT_DEFAULTS = Object.freeze({ maxRounds: 8, maxNotes: 6, maxSearches: 3, maxInputTokens: 80000, maxAttemptUsd: 2.0, maxOutputTokens: 4000 });
+const ATTEMPT_BOUNDS = Object.freeze({
+  maxRounds: { min: 2, max: 20, int: true, label: 'Model rounds per attempt', say: 'How many model requests one attempt may make (each read, search or draft round is one). From 2 to 20.' },
+  maxNotes: { min: 1, max: 20, int: true, label: 'Source notes per attempt', say: 'How many notes NEURO may open in full in one attempt (each is cut to a bounded excerpt before it enters the prompt). From 1 to 20.' },
+  maxSearches: { min: 0, max: 10, int: true, label: 'Extra searches per attempt', say: 'Vault searches beyond the task’s linked notes. From 0 to 10.' },
+  maxInputTokens: { min: 10000, max: 400000, int: true, label: 'Input tokens per attempt', say: 'The total the model may read across all requests in one attempt (prompt + evidence + its own earlier rounds). A whole number from 10000 to 400000 (no commas).' },
+  maxAttemptUsd: { min: 0.1, max: MAX_USD, int: false, label: 'Cost per attempt ($)', say: `The most one attempt may cost, judged on each request’s worst case before it is sent. From $0.10 to $${MAX_USD}, two decimals.` },
+  maxOutputTokens: { min: 500, max: 8000, int: true, label: 'Output tokens per round', say: 'The longest single reply the model may write in one round. A whole number from 500 to 8000.' },
+});
+/** PURE. One attempt limit, refused (never clamped) outside its bounds. */
+function parseAttempt(field, v) {
+  const b = ATTEMPT_BOUNDS[field];
+  if (!b) return { error: 'Unknown limit.' };
+  if (typeof v === 'boolean' || v == null || v === '') return { error: `Enter a value. ${b.say}` };
+  const t = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : String(v).trim().replace(/_/g, '');
+  const re = b.int ? /^\d+$/ : /^\d+(\.\d{1,2})?$/;
+  if (!re.test(t)) return { error: b.say };
+  const n = Number(t);
+  if (n < b.min || n > b.max) return { error: b.say };
+  return { value: b.int ? n : Math.round(n * 100) / 100 };
+}
+function _attemptFrom(a) {
+  const out = { ...ATTEMPT_DEFAULTS };
+  for (const k of Object.keys(ATTEMPT_DEFAULTS)) { if (a && a[k] != null) { const r = parseAttempt(k, a[k]); if (r.value != null) out[k] = r.value; } }
+  return out;
+}
+/** The current per-attempt limits (defaults where none saved). */
+function attemptLimits() { return { ..._settings().attempt }; }
+
 const LIMIT_RULES = Object.freeze({
   dailyUsd: `A dollar amount from $0.01 to $${MAX_USD}, at most two decimal places (for example 1.5 or 1.50). Use a full stop for decimals.`,
   dailyRuns: `A whole number of runs from 1 to ${MAX_RUNS}.`,
@@ -72,7 +105,7 @@ function deps() {
 function _settings() {
   let raw = null;
   try { raw = db.getState(SETTINGS_KEY); } catch { raw = null; }
-  if (!raw) return { ...DEFAULTS };
+  if (!raw) return { ...DEFAULTS, attempt: { ...ATTEMPT_DEFAULTS } };
   try {
     const s = JSON.parse(raw);
     return {
@@ -80,9 +113,10 @@ function _settings() {
       model: MODELS.some((m) => m.id === s.model) ? s.model : DEFAULTS.model,
       dailyUsd: Number.isFinite(s.dailyUsd) && s.dailyUsd > 0 ? s.dailyUsd : DEFAULTS.dailyUsd,
       dailyRuns: Number.isInteger(s.dailyRuns) && s.dailyRuns > 0 ? s.dailyRuns : DEFAULTS.dailyRuns,
+      attempt: _attemptFrom(s.attempt),
       updatedAt: s.updatedAt || null,
     };
-  } catch { return { ...DEFAULTS, unreadable: true }; }
+  } catch { return { ...DEFAULTS, attempt: { ...ATTEMPT_DEFAULTS }, unreadable: true }; }
 }
 
 /** The key, for the provider call only. Never returned by a route. */
@@ -265,6 +299,10 @@ function read() {
     capSay: s.enabled ? CAP_SAY : CAP_SAY_DISABLED,
     credentialSay: configured() ? KEY_SAY : null,
     limitRules: { ...LIMIT_RULES },
+    attempt: { ...s.attempt },
+    attemptDefaults: { ...ATTEMPT_DEFAULTS },
+    attemptRules: Object.fromEntries(Object.entries(ATTEMPT_BOUNDS).map(([k, b]) => [k, { label: b.label, say: b.say, min: b.min, max: b.max }])),
+    attemptSay: 'These bound ONE attempt, separately from the daily budget and run limit. NEURO checks them before every model request; when one is reached it stops cleanly, keeps what it prepared, and waits for you to press Continue working (which counts as another run).',
     notice: NOTICE,
     storage: 'server-plaintext-temporary',
     unreadable: Boolean(s.unreadable),
@@ -273,7 +311,7 @@ function read() {
   return view;
 }
 
-const ALLOWED = new Set(['enabled', 'model', 'dailyUsd', 'dailyRuns', 'apiKey', 'clearKey']);
+const ALLOWED = new Set(['enabled', 'model', 'dailyUsd', 'dailyRuns', 'apiKey', 'clearKey', 'attempt']);
 
 /**
  * Save. Omitted fields are unchanged. Errors name the field and nothing is written
@@ -284,7 +322,15 @@ function save(body = {}) {
   const errors = [];
   for (const k of Object.keys(body || {})) if (!ALLOWED.has(k)) errors.push({ field: k, error: 'Unexpected field.' });
   const s = _settings();
-  const next = { enabled: s.enabled, model: s.model, dailyUsd: s.dailyUsd, dailyRuns: s.dailyRuns };
+  const next = { enabled: s.enabled, model: s.model, dailyUsd: s.dailyUsd, dailyRuns: s.dailyRuns, attempt: { ...s.attempt } };
+  if (body.attempt !== undefined) {
+    if (!body.attempt || typeof body.attempt !== 'object' || Array.isArray(body.attempt)) errors.push({ field: 'attempt', error: 'Attempt limits must be an object.' });
+    else for (const [k, v] of Object.entries(body.attempt)) {
+      if (!ATTEMPT_BOUNDS[k]) { errors.push({ field: `attempt.${k}`, error: 'Unexpected field.' }); continue; }
+      const r = parseAttempt(k, v);
+      if (r.error) errors.push({ field: `attempt.${k}`, error: r.error }); else next.attempt[k] = r.value;
+    }
+  }
   if (body.enabled !== undefined) { if (typeof body.enabled !== 'boolean') errors.push({ field: 'enabled', error: 'Must be on or off.' }); else next.enabled = body.enabled; }
   if (body.model !== undefined) { if (!MODELS.some((m) => m.id === body.model)) errors.push({ field: 'model', error: 'Choose one of the supported models.' }); else next.model = body.model; }
   if (body.dailyUsd !== undefined) {
@@ -314,6 +360,7 @@ function save(body = {}) {
   if (next.model !== s.model) changed.push('model');
   if (next.dailyUsd !== s.dailyUsd) changed.push('dailyUsd');
   if (next.dailyRuns !== s.dailyRuns) changed.push('dailyRuns');
+  for (const k of Object.keys(ATTEMPT_DEFAULTS)) if (next.attempt[k] !== s.attempt[k]) changed.push(`attempt.${k}`);
   if (newKey) { db.setState(SECRET_KEY, newKey); changed.push('apiKey'); }
   if (body.clearKey === true && configured()) { db.setState(SECRET_KEY, ''); changed.push('apiKey-cleared'); }
   db.setState(SETTINGS_KEY, JSON.stringify({ ...next, updatedAt: new Date(deps().now()).toISOString() }));
@@ -426,6 +473,7 @@ function model() { return _settings().model; }
 module.exports = {
   read, save, apiKey, testConnection, testEstimate, redact, configured, enabled, model,
   claimRun, budgetOpen, guardRequest, stepUsd, runsToday, spendToday,
+  attemptLimits, parseAttempt, ATTEMPT_DEFAULTS, ATTEMPT_BOUNDS,
   TaskAgentLimitError, MODELS, DEFAULTS, NOTICE, CAP_SAY, CAP_SAY_DISABLED, KEY_SAY, LIMIT_RULES, CLASSES,
   parseUsd, parseRuns, statusOf, anthropicSaid,
   _internals: { setDeps: (d) => { _deps = d ? { ...deps(), ...d } : null; }, SETTINGS_KEY, SECRET_KEY, RUNS_KEY, midnightAfter: _midnightAfter },

@@ -94,6 +94,25 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
         </div>
       </div>
 
+      {s.attempt && s.attemptRules && (
+        <details className="tas__fold" data-tas-attempt>
+          <summary>Do this attempt limits (advanced)</summary>
+          <p className="tas__muted">{s.attemptSay}</p>
+          <div className="tas__grid">
+            {Object.entries(s.attemptRules).map(([k, rule]) => (
+              <div className="tas__field" key={k}>
+                <label htmlFor={`tas-att-${k}`}>{rule.label}</label>
+                <input id={`tas-att-${k}`} className="tas__input tas__input--num" type="text" inputMode="decimal" autoComplete="off"
+                  value={(draft.attempt || {})[k] ?? ''} disabled={busy}
+                  onChange={(e) => setDraft({ ...draft, attempt: { ...(draft.attempt || {}), [k]: e.target.value } })} aria-describedby={`tas-att-${k}-rule`} />
+                <p id={`tas-att-${k}-rule`} className="tas__muted" data-tas-rule={`attempt.${k}`}>{rule.say}{s.attemptDefaults && s.attemptDefaults[k] != null ? ` Default ${s.attemptDefaults[k]}.` : ''}</p>
+                {fieldError(errors, `attempt.${k}`) && <p className="tas__err">{fieldError(errors, `attempt.${k}`)}</p>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
       <div className="tas__actions">
         <button type="button" className="btn btn-primary" onClick={onSave} disabled={busy}>Save settings</button>
         {result && <span className={`tas__result tas__result--${result.ok ? 'ok' : 'bad'}`} role="status" data-tas-result>{result.say}</span>}
@@ -143,7 +162,18 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
 }
 
 // The draft shows the SAVED values exactly (1.5 stays "1.50", never "15").
-const draftOf = (s) => ({ enabled: Boolean(s && s.enabled), model: (s && s.model) || 'claude-sonnet-4-6', dailyUsd: s ? Number(s.dailyUsd).toFixed(2) : '1.00', dailyRuns: s ? String(s.dailyRuns) : '10' });
+const draftOf = (s) => ({ enabled: Boolean(s && s.enabled), model: (s && s.model) || 'claude-sonnet-4-6', dailyUsd: s ? Number(s.dailyUsd).toFixed(2) : '1.00', dailyRuns: s ? String(s.dailyRuns) : '10',
+  attempt: s && s.attempt ? Object.fromEntries(Object.entries(s.attempt).map(([k, v]) => [k, k === 'maxAttemptUsd' ? Number(v).toFixed(2) : String(v)])) : {} });
+/** PURE. The attempt limits that differ from what is saved (sent as typed; the server refuses, never clamps). */
+export function changedAttempt(s, draft) {
+  const out = {};
+  for (const [k, v] of Object.entries((draft && draft.attempt) || {})) {
+    const saved = s && s.attempt ? s.attempt[k] : undefined;
+    const t = String(v).trim();
+    if (!(t !== '' && Number(t) === Number(saved) && /^\d+(\.\d{1,2})?$/.test(t))) out[k] = t;
+  }
+  return out;
+}
 
 /** PURE. Which fields on screen differ from what NEURO has saved. */
 export function unsavedFields(s, draft) {
@@ -155,6 +185,7 @@ export function unsavedFields(s, draft) {
   if (!(/^\d+(\.\d{1,2})?$/.test(u) && Number(u) === Number(s.dailyUsd))) out.push('daily budget');
   const r = String(draft.dailyRuns).trim();
   if (!(/^\d+(\.0+)?$/.test(r) && Number(r) === Number(s.dailyRuns))) out.push('daily run limit');
+  if (Object.keys(changedAttempt(s, draft)).length) out.push('attempt limits');
   return out;
 }
 
@@ -190,7 +221,10 @@ export default function TaskAgentSettings() {
 
   // The typed text goes as-is; the server parses it and refuses anything it would
   // otherwise have to round or reinterpret.
-  const onSave = () => post({ enabled: draft.enabled, model: draft.model, dailyUsd: String(draft.dailyUsd).trim(), dailyRuns: String(draft.dailyRuns).trim() }, 'Saved.');
+  const onSave = () => {
+    const att = changedAttempt(s, draft);
+    return post({ enabled: draft.enabled, model: draft.model, dailyUsd: String(draft.dailyUsd).trim(), dailyRuns: String(draft.dailyRuns).trim(), ...(Object.keys(att).length ? { attempt: att } : {}) }, 'Saved.');
+  };
   const onSaveKey = async () => {
     const k = keyText;
     setKeyText(''); // never keep it in the page longer than the request

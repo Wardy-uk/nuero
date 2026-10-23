@@ -54,10 +54,10 @@ router.get('/settings', (req, res) => {
 router.post('/settings', (req, res) => {
   try {
     if (!owner(req, res)) return;
-    const bad = strict(req.body, ['enabled', 'model', 'dailyUsd', 'dailyRuns', 'apiKey', 'clearKey']);
+    const bad = strict(req.body, ['enabled', 'model', 'dailyUsd', 'dailyRuns', 'apiKey', 'clearKey', 'attempt']);
     if (bad) return res.status(400).json({ ok: false, errors: [{ field: null, error: bad }] });
-    const { enabled, model, dailyUsd, dailyRuns, apiKey, clearKey } = req.body;
-    const r = settings().save({ enabled, model, dailyUsd, dailyRuns, apiKey, clearKey });
+    const { enabled, model, dailyUsd, dailyRuns, apiKey, clearKey, attempt } = req.body;
+    const r = settings().save({ enabled, model, dailyUsd, dailyRuns, apiKey, clearKey, attempt });
     if (!r.ok) return res.status(r.status || 400).json({ ok: false, errors: r.errors, settings: r.settings });
     // Which fields changed — never a value, and never anything about the key beyond "changed".
     try { require('../db/database').logActivity('task_agent_settings', { event: 'saved', changed: r.changed }); } catch { /* never fails the save */ }
@@ -109,6 +109,16 @@ router.post('/tasks/:taskId/answer', (req, res) => {
 });
 
 // POST /api/task-agent/tasks/:taskId/stop — Nick stops the Do this run; its outputs and prepared actions are kept as they are. Owner only.
+// POST /api/task-agent/tasks/:taskId/continue — Continue working after a per-attempt limit: one new bounded part, counted as a run.
+router.post('/tasks/:taskId/continue', async (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const bad = strict(req.body, []);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    send(res, await svc().continueWorking(req.params.taskId));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 router.post('/tasks/:taskId/stop', (req, res) => {
   try {
     if (!owner(req, res)) return;

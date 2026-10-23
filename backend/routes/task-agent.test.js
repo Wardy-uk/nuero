@@ -184,7 +184,7 @@ test('ordinary task: reads linked context, saves real outputs, finishes without 
   assert.equal(run.understanding, 'Plan cover for Q4 using the rota notes.');
   assert.equal(run.usage.model, 'claude-sonnet-4-6');
   assert.ok(run.usage.promptTokens >= 1200 * 3 && run.usage.costUsd > 0, 'tokens and cost recorded');
-  assert.equal(seen.length - n0, 4, 'four provider requests (one gate ticket each)');
+  assert.equal(seen.length - n0, 3, 'three provider requests, one gate ticket each (no request is sent after finish/ask — it only delivered a tool result)');
   assert.ok(seen.slice(n0).some((p) => p.includes('Cover gaps: weeks 44 and 47')), 'the note text reached the model only through read_note');
   const act = db.all("SELECT event_data FROM activity_log WHERE event_type = 'task_agent'").map((x) => x.event_data).join('\n');
   assert.match(act, /"model":"claude-sonnet-4-6"/);
@@ -268,7 +268,7 @@ test('ambiguity: one question with options; the answer continues the same run; a
   assert.equal(run.status, 'ready');
   assert.equal(run.answers.length, 1);
   const n1 = seen.length;
-  assert.equal(n1 - n0, 3);
+  assert.equal(n1 - n0, 2, 'answer turn (no request is sent after finish/ask — it only delivered a tool result)');
   const again = await call('POST', `/tasks/${T.amb.id}/answer`, { questionId: qid, text: 'Weekly risk report' });
   assert.equal(again.status, 200);
   assert.equal(again.json.kicked, false);
@@ -351,7 +351,7 @@ test('repeated presses while running, awaiting or settled never duplicate work',
   release();
   await agent._internals.waitFor(T.idem.id);
   const n1 = seen.length;
-  assert.equal(n1 - n0, 3, 'one run of the loop, not three');
+  assert.equal(n1 - n0, 2, 'one run of the loop, not three (no request is sent after finish/ask — it only delivered a tool result)');
   const awaiting = await call('POST', `/tasks/${T.idem.id}/start`, {});
   assert.equal(awaiting.json.kicked, false, 'awaiting an answer: the press resumes the same attempt and calls nothing');
   assert.equal(awaiting.json.run.status, 'needs-answer');
@@ -381,7 +381,7 @@ test('fresh attempt only on an explicit press, and the old run is kept in histor
   script = [reply([toolUse('finish', { completed: ['Again'], remaining: [] })]), reply([{ type: 'text', text: 'ok' }], 'end_turn')];
   const r = await press(T.plain.id, { fresh: true });
   assert.equal(r.json.kicked, true);
-  assert.equal(seen.length - n0, 2);
+  assert.equal(seen.length - n0, 1, 'fresh attempt (no request is sent after finish/ask — it only delivered a tool result)');
   assert.ok(JSON.parse(db.getState(`task_agent_history:${T.plain.id}`)).length === 1);
 });
 

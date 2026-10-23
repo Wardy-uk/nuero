@@ -176,9 +176,9 @@ test.before(async () => {
   // Queued in order: T.hr2's answer turn (clicked in the browser), then the plain press.
   script = [
     reply([tu('save_output', { kind: 'brief', title: 'Heidi Example – End Date Decision Brief', markdown: brief.replace('Open — yours to decide.', 'Nick: 31 December 2026 (stated 23 Oct 2026).') })]),
-    reply([tu('finish', { completed: ['Recorded your decision in the private brief'], remaining: ['Issue the letter yourself, when you are ready'] })]), end(),
+    reply([tu('finish', { completed: ['Recorded your decision in the private brief'], remaining: ['Issue the letter yourself, when you are ready'] })]),
     reply([tu('read_note', { path: PLAN })]), reply([tu('save_output', { kind: 'plan', title: 'Q4 rota cover plan', markdown: '- Week 44: early/late split\n- Week 47: swap 2nd line', sources: ['ctx:1'] })]),
-    reply([tu('finish', { completed: ['Drafted the cover plan'], remaining: ['Publish the rota — your step'] })]), end(),
+    reply([tu('finish', { completed: ['Drafted the cover plan'], remaining: ['Publish the rota — your step'] })]),
   ];
   results.callsBeforeBrowser = calls;
   const bin = electronBinary();
@@ -408,7 +408,7 @@ test('answering the decision: NEURO records it in the brief, is Ready, and asks 
   const a = s.steps[0];
   assert.ok(a.clicked && a.ok);
   assert.equal(a.status, 'ready');
-  assert.equal(a.statusLine, 'Ready');
+  assert.equal(a.statusLine, 'Ready for you');
   assert.equal(a.questions, 0);
   concise(a, 'answered');
   assert.match(a.agentHtml, /31 December 2026 \(stated 23 Oct 2026\)/);
@@ -428,21 +428,21 @@ test('a genuine ambiguity: one question with choices and Other — explain, what
   assert.ok(o.clicked && o.ok, 'Other opens an explain field');
 });
 
-test('a normal task with no question: a double press makes ONE run; Ready to save; nothing asked (desktop, NEURO phone, SAiM phone)', (t) => {
+test('a normal task with no question: a double press makes ONE run; Ready for you; nothing asked (desktop, NEURO phone, SAiM phone)', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   const [p] = sizes('plain-press');
   const r = p.steps[0];
   assert.ok(r.clicked && r.ok);
   for (const s of [r, sizes('plain-neuro-phone')[0], sizes('plain-saim-phone')[0]]) {
     concise(s, 'plain ' + s.size);
-    assert.equal(s.statusLine, 'Ready to save');
+    assert.equal(s.statusLine, 'Ready for you');
     assert.equal(s.questions, 0);
     assert.match(s.done[0], /Checked the permitted evidence \(1 source\)/);
     assert.match(s.done[1], /Prepared a private plan: “Q4 rota cover plan”/);
     clean(s, 'plain');
   }
-  // the plain press used exactly the 4 scripted model calls queued for it (+ the hr2 answer turn's 3)
-  assert.equal(calls - results.callsBeforeBrowser, 7, 'no duplicate run from the double press');
+  // the plain press used exactly its 3 model calls (+ the hr2 answer turn's 2); nothing is sent after finish
+  assert.equal(calls - results.callsBeforeBrowser, 5, 'answer turn (2) + one plain run (3): no duplicate run from the double press');
 });
 
 test('kiosk: no workspace at all', (t) => {

@@ -96,7 +96,7 @@ test('outputs folded, an Actions handoff, and the trace CLOSED by default with i
     summary: { completed: ['Drafted the plan'], remaining: ['Publish it'] },
     usage: { model: 'claude-sonnet-5', promptTokens: 3600, completionTokens: 900, costUsd: 0.0162 },
   }));
-  assert.match(h, /Ready for your approval/);
+  assert.match(h, /Ready for you/);
   assert.match(h, /Prepared an email for your approval on Actions — not sent\./);
   assert.match(h, /private — only you see these/);
   assert.match(h, /<details class="tagent__out"(?![^>]*open)/, 'drafts start folded');

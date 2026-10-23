@@ -181,8 +181,9 @@ handoff, with no second desk request. A run interrupted by a restart resumes onc
 `view()` now also returns `workspace` (`task-agent.workspaceOf`, PURE), composed by the server
 so the desktop card, the NEURO phone and SAiM say the same words. The card opens with exactly:
 
-1. **Status** — one line (`Working on it · Checking evidence…`, `Waiting for your decision`,
-   `Waiting for your answer`, `Ready to save`, `Ready`, `Blocked — <reason>`) and one line on
+1. **Status** — one line (`Working on it · Checking evidence…` / `· Preparing brief…`,
+   `Waiting for your decision`, `Waiting for your answer`, `Ready for you`,
+   `Paused at this attempt’s limit`, `Blocked — <reason>`) and one line on
    what NEURO will and won't do (a people matter: *"It will not decide, contact anyone, promise
    anything or change anything."*). The block has a fixed minimum height, so phase changes do
    not move the page.
@@ -209,18 +210,97 @@ attempt's audit: append-only, up to 500 entries.
   (never the generic sentence), and only until Nick has given an authority answer — after that
   the run finishes with the updated brief. The prompt forbids choosing or presenting the
   decision as settled.
-- Searches are deduped across the whole attempt (a repeat returns the earlier results without
-  searching); a note is never read twice in one turn, and a re-read in a later turn adds no step.
-- Exploration is capped per turn (6 search/read calls, at most 2 searches); past the cap the
-  tools answer "You have enough… write the output now", and the card says NEURO stopped
-  exploring once it had enough. The prompt starts from linked context first.
-- The live phase (`Reading the task`, `Checking evidence`, `Preparing the brief`,
-  `Preparing drafts`) is kept in `agent_state.task_agent_phase:<taskId>` during a turn (the turn
-  itself only commits when it completes) and cleared afterwards; the card polls every 2.5 s.
+- Searches are deduped across the whole attempt, continuations included (a repeat returns the
+  earlier results without searching). A note is never read twice in one part; a later part may
+  re-open one (the model keeps no text between turns), and that is not a new note.
+- Exploration is bounded by the per-attempt work budget (below).
+- Once the model has asked its question or called finish, no further model request is sent.
+  That request used to happen only to deliver a tool result, and it was paid for.
+- Compact live progress only: `Checking evidence` or `Preparing brief`. It is kept in
+  `agent_state.task_agent_phase:<taskId>` during a turn and cleared after; the card polls every
+  2.5 s. The internal steps never stream into the card.
+
+## Per-attempt work budget (23 Oct 2026 — branch `task-agent-workspace`, NOT deployed)
+
+Why: the live #344 (Heidi) run read ~325,000 input tokens over 5 turns. The daily allowance
+(Nick's **$15/day, 20 runs**, unchanged) bounds the day; nothing bounded one attempt.
+
+**Limits** (Settings → AI & SAiM → Anthropic → *Do this attempt limits (advanced)*, folded):
+
+| Limit | Default | Allowed |
+|---|---|---|
+| Model rounds per attempt | 8 | 2–20 |
+| Source notes opened per attempt | 6 | 1–20 |
+| Extra searches per attempt | 3 | 0–10 |
+| Input tokens per attempt (all requests) | 80,000 | 10,000–400,000 |
+| Cost per attempt (worst case) | $2.00 | $0.10–$50 |
+| Output tokens per round | 4,000 | 500–8,000 |
+
+- A value outside its range, a comma or an unknown field is **refused (400), never clamped**.
+  The save is owner-only (`config.security`, machine-refused, gateway-refused) and is stored
+  beside the daily values without touching them.
+- Only the task agent reads these limits (source-scanned: OpenRouter, ai-routing, chat and
+  VANTAGE never see them).
+
+**"Attempt" = one part:** the work from a press of Do this (or Continue working) until it
+stops. An answer to NEURO's question continues the same part, inside the same budget. Usage
+lives in `agent_state.task_agent_budget:<taskId>` (rounds, notes, searches, actual input tokens,
+actual cost). It is updated after every response, **outside** the transactional turn, so a
+failed or interrupted turn's spend still counts and a restart resumes the same budget.
+
+**Enforced by the server, before each request** (provider `beforeRequest` → graceful stop;
+`onResponse` → actual usage):
+
+1. The daily guard (unchanged; a refusal still fails the step).
+2. The projected request must fit: rounds + 1 ≤ max. Actual input so far, plus this request,
+   must stay within the input budget. This request is taken as the larger of its estimate and
+   the previous request's actual input, because a prompt only grows. Actual cost so far, plus
+   this request's worst case (input + full output at list price), must stay within the cost
+   limit. If it does not fit, **the request is not sent**.
+3. NEURO looks two requests ahead. If only one more will fit, the tool results of this round
+   say *"FINAL ROUND NEXT … save the brief now"*, and search/read are refused, so the last
+   affordable round writes the output instead of collecting marginal evidence.
+4. Notes and searches are counted per part. Past the limit, the tool answers "you have enough —
+   write it now". A note enters the prompt as a bounded excerpt (≤ 6,000 characters, flagged
+   `truncated`), never whole. Linked notes contribute a ≤ 600-character excerpt each, only up to
+   the note limit (the rest are listed by title). The prompt states the remaining budget and
+   says to write as soon as there is enough evidence.
+
+**Graceful stop (`capped`):**
+- The turn's work is committed: drafts, the step log, and what was read and searched.
+- The card says *Paused at this attempt’s limit*, then NEURO's reason (*"NEURO paused because it
+  used this attempt’s 8 model rounds"*), **Done:**, **Remaining:**, and the cost of continuing.
+  It offers ONE control: **Continue working**.
+- Nothing continues automatically. A plain Do this press, a refresh or a restart leaves it
+  paused, with no model call, search or draft.
+
+**Continue working** (`POST /api/task-agent/tasks/:taskId/continue`; owner-only, refused to
+the kiosk, MCP, chat and API token):
+- It works only from `capped`.
+- It claims one daily run first (refused with 429 at the daily run limit; nothing starts).
+- It starts a fresh per-attempt budget (part N+1) and runs exactly one bounded part.
+- The attempt's search log and drafts carry over, so nothing is searched or drafted twice.
+- A second press while the part runs returns it as it is.
+- Its spend counts in the daily ledger like any other.
+
+Proof: `services/task-agent-attempt.test.js` (12, real HTTP + the real provider loop with the SDK
+scripted). It covers:
+- the Settings bounds;
+- a large-note fixture;
+- each limit, including the refused final request;
+- the final-round warning;
+- the capped state and Continue working (one part, one run, no repeated search);
+- press, refresh and restart;
+- the daily 20-run refusal;
+- no restricted, excluded, Archive or `Security review/` content in any prompt.
+
+Four guards were mutation-checked. Real screens: `test-support/bundle-e2e.js` (the built NEURO
+and SAiM bundles) shows the capped state on desktop, NEURO phone and SAiM phone, then one press
+of Continue working → Ready, with the model calls exactly as scripted.
 
 Unchanged: the tools, authority, people/employment restrictions, owner-only routes, the kiosk /
 MCP / chat / API-token refusals. Proof: `services/task-agent-workspace.test.js` (8; repeat-question,
-exploration cap and ask-once guards mutation-checked) and `services/task-agent-workspace-browser.test.js`
+search cap and ask-once guards mutation-checked) and `services/task-agent-workspace-browser.test.js`
 (8, Electron: the Heidi employment case on desktop, NEURO phone and SAiM phone, the answer,
 refresh, a genuine ambiguity, a normal task and a double press, the kiosk; screenshots with
 `TA_SHOTS`).
@@ -405,12 +485,9 @@ SDK's real error shape in `task-agent-next.test.js`.
 
 1. **Key and connection — DONE (23 Oct 2026).** Nick saved a workspace-scoped Anthropic key and
    the explicit connection test succeeded. He then turned Do this on and ran it (tasks #344, #334).
-2. **The limits.** Code defaults are $1.00 and 10 runs a day. Nick's intended limits are
-   **$1.50/day and 2 runs/day**. ⚠ The live saved values read **$15 / 20 runs** (saved once,
-   23 Oct 16:53 BST, in the same save that switched Do this on). Nothing shows they were chosen
-   deliberately, so Nick should re-save 1.50 and 2 in Settings. NEURO does not change them.
-   Note: that day's Do this spend was already $2.02 over 2 runs, so a $1.50 limit saved the same
-   day refuses new runs until midnight.
+2. **The limits.** Code defaults are $1.00 and 10 runs a day. **Nick deliberately chose
+   $15/day and 20 runs/day** (confirmed 23 Oct 2026); they are live and NEURO does not change
+   them. One attempt is bounded separately by the per-attempt work budget (above).
 3. **Gate enforcement** (`AI_GATE_MODE`, shared with VANTAGE): unchanged, shadow.
 4. **Stage 2 deployment**, after review (below).
 5. **Evening saves** stay held by the existing off-duty rule (unchanged, deliberately).

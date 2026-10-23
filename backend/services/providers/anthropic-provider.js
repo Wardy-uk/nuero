@@ -55,7 +55,12 @@ function _open(params, options, fallbackClass) {
 async function _create(params, options, fallbackClass) {
   // A caller's own pre-request check (the task agent's hard daily caps). It sees
   // the request's bounds before the gate ticket is opened; throwing stops the call.
-  if (typeof options.beforeRequest === 'function') options.beforeRequest({ model: params.model, maxInputTokens: _inputEstimate(params), maxOutputTokens: params.max_tokens });
+  // It may also return { stop: true, ... } — a GRACEFUL stop (the task agent's per-attempt
+  // budget): the request is not sent and chatWithTools returns what it has so far.
+  if (typeof options.beforeRequest === 'function') {
+    const verdict = options.beforeRequest({ model: params.model, maxInputTokens: _inputEstimate(params), maxOutputTokens: params.max_tokens });
+    if (verdict && verdict.stop) { const e = new Error(verdict.say || 'stopped before the request'); e.name = 'RequestStopped'; e.verdict = verdict; throw e; }
+  }
   const ticket = _open(params, options, fallbackClass);
   try {
     // `requestOptions` (e.g. { timeout, signal }) is the SDK's own per-request
@@ -63,6 +68,7 @@ async function _create(params, options, fallbackClass) {
     const client = _clientFor(options.apiKey);
     const r = options.requestOptions ? await client.messages.create(params, options.requestOptions) : await client.messages.create(params);
     gateCall.close(ticket, { ok: true, model: r.model || params.model, promptTokens: r.usage?.input_tokens, completionTokens: r.usage?.output_tokens });
+    if (typeof options.onResponse === 'function') { try { options.onResponse({ model: r.model || params.model, promptTokens: r.usage?.input_tokens || 0, completionTokens: r.usage?.output_tokens || 0 }); } catch { /* bookkeeping never fails a call */ } }
     return r;
   } catch (e) {
     gateCall.close(ticket, { ok: false, error: e.message });
@@ -263,13 +269,20 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
   let text = '';
 
   for (let round = 0; round < maxRounds; round++) {
-    const response = await _create({
-      model,
-      max_tokens: maxTokens,
-      system: systemPrompt || undefined,
-      messages: convo,
-      tools,
-    }, options, 'chat_tools');
+    let response;
+    try {
+      response = await _create({
+        model,
+        max_tokens: maxTokens,
+        system: systemPrompt || undefined,
+        messages: convo,
+        tools,
+      }, options, 'chat_tools');
+    } catch (e) {
+      // A caller's graceful stop: nothing was sent; keep everything the loop already did.
+      if (e && e.name === 'RequestStopped') return { text, usage, toolCalls, stopped: e.verdict };
+      throw e;
+    }
 
     usage.prompt_tokens += response.usage?.input_tokens || 0;
     usage.completion_tokens += response.usage?.output_tokens || 0;
