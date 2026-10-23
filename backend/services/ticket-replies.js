@@ -79,7 +79,20 @@ function threadText(comments, isMe) {
   }).join('\n\n');
 }
 
-function buildPrompt({ ticket, comments, guidance, visibility, isMe }) {
+/**
+ * What the model may see. ⚠ A PUBLIC draft is built from the PUBLIC thread
+ * only: told in words to treat internal notes as background, the model still
+ * named an engineer and "Amazon SES" from an automation's internal note on
+ * NT-35291 (measured twice, 23 Oct 2026). A rule in the prompt was not enough,
+ * so the internal notes are not in the prompt at all. Anything internal Nick
+ * wants said, he puts in his note. An internal-note draft sees everything.
+ */
+function visibleTo(comments, visibility) {
+  return visibility === 'public' ? (comments || []).filter((c) => c.jsdPublic !== false) : (comments || []);
+}
+
+function buildPrompt({ ticket, comments: allComments, guidance, visibility, isMe }) {
+  const comments = visibleTo(allComments, visibility);
   const name = firstName(ticket.reporter);
   // Measured on NT-35291 (23 Oct 2026): with internal notes in the thread, the
   // first public draft named a colleague and his deadline that appeared ONLY in

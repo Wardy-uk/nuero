@@ -62,14 +62,26 @@ test('the draft prompt carries the golden rules, the thread with who wrote what,
   const j = jira('NT-35291');
   j.comments.push({ id: String(nextId++), author: { accountType: 'atlassian', displayName: 'Hope Agent' }, jsdPublic: false, body: adf('Dev says the cache is stale'), created: '2026-10-23T12:00:00Z' });
   const r = await tr.draft({ key: 'nt-35291', visibility: 'public', guidance: 'fix in testing, next update 5pm' }, j.deps);
+  await tr.draft({ key: 'nt-35291', visibility: 'internal' }, j.deps);
+  assert.ok(j.prompts[1].includes('INTERNAL NOTE — never repeat to the customer'));
   assert.equal(r.ok, true);
   const p = j.prompts[0];
-  for (const s of ['Ownership', "What's happening", 'Timeframes', 'Never invent', 'square brackets', 'fix in testing, next update 5pm', 'CUSTOMER (Anthony Smith)', 'INTERNAL NOTE — never repeat to the customer', 'Anthony', 'PLAIN TEXT ONLY', 'never nested', 'INTERNAL NOTES ARE BACKGROUND ONLY']) {
+  for (const s of ['Ownership', "What's happening", 'Timeframes', 'Never invent', 'square brackets', 'fix in testing, next update 5pm', 'CUSTOMER (Anthony Smith)', 'Anthony', 'PLAIN TEXT ONLY', 'never nested', 'INTERNAL NOTES ARE BACKGROUND ONLY']) {
     assert.ok(p.includes(s), `prompt missing: ${s}`);
   }
   assert.equal(r.promise.dueAt, '2026-10-23T16:00:00.000Z', 'the preview shows the promise in the draft');
   assert.equal(r.willWatch, true);
   assert.equal(j.posts.length, 0, 'drafting posts nothing');
+});
+
+test('a PUBLIC draft never sees internal notes; an internal-note draft does', async () => {
+  const j = jira('NT-35292');
+  j.comments.push({ id: String(nextId++), author: { accountType: 'app', displayName: 'Automation for Jira' }, jsdPublic: false, body: adf('Assigned to Luke Scaife, SES config, ETA 5pm'), created: '2026-10-23T12:00:00Z' });
+  await tr.draft({ key: 'NT-35292', visibility: 'public' }, j.deps);
+  assert.ok(!j.prompts[0].includes('Luke Scaife'), 'internal note leaked into a public draft');
+  assert.ok(j.prompts[0].includes('The forms are still broken'), 'the public thread is still there');
+  await tr.draft({ key: 'NT-35292', visibility: 'internal' }, j.deps);
+  assert.ok(j.prompts[1].includes('Luke Scaife'));
 });
 
 test('a public reply posts once, is read back, sets the promise OPEN and starts watching', async () => {
