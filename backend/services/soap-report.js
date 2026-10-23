@@ -51,6 +51,7 @@
 
 const crypto = require('crypto');
 const db = require('../db/database');
+const reportFixes = require('./report-fixes');
 
 const AMBER_BAND = 20; // weekly-risk's rule: within 20 points of target is amber, further is red
 const STAR_LIMIT_SUCCESS = 6;
@@ -333,11 +334,16 @@ function carriedForward(previousReds, reds) {
   return (previousReds || []).map((r) => ({ key: r.key, text: r.text, green: !now.has(r.key) }));
 }
 
+/** The included fixes this report carries. Read at render time, so including one shows at once. */
+function fixesFor(report) {
+  return reportFixes.forReport(reportFixes.includedForReports(), { from: report.from, to: report.to, shownFrom: addDays(report.from, -7) });
+}
+
 // ── Manual (Nick's words) ────────────────────────────────────────────────────
 
 // Sections Nick may leave out of the sent report. One key per screen section;
 // 'csat' covers CSAT and sentiment, which the screen shows as one card.
-const SECTION_KEYS = ['success', 'star', 'amber', 'red', 'carried', 'perQueue', 'slaDaily', 'ageing', 'volumes',
+const SECTION_KEYS = ['success', 'star', 'amber', 'red', 'carried', 'corrections', 'perQueue', 'slaDaily', 'ageing', 'volumes',
   'csat', 'agents', 'customers', 'winning', 'plan', 'findings', 'leading', 'slm'];
 
 function emptyManual() { return { intro: '', reds: {}, carried: {}, weakest: '', notes: '', excluded: [] }; }
@@ -391,9 +397,12 @@ function blockers(report, manual) {
 
 const fmtPct = (x) => (x && x.pct !== null && x.pct !== undefined ? `${x.pct}%` : '—');
 
-function render(report, manual, { forEmail = false } = {}) {
+function render(report, manual, { forEmail = false, fixes = null } = {}) {
   const m = manual || emptyManual();
   const v = report.verdicts;
+  // Fixes Nick included (services/report-fixes.js). Not verdicts: they never
+  // hold a send, and an approved send carries the words as they were approved.
+  const fx = fixes || { fixed: [], corrections: [], rowNotes: {} };
   // Each line is tagged with the section it belongs to, so a section Nick
   // excluded is dropped whole at the end (heading, body and blank line).
   const L = { rows: [], cur: null, push(...xs) { for (const x of xs) this.rows.push([this.cur, x]); } };
@@ -411,7 +420,8 @@ function render(report, manual, { forEmail = false } = {}) {
   L.cur = 'success';
   L.push('## ✅ Success', '');
   if (v.success.length) for (const s of v.success) L.push(`- ${s.text}`);
-  else L.push('- Nothing met its mark this week.');
+  else if (!fx.fixed.length) L.push('- Nothing met its mark this week.');
+  for (const f of fx.fixed) L.push(`- ${reportFixes.fixedLine(f)}`);
   L.push('');
 
   L.cur = 'star';
@@ -455,11 +465,18 @@ function render(report, manual, { forEmail = false } = {}) {
   const pctOr = (x) => (x === null || x === undefined ? 'no data' : `${x}%`);
   const light = (r) => (r === 'green' ? '🟢' : r === 'amber' ? '🟠' : r === 'red' ? '🔴' : '');
 
+  if (fx.corrections.length) {
+    L.cur = 'corrections';
+    L.push('## Data corrections', '');
+    fx.corrections.forEach((c, i) => L.push(`- ${reportFixes.correctionLine(c, i + 1)}`));
+    L.push('', '_Rows marked [n] below were affected; their figures stand as reported at the time._', '');
+  }
+
   L.cur = 'perQueue';
   L.push('## SLA compliance by queue (this week vs last)', '');
   if (report.perQueue && report.perQueue.length) {
     L.push('| Queue | This week | Last week | Target |', '|---|---|---|---|');
-    for (const q of report.perQueue) L.push(`| ${q.label} | ${light(q.rag)} ${pctOr(q.value)} | ${pctOr(q.was)} | ${q.target !== null ? `${q.target}%` : '—'} |`);
+    for (const q of report.perQueue) L.push(`| ${reportFixes.markLabel(q.label, fx.rowNotes)} | ${light(q.rag)} ${pctOr(q.value)} | ${pctOr(q.was)} | ${q.target !== null ? `${q.target}%` : '—'} |`);
     L.push('', '_"no data" means the queue solved nothing that week._');
   } else L.push(na('perQueue', 'NOVA did not answer'));
   L.push('');
@@ -764,9 +781,10 @@ function view(weekFrom, kind) {
   const sent = sentRecord(weekFrom);
   const locked = isLocked(weekFrom);
   // A sent week shows the words that LEFT, not a re-render that could differ.
-  const markdown = locked && sent && sent.body ? sent.body : render(r, manual);
+  const fixes = fixesFor(r);
+  const markdown = locked && sent && sent.body ? sent.body : render(r, manual, { fixes });
   return {
-    report: r, manual, markdown, blockers: blockers(r, manual),
+    report: r, manual, markdown, blockers: blockers(r, manual), fixes,
     locked, sent: sentSummary(sent), published: publishedAt(weekFrom, kind),
   };
 }
@@ -813,7 +831,7 @@ async function testSend(weekFrom, kind) {
     : '<div style="font-size:13px;color:#1a7f37;margin-top:10px">Everything is written — this is what they would receive.</div>';
   const banner = `<div style="background:#fff4e5;border:1px solid #f0b429;border-radius:6px;padding:14px 16px;margin-bottom:20px">`
     + `<div style="font-weight:700;font-size:14px;color:#8a5a00">TEST COPY — this did not go to ${esc(names)}</div>${todo}</div>`;
-  const md = v.locked ? v.markdown : render(v.report, v.manual, { forEmail: true });
+  const md = v.locked ? v.markdown : render(v.report, v.manual, { forEmail: true, fixes: v.fixes });
   const result = await emailSender.sendMail({
     to: [{ name: 'Nick Ward', email: emailSender.OWN_ADDRESS }],
     subject: `[TEST] SOAP — week of ${shortDate(weekFrom)}${kind === 'provisional' ? ' (provisional)' : ''}`,
@@ -864,7 +882,7 @@ function markSentByHand(weekFrom, kind, { sentAt = null } = {}) {
   if (v.locked) return { ok: false, code: 409, error: 'that week is already recorded as sent', sent: v.sent };
   const rec = markSent(weekFrom, {
     kind, recipients: recipientNames(), subject: `SOAP — week of ${shortDate(weekFrom)}`,
-    body: render(v.report, v.manual, { forEmail: true }), sentAt, reportedByNick: true,
+    body: render(v.report, v.manual, { forEmail: true, fixes: v.fixes }), sentAt, reportedByNick: true,
   });
   if (!rec) return { ok: false, code: 500, error: 'could not record the send' };
   return { ok: true, sent: sentSummary(rec) };
@@ -947,7 +965,7 @@ function queueSend(weekFrom, { kind = 'provisional', now = Date.now() } = {}) {
   if (v.blockers.length) return { ok: false, code: 409, error: 'the report is not finished', blockers: v.blockers };
   const { recipients, problems } = resolveRecipients();
   if (problems.length) return { ok: false, code: 409, error: 'a recipient cannot be resolved', blockers: problems };
-  const markdown = render(v.report, v.manual, { forEmail: true });
+  const markdown = render(v.report, v.manual, { forEmail: true, fixes: v.fixes });
   const html = require('./weekly-risk').toEmailHtml(markdown);
   // A provisional waits for Monday 08:00; a final goes as soon as it is approved.
   return require('./prepared-actions').prepareSoapReport({
@@ -1030,7 +1048,7 @@ function mondayOutcome({ now = new Date() } = {}) {
 module.exports = {
   planRag, perQueueRows, sentimentSummary,
   weekFor, sendAtFor, slaDaily, parseDue, initiatives, findingKey, slaLight, verdicts, verdictHash, verdictDiff,
-  carriedForward, blockers, render, emptyManual, getManual, setManual, gather, build, get, finalFor, latest, list, view,
+  carriedForward, fixesFor, blockers, render, emptyManual, getManual, setManual, gather, build, get, finalFor, latest, list, view,
   recipientNames, setRecipientNames, resolveRecipients, queueSend, publish, publishedAt, testSend, sentRecord, isLocked, markSent, markSentByHand, reopen, sentSummary, fridayFreeze, mondayFinal, mondayOutcome,
   EXCLUDED_KINDS, SECTION_KEYS, AMBER_BAND, WORST_CUSTOMERS, DEFAULT_RECIPIENTS,
 };

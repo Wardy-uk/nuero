@@ -1,0 +1,29 @@
+.rf-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rf-panel h3 { margin: 0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.rf-panel h4 { margin: 4px 0 0; font-size: 0.85rem; }
+.rf-meta { margin: 0; font-size: 0.8rem; color: var(--text-secondary); }
+.rf-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
+.rf-problem { margin: 0; font-size: 0.9rem; }
+.rf-item { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.rf-item p { margin: 0; font-size: 0.9rem; }
+.rf-item--proposed { border-left: 3px solid var(--warning); padding-left: 10px; border-top: 0; }
+.rf-item--dismissed { opacity: 0.6; }
+.rf-figs { margin: 0; padding-left: 20px; font-size: 0.85rem; }
+.rf-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rf-btn { background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: var(--radius-sm); padding: 5px 12px; cursor: pointer; font: inherit; font-size: 0.85rem; }
+.rf-btn--primary { background: var(--accent); color: var(--bg-primary); }
+.rf-btn:disabled { opacity: 0.55; cursor: default; }
+.rf-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: 0.85rem; align-self: flex-start; }
+.rf-form { display: flex; flex-direction: column; gap: 8px; }
+.rf-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-secondary); flex: 1 1 180px; }
+.rf-form input, .rf-form select, .rf-form textarea { width: 100%; box-sizing: border-box; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font: inherit; font-size: 0.9rem; }
+.rf-form textarea { resize: vertical; }
+.rf-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.rf-row > input { flex: 1 1 140px; width: auto; }
+.rf-row > input:first-child { flex: 3 1 220px; }
+.rf-impact { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
+.rf-impact legend { font-size: 0.8rem; color: var(--text-secondary); padding: 0 4px; }
+.rf-impact label { flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; color: var(--text-primary); font-size: 0.88rem; }
+.rf-impact input { width: auto; }
+.rf-affects { display: flex; flex-direction: column; gap: 6px; }

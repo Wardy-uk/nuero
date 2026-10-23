@@ -634,6 +634,8 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       try { return overtime.status(); } catch { return { available: false, reason: 'overtime log unreadable' }; }
     })(),
     manual: getManual(week),
+    // Fixes Nick included for the reports (services/report-fixes.js).
+    fixes: require('./report-fixes').includedForReports(),
   };
 }
 
@@ -1390,6 +1392,9 @@ function assess(snap) {
     jiraEscalations: snap.jiraEscalations,
     sources: snap.sources,
     manual: snap.manual,
+    fixes: reportWeek
+      ? require('./report-fixes').forReport(snap.fixes || [], { from: reportWeek, to: addDays(reportWeek, 6), shownFrom: previousWeek(reportWeek) })
+      : { fixed: [], corrections: [], rowNotes: {} },
     overtime: snap.overtime || null,
     blockers: manualBlockers(snap.manual || emptyManual(), snap.overtime),
   };
@@ -1536,7 +1541,8 @@ function ragCell(t) {
  * Dropping it would hide that the KPI exists at all, which is how a stopped
  * measurement reads as a queue with nothing to report.
  */
-function complianceTable(trend, csat, reportWeek) {
+function complianceTable(trend, csat, reportWeek, rowNotes = null) {
+  const label = (k) => require('./report-fixes').markLabel(k, rowNotes);
   // Already ordered by buildTrend; re-applied because a table that depends on
   // its caller having sorted is one that renders wrongly the day somebody
   // filters it first.
@@ -1555,13 +1561,13 @@ function complianceTable(trend, csat, reportWeek) {
   const body = rows.map(t => {
     if (!t.measured) {
       const seen = t.lastSeen?.period ? ` (last ${shortUk(t.lastSeen.period)})` : '';
-      return `| ${t.kpi} | not measured${seen} | ${pct(t.compare?.value)} | — | — |`;
+      return `| ${label(t.kpi)} | not measured${seen} | ${pct(t.compare?.value)} | — | — |`;
     }
     const now = t.reported?.value;
     const was = t.compare?.value;
     const d = t.delta;
     const arrow = d === null ? '—' : d > 0 ? `▲ +${d}` : d < 0 ? `▼ ${d}` : '– 0';
-    return `| ${t.kpi} | ${pct(now)} | ${pct(was)} | ${arrow} | ${ragCell(t)} |`;
+    return `| ${label(t.kpi)} | ${pct(now)} | ${pct(was)} | ${arrow} | ${ragCell(t)} |`;
   }).concat(extra).join('\n');
 
   const notes = [];
@@ -1796,7 +1802,7 @@ function render(a) {
 
   lines.push('## 1. Week-on-week trend');
   lines.push('');
-  lines.push(complianceTable(a.trend, a.csat, a.reportWeek));
+  lines.push(complianceTable(a.trend, a.csat, a.reportWeek, a.fixes && a.fixes.rowNotes));
   lines.push('');
 
   lines.push('## 2. SLA / SLO due-date handling');
@@ -1869,6 +1875,12 @@ function render(a) {
   if (warn.length) {
     lines.push(bullet(warn, f => `- **${f.title}** — ${f.detail}`));
   }
+  // Fixes Nick included: figures that were wrong are FLAGGED, never restated.
+  const rf = require('./report-fixes');
+  const fx = a.fixes || { fixed: [], corrections: [] };
+  fx.corrections.forEach((c, i) => lines.push(`- **Data correction [${i + 1}]:** ${rf.correctionLine(c)}`));
+  const plainFixes = fx.fixed.filter(f => !f.impact.includes('figures'));
+  if (plainFixes.length) lines.push(bullet(plainFixes, f => `- **${rf.fixedLine(f)}**`));
   if (Array.isArray(manual.dataQuality) && manual.dataQuality.length) {
     lines.push(bullet(manual.dataQuality, x => `- ${x}`));
   } else if (manual.dataQuality === null) {

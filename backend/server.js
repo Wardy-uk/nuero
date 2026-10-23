@@ -248,6 +248,7 @@ app.use('/api/catalogues', require('./routes/catalogue'));
 app.use('/api/v', require('./routes/vesta'));
 app.use('/api/weekly-risk', require('./routes/weekly-risk'));
 app.use('/api/soap', require('./routes/soap'));
+app.use('/api/report-fixes', require('./routes/report-fixes'));
 // The Daily KPI Tracker, read straight from NOVA. VANTAGE renders the same
 // numbers; neither proxies the other, so they cannot disagree about the figures
 // — only about presentation, which is the point of having both while Nick

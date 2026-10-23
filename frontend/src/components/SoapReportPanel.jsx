@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import ReportFixes from './ReportFixes';
 import './SoapReportPanel.css';
 
 // ── SOAP report — the Monday debrief for Chris, Ricky and Liam (15 Oct 2026) ─
@@ -103,7 +104,9 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       </section>
 
       <Sec k="success" title="✅ Success" {...secProps}>
-        {vd.success.length ? <ul>{vd.success.map((s) => <li key={s.key}>{s.text}</li>)}</ul> : <p className="soap-meta">Nothing met its mark this week.</p>}
+        {vd.success.length || (v.fixes && v.fixes.fixed.length)
+          ? <ul>{vd.success.map((s) => <li key={s.key}>{s.text}</li>)}{((v.fixes && v.fixes.fixed) || []).map((f) => <li key={`fix-${f.id}`}>Fixed: {f.title} — {f.problem} ({f.systemLabel}{f.fixedIn ? ` ${f.fixedIn}` : ''})</li>)}</ul>
+          : <p className="soap-meta">Nothing met its mark this week.</p>}
       </Sec>
 
       <Sec k="star" title="⭐ Star of the week" {...secProps}>
@@ -472,6 +475,7 @@ export default function SoapReportPanel() {
       {error && <p className="soap-error">Couldn’t load the SOAP report — {error}</p>}
       {note && <p className="soap-note" role="status">{note}</p>}
       <Distribution onChanged={load} />
+      <ReportFixes onChanged={load} />
       {data && <SoapReportView data={data} draft={draft} setDraft={setDraft} dirty={dirty} busy={busy} onSave={save} onBuild={build} onQueue={queue}
         onPublish={publish} onTest={testSend} onMarkSent={markSent} onReopen={reopen} preview={preview} onPreview={togglePreview} note={note} />}
     </div>

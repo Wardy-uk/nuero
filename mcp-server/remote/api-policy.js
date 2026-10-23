@@ -190,6 +190,10 @@ export const interactive = {
   post_notion_sync_auto: 'Turning the Notion publish timer on or off is Nick\'s decision, in NEURO → Notion Sync.',
   post_calendar_events_by_id_respond: 'Retired since Build 8: responding to an invite as Nick is not done from NEURO.',
   post_soap_recipients: 'Who the SOAP report is emailed to is Nick\'s decision, in NEURO → SOAP report → Distribution list.',
+  // 23 Oct 2026: an agent PROPOSES a fix (post_report_fixes); what reaches the reports is Nick's.
+  post_report_fixes_manual: 'Entering a fix straight into the reports is Nick\'s, in NEURO → SOAP report → Fixes. An agent proposes one with post_report_fixes.',
+  post_report_fixes_by_id_decide: 'Including a fix in the SOAP or Weekly Risk report is Nick\'s decision, in NEURO → SOAP report → Fixes.',
+  post_report_fixes_by_id_edit: 'Editing a fix that may reach Chris is Nick\'s, in NEURO → SOAP report → Fixes.',
   post_canonical_needs_you_synthetic: 'A synthetic P0 interrupts Nick\'s phone. He starts it himself in NEURO → Set up.',
   ...Object.fromEntries([
     'post_ai_settings', 'post_feature_flags_by_key', 'post_capture_links', 'post_capture_links_screen_session', 'delete_capture_links_by_username',
@@ -276,7 +280,7 @@ export const notes = {
 };
 export const aliases ={ post_chat: '/api/chat/sync', get_nudges_stream: '/api/nudges' };
 const adminDomains = new Set(['auth', 'pin', 'capture-links', 'ai', 'feature-flags']);
-const localWriteDomains = new Set(['vault', 'vault-dnd', 'vault-hygiene', 'obsidian', 'capture', 'journal', 'profile', 'evidence', 'development-plan', 'kb-article', 'person-profile', 'catalogues', 'friction', 'weekly-target', 'wins', 'do-next', 'knowledge-memory']);
+const localWriteDomains = new Set(['vault', 'vault-dnd', 'vault-hygiene', 'obsidian', 'capture', 'journal', 'profile', 'evidence', 'development-plan', 'kb-article', 'person-profile', 'catalogues', 'friction', 'weekly-target', 'wins', 'do-next', 'knowledge-memory', 'report-fixes']);
 export function classify(op) {
   if (interactive[op.id] || adminDomains.has(op.domain) || op.route.split('/').some(part => /^(auth|token|key|mappings|unlock|disconnect|register|subscribe|unsubscribe)$/.test(part))) return 'admin';
   // Some GET handlers persist notes or deliver notifications on request. Do not

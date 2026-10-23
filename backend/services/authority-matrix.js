@@ -177,6 +177,12 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/promises/:key/prepare', 'email.send', { machine: 'refuse' }),
   R('POST', '/api/soap/:weekFrom/test-send', 'email.self'),
   R('POST', '/api/soap/recipients', 'config.security'),
+  // 23 Oct 2026: a session PROPOSES a fix for the reports (domain default,
+  // internal.state); what reaches Chris is Nick's — include/dismiss/edit and his
+  // own manual entry (which is included at once) are refused to machines.
+  R('POST', '/api/report-fixes/manual', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/report-fixes/:id/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/report-fixes/:id/edit', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/weekly-risk/test-send', 'email.self'),
 
   // Calendar.
@@ -434,7 +440,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   actions: 'internal.state', attention: 'internal.state', activity: 'internal.state', adhd: 'internal.state', canonical: 'internal.state',
   chat: 'internal.state', 'day-plan': 'internal.state', email: 'internal.state', friction: 'internal.state', outcomes: 'internal.state',
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
-  'weekly-risk': 'internal.state', soap: 'internal.state', wins: 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
+  'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
   outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
