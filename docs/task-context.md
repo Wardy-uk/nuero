@@ -127,6 +127,31 @@ notes, 7 for `employee-cases-note` alone and 3 for `hr-wording` + `employee-case
 manual restricted link; no link into `Security review/` or an excluded folder. No link was
 changed and no scan was rerun for this — it is presentation only.
 
+### Deployed (23 Oct 2026)
+
+- **Commit:** `8baeccf6`, fast-forwarded onto `main` from `4839ae33`. Nothing had landed on `main` since review, so no rebase was needed.
+- **Laptop tests before the push:** 86/86 focused route, screen and exclusion tests pass, including 5 Electron screen tests.
+- **Pi tests:** 80 run, 75 pass, 0 fail. The 5 skipped are the Electron screen tests, which need a display; they ran on the laptop.
+- **Builds:**
+  - NEURO frontend `frontend/dist` (index-VAtp7eH9.js) and kiosk `saim/frontend/dist` (index-CweTM9iR.js) were rebuilt on pi5.
+  - The SAiM phone app (sara.nickward.co.uk) autodeployed from `main`; its live bundle contains the new task-context code.
+  - The kiosk on :3005 serves the new bundle.
+- **Restarts:**
+  - Only `neuro-backend` was restarted; `/api/auth/check` returns 200.
+  - `saim-backend` and `vantage-backend` were left alone.
+  - The MCP gateway was not rebuilt, because `mcp-server/remote/` did not change.
+- **Production evidence for the ten affected pinned links** (tasks 344, 350, 189, 322, 369, 372, 442, 459, 460, 461):
+  - **PIN session:** viewer `owner`. Every one of the 10 shows provenance, a plain restriction reason, a bounded excerpt (the task's own wording line, each ≤240 characters) and an open route with an `obsidian://` link.
+  - **API token, PIN + `X-Neuro-Machine-Client: mcp-local`, kiosk token, and the kiosk proxy on :3005:** viewer `limited` for all ten. No `ref`, `open`, excerpt, reason codes, `obsidian://` link or `Meetings/` path.
+  - **Chat:** chat reads no task context.
+- **Hard exclusions:**
+  - Searching task context for "Security review", "password", "Archive" and "credentials" returns no excluded note through any credential. The kiosk proxy refuses search outright (403).
+  - Linking a real `Security review/` note → 400.
+  - Linking an `Archive/` note → 400.
+- **Links unchanged:** `task_context_links` holds 39 rows, and its sha256 is identical before and after the deploy. Linking stays on as it was, task-context runs are still 2, and no backfill was run.
+- **Not checked:** the desktop and phone screens were verified through the API plus the Electron render tests of the same components, not with a production screenshot.
+- **Not yet live in the laptop's local MCP:** it runs from the main checkout, which is on another branch with another session's uncommitted work. It picks up the new `contextLine` when that checkout moves to `main`. The NEURO API already sends it limited payloads.
+
 ## Surfaces
 
 - **NEURO task card** (list and Must Move lane, one place): editable.
