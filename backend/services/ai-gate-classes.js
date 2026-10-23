@@ -36,6 +36,7 @@ const REGISTRY = {
   import_classification: text(), transcript_processing: text(), journal_prompts: text(),
   knowledge_consolidation: text(), knowledge_enrichment: text(),
   capability_suggestions: text(), event_parse: text(), drink_lookup: text(), task_short_title: text(),
+  watched_reply_judge: text(),
   // ── SAiM prepared moves (drafting only) ────────────────────────────────
   saim_move_reply: text(), saim_move_prep: text(), saim_move_note: text(),
   // ── vision (Anthropic, cloud only) ─────────────────────────────────────

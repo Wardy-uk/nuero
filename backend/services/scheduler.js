@@ -224,6 +224,12 @@ function start() {
   // Every 15 min: look up any newly logged food NAME as a drink (ABV, kcal per
   // 100 ml) into drink_profiles. Ingest kicks it too; this is the backstop.
   // Idempotent — a name already answered is never asked again.
+  // Every 5 min: customer replies on watched Jira tickets (watched-tickets.js).
+  // Idempotent on the Jira comment id, so a missed tick self-corrects.
+  cron.schedule('3-59/5 * * * *', () => {
+    require('./watched-tickets').check().catch((e) => console.warn('[Scheduler] watched tickets failed:', e.message));
+  });
+
   cron.schedule('4,19,34,49 * * * *', () => {
     require('./drink-profiles').lookupPending().catch((e) => console.warn('[Scheduler] drink lookup failed:', e.message));
   });

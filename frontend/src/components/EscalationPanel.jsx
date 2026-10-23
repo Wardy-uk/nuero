@@ -26,7 +26,7 @@ function agoLabel(days) {
   return `${days}d ago`;
 }
 
-function EscalationRow({ t, onPick }) {
+function EscalationRow({ t, onPick, watched, onWatch }) {
   const age = ageDays(t.created);
   // Two dates, because one of them was being read as the other. The badge used
   // to say "9d old" from `created` alone, which is the age of the ESCALATION
@@ -79,7 +79,12 @@ function EscalationRow({ t, onPick }) {
             touched {agoLabel(touched)}
           </span>
         )}
-        <button type="button" className="esc-row-action" onClick={() => onPick(t.key)}>
+        {onWatch && (
+          watched
+            ? <span className="esc-tag esc-tag-watching" title="In your watched tickets">watching</span>
+            : <button type="button" className="esc-row-action esc-row-action-watch" onClick={() => onWatch(t.key)}>Watch</button>
+        )}
+        <button type="button" className="esc-row-action esc-row-action-tight" onClick={() => onPick(t.key)}>
           Escalate again
         </button>
       </div>
@@ -92,7 +97,7 @@ function EscalationRow({ t, onPick }) {
  * lives in the summary — the shut state still answers "is there anything
  * here", which is the question that must never need a click.
  */
-function EscalationGroup({ title, blurb, items, onPick }) {
+function EscalationGroup({ title, blurb, items, onPick, watchedKeys, onWatch }) {
   return (
     <details className="esc-group">
       <summary>
@@ -102,7 +107,7 @@ function EscalationGroup({ title, blurb, items, onPick }) {
       <p className="esc-group-blurb">{blurb}</p>
       {items.length === 0
         ? <p className="esc-empty">None.</p>
-        : items.map(t => <EscalationRow key={t.key} t={t} onPick={onPick} />)}
+        : items.map(t => <EscalationRow key={t.key} t={t} onPick={onPick} watched={watchedKeys?.has(t.key)} onWatch={onWatch} />)}
     </details>
   );
 }
@@ -119,7 +124,7 @@ function EscalationGroup({ title, blurb, items, onPick }) {
  * Membership is exclusive and most-specific-first, so the counts sum to the
  * total and nothing appears twice. The per-row badges still show overlap.
  */
-function ActiveEscalations({ items, loading, error, warning, awaitingReply, onPick, onRefresh }) {
+function ActiveEscalations({ items, loading, error, warning, awaitingReply, onPick, onRefresh, watchedKeys, onWatch }) {
   const functional = items.filter(t => t.viaUrgency);
   const customer = items.filter(t => !t.viaUrgency && t.viaRequestType);
   const tier = items.filter(t => !t.viaUrgency && !t.viaRequestType);
@@ -162,20 +167,138 @@ function ActiveEscalations({ items, loading, error, warning, awaitingReply, onPi
             blurb="Escalated with this tool — priority raised and an internal comment posted. Recorded in NOVA's escalation log, not on the ticket."
             items={functional}
             onPick={onPick}
+            watchedKeys={watchedKeys}
+            onWatch={onWatch}
           />
           <EscalationGroup
             title="Customer escalations"
             blurb="Raised as an escalation through the portal — the customer asked for this one."
             items={customer}
             onPick={onPick}
+            watchedKeys={watchedKeys}
+            onWatch={onWatch}
           />
           <EscalationGroup
             title="In the escalations tier"
             blurb="Moved into the Escalations tier by the team. Neither raised as an escalation by the customer nor put through this tool."
             items={tier}
             onPick={onPick}
+            watchedKeys={watchedKeys}
+            onWatch={onWatch}
           />
         </>
+      )}
+    </section>
+  );
+}
+
+function dayMonth(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * One watched ticket. The unread replies are the point, so they lead; a reply
+ * NEURO judged a thank-you (in the post-resolve listen) is shown muted, so
+ * "it went quiet" and "it was filtered" stay visibly different.
+ */
+function WatchedRow({ t, onRead, onUnwatch, busy }) {
+  const latest = t.replies[0];
+  return (
+    <div className="esc-row">
+      <div className="esc-row-main">
+        <a href={t.url || '#'} target="_blank" rel="noreferrer" className="esc-row-key"
+          onClick={() => { if (t.unread) onRead(t.key); }}>{t.key}</a>
+        <span className="esc-row-summary">{t.summary || '—'}</span>
+      </div>
+      <div className="esc-row-meta">
+        {t.unread > 0 && (
+          <span className="esc-tag esc-tag-awaiting">
+            {t.unread} new {t.unread === 1 ? 'reply' : 'replies'}
+          </span>
+        )}
+        {t.status && <span>{t.status}</span>}
+        {t.phase === 'background' && t.listeningUntil && (
+          <span title="Resolved. Only a real follow-up from the customer — not a thank-you — will flag it.">
+            listening until {dayMonth(t.listeningUntil)}
+          </span>
+        )}
+        {!t.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
+        {t.lastError && <span className="esc-row-touched-cold" title={t.lastError}>couldn’t check</span>}
+        {t.unread > 0 && (
+          <button type="button" className="esc-row-action" disabled={busy} onClick={() => onRead(t.key)}>Mark read</button>
+        )}
+        <button type="button" className={t.unread > 0 ? 'esc-row-action esc-row-action-tight' : 'esc-row-action'}
+          disabled={busy} onClick={() => onUnwatch(t.key)}>Unwatch</button>
+      </div>
+      {latest && (
+        <p className={latest.flagged ? 'esc-watch-reply' : 'esc-watch-reply esc-watch-reply-muted'}>
+          <span className="esc-comment-author">{latest.author} · {dayMonth(latest.created)}</span>
+          {!latest.flagged && <span className="esc-tag">judged a thank-you</span>}
+          {latest.judgedBy === 'model-unavailable' && <span className="esc-tag" title="The model could not judge it, so it was flagged rather than dropped">not judged</span>}
+          {' '}{latest.excerpt}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tickets Nick follows. Only a public comment from the CUSTOMER notifies;
+ * agents' replies and internal notes never do. Resolved tickets drop to a
+ * folded "listening" group for 10 working days, then end.
+ */
+export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnwatch, onCheck }) {
+  const [key, setKey] = useState('');
+  const add = (e) => {
+    e.preventDefault();
+    if (!key.trim()) return;
+    onWatch(key.trim().toUpperCase()).then((ok) => { if (ok) setKey(''); });
+  };
+  const active = data?.active || [];
+  const listening = data?.listening || [];
+  return (
+    <section className="esc-active esc-watched">
+      <div className="esc-active-head">
+        <h3>
+          Watched tickets
+          {data && <span className="esc-count">{active.length}</span>}
+        </h3>
+        <button type="button" className="esc-btn esc-btn-ghost esc-btn-sm" onClick={onCheck} disabled={busy}>
+          {busy ? 'Checking…' : 'Check now'}
+        </button>
+      </div>
+      <p className="esc-group-blurb">
+        You get a push when the customer replies. Your team’s replies and internal notes don’t count.
+        Once a ticket is resolved, NEURO keeps listening for 10 working days and flags it only if the customer follows up with more than a thank-you.
+      </p>
+
+      <form className="esc-lookup" onSubmit={add}>
+        <input className="esc-key-input" value={key} onChange={e => setKey(e.target.value)}
+          placeholder="NT-28061" aria-label="Ticket to watch" />
+        <button type="submit" className="esc-btn" disabled={busy || !key.trim()}>Watch</button>
+      </form>
+
+      {error && <div className="esc-error">{error}</div>}
+      {note && <div className="esc-warn">{note}</div>}
+      {data?.lastRun && data.lastRun.ok === false && (
+        <div className="esc-warn">The last check didn’t complete{data.lastRun.why ? ` — ${data.lastRun.why}` : ''}. Replies may be late.</div>
+      )}
+
+      {data && active.length === 0 && listening.length === 0 && (
+        <p className="esc-empty">You’re not watching any tickets. Add one above, or press Watch on an escalation.</p>
+      )}
+      {active.map(t => <WatchedRow key={t.key} t={t} busy={busy} onRead={onRead} onUnwatch={onUnwatch} />)}
+
+      {listening.length > 0 && (
+        <details className="esc-group">
+          <summary>
+            <span className="esc-group-title">Resolved — still listening</span>
+            <span className="esc-count">{listening.length}</span>
+          </summary>
+          {listening.map(t => <WatchedRow key={t.key} t={t} busy={busy} onRead={onRead} onUnwatch={onUnwatch} />)}
+        </details>
       )}
     </section>
   );
@@ -225,6 +348,51 @@ export default function EscalationPanel() {
   };
 
   useEffect(() => { loadActive(); }, []);
+
+  // ── Watched tickets ──
+  const [watched, setWatched] = useState(null);
+  const [watchedError, setWatchedError] = useState(null);
+  const [watchedNote, setWatchedNote] = useState(null);
+  const [watchBusy, setWatchBusy] = useState(false);
+
+  const loadWatched = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/escalation/watched'));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load watched tickets');
+      setWatched(data); setWatchedError(null);
+    } catch (err) {
+      setWatchedError(err.message);
+    }
+  };
+  useEffect(() => { loadWatched(); }, []);
+
+  const watchAction = async (path, body) => {
+    setWatchBusy(true); setWatchedNote(null);
+    try {
+      const res = await fetch(apiUrl(`/api/escalation/watched${path}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'That did not work');
+      await loadWatched();
+      return data;
+    } catch (err) {
+      setWatchedError(err.message);
+      return null;
+    } finally {
+      setWatchBusy(false);
+    }
+  };
+  const watchKey = async (k) => {
+    const r = await watchAction('', { key: k });
+    if (r?.already) setWatchedNote(`${r.ticket.key} is already being watched.`);
+    else if (r?.ticket?.phase === 'background') setWatchedNote(`${r.ticket.key} is already resolved — NEURO will listen for a follow-up until ${dayMonth(r.ticket.listeningUntil)}.`);
+    return !!r;
+  };
+  const watchedKeys = new Set([...(watched?.active || []), ...(watched?.listening || [])].map(t => t.key));
 
   const lookup = async (e, presetKey) => {
     e?.preventDefault();
@@ -299,6 +467,19 @@ export default function EscalationPanel() {
         awaitingReply={awaitingReply}
         onRefresh={loadActive}
         onPick={(k) => lookup(null, k)}
+        watchedKeys={watchedKeys}
+        onWatch={watchKey}
+      />
+
+      <WatchedTickets
+        data={watched}
+        error={watchedError}
+        note={watchedNote}
+        busy={watchBusy}
+        onWatch={watchKey}
+        onRead={(k) => watchAction(`/${encodeURIComponent(k)}/read`)}
+        onUnwatch={(k) => watchAction(`/${encodeURIComponent(k)}/unwatch`)}
+        onCheck={() => watchAction('/check')}
       />
 
       <form className="esc-lookup" onSubmit={lookup}>
@@ -326,6 +507,9 @@ export default function EscalationPanel() {
           <div className="esc-ticket-head">
             <span className="esc-ticket-key">{ticket.key}</span>
             <span className="esc-ticket-summary">{ticket.summary}</span>
+            {watchedKeys.has(ticket.key)
+              ? <span className="esc-tag esc-tag-watching">watching</span>
+              : <button type="button" className="esc-row-action" disabled={watchBusy} onClick={() => watchKey(ticket.key)}>Watch</button>}
           </div>
           <dl className="esc-meta">
             <div><dt>Status</dt><dd>{ticket.status || '—'}</dd></div>

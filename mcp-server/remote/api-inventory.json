@@ -2160,6 +2160,22 @@
     "stream": false
   },
   {
+    "id": "get_escalation_watched",
+    "method": "GET",
+    "route": "/api/escalation/watched",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 271,
+    "description": "GET /api/escalation/watched. watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_events_findings",
     "method": "GET",
     "route": "/api/events/findings",
@@ -4996,7 +5012,7 @@
     "route": "/api/report-fixes",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 25,
+    "line": 26,
     "description": "GET /api/report-fixes. fixes for the SOAP and Weekly Risk reports (report fixes, fixed bugs, data corrections), newest deploy first. Query: status=proposed|included|dismissed.",
     "params": [],
     "query": [
@@ -9557,6 +9573,76 @@
     "stream": false
   },
   {
+    "id": "post_escalation_watched",
+    "method": "POST",
+    "route": "/api/escalation/watched",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 276,
+    "description": "POST /api/escalation/watched. watch a Jira ticket; body { key }. A customer reply then sends a push. Watch, follow, track a ticket.",
+    "params": [],
+    "query": [],
+    "body": [
+      "key"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_watched_by_key_read",
+    "method": "POST",
+    "route": "/api/escalation/watched/:key/read",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 288,
+    "description": "POST /api/escalation/watched/:key/read. mark a watched ticket's customer replies as read.",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_watched_by_key_unwatch",
+    "method": "POST",
+    "route": "/api/escalation/watched/:key/unwatch",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 294,
+    "description": "POST /api/escalation/watched/:key/unwatch. stop watching a ticket (history kept).",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_watched_check",
+    "method": "POST",
+    "route": "/api/escalation/watched/check",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 283,
+    "description": "POST /api/escalation/watched/check. check every watched ticket for customer replies now, instead of waiting for the 5-minute poll.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_evidence",
     "method": "POST",
     "route": "/api/evidence",
@@ -13074,7 +13160,7 @@
     "route": "/api/report-fixes",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 32,
+    "line": 33,
     "description": "POST /api/report-fixes. propose a report fix (bug fixed, data correction) after deploying it. Body: { system: nova|vantage|neuro|n8n|other, title, problem, impact: [figures|team|customers], affects: [{ measure, from, to }] (with figures), fixedIn, deployedOn: YYYY-MM-DD }. Arrives proposed; Nick inc",
     "params": [],
     "query": [],
@@ -13098,7 +13184,7 @@
     "route": "/api/report-fixes/:id/decide",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 51,
+    "line": 52,
     "description": "POST /api/report-fixes/:id/decide. include a proposed fix in the reports, leave it out, or put it back to proposed. Body: { decision: include|dismiss|restore }. Nick only.",
     "params": [
       "id"
@@ -13118,7 +13204,7 @@
     "route": "/api/report-fixes/:id/edit",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 58,
+    "line": 59,
     "description": "POST /api/report-fixes/:id/edit. Nick corrects a fix's wording, figures or dates. Body: any of { system, title, problem, impact, affects, fixedIn, deployedOn }; omitted fields are kept. Nick only.",
     "params": [
       "id"
@@ -13144,7 +13230,7 @@
     "route": "/api/report-fixes/manual",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 41,
+    "line": 42,
     "description": "POST /api/report-fixes/manual. Nick enters a fix himself; it is included in the reports at once. Same body as POST /api/report-fixes. Nick only.",
     "params": [],
     "query": [],

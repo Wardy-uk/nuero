@@ -265,4 +265,35 @@ router.post('/ledger/resolve', (req, res) => {
   res.status(r.ok ? 200 : 409).json(r);
 });
 
+// ── Watched tickets (23 Oct 2026, services/watched-tickets.js) ───────────────
+
+// GET /api/escalation/watched — watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.
+router.get('/watched', (req, res) => {
+  res.json(require('../services/watched-tickets').list());
+});
+
+// POST /api/escalation/watched — watch a Jira ticket; body { key }. A customer reply then sends a push. Watch, follow, track a ticket.
+router.post('/watched', async (req, res) => {
+  const { key } = req.body || {};
+  const r = await require('../services/watched-tickets').watch(key);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// POST /api/escalation/watched/check — check every watched ticket for customer replies now, instead of waiting for the 5-minute poll.
+router.post('/watched/check', async (req, res) => {
+  res.json(await require('../services/watched-tickets').check());
+});
+
+// POST /api/escalation/watched/:key/read — mark a watched ticket's customer replies as read.
+router.post('/watched/:key/read', (req, res) => {
+  const r = require('../services/watched-tickets').markRead(req.params.key);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// POST /api/escalation/watched/:key/unwatch — stop watching a ticket (history kept).
+router.post('/watched/:key/unwatch', (req, res) => {
+  const r = require('../services/watched-tickets').unwatch(req.params.key);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
 module.exports = router;

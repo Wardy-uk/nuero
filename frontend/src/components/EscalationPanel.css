@@ -141,6 +141,23 @@
   cursor: pointer;
 }
 .esc-row-action:hover { border-color: var(--accent); color: var(--text); }
+.esc-row-action:disabled { opacity: 0.5; cursor: default; }
+/* A second button sits beside the first, so only the first is pushed right. */
+.esc-row-action-tight { margin-left: 0; }
+
+/* ------------------------------------------------------- watched tickets */
+.esc-tag-watching { margin-left: auto; color: var(--accent); }
+.esc-watched .esc-lookup { margin-bottom: 12px; }
+.esc-watch-reply {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.esc-watch-reply-muted { color: var(--text-muted); }
 
 /* ------------------------------------------------------------- lookup bar */
 
