@@ -302,6 +302,8 @@ router.post('/greeting/hear', express.raw({ type: 'application/octet-stream', li
     console.warn(`[presence] ${room}: could not transcribe — ${out.why}`);
     return res.status(502).json({ ok: false, reason: out.why });
   }
+  // The fact it was heard, never the words (a room in the house).
+  console.log(`[presence] ${room}: transcribed ${Math.round(pcm.length / 32000)}s of audio (${out.text.length} chars)`);
   return res.json({ ok: true, text: out.text });
 });
 
