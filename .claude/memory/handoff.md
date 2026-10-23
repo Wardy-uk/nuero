@@ -1,12 +1,10 @@
 # Session Handoff — 2026-10-23 (AI gate, Settings, receipt truth, Holding the week — release checks done, LOCAL ONLY)
 
 ## Built, committed, NOT pushed or deployed
-Branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`, from main 90a8b826):
-- `4fdf9409` B — automatic context linking controlled in Settings only; Brain Health read-only + Manage in Settings.
-- `83a76771` A — shared NEURO+VANTAGE AI gate (shadow, no cap). VANTAGE half on branch `ai-gate-radar` (`d89aa40`, worktree `Service Desk Continual Improvement/.claude/worktrees/ai-gate`). Inventory: `docs/ai-gate-inventory.md`.
-- `c19548e8`, `61afb66a`, `2f3aa70e` C — receipt truth + Drafts → Today; Settings/receipts browser test.
-- `29c6e2f3` D — Holding the week cards (`keep-my-word-cards-v1`).
-Nothing touched: Pi lock, allowances, context-linking enable/backfill, real governed actions.
+Branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`), REBASED onto main `93e6a04f`, head `ca4064ad`. Commits, evidence and the reviewed Pi steps: `docs/release-2026-10-23-ai-gate-settings-receipts-week.md`.
+- B context linking in Settings only (`a26452a6`); A shared AI gate, shadow (`4ffdfe03`; VANTAGE `ai-gate-radar` `fa2c890`); C receipt truth (`5aba24d6` `e530423f` `ba845e54`); D Holding the week (`e9f50203`); ledger contract (`f71fecac` `14eb753b` `9291aac0`); test isolation (`d8ba9243` `ca4064ad`); incident (`e7e61925`).
+- Evidence on `ca4064ad`: NEURO 7,867 tests — 7,843 pass, 4 fail (all also fail on clean main), 20 environmental skips; Electron 80/80 twice in parallel; two-app race 8/8; VANTAGE 310/310; four builds OK.
+Nothing touched: Pi config/lock, allowances, context-linking enable/backfill, real governed actions.
 
 ## Before deploying
 - Deploy NEURO and VANTAGE together (shared gate file; parity test in each).
