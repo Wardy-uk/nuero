@@ -245,9 +245,28 @@ async function sync({ apply = false } = {}) {
         const issue = byKey.get(key);
         if (!issue) {
           // ⚠ Jira did not answer for this key. Deleted, moved, or invisible to
-          // the token — and NONE of those is "Nick finished it". Reported, never
-          // acted on.
-          result.gaps.push(`${key}: Jira returned nothing for it — left open`);
+          // the token — and NONE of those is "Nick finished it", so it is never
+          // closed. But leaving it LINKED locked the task for ever: Jira owns the
+          // tick, and a ticket that no longer exists can never be resolved (NT-33883,
+          // 23 Oct 2026). When both reads were complete and the key is not on his
+          // assigned list, it is unlinked exactly like a reassigned ticket — left
+          // open, his to close or drop. An incomplete read decides nothing.
+          if (!(fetched.complete && states.complete) || assignedKeys.has(key)) {
+            result.gaps.push(`${key}: Jira returned nothing for it — left open`);
+            continue;
+          }
+          if (!apply) { result.unlinked.push({ key, taskId, reason: 'Jira no longer returns this ticket', dryRun: true }); continue; }
+          delete links[key];
+          try {
+            taskStore.updateTask(taskId, {
+              source: UNASSIGNED_SOURCE,
+              notes: `${row.notes ? `${row.notes}\n\n` : ''}Jira no longer returns ${key} (deleted, moved, or hidden from NEURO). `
+                + `Left open — it is yours to close or drop.`,
+            });
+          } catch (e) {
+            result.gaps.push(`${key}: unlinked, but the note could not be written: ${e.message}`);
+          }
+          result.unlinked.push({ key, taskId, reason: 'Jira no longer returns this ticket' });
           continue;
         }
 

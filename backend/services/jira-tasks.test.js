@@ -185,7 +185,9 @@ test('a resolved ticket closes the task', async () => {
   assert.equal(db.getTaskRow(taskId).status, 'done');
 });
 
-test('a ticket Jira did not answer for is LEFT OPEN and reported', async () => {
+test('a ticket Jira no longer returns is UNLINKED and left open — never closed', async () => {
+  // NT-33883, 23 Oct 2026: the ticket was deleted in Jira, the link stayed, and
+  // since Jira owns the tick the task could never be closed by anyone.
   reset();
   const created = await withJira(
     { assigned: { issues: [issue({ key: 'NT-1' })], complete: true }, states: { issues: [issue({ key: 'NT-1' })], complete: true } },
@@ -200,8 +202,31 @@ test('a ticket Jira did not answer for is LEFT OPEN and reported', async () => {
     () => jiraTasks.sync({ apply: true }),
   );
   assert.equal(res.closed.length, 0);
-  assert.equal(db.getTaskRow(taskId).status, 'open');
-  assert.ok(res.gaps.some((g) => /NT-1\b/.test(g)), 'the silence must be reported, not swallowed');
+  assert.equal(res.unlinked.length, 1);
+  const row = db.getTaskRow(taskId);
+  assert.equal(row.status, 'open');
+  assert.equal(row.source, 'jira-unassigned');
+  assert.match(row.notes, /no longer returns NT-1/);
+  assert.equal(jiraTasks.keyForTask(taskId), null);
+  assert.equal(taskStore.updateTask(taskId, { status: 'done' }).status, 'done', 'Nick can now close it');
+});
+
+test('a missing ticket on an INCOMPLETE read stays linked and is only reported', async () => {
+  reset();
+  const created = await withJira(
+    { assigned: { issues: [issue({ key: 'NT-4' })], complete: true }, states: { issues: [issue({ key: 'NT-4' })], complete: true } },
+    () => jiraTasks.sync({ apply: true }),
+  );
+  const taskId = created.created[0].taskId;
+  for (const partial of [
+    { assigned: { issues: [], complete: false }, states: { issues: [], complete: true } },
+    { assigned: { issues: [], complete: true }, states: { issues: [], complete: false } },
+  ]) {
+    const res = await withJira(partial, () => jiraTasks.sync({ apply: true }));
+    assert.equal(res.unlinked.length, 0);
+    assert.equal(jiraTasks.keyForTask(taskId), 'NT-4', 'still linked');
+    assert.ok(res.gaps.some((g) => /NT-4\b/.test(g)), 'the silence must be reported, not swallowed');
+  }
 });
 
 test('an unassigned ticket is unlinked and left open, never closed', async () => {
