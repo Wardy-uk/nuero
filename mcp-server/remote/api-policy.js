@@ -40,6 +40,10 @@ export const interactive = {
   post_task_agent_tasks_by_taskId_start: 'Only Nick can press “Do this” on a task, in NEURO. An agent cannot start NEURO’s task agent.',
   post_task_agent_tasks_by_taskId_answer: 'Answering the task agent’s question is Nick, in NEURO, on that task.',
   post_task_agent_tasks_by_taskId_stop: 'Stopping a “Do this” run is Nick’s decision, in NEURO, on that task.',
+  get_task_agent_tasks_by_taskId_handoff_preview: 'The Claude-desktop handoff preview is Nick’s alone, in NEURO on that task.',
+  post_task_agent_tasks_by_taskId_handoff: 'Handing a task to Claude on desktop is Nick’s decision, in NEURO on that task.',
+  post_task_agent_tasks_by_taskId_outputs_by_outputId_save: 'Preparing a “Do this” draft for the vault is Nick’s, in NEURO on that task; saving it still needs his confirmation.',
+  post_ai_gate_class_limit: 'An AI spending limit is Nick’s decision, in NEURO → Settings → AI budget.',
   // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
   get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',
   post_saim_authority_grant_preview: 'Giving SAiM authority to act is Nick, in SAiM, reading exactly what it would allow. An agent cannot do it.',

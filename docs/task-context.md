@@ -160,6 +160,10 @@ task-bounded excerpt and nothing more (no path, no full read); a hard exclusion 
 even the title. A full read goes through `readForAgent(rel)`, which applies this scan's own
 `screenNote` (security, opted-out, Personal/, private, employment-sensitive, excluded) and refuses
 anything restricted. It changes no link, runs no scan and does not touch the automatic-linking setting.
+Its "Continue this with Claude on desktop" prompt carries non-restricted sources' titles, provenance and
+short excerpts only, a COUNT of restricted sources (never their title or text), and nothing at all for a
+people matter; a prompt Nick edits is screened again for Security review/, Archive, credentials and
+restricted excerpts before it is copied. A saved draft quotes only non-restricted sources the run used.
 
 ## Surfaces
 

@@ -52,7 +52,36 @@ export function LedgerLine({ profile }) {
   );
 }
 
-export function AiBudgetView({ profile, error = null }) {
+/**
+ * The one limit Nick can set here (23 Oct 2026): model requests per day for
+ * "Do this" (call class task_agent). None by default. In shadow mode the gate
+ * RECORDS the limit and does not block — the card says so in words.
+ */
+export function TaskAgentLimit({ limit, mode = 'shadow', usedToday = 0, onSave, busy = false, message = null }) {
+  const [value, setValue] = useState(limit ? String(limit) : '');
+  useEffect(() => { setValue(limit ? String(limit) : ''); }, [limit]);
+  const n = Number(value);
+  const valid = value.trim() === '' || (Number.isInteger(n) && n >= 1 && n <= 1000);
+  return (
+    <div className="aib__limit" data-testid="aib-task-agent-limit">
+      <div className="aib__h">Do this — model requests per day</div>
+      <p className="aib__muted">
+        {limit ? `Limit ${limit} a day (${usedToday} used today). ` : `No limit set (${usedToday} used today). `}
+        {mode === 'shadow'
+          ? 'The gate is in shadow mode: a limit is recorded, not enforced, so Do this is not budget-blocked by the gate. One run uses 2–12 requests.'
+          : 'The gate is enforcing: past the limit, Do this stops with nothing kept.'}
+      </p>
+      <div className="aib__limit-row">
+        <input type="number" min="1" max="1000" step="1" value={value} placeholder="no limit" aria-label="Do this requests per day" onChange={(e) => setValue(e.target.value)} />
+        <button type="button" disabled={busy || !valid} onClick={() => onSave(value.trim() === '' ? null : n)}>{value.trim() === '' ? 'Remove limit' : 'Save limit'}</button>
+      </div>
+      {!valid && <p className="aib__note">A whole number from 1 to 1000, or empty for no limit.</p>}
+      {message && <p className="aib__muted" role="status">{message}</p>}
+    </div>
+  );
+}
+
+export function AiBudgetView({ profile, error = null, limitControl = null }) {
   if (!profile) return <p className="admin-card-detail">{error || 'Loading the AI budget…'}</p>;
   if (!profile.known) {
     return (
@@ -111,6 +140,7 @@ export function AiBudgetView({ profile, error = null }) {
         <p className="aib__muted">Last {profile.history.length} days: {profile.history.map((h) => `${h.day.slice(5)} ${usd(h.usd)}`).join(' · ')}</p>
       )}
       {profile.degraded && <p className="aib__note" role="alert">{profile.degraded}</p>}
+      {limitControl}
       <LedgerLine profile={profile} />
     </div>
   );
@@ -119,11 +149,22 @@ export function AiBudgetView({ profile, error = null }) {
 export default function AiBudgetCard() {
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState(null);
-  useEffect(() => {
-    let live = true;
-    apiFetch('/api/ai-gate/profile').then((r) => r.json()).then((b) => { if (live) setProfile(b); })
-      .catch(() => { if (live) setError('NEURO didn’t answer — the AI budget is unknown, not zero.'); });
-    return () => { live = false; };
-  }, []);
-  return <AiBudgetView profile={profile} error={error} />;
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const load = () => apiFetch('/api/ai-gate/profile').then((r) => r.json()).then((b) => setProfile(b))
+    .catch(() => setError('NEURO didn’t answer — the AI budget is unknown, not zero.'));
+  useEffect(() => { load(); }, []);
+  const ta = profile && profile.classLimits && profile.classLimits.task_agent;
+  const used = profile && (profile.byClass || []).find((c) => c.app === 'neuro' && c.callClass === 'task_agent');
+  const save = async (maxPerDay) => {
+    setBusy(true); setMessage(null);
+    try {
+      const r = await apiFetch('/api/ai-gate/class-limit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callClass: 'task_agent', maxPerDay }) });
+      const b = await r.json().catch(() => ({}));
+      setMessage(r.ok && b.ok ? (maxPerDay ? `Saved: ${maxPerDay} a day.` : 'Limit removed.') : (b.error || `Not saved (${r.status}).`));
+      await load();
+    } finally { setBusy(false); }
+  };
+  const limitControl = ta ? <TaskAgentLimit limit={ta.maxPerDay} mode={profile.mode || 'shadow'} usedToday={used ? used.calls : 0} onSave={save} busy={busy} message={message} /> : null;
+  return <AiBudgetView profile={profile} error={error} limitControl={limitControl} />;
 }

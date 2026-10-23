@@ -29,7 +29,7 @@ async function load(file) {
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
         build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-          contents: 'export const apiUrl = p => p;\nexport const apiFetch = async () => ({ ok: false, json: async () => ({}) });\nexport default { apiUrl };',
+          contents: 'export const apiUrl = p => p;\nexport const authHeaders = () => ({});\nexport const apiFetch = async () => ({ ok: false, json: async () => ({}) });\nexport default { apiUrl };',
           loader: 'js',
         }));
       },

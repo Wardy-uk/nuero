@@ -147,6 +147,11 @@ const ROUTE_RULES = Object.freeze([
   // scan is his alone — the gateway marks it interactive.
   R('POST', '/api/task-context/scan', 'internal.state', { machine: 'refuse' }),
   R('GET', '/api/task-agent/tasks/:taskId', 'task-agent.run'),
+  R('GET', '/api/task-agent/tasks/:taskId/handoff/preview', 'task-agent.run'),
+  R('POST', '/api/task-agent/tasks/:taskId/handoff', 'task-agent.run'),
+  R('POST', '/api/task-agent/tasks/:taskId/outputs/:outputId/save', 'task-agent.run'),
+  // An AI limit is Nick's decision about spend, in Settings — never a machine's.
+  R('POST', '/api/ai-gate/class-limit', 'internal.state', { machine: 'refuse' }),
   R('GET', '/api/task-agent/active', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/start', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/answer', 'task-agent.run'),

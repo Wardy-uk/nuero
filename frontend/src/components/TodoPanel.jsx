@@ -19,6 +19,7 @@ import TaskBlocks, { BlockTimeControl } from './TaskBlocks';
 import TaskTriage from './TaskTriage.jsx';
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
 import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
+import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
 import { desktopCall } from '../desktopCall';
 import { openInVault } from '../openVault';
 import './TodoPanel.css';
@@ -1289,7 +1290,14 @@ function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
         {/* "Do this" (23 Oct 2026): NEURO progresses the task as far as it safely can. Never on a closed task. */}
         {!todo.done && (
           <div className="todo-agent" onClick={(e) => e.stopPropagation()}>
-            <TaskAgent taskId={todo.task_id} call={desktopCall} onOpenNote={(s) => s.path && openInVault(s.path)} onOpenActions={() => _navigate && _navigate('actions')} />
+            <TaskAgent
+              taskId={todo.task_id}
+              call={desktopCall}
+              onOpenNote={(s) => s.path && openInVault(s.path)}
+              onOpenActions={() => _navigate && _navigate('actions')}
+              // "Save to vault…" opens the EXISTING prepared-move confirmation for that record.
+              renderSave={(recordId, done) => <PreparedMove call={desktopCall} recordId={recordId} embedded onChanged={done} />}
+            />
           </div>
         )}
       </>

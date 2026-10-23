@@ -10,7 +10,10 @@
  *  - a people matter: says it stops at Nick's decision;
  *  - outputs, a handoff to Actions, sources with provenance, usage;
  *  - the kiosk (readOnly) renders NOTHING — no control and no output;
- *  - both shells mount it, the phone only as the phone app.
+ *  - both shells mount it; SAiM is read-only ONLY on the kiosk (the Electron
+ *    desktop is Nick's own SAiM and shows it);
+ *  - Save to vault / Copy / save status, the Claude handoff preview, the
+ *    blocked state and the honest budget line.
  */
 
 const test = require('node:test');
@@ -100,13 +103,50 @@ test('the kiosk (readOnly) renders nothing at all', () => {
   assert.equal(h, '');
 });
 
-test('both shells mount it: desktop on an open NEURO task, the phone only as the phone app', () => {
+test('both shells mount it: desktop on an open NEURO task; SAiM everywhere but the kiosk; both with the real save confirmation', () => {
   const desk = fs.readFileSync(path.join(ROOT, 'frontend/src/components/TodoPanel.jsx'), 'utf8');
-  assert.match(desk, /<TaskAgent taskId=\{todo\.task_id\} call=\{desktopCall\}/);
+  assert.match(desk, /<TaskAgent\s+taskId=\{todo\.task_id\}\s+call=\{desktopCall\}/);
   assert.match(desk, /\{!todo\.done && \(/);
+  assert.match(desk, /renderSave=\{\(recordId, done\) => <PreparedMove call=\{desktopCall\} recordId=\{recordId\} embedded onChanged=\{done\} \/>\}/);
   const phone = fs.readFileSync(path.join(ROOT, 'saim/app/src/views/Tasks.jsx'), 'utf8');
-  assert.match(phone, /<TaskAgent taskId=\{item\.task_id\} call=\{agentCall\} readOnly=\{platformNow\(\) !== 'phone-app'\} \/>/);
+  assert.match(phone, /readOnly=\{platformNow\(\) === 'kiosk'\}/, 'read-only on the kiosk ONLY');
+  assert.doesNotMatch(phone, /platformNow\(\) !== 'phone-app'/, 'the Electron desktop is Nick’s own SAiM — never excluded');
+  assert.match(phone, /renderSave=\{\(recordId, done\) => <PreparedMove call=\{agentCall\} recordId=\{recordId\} embedded onChanged=\{done\} \/>\}/);
   // Positive control: the shared component is what both import.
   assert.match(desk, /saim\/shared-ui\/TaskAgent\.jsx/);
   assert.match(phone, /shared-ui\/TaskAgent\.jsx/);
+});
+
+test('a finished output offers Save to vault and Copy; a waiting save says nothing is saved yet', () => {
+  const run = base({ outputs: [{ id: 'o1', kind: 'plan', title: 'Q4 plan', markdown: '- x', next: { canSave: true }, save: null }] });
+  const h = view(run, { onSave: noop, onCopy: noop });
+  assert.match(h, /Save to vault…/);
+  assert.match(h, />Copy</);
+  assert.match(h, /The task stays open until you tick it/);
+  const w = view(base({ outputs: [{ id: 'o1', kind: 'plan', title: 'Q4 plan', markdown: '- x', next: { canSave: true }, save: { recordId: 'pm_1', status: 'waiting' } }] }), { onSave: noop, onCopy: noop });
+  assert.match(w, /Open the save confirmation/);
+  assert.match(w, /waiting for your confirmation\. Nothing is saved yet/);
+  const p = view(base({ outputs: [{ id: 'o1', kind: 'brief', title: 'B', markdown: '- x', next: { canSave: false, why: 'People / employment matter — NEURO never saves those as notes on its own.' } }] }), { onSave: noop });
+  assert.doesNotMatch(p, /Save to vault/);
+  assert.match(p, /never saves those as notes/);
+});
+
+test('the Claude handoff preview shows why, what is included, the statement and the editable prompt', () => {
+  const preview = { why: 'Needs a code change.', destination: { project: 'NEURO', folder: 'Projects/NEURO' }, included: ['the task'], excluded: ['restricted notes'], statement: 'Nothing is sent to Claude until you press the button.', includeDrafts: false, sensitive: false, prompt: '# Task #7: Fix it' };
+  const h = view(base({ claude: { recommended: true, why: 'Needs a code change.' } }), { onClaudeOpen: noop, claude: { preview, busy: false, error: null, result: null, onIncludeDrafts: noop, onSend: noop } });
+  assert.match(h, /Better with Claude on desktop/);
+  assert.match(h, /Why Claude:/);
+  assert.match(h, /Project: (<!-- -->)?NEURO/);
+  assert.match(h, /Nothing is sent to Claude until you press the button/);
+  assert.match(h, /# Task #7: Fix it/);
+  assert.match(h, /Continue this with Claude on desktop/);
+  assert.match(h, /Include my drafts in full/);
+  assert.match(h, /Also open Claude on my laptop/);
+});
+
+test('blocked says it could not take this further; the budget line is the server’s words', () => {
+  const h = view(base({ status: 'blocked', summary: { completed: [], remaining: ['Nothing says what "the thing" is.'] } }), { budget: { say: 'Recorded by the AI gate in shadow mode. No Do this limit is set, so it is not budget-blocked by the gate.' } });
+  assert.match(h, /Could not take this further/);
+  assert.match(h, /the reason is the evidence/);
+  assert.match(h, /not budget-blocked by the gate/);
 });

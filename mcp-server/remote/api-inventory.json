@@ -5674,6 +5674,26 @@
     "stream": false
   },
   {
+    "id": "get_task_agent_tasks_by_taskId_handoff_preview",
+    "method": "GET",
+    "route": "/api/task-agent/tasks/:taskId/handoff/preview",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 95,
+    "description": "GET /api/task-agent/tasks/:taskId/handoff/preview. the Claude-desktop handoff Nick would send: why, what is included and excluded, the destination, and the editable prompt (query.includeDrafts=1 to include draft text). Sends nothing. Owner only.",
+    "params": [
+      "taskId"
+    ],
+    "query": [
+      "includeDrafts"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_task_blocks",
     "method": "GET",
     "route": "/api/task-blocks",
@@ -7821,6 +7841,25 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_ai_gate_class_limit",
+    "method": "POST",
+    "route": "/api/ai-gate/class-limit",
+    "domain": "ai-gate",
+    "source": "routes/ai-gate.js",
+    "line": 34,
+    "description": "POST /api/ai-gate/class-limit. Nick sets or clears ONE class's daily model-request limit (body.callClass, body.maxPerDay: 1..1000 or null). Only task_agent is settable. In shadow mode the gate records a limit and does not block; only AI_GATE_MODE=enforce refuses. Owner only.",
+    "params": [],
+    "query": [],
+    "body": [
+      "callClass",
+      "maxPerDay"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -14235,6 +14274,47 @@
       "questionId",
       "text"
     ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_tasks_by_taskId_handoff",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/handoff",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 103,
+    "description": "POST /api/task-agent/tasks/:taskId/handoff. Nick presses \"Continue this with Claude on desktop\": the prompt as he left it (body.prompt) is screened, recorded by hash and returned for his device to copy; body.openOnDesk asks the laptop to open Claude via the existing desk intent. Nothing is sent to C",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [
+      "includeDrafts",
+      "openOnDesk",
+      "prompt"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_tasks_by_taskId_outputs_by_outputId_save",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/outputs/:outputId/save",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 84,
+    "description": "POST /api/task-agent/tasks/:taskId/outputs/:outputId/save. prepare ONE finished Do this draft to be saved to the vault: stores the existing project-note prepared move and returns its recordId. Saves nothing; the save happens only through /api/prepared-moves/request + /confirm. Owner only.",
+    "params": [
+      "taskId",
+      "outputId"
+    ],
+    "query": [],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,

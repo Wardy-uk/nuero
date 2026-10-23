@@ -42,7 +42,7 @@ test.before(async () => {
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
         build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-          contents: 'export const apiUrl = p => p;\nexport default { apiUrl };', loader: 'js',
+          contents: 'export const apiUrl = p => p;\nexport const authHeaders = () => ({});\nexport const apiFetch = async () => ({ ok: false, status: 503, json: async () => ({}) });\nexport default { apiUrl };', loader: 'js',
         }));
       },
     }],
@@ -119,7 +119,7 @@ test('the task list keys and bands match the server', async () => {
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
         build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-          contents: 'export const apiUrl = p => p;\nexport const apiFetch = () => Promise.resolve({});\nexport default { apiUrl };', loader: 'js',
+          contents: 'export const apiUrl = p => p;\nexport const authHeaders = () => ({});\nexport const apiFetch = () => Promise.resolve({});\nexport default { apiUrl };', loader: 'js',
         }));
       },
     }],

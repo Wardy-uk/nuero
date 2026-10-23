@@ -80,4 +80,35 @@ router.post('/tasks/:taskId/stop', (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /api/task-agent/tasks/:taskId/outputs/:outputId/save — prepare ONE finished Do this draft to be saved to the vault: stores the existing project-note prepared move and returns its recordId. Saves nothing; the save happens only through /api/prepared-moves/request + /confirm. Owner only.
+router.post('/tasks/:taskId/outputs/:outputId/save', async (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const bad = strict(req.body, []);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    if (!/^o\d{1,3}$/.test(req.params.outputId)) return res.status(400).json({ ok: false, error: 'bad output id' });
+    send(res, await svc().prepareSave(req.params.taskId, req.params.outputId));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// GET /api/task-agent/tasks/:taskId/handoff/preview — the Claude-desktop handoff Nick would send: why, what is included and excluded, the destination, and the editable prompt (query.includeDrafts=1 to include draft text). Sends nothing. Owner only.
+router.get('/tasks/:taskId/handoff/preview', (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    send(res, svc().handoffPreview(req.params.taskId, { includeDrafts: req.query.includeDrafts === '1' }));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/task-agent/tasks/:taskId/handoff — Nick presses "Continue this with Claude on desktop": the prompt as he left it (body.prompt) is screened, recorded by hash and returned for his device to copy; body.openOnDesk asks the laptop to open Claude via the existing desk intent. Nothing is sent to Claude. Owner only.
+router.post('/tasks/:taskId/handoff', (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const { prompt, includeDrafts, openOnDesk } = req.body;
+    const bad = strict(req.body, ['prompt', 'includeDrafts', 'openOnDesk']);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    if (typeof prompt !== 'string') return res.status(400).json({ ok: false, error: 'prompt is required' });
+    send(res, svc().handoff(req.params.taskId, { prompt, includeDrafts: includeDrafts === true, openOnDesk: openOnDesk === true }));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 module.exports = router;

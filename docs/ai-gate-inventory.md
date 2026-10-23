@@ -159,7 +159,7 @@ worker, retired 15 Aug 2026 — its Ollama calls are gated at
 | `saim_move_reply`, `saim_move_prep`, `saim_move_note` | `prepared-move-drafter.js` | ai-routing (cloud) |
 | `vesta_photo` | `vesta-vision.js` | Anthropic vision |
 | `medical_scan` | `medical-records.js` | Anthropic vision |
-| `task_agent` | `task-agent.js` ("Do this", 23 Oct 2026; branch `task-agent-do-this`, not deployed) | Anthropic `chatWithTools`, one ticket per round; budget via `ai-routing.isCloudAllowed`, cost via `recordUsage`. See `docs/task-agent.md`. |
+| `task_agent` | `task-agent.js` ("Do this", 23 Oct 2026; branch `task-agent-do-this`, not deployed) | Anthropic `chatWithTools`, one ticket per model request (≤12 a run, ≤4k output each, 90 s timeout, no SDK retries); default model `claude-sonnet-4-6` (in the installed SDK's list, priced here and in ai-cost); an unpriced override is refused before any call. **The only class with a Settings-controlled `maxPerDay`** (`ai-gate-classes.setClassLimit`, `POST /api/ai-gate/class-limit`, Settings → AI budget): UNSET; in shadow it is recorded as `volume`, only `enforce` refuses. ai-routing's `isCloudAllowed`/`recordUsage` still apply. See `docs/task-agent.md`. |
 | `embeddings_index`, `embeddings_query` | `embeddings.js` (3 sites) | Voyage |
 | `tts_speak` | `tts.js` | OpenRouter audio |
 | `voice_transcribe` | `voice-capture.js` | local faster-whisper |

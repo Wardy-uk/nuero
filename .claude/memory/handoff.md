@@ -1,11 +1,31 @@
-# Session Handoff — 2026-10-23 ("Do this" task agent — BUILT, branch `task-agent-do-this`, NOT deployed)
+# Session Handoff — 2026-10-23 ("Do this" task agent, second pass — branch `task-agent-do-this`, NOT pushed, NOT deployed)
 
-Branch `task-agent-do-this` (one commit on top of main, built from a temporary index — the shared tree was NOT switched). Contract, provider path, proof and Nick's remaining decisions: `docs/task-agent.md`.
-- What: a **Do this** button on open NEURO tasks (desktop card, NEURO phone PWA, SAiM phone app; never the kiosk) and a Drafts section. Anthropic tool loop behind the AI gate (`task_agent` class), owner-only routes, no new authority; email only PREPARED (governed `compose_email`, origin `task-agent`, approval code).
-- Proof: route suite 19, render 7, Electron screens 6 (1440/390, screenshots via `TA_SHOTS`), 13/13 mutations caught, full backend suite run with ELECTRON_PATH (see the commit body for the count).
-- pi5 read-only check: `AI_MODE=hybrid`, `ANTHROPIC_API_KEY` set → it would be allowed to run under the existing daily budgets. Anthropic credit NOT checked.
-- Not done / Nick's call: deploy (backend restart, frontend build, saim/app via Netlify, MCP gateway rebuild); model/spend; "Save to vault" for an output (follow-up via prepared-move confirmation).
-- ⚠ A concurrent session was editing report-fixes in the same tree (`App.jsx`, `api-policy.js`, report-fixes/soap/weekly-risk). My commit carries only my hunks, and my changes were then taken back OUT of the shared working tree (files restored only where they were exactly HEAD + mine), so main's tree is as that session left it. To work on this, check out the branch in a fresh clone or worktree (never remove a worktree holding junctions).
+Work happened in a separate full CLONE at `C:\Users\NickW\Claude\nuero-do-this`, with its own `npm ci` (never a worktree; the shared tree was not switched). The branch was pushed only to the LOCAL repo `nuero`, not GitHub. ⚠ Do not `rm -rf` that clone: its node_modules hold workspace junctions. Delete it with the safe-remove hook if needed. Full contract: `docs/task-agent.md`.
+
+- **Electron.** The SAiM desktop window loads the same saim/app (sara.nickward.co.uk) with the PIN, so it IS Nick's surface. The first pass excluded it — a bug, now fixed. Read-only is now the kiosk only (`platformNow() === 'kiosk'`). Server-side proof: `viewerOf` refuses the kiosk credential (403), and the saim/backend proxy has no task-agent door (tested).
+- **Finished work.**
+  - "Save to vault…" → `prepared-move-planner.planAgentOutput` → the EXISTING project-note prepared move → `/api/prepared-moves/request` + `/confirm`. Boundaries in order: device lock → off-duty hold → allowance → one-use confirmation.
+  - Email → a governed compose_email on Actions, prepared only after a turn completes.
+  - The task is never ticked.
+  - A run that produced nothing ends in a new "blocked" state.
+- **Claude on desktop.**
+  - The agent flags it with a `recommend_claude_desktop` tool.
+  - The preview shows why, what is included and excluded, the destination, an editable prompt, and "nothing is sent until you press".
+  - The server screens out Security review/, Archive, credentials, restricted excerpts and titles, and drafts Nick did not tick. For a people matter nothing is included.
+  - The handoff is recorded by hash and copied on the device, with an optional existing no-argument desk intent, sent at most once.
+  - No approved prompt-carrying mechanism exists, so it copies.
+- **Turns are transactional.** A turn that hits exhausted credit, a timeout, overload or a gate refusal keeps nothing. The default model is `claude-sonnet-4-6`: it is in the installed SDK's model list and in both price tables. The first pass's `claude-sonnet-5` is not in the installed SDK list. Requests time out at 90 s, with no SDK retries.
+- **Budget.** The gate is in SHADOW mode with NO cap (corrected). New: Settings → AI budget "Do this — model requests per day" (`POST /api/ai-gate/class-limit`, owner-only, gateway interactive). It is UNSET; it is recorded in shadow and refused only under enforce (both tested). ai-routing's own limits still apply.
+- **Tests.**
+  - task-agent 19, task-agent-next 15, render 10, browser 8 (Electron; screenshots via TA_SHOTS).
+  - The live test (1) is SKIPPED: it needs TASK_AGENT_LIVE_ANTHROPIC_KEY, a disposable key from Nick. The production key is never read.
+  - Mutations: first pass 13/13; second pass 19/20 caught. The survivor ("save repeat makes a second proposal") is a stated second guard: the planner's evidence-hash dedupe returns the same record.
+  - Mutation also exposed a visibility check that passed on a hidden confirmation (Chromium gives content inside a closed `<details>` layout rects). It now uses checkVisibility() plus a not-inside-a-closed-fold check.
+- **Nick's decisions.**
+  - Deploy?
+  - A disposable Anthropic key (or approval for the production one) for the live test.
+  - Whether to set a Do this limit, or turn on enforcement.
+  - Evening saves stay held by the existing off-duty rule unless he widens it.
 
 # Session Handoff — 2026-10-23 (task-context previews — DEPLOYED 8baeccf6)
 

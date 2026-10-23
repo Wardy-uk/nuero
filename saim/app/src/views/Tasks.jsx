@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiUrl, authHeaders } from '../api';
 import { makeCall } from '../preparedMove.mjs';
 import TaskAgent from '../../../shared-ui/TaskAgent.jsx';
+import PreparedMove from '../components/PreparedMove.jsx';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { completeTask } from '../completeTask';
 import { msPlanBadge } from '../../../../shared/ms-task.cjs';
@@ -219,10 +220,17 @@ function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, 
         </div>
       )}
 
-      {/* "Do this" (23 Oct 2026): only on the phone app — the kiosk (and the Electron
-          window, which reaches NEURO through the kiosk proxy) never draws it. */}
+      {/* "Do this" (23 Oct 2026): on Nick's own SAiM — the phone app AND the desktop
+          Electron window, which loads this same app and calls NEURO directly with his
+          PIN. Only the kiosk build (declarePlatform('kiosk')) is read-only, and the
+          server refuses its credential anyway (task-context.viewerOf). */}
       {isNeuro && (
-        <TaskAgent taskId={item.task_id} call={agentCall} readOnly={platformNow() !== 'phone-app'} />
+        <TaskAgent
+          taskId={item.task_id}
+          call={agentCall}
+          readOnly={platformNow() === 'kiosk'}
+          renderSave={(recordId, done) => <PreparedMove call={agentCall} recordId={recordId} embedded onChanged={done} />}
+        />
       )}
 
       {error && <div className="tasks__rowerr">{error}</div>}

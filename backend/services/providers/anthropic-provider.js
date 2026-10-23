@@ -42,7 +42,9 @@ function _open(params, options, fallbackClass) {
 async function _create(params, options, fallbackClass) {
   const ticket = _open(params, options, fallbackClass);
   try {
-    const r = await _getClient().messages.create(params);
+    // `requestOptions` (e.g. { timeout, signal }) is the SDK's own per-request
+    // option bag; absent, the call is exactly what it was.
+    const r = options.requestOptions ? await _getClient().messages.create(params, options.requestOptions) : await _getClient().messages.create(params);
     gateCall.close(ticket, { ok: true, model: r.model || params.model, promptTokens: r.usage?.input_tokens, completionTokens: r.usage?.output_tokens });
     return r;
   } catch (e) {

@@ -52,7 +52,7 @@ test.before(async () => {
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
         build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
           // apiFetch too: TodoPanel's task context reaches it through desktopCall (22 Oct 2026).
-          contents: 'export const apiUrl = p => p;\nexport const apiFetch = async () => ({ ok: false, status: 503, json: async () => ({}) });\nexport default { apiUrl };', loader: 'js',
+          contents: 'export const apiUrl = p => p;\nexport const authHeaders = () => ({});\nexport const apiFetch = async () => ({ ok: false, status: 503, json: async () => ({}) });\nexport default { apiUrl };', loader: 'js',
         }));
       },
     }],

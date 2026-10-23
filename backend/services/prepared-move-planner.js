@@ -1008,7 +1008,68 @@ async function recheck(packet, { deps: over = {} } = {}) {
   return { ok: true };
 }
 
-module.exports = { meetingStarted,
+/**
+ * "Do this" (23 Oct 2026): a finished task-agent output becomes the SAME
+ * project-note prepared move the planner makes itself — the same moveKey
+ * (`task:<id>`), destination rule (one evidenced project folder, else
+ * Projects/Working), note shape, optional solo block (only when the run left
+ * work only Nick can do, through the same slot finder and leave checks),
+ * request / confirm / executor and receipts. Nothing new can be confirmed here:
+ * this only STORES a proposal. An employment matter is refused, as the
+ * executor would refuse it.
+ *   → { ok, outcome: 'stored'|'unchanged'|'withheld', record?, why? }
+ */
+async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [], now = Date.now(), deps: over = {} } = {}) {
+  const deps = { ...DEFAULT_DEPS, ...over };
+  const nowMs = typeof now === 'number' ? now : Date.parse(now);
+  const task = deps.task(Number(taskId));
+  if (!task || !['open', 'in-progress'].includes(task.status)) return { ok: false, outcome: 'withheld', why: 'The task is no longer open.' };
+  const text = String((output && output.markdown) || '').trim();
+  if (!text) return { ok: false, outcome: 'withheld', why: 'There is no draft to save.' };
+  if (require('./promise-ledger').hrSensitivity(`${task.text}\n${text}`).sensitive) {
+    return { ok: false, outcome: 'withheld', reason: 'employment-route', why: 'This reads as an employment / people matter, and NEURO never saves those as notes on its own — keep it in the workspace, or copy it yourself.' };
+  }
+  const t = safeTitle(task.text);
+  if (!t) return { ok: false, outcome: 'withheld', why: 'The task’s wording cannot be made into a note name.' };
+  const dest = destinationFor(task, deps);
+  const brief = require('./private-brief');
+  const notePath = `${dest.folder}/${t} (draft).md`;
+  if (dest.folder !== brief.WORKING_FOLDER && !_exists(dest.folder)) return { ok: false, outcome: 'withheld', why: `The folder ${dest.folder} does not exist, and NEURO never creates folders.` };
+  const n = { kind: 'project-note', sourceKey: `task:${task.id}`, source: { taskId: task.id }, ref: `task-agent:${task.id}:${output.id}`, title: task.text };
+  const moveKey = moveKeyFor(n.kind, n.sourceKey);
+  const prior = deps.latest(moveKey);
+  const evidenceHash = sha(JSON.stringify(['task-agent', n.sourceKey, task.text, output.id, text, remaining]));
+  if (prior && prior.packet && prior.packet.selected && prior.packet.selected.evidenceHash === evidenceHash) {
+    let stands = false;
+    try { stands = (await recheck(prior.packet, { deps: over })).ok === true; } catch { stands = false; }
+    if (stands) { deps.markChecked(prior.id, nowMs); return { ok: true, outcome: 'unchanged', record: prior }; }
+  }
+  if (_exists(notePath)) return { ok: false, outcome: 'withheld', why: `A draft already exists: ${notePath}.` };
+  const gaps = (remaining || []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 5);
+  const g = {
+    ok: true, plan: 'draft', title: task.text, task: { id: task.id, text: task.text, due: task.due_date || null },
+    notePath, folder: dest.folder, destination: dest, folderExists: true,
+    observed: [{ fact: `Task #${task.id} is open: “${task.text}”.`, source: { kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString() } }],
+    facts: sourceFacts.slice(0, 12), freshness: [{ kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString(), maxHours: 2 }],
+    evidenceHash, employment: { sensitive: false, categories: [] },
+  };
+  let slot = null;
+  if (gaps.length) {
+    const s = _slotFor(deps, nowMs);
+    if (s.known && s.slot) { slot = s.slot; g.freshness.push({ kind: 'calendar', ref: 'calendar_cache', observedAt: s.diaryFetchedAt, maxHours: 2 }); } else g.noTimeBecause = `${s.why || 'no safe slot was found'}.`;
+  }
+  const decision = { decidedAt: new Date(nowMs).toISOString(), rule: 'task-agent', lead: null };
+  const selected = composeV2({ n, g, draft: { text, gaps }, slot, decision, duty: null, nowMs, origin: 'task-agent' });
+  selected.headline = `NEURO drafted “${safeTitle(task.text)}” — save it to the vault?`;
+  selected.preparation[0].did = `NEURO’s Do this run wrote this from ${sourceFacts.length} linked source${sourceFacts.length === 1 ? '' : 's'}${slot ? ` and found ${BLOCK_MINUTES} free minutes for what only you can do` : ''}.`;
+  if (!selected.screens.freshnessOk) return { ok: false, outcome: 'withheld', why: 'The calendar it was checked against is stale — try again in a few minutes.' };
+  const packet = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), origin: 'task-agent', firstOrigin: 'manual', decision, duty: null, selected, withheld: [] };
+  const st = deps.store(packet, { now: nowMs });
+  if (!st.ok) return { ok: false, outcome: 'withheld', why: st.why };
+  return { ok: true, outcome: st.created ? 'stored' : 'unchanged', record: st.record };
+}
+
+module.exports = { meetingStarted, planAgentOutput,
   CONTRACT, KINDS, DO_ADAPTERS, DENY_FOLDERS, BLOCK_MINUTES, ANSWER_MAX, MIN_MEETING_LEAD_MIN,
   moveKeyFor, quickEligible, safeTitle, ungrounded, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
   planAndStore, recheck, prescreen, promiseMode, destinationFor, MUST_NOT_PRIVATE, eligibleNow, rowIdsFor, projectFolders, nextSlot, SLOT_WORKING_DAYS, DEFAULT_DEPS,

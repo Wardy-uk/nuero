@@ -37,7 +37,12 @@ const db = require('../db/database');
 const KEY = (id) => `task_agent_run:${id}`;
 const HISTORY_KEY = (id) => `task_agent_history:${id}`;
 const CONTRACT = 'task-agent-v1';
-const MODEL = () => process.env.TASK_AGENT_MODEL || 'claude-sonnet-5';
+// The default is a model the INSTALLED SDK names and BOTH price tables know
+// (ai-gate PRICES and ai-cost), so the gate can bound and cost every request.
+// An override the gate cannot price is refused before any call (task-agent-model.test).
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const MODEL = () => process.env.TASK_AGENT_MODEL || DEFAULT_MODEL;
+const REQUEST_TIMEOUT_MS = 90 * 1000; // per model request; a timeout fails the turn with nothing kept
 const MAX_ROUNDS = 12;
 const MAX_OUTPUT_TOKENS = 4000;
 const STALE_MS = 10 * 60 * 1000;      // a 'running' run with no heartbeat this long was interrupted
@@ -46,9 +51,9 @@ const MAX_OUTPUT_CHARS = 20000;
 const MAX_READ_CHARS = 8000;
 const MAX_STEPS = 60;
 
-const STATUS = Object.freeze(['running', 'needs-answer', 'needs-manual', 'needs-decision', 'ready', 'failed', 'interrupted', 'stopped']);
+const STATUS = Object.freeze(['running', 'needs-answer', 'needs-manual', 'needs-decision', 'ready', 'blocked', 'failed', 'interrupted', 'stopped']);
 const AWAITING = new Set(['needs-answer', 'needs-manual', 'needs-decision']);
-const SETTLED = new Set(['ready', 'stopped', 'failed', 'interrupted']);
+const SETTLED = new Set(['ready', 'blocked', 'stopped', 'failed', 'interrupted']);
 const QUESTION_KINDS = Object.freeze(['ambiguity', 'missing', 'manual', 'authority']);
 const OUTPUT_KINDS = Object.freeze(['draft', 'plan', 'brief', 'checklist', 'agenda', 'breakdown', 'answer', 'investigation', 'notes']);
 
@@ -75,6 +80,23 @@ function deps() {
     resolveName: (name) => require('./contact-directory').resolveName(name),
     prepareCompose: (args) => require('./prepared-actions').prepareCompose(args),
     actionStatus: (id) => { try { return db.get('SELECT action_id, status FROM prepared_actions WHERE action_id = ?', [id]); } catch { return null; } },
+    priceOf: (model) => { try { return require('./ai-gate').priceOf(model); } catch { return null; } },
+    gateMode: () => (String(process.env.AI_GATE_MODE || 'shadow').toLowerCase() === 'enforce' ? 'enforce' : 'shadow'),
+    gateLimit: () => { try { return require('./ai-gate-classes').limitOf('task_agent'); } catch { return null; } },
+    gateToday: () => {
+      try {
+        const p = require('./ai-gate').profile({});
+        if (!p || p.known === false) return null;
+        const row = (p.byClass || []).find((r) => r.app === 'neuro' && r.callClass === 'task_agent');
+        return row ? { requests: row.calls, usd: row.usd } : { requests: 0, usd: 0 };
+      } catch { return null; }
+    },
+    planSave: (args) => require('./prepared-move-planner').planAgentOutput(args),
+    moveRecord: (id) => { try { return require('./prepared-move-store').get(id); } catch { return null; } },
+    moveIsLatest: (rec) => { try { return require('./prepared-move-store').isLatest(rec); } catch { return false; } },
+    moveCompleted: (moveKey) => { try { return require('./prepared-move-store').completedMove(moveKey); } catch { return null; } },
+    destination: (task) => { try { return require('./prepared-move-planner').destinationFor(task, {}); } catch { return null; } },
+    deskQueue: (why) => require('./desk-intents').queue('claude', { host: null, why }),
   };
 }
 
@@ -155,6 +177,7 @@ function systemPrompt(run) {
     '- Continue through several steps without pausing. Resolve ordinary ambiguity from the sources when the evidence is clear, and say which source settled it.',
     '- Call ask_nick ONLY for: a task with more than one reasonable interpretation that the sources do not settle (ambiguity); a fact or preference you cannot safely infer (missing); a step only Nick can perform, like opening a system you cannot reach, attending a meeting or checking the real world (manual); or a decision, commitment, contact or change that needs his authority (authority). One focused question, with why it matters and, where possible, the options. Never ask because the task is hard.',
     '- After ask_nick, stop calling tools. The run resumes when he answers.',
+    '- If the task really needs interactive desktop work (code changes, debugging, a repository, long-form document production, or tools you do not have), still do the preparation you can, then call recommend_claude_desktop with why. Nothing is sent; Nick decides.',
     '- End with finish: what you completed, what remains, and why.',
     '',
     'WHAT YOU MAY NOT DO',
@@ -208,6 +231,7 @@ const TOOLS = [
   { name: 'read_note', description: 'Read a note in full by its path. Only paths offered by the linked sources (marked read_note available) or by search_vault results.', input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
   { name: 'save_output', description: 'Save (or replace, by the same title) a private working output for Nick: a draft, plan, brief, checklist, agenda, breakdown, investigation, answer or notes. Markdown. Cite source keys for facts.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: OUTPUT_KINDS }, title: { type: 'string' }, markdown: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['kind', 'title', 'markdown'] } },
   { name: 'prepare_email', description: 'Prepare (NOT send) an email draft for Nick to approve on NEURO\'s Actions screen. `to` is a person\'s full name as written in the task or a source.', input_schema: { type: 'object', properties: { to: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, required: ['to', 'subject', 'body'] } },
+  { name: 'recommend_claude_desktop', description: 'Recommend that Nick continues this task with Claude on his desktop — for code changes, debugging, repository inspection, long-form documents, or work needing tools NEURO does not have. Nothing is sent; Nick sees a preview and decides.', input_schema: { type: 'object', properties: { why: { type: 'string' }, done_when: { type: 'string', description: 'How Nick (and Claude) will know the work is complete.' } }, required: ['why'] } },
   { name: 'ask_nick', description: 'Ask Nick ONE focused question. Only for ambiguity, missing information, a manual step only he can do, or a decision needing his authority.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: QUESTION_KINDS }, question: { type: 'string' }, why: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, understanding: { type: 'string', description: 'One sentence: what you understand the task to be so far.' } }, required: ['kind', 'question', 'why'] } },
   { name: 'finish', description: 'Report the outcome: what you completed, what remains and why.', input_schema: { type: 'object', properties: { understanding: { type: 'string' }, completed: { type: 'array', items: { type: 'string' } }, remaining: { type: 'array', items: { type: 'string' } } }, required: ['completed', 'remaining'] } },
 ];
@@ -217,10 +241,17 @@ function addressesIn(text) {
   return new Set((String(text || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map((s) => s.toLowerCase()));
 }
 
-function makeRunTool(run, task, turn) {
+/**
+ * The tools act on `work` — a COPY of the run for this turn. Nothing they do is
+ * kept unless the whole turn completes: a failed, timed-out or refused turn
+ * leaves the stored run exactly as it was (no partial draft). An email is not
+ * prepared during the turn at all; the tool only VALIDATES it and queues it in
+ * work.pendingEmails, which _commit prepares once the turn has completed.
+ */
+function makeRunTool(work, task, turn) {
   const d = deps();
-  const readable = new Map(run.sources.filter((s) => s.readable && s.path).map((s) => [s.path, s]));
-  const seenText = [task.text, ...run.sources.map((s) => s.excerpt || '')];
+  const readable = new Map(work.sources.filter((s) => s.readable && s.path).map((s) => [s.path, s]));
+  const seenText = [task.text, ...work.sources.map((s) => s.excerpt || '')];
   return async function runTool(name, input = {}) {
     if (turn.stopped && name !== 'finish') return { ok: false, error: 'Waiting for Nick — do not call more tools.' };
     try {
@@ -235,16 +266,16 @@ function makeRunTool(run, task, turn) {
             if (!rel) continue;
             const check = d.readNote(rel);
             if (!check.ok) continue; // restricted / excluded / unreadable never surface
-            let src = run.sources.find((s) => s.path === check.rel);
+            let src = work.sources.find((s) => s.path === check.rel);
             if (!src) {
-              src = { key: `search:${run.sources.length + 1}`, kind: 'note', title: check.title, provenance: `Found by NEURO searching the vault for “${q}”.`, path: check.rel, restricted: false, excerpt: null, readable: true, used: false };
-              run.sources.push(src);
+              src = { key: `search:${work.sources.length + 1}`, kind: 'note', title: check.title, provenance: `Found by NEURO searching the vault for “${q}”.`, path: check.rel, restricted: false, excerpt: null, readable: true, used: false };
+              work.sources.push(src);
             }
             readable.set(check.rel, src);
             results.push({ key: src.key, title: src.title, path: src.path, snippet: String((r.excerpts && r.excerpts[0]) || check.body.slice(0, 240)).replace(/\s+/g, ' ').slice(0, 240) });
             if (results.length >= 6) break;
           }
-          _step(run, 'search', `Searched the vault for “${q}” — ${results.length} usable note${results.length === 1 ? '' : 's'}.`);
+          _step(work, 'search', `Searched the vault for “${q}” — ${results.length} usable note${results.length === 1 ? '' : 's'}.`);
           return { ok: true, results };
         }
         case 'read_note': {
@@ -255,7 +286,7 @@ function makeRunTool(run, task, turn) {
           if (!n.ok) return { ok: false, error: `Cannot read: ${n.why}` };
           src.used = true;
           seenText.push(n.body);
-          _step(run, 'read', `Read “${src.title}”.`);
+          _step(work, 'read', `Read “${src.title}”.`);
           return { ok: true, key: src.key, title: n.title, text: n.body.slice(0, MAX_READ_CHARS), truncated: n.body.length > MAX_READ_CHARS };
         }
         case 'save_output': {
@@ -263,22 +294,26 @@ function makeRunTool(run, task, turn) {
           const title = String(input.title || '').trim().slice(0, 140);
           const markdown = String(input.markdown || '').trim().slice(0, MAX_OUTPUT_CHARS);
           if (!title || !markdown) return { ok: false, error: 'title and markdown are required' };
-          run.outputs = run.outputs || [];
+          work.outputs = work.outputs || [];
           const cites = Array.isArray(input.sources) ? input.sources.map(String) : [];
-          for (const k of cites) { const s = run.sources.find((x) => x.key === k); if (s) s.used = true; }
-          const existing = run.outputs.find((o) => o.title.toLowerCase() === title.toLowerCase());
+          for (const k of cites) { const s = work.sources.find((x) => x.key === k); if (s) s.used = true; }
+          const existing = work.outputs.find((o) => o.title.toLowerCase() === title.toLowerCase());
           const now = _iso(d.now());
-          if (existing) Object.assign(existing, { kind, markdown, sources: cites, updatedAt: now });
-          else {
-            if (run.outputs.length >= MAX_OUTPUTS) return { ok: false, error: `at most ${MAX_OUTPUTS} outputs — update an existing one` };
-            run.outputs.push({ id: `o${run.outputs.length + 1}`, kind, title, markdown, sources: cites, createdAt: now, updatedAt: now });
+          if (existing) {
+            // A changed draft is a new thing to save: any earlier save proposal no longer describes it.
+            if (existing.markdown !== markdown) delete existing.save;
+            Object.assign(existing, { kind, markdown, sources: cites, updatedAt: now });
+          } else {
+            if (work.outputs.length >= MAX_OUTPUTS) return { ok: false, error: `at most ${MAX_OUTPUTS} outputs — update an existing one` };
+            work.outputs.push({ id: `o${work.outputs.length + 1}`, kind, title, markdown, sources: cites, createdAt: now, updatedAt: now });
           }
-          _step(run, 'output', `${existing ? 'Updated' : 'Wrote'} ${kind}: “${title}”.`);
+          _step(work, 'output', `${existing ? 'Updated' : 'Wrote'} ${kind}: “${title}”.`);
           return { ok: true, saved: title, private: true };
         }
         case 'prepare_email': {
-          if (run.sensitive && run.sensitive.sensitive) return { ok: false, error: 'Refused: this is an employment / people matter. Prepare the brief and ask Nick for the decision instead.' };
-          if ((run.handoffs || []).some((h) => h.kind === 'prepared_action')) return { ok: false, error: 'An email is already prepared for this task — Nick will approve or edit it on Actions.' };
+          if (work.sensitive && work.sensitive.sensitive) return { ok: false, error: 'Refused: this is an employment / people matter. Prepare the brief and ask Nick for the decision instead.' };
+          const already = (work.handoffs || []).some((h) => h.kind === 'prepared_action') || (work.pendingEmails || []).length > 0;
+          if (already) return { ok: false, error: 'An email is already prepared for this task — Nick will approve or edit it on Actions.' };
           const to = String(input.to || '').trim();
           let address = null; let name = null;
           if (/@/.test(to)) {
@@ -292,19 +327,25 @@ function makeRunTool(run, task, turn) {
             }
             address = r.email; name = r.name || to;
           }
-          const res = d.prepareCompose({ from: 'work', to: [{ email: address, name: name || undefined }], subject: input.subject, body: input.body, origin: 'task-agent', generatedBy: `drafted by NEURO for task #${task.id} (Do this)`, evidence: { taskId: task.id, taskAgentRun: run.id } });
-          if (!res || !res.ok) return { ok: false, error: (res && res.error) || 'could not prepare the email' };
-          run.handoffs = run.handoffs || [];
-          run.handoffs.push({ kind: 'prepared_action', actionId: res.action.actionId || res.action.id, actionType: 'compose_email', status: res.action.status || 'prepared', say: `Email to ${name || address}: “${String(input.subject).slice(0, 120)}” — prepared, not sent. Approve, edit or reject it on Actions.`, open: 'actions' });
-          _step(run, 'prepared', `Prepared an email to ${name || address} for your approval (not sent).`);
-          return { ok: true, prepared: true, sent: false, where: 'NEURO → Actions (needs Nick\'s approval code)' };
+          const subject = String(input.subject || '').trim(); const body = String(input.body || '').trim();
+          if (!subject || !body) return { ok: false, error: 'subject and body are required' };
+          work.pendingEmails = [{ address, name, subject, body }];
+          _step(work, 'prepared', `Drafted an email to ${name || address} — it goes to Actions for your approval when this step completes (not sent).`);
+          return { ok: true, queued: true, sent: false, where: 'NEURO → Actions (needs Nick\'s approval code), once this step completes' };
+        }
+        case 'recommend_claude_desktop': {
+          const why = String(input.why || '').trim().slice(0, 500);
+          if (!why) return { ok: false, error: 'why is required' };
+          work.claude = { recommended: true, why, doneWhen: input.done_when ? String(input.done_when).trim().slice(0, 400) : null, at: _iso(d.now()) };
+          _step(work, 'note', 'Suggested continuing this with Claude on your desktop (nothing sent).');
+          return { ok: true, shownToNick: true, sent: false };
         }
         case 'ask_nick': {
           const kind = QUESTION_KINDS.includes(input.kind) ? input.kind : 'missing';
           const question = String(input.question || '').trim().slice(0, 500);
           if (!question) return { ok: false, error: 'question required' };
           if (turn.question) return { ok: false, error: 'You have already asked one question this turn. Stop.' };
-          turn.question = { id: `q${(run.answers || []).length + 1}-${d.now()}`, kind, question, why: String(input.why || '').trim().slice(0, 400), options: (Array.isArray(input.options) ? input.options : []).map((o) => String(o).slice(0, 160)).slice(0, 5), askedAt: _iso(d.now()) };
+          turn.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind, question, why: String(input.why || '').trim().slice(0, 400), options: (Array.isArray(input.options) ? input.options : []).map((o) => String(o).slice(0, 160)).slice(0, 5), askedAt: _iso(d.now()) };
           if (input.understanding) turn.understanding = String(input.understanding).slice(0, 600);
           turn.stopped = true;
           return { ok: true, asked: true, instruction: 'Stop now. Nick will answer and the run will continue.' };
@@ -326,6 +367,36 @@ function makeRunTool(run, task, turn) {
   };
 }
 
+/**
+ * PURE. A provider/gate failure → what Nick reads. Nothing of the failed turn is
+ * kept, whatever the class, and a press of Do this retries from the last
+ * completed state.
+ */
+function classifyError(e) {
+  const msg = String((e && e.message) || e || '');
+  const status = e && (e.status || (e.response && e.response.status));
+  if (e && (e.name === 'GateRefused' || /gate refused/i.test(msg))) return { kind: 'budget', say: `The AI gate refused this request (${(e.reasons || (e.ticket && e.ticket.reasons) || []).join(', ') || 'enforcement is on'}). Nothing was kept. Change the limit in Settings → AI budget, or try tomorrow.` };
+  if (/credit balance|insufficient.*credit|billing/i.test(msg)) return { kind: 'credit', say: 'The Anthropic account has no credit left, so the model could not run. Nothing was kept. Press Do this to try again once it is topped up.' };
+  if ((e && /timeout/i.test(e.name || '')) || /timed? ?out/i.test(msg)) return { kind: 'timeout', say: 'The model did not answer in time. Nothing from this step was kept. Press Do this to try again.' };
+  if (status === 429 || status === 529 || (Number(status) >= 500) || /overloaded|rate limit/i.test(msg)) return { kind: 'overloaded', say: 'Anthropic is busy or rate-limiting right now. Nothing from this step was kept. Press Do this to try again in a minute.' };
+  return { kind: 'error', say: `The model call failed (${msg.slice(0, 160)}). Nothing from this step was kept. Press Do this to try again.` };
+}
+
+/** Prepare the turn's queued email (if any) — only ever after the turn completed. */
+function _commitEmails(work, task) {
+  const d = deps();
+  for (const m of work.pendingEmails || []) {
+    const res = d.prepareCompose({ from: 'work', to: [{ email: m.address, name: m.name || undefined }], subject: m.subject, body: m.body, origin: 'task-agent', generatedBy: `drafted by NEURO for task #${task.id} (Do this)`, evidence: { taskId: task.id, taskAgentRun: work.id } });
+    work.handoffs = work.handoffs || [];
+    if (res && res.ok) {
+      work.handoffs.push({ kind: 'prepared_action', actionId: res.action.actionId || res.action.id, actionType: 'compose_email', status: res.action.status || 'prepared', say: `Email to ${m.name || m.address}: “${m.subject.slice(0, 120)}” — prepared, not sent. Approve, edit or reject it on Actions.`, open: 'actions' });
+    } else {
+      _step(work, 'note', `The email to ${m.name || m.address} could not be prepared: ${(res && res.error) || 'unknown reason'}.`);
+    }
+  }
+  delete work.pendingEmails;
+}
+
 // ── one turn ────────────────────────────────────────────────────────────────
 async function _turn(taskId) {
   const d = deps();
@@ -334,72 +405,82 @@ async function _turn(taskId) {
   const task = d.getTask(taskId);
   if (!task) { run.status = 'failed'; run.error = 'The task no longer exists.'; return _save(run); }
 
-  if (!d.isCloudAllowed('task_agent') || !d.provider.isConfigured()) {
-    run.status = 'failed';
-    run.error = !d.provider.isConfigured()
-      ? 'The Anthropic API key is not configured on NEURO, so this cannot run.'
-      : `Cloud AI is not available for this right now${d.fallbackReason() ? ` — ${d.fallbackReason()}` : ''}. Nothing was sent to a model.`;
+  const model = MODEL();
+  const refuseBefore = !d.provider.isConfigured() ? 'The Anthropic API key is not configured on NEURO, so this cannot run.'
+    : !d.priceOf(model) ? `The model “${model}” has no price in the AI gate, so NEURO will not call it. Set TASK_AGENT_MODEL to a priced model.`
+      : !d.isCloudAllowed('task_agent') ? `Cloud AI is not available for this right now${d.fallbackReason() ? ` — ${d.fallbackReason()}` : ''}. Nothing was sent to a model.`
+        : null;
+  if (refuseBefore) {
+    run.status = 'failed'; run.error = refuseBefore; run.heartbeatAt = null;
     _step(run, 'note', run.error);
     _audit('refused', run);
     return _save(run);
   }
 
+  // ⚠ The turn works on a COPY. Only a completed turn is committed.
+  const work = JSON.parse(JSON.stringify(run));
   const turn = { question: null, finish: null, stopped: false };
-  const model = MODEL();
   let result;
   try {
-    result = await d.provider.chatWithTools(systemPrompt(run), [{ role: 'user', content: userPrompt(run, task) }], TOOLS, makeRunTool(run, task, turn), { model, maxTokens: MAX_OUTPUT_TOKENS, maxRounds: MAX_ROUNDS, callClass: 'task_agent' });
+    result = await d.provider.chatWithTools(systemPrompt(work), [{ role: 'user', content: userPrompt(work, task) }], TOOLS, makeRunTool(work, task, turn),
+      { model, maxTokens: MAX_OUTPUT_TOKENS, maxRounds: MAX_ROUNDS, callClass: 'task_agent', requestOptions: { timeout: REQUEST_TIMEOUT_MS, maxRetries: 0 } });
   } catch (e) {
-    run.status = 'failed';
-    run.error = `The model call failed: ${String(e.message || e).slice(0, 200)}. Press Do this to try again.`;
-    run.heartbeatAt = null;
-    _step(run, 'note', 'The model call failed.');
-    _audit('failed', run);
-    return _save(run);
+    const c = classifyError(e);
+    const fresh = _load(taskId) || run; // the committed state, untouched by the failed turn
+    fresh.status = 'failed'; fresh.error = c.say; fresh.errorKind = c.kind; fresh.heartbeatAt = null; fresh.updatedAt = _iso(d.now());
+    _step(fresh, 'note', `A step failed (${c.kind}); nothing from it was kept.`);
+    _audit('failed', fresh, { errorKind: c.kind });
+    return _save(fresh);
   }
 
   const usage = result.usage || {};
   const cost = d.resolveCost(usage, model);
-  run.usage = run.usage || { provider: 'anthropic', model, calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, costUnknown: false };
-  run.usage.model = model;
-  run.usage.calls += 1;
-  run.usage.promptTokens += usage.prompt_tokens || 0;
-  run.usage.completionTokens += usage.completion_tokens || 0;
-  if (cost && cost.costUsd != null) run.usage.costUsd = Math.round((run.usage.costUsd + cost.costUsd) * 1e6) / 1e6;
-  else run.usage.costUnknown = true;
+  work.usage = work.usage || { provider: 'anthropic', model, calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, costUnknown: false };
+  work.usage.model = model;
+  work.usage.calls += 1;
+  work.usage.promptTokens += usage.prompt_tokens || 0;
+  work.usage.completionTokens += usage.completion_tokens || 0;
+  if (cost && cost.costUsd != null) work.usage.costUsd = Math.round((work.usage.costUsd + cost.costUsd) * 1e6) / 1e6;
+  else work.usage.costUnknown = true;
   d.recordUsage(usage, { provider: 'anthropic', model, taskType: 'task_agent' });
 
   // Only the model's STATED understanding is shown, never its stray closing text.
   const understood = (turn.finish && turn.finish.understanding) || turn.understanding || null;
-  if (understood) run.understanding = understood;
+  if (understood) work.understanding = understood;
 
-  const sensitive = run.sensitive && run.sensitive.sensitive;
+  _commitEmails(work, task);
+
+  const sensitive = work.sensitive && work.sensitive.sensitive;
   if (turn.question) {
-    run.question = turn.question;
-    run.status = turn.question.kind === 'manual' ? 'needs-manual' : (turn.question.kind === 'authority' ? 'needs-decision' : 'needs-answer');
-    _step(run, 'question', `Asked you: ${turn.question.question}`);
+    work.question = turn.question;
+    work.status = turn.question.kind === 'manual' ? 'needs-manual' : (turn.question.kind === 'authority' ? 'needs-decision' : 'needs-answer');
+    _step(work, 'question', `Asked you: ${turn.question.question}`);
   } else if (sensitive) {
     // ⚠ Server-enforced, not left to the prompt: a people matter ends at Nick's decision.
-    run.question = { id: `q${(run.answers || []).length + 1}-${d.now()}`, kind: 'authority', question: 'This is an employment / people matter. What do you decide, and should NEURO prepare anything further?', why: 'NEURO can prepare the material, but the decision, and any contact, promise or change, are yours.', options: [], askedAt: _iso(d.now()), byRule: true };
-    run.status = 'needs-decision';
-    _step(run, 'question', 'Stopped at your decision (people matter).');
+    work.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind: 'authority', question: 'This is an employment / people matter. What do you decide, and should NEURO prepare anything further?', why: 'NEURO can prepare the material, but the decision, and any contact, promise or change, are yours.', options: [], askedAt: _iso(d.now()), byRule: true };
+    work.status = 'needs-decision';
+    _step(work, 'question', 'Stopped at your decision (people matter).');
   } else {
-    run.question = null;
-    run.status = 'ready';
+    work.question = null;
+    // A finished run that produced nothing to keep, prepare or hand off is an
+    // evidenced inability to proceed — never "done".
+    const produced = (work.outputs || []).length || (work.handoffs || []).length || (work.claude && work.claude.recommended);
+    work.status = produced ? 'ready' : 'blocked';
   }
   // A question turn has no outcome to report yet; a turn that ended without finish
   // reports the model's own closing words.
-  run.summary = turn.finish ? { completed: turn.finish.completed, remaining: turn.finish.remaining }
-    : turn.question ? (run.summary || null)
-      : (run.summary || { completed: [], remaining: [], said: String(result.text || '').slice(0, 1200) || null });
+  work.summary = turn.finish ? { completed: turn.finish.completed, remaining: turn.finish.remaining }
+    : turn.question ? (work.summary || null)
+      : (work.summary || { completed: [], remaining: [], said: String(result.text || '').slice(0, 1200) || null });
   if (result.truncated && !turn.question && !turn.finish) {
-    run.summary.remaining = [...(run.summary.remaining || []), 'The run stopped before reporting — press Do this to continue it.'];
-    run.status = 'interrupted';
+    work.summary.remaining = [...(work.summary.remaining || []), 'The run stopped before reporting — press Do this to continue it.'];
+    work.status = 'interrupted';
   }
-  run.heartbeatAt = null;
-  run.updatedAt = _iso(d.now());
-  _audit('turn', run, { turnStatus: run.status, outputs: (run.outputs || []).length, handoffs: (run.handoffs || []).length });
-  return _save(run);
+  work.error = null; delete work.errorKind;
+  work.heartbeatAt = null;
+  work.updatedAt = _iso(d.now());
+  _audit('turn', work, { turnStatus: work.status, outputs: (work.outputs || []).length, handoffs: (work.handoffs || []).length });
+  return _save(work);
 }
 
 function _kick(taskId) {
@@ -449,13 +530,29 @@ function view(taskId) {
   let run = _load(id);
   if (run && run.unreadable) return { ok: false, status: 500, error: 'The saved run could not be read.' };
   run = _settleStale(run);
-  if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null };
+  const budget = budgetView();
+  if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null, budget };
+  const d = deps();
   const handoffs = (run.handoffs || []).map((h) => {
     if (h.kind !== 'prepared_action') return h;
-    const live = deps().actionStatus(h.actionId);
+    const live = d.actionStatus(h.actionId);
     return { ...h, status: live ? live.status : 'unknown' };
   });
-  return { ok: true, contract: CONTRACT, taskId: id, run: { ...run, handoffs, running: RUNNING.has(id) } };
+  const sensitive = Boolean(run.sensitive && run.sensitive.sensitive);
+  // Every finished output says what can happen to it next, in words.
+  const outputs = (run.outputs || []).map((o) => {
+    let save = null;
+    if (o.save && o.save.recordId) {
+      const rec = d.moveRecord(o.save.recordId);
+      const done = rec && d.moveCompleted(rec.moveKey);
+      save = { recordId: o.save.recordId, status: !rec ? 'gone' : done ? 'saved' : d.moveIsLatest(rec) ? 'waiting' : 'superseded' };
+    }
+    const next = sensitive
+      ? { canSave: false, why: 'People / employment matter — NEURO never saves those as notes on its own. Copy it if you want to keep it.' }
+      : run.status === 'running' ? { canSave: false, why: 'NEURO is still working.' } : { canSave: true, why: null };
+    return { ...o, save, next };
+  });
+  return { ok: true, contract: CONTRACT, taskId: id, budget, run: { ...run, outputs, handoffs, running: RUNNING.has(id) } };
 }
 
 /**
@@ -534,6 +631,198 @@ function stop(taskId) {
   return view(id);
 }
 
+// ── next steps for finished work ────────────────────────────────────────────
+
+/** The AI-gate line every run shows. Honest about shadow mode: a limit recorded is not a limit enforced. */
+function budgetView() {
+  const d = deps();
+  const mode = d.gateMode();
+  const limit = d.gateLimit();
+  const today = d.gateToday();
+  let say;
+  if (!limit) say = `Recorded by the AI gate in ${mode} mode. No Do this limit is set, so it is not budget-blocked by the gate.`;
+  else if (mode === 'shadow') say = `Limit: ${limit} model requests a day — recorded in shadow mode, which does not block.`;
+  else say = `Limit: ${limit} model requests a day — enforced.`;
+  return { mode, limit, today, say, routingNote: 'NEURO’s own daily AI call and token limits (ai-routing) still apply.' };
+}
+
+/** The facts a saved note may quote: only what Nick can see, never a restricted excerpt. */
+function _saveFacts(run) {
+  return (run.sources || []).filter((s) => !s.restricted && s.excerpt && s.used)
+    .map((s) => ({ text: String(s.excerpt).replace(/\s+/g, ' ').slice(0, 300), cite: s.title, kind: 'source' }));
+}
+
+/**
+ * "Save to vault…" on one finished output: stores the EXISTING project-note
+ * prepared move (planner.planAgentOutput) and returns its record id. Saving
+ * itself happens only through /api/prepared-moves/request + /confirm. A repeat
+ * press returns the same live record; nothing is written here.
+ */
+async function prepareSave(taskId, outputId) {
+  const id = Number(taskId);
+  const run = _load(id);
+  if (!run || run.unreadable) return { ok: false, status: 404, error: 'There is no run for this task.' };
+  if (run.status === 'running') return { ok: false, status: 409, error: 'NEURO is still working — save once this step finishes.' };
+  const out = (run.outputs || []).find((o) => o.id === outputId);
+  if (!out) return { ok: false, status: 404, error: 'No such output.' };
+  if (run.sensitive && run.sensitive.sensitive) return { ok: false, status: 409, error: 'This is a people / employment matter: NEURO never saves those as notes on its own. Copy the brief if you want to keep it.' };
+  const d = deps();
+  if (out.save && out.save.recordId) {
+    const rec = d.moveRecord(out.save.recordId);
+    if (rec && d.moveIsLatest(rec)) return { ok: true, outcome: 'existing', recordId: rec.id, version: rec.version, ...view(id) };
+  }
+  const r = await d.planSave({ taskId: id, output: out, sourceFacts: _saveFacts(run), remaining: (run.summary && run.summary.remaining) || [], now: d.now() });
+  if (!r.ok) return { ok: false, status: 409, error: r.why || 'NEURO could not prepare this for the vault.' };
+  const fresh = _load(id);
+  const o2 = (fresh.outputs || []).find((o) => o.id === outputId);
+  if (o2) o2.save = { recordId: r.record.id, version: r.record.version, at: _iso(d.now()), outcome: r.outcome };
+  _step(fresh, 'prepared', `Prepared “${out.title}” to save to the vault — waiting for your confirmation (nothing saved yet).`);
+  fresh.updatedAt = _iso(d.now());
+  _save(fresh);
+  _audit('save-prepared', fresh, { outputId, recordId: r.record.id });
+  return { ok: true, outcome: r.outcome, recordId: r.record.id, version: r.record.version, ...view(id) };
+}
+
+// ── "Continue this with Claude on desktop" ──────────────────────────────────
+
+const HANDOFF_MAX = 12000;
+const FORBIDDEN = [
+  { re: /security review\//i, why: 'a Security review/ path' },
+  { re: /(^|[\s/("'])archive\//i, why: 'an Archive/ path' },
+  { re: /\bpassword\s*[:=]/i, why: 'something that looks like a password' },
+  { re: /\b(api[_-]?key|secret|access[_-]?token|bearer)\b\s*[:=]?\s*[A-Za-z0-9._\-]{12,}/i, why: 'something that looks like a key or token' },
+  { re: /\bsk-[A-Za-z0-9_\-]{16,}/, why: 'something that looks like an API key' },
+  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, why: 'a private key' },
+];
+
+/** PURE. The handoff prompt, built only from what may leave NEURO for Claude. */
+function composeHandoff(run, task, { includeDrafts = false, destination = null } = {}) {
+  const sensitive = run.sensitive && run.sensitive.sensitive;
+  const lines = [];
+  lines.push(`# Task #${task.id}: ${task.text}`, '');
+  lines.push('## Objective', run.understanding || task.text, '');
+  if (destination && destination.project) lines.push(`Project: ${destination.project} (vault folder ${destination.folder})`, '');
+  lines.push('## Why this is with you', (run.claude && run.claude.why) || 'Nick chose to continue this on the desktop.', '');
+  lines.push('## Constraints',
+    '- Work in Nick’s own tools on his desktop. You may prepare changes, documents and drafts.',
+    '- Anything that would change NEURO (a task, the vault, the calendar, an email, a person) goes back through NEURO’s own confirmation — do not bypass it.',
+    '- Contact nobody on Nick’s behalf. Write in plain British English.',
+    sensitive ? '- This is an employment / people matter: prepare material only; make no decision and no contact.' : null,
+    '');
+  const ok = (run.sources || []).filter((s) => !s.restricted);
+  const held = (run.sources || []).filter((s) => s.restricted).length;
+  lines.push('## Context from NEURO');
+  if (!ok.length && !held) lines.push('- (no linked context)');
+  for (const s of ok) {
+    lines.push(`- ${s.title} — ${s.provenance}`);
+    if (s.excerpt && !sensitive) lines.push(`  > ${String(s.excerpt).replace(/\s+/g, ' ').slice(0, 300)}`);
+  }
+  if (held) lines.push(`- ${held} restricted source${held === 1 ? '' : 's'} not included.`);
+  lines.push('');
+  const done = (run.summary && run.summary.completed) || [];
+  lines.push('## Already done by NEURO');
+  if (!done.length && !(run.outputs || []).length) lines.push('- (nothing yet)');
+  for (const c of done) lines.push(`- ${c}`);
+  for (const o of run.outputs || []) {
+    lines.push(`- Draft (${o.kind}): ${o.title}${includeDrafts ? '' : ' — not included'}`);
+    if (includeDrafts && !sensitive) lines.push('', '```markdown', o.markdown, '```', '');
+  }
+  lines.push('');
+  const open = [];
+  if (run.question) open.push(run.question.question);
+  for (const r of (run.summary && run.summary.remaining) || []) open.push(r);
+  if (open.length) { lines.push('## Still open'); for (const q of open) lines.push(`- ${q}`); lines.push(''); }
+  lines.push('## Done when', (run.claude && run.claude.doneWhen) || 'The open items above are complete, and any change NEURO must make is prepared for Nick to confirm in NEURO.');
+  return lines.filter((l) => l !== null).join('\n').slice(0, HANDOFF_MAX);
+}
+
+/**
+ * PURE. Would this (possibly edited) prompt carry something that must not leave?
+ * Forbidden patterns, a restricted excerpt Nick sees in NEURO, or a raw private
+ * draft he did not choose to include. → [] when clean.
+ */
+function screenHandoff(prompt, run, { includeDrafts = false } = {}) {
+  const text = String(prompt || '');
+  const problems = [];
+  if (!text.trim()) problems.push('the prompt is empty');
+  if (text.length > HANDOFF_MAX) problems.push(`the prompt is longer than ${HANDOFF_MAX} characters`);
+  for (const f of FORBIDDEN) if (f.re.test(text)) problems.push(`it contains ${f.why}`);
+  for (const s of run.sources || []) {
+    if (s.restricted && s.excerpt && String(s.excerpt).trim().length >= 20 && text.includes(String(s.excerpt).trim().slice(0, 60))) problems.push(`it quotes the restricted note “${s.title}”`);
+  }
+  const sensitive = run.sensitive && run.sensitive.sensitive;
+  if (!includeDrafts || sensitive) {
+    for (const o of run.outputs || []) {
+      const body = String(o.markdown || '').trim();
+      if (body.length >= 40 && text.includes(body.slice(0, 60))) problems.push(`it includes the private draft “${o.title}”${sensitive ? ' (a people matter — drafts are never included)' : ' — tick “Include my drafts” if you mean to'}`);
+    }
+  }
+  return [...new Set(problems)];
+}
+
+function handoffPreview(taskId, { includeDrafts = false } = {}) {
+  const id = Number(taskId);
+  const run = _load(id);
+  if (!run || run.unreadable) return { ok: false, status: 404, error: 'There is no run for this task.' };
+  const d = deps();
+  const task = d.getTask(id);
+  if (!task) return { ok: false, status: 404, error: 'No such task.' };
+  const destination = d.destination(task);
+  const sensitive = Boolean(run.sensitive && run.sensitive.sensitive);
+  const prompt = composeHandoff(run, task, { includeDrafts, destination });
+  const included = [
+    'the task and what NEURO understood it to be',
+    `${(run.sources || []).filter((s) => !s.restricted).length} linked source title${(run.sources || []).filter((s) => !s.restricted).length === 1 ? '' : 's'} with provenance${sensitive ? '' : ' and short excerpts'}`,
+    'what NEURO already did, and what is still open',
+    includeDrafts && !sensitive ? 'your private drafts, in full (you ticked this)' : 'draft titles only — not their text',
+  ];
+  return {
+    ok: true, taskId: id, recommended: Boolean(run.claude && run.claude.recommended),
+    why: (run.claude && run.claude.why) || null, includeDrafts: includeDrafts && !sensitive, sensitive,
+    destination: destination && destination.project ? { project: destination.project, folder: destination.folder } : null,
+    included,
+    excluded: ['restricted notes', 'Security review/, Archive and opted-out notes', 'credentials', sensitive ? 'every excerpt and draft (people matter)' : 'draft text unless you include it'],
+    statement: 'Nothing is sent to Claude until you press the button. Pressing it copies this prompt for you to paste into Claude on your desktop; it does not send it anywhere.',
+    prompt,
+    handoffs: run.claudeHandoffs || [],
+  };
+}
+
+/**
+ * Nick presses "Continue this with Claude on desktop". The prompt (as he left
+ * it) is screened, recorded by HASH (never stored), and returned for the shell
+ * to copy. `openOnDesk` asks the laptop to open the Claude app through the
+ * existing desk intent (which carries no arguments). The same prompt pressed
+ * again is the same handoff: no second record, no second desk request.
+ */
+function handoff(taskId, { prompt, includeDrafts = false, openOnDesk = false } = {}) {
+  const id = Number(taskId);
+  const run = _load(id);
+  if (!run || run.unreadable) return { ok: false, status: 404, error: 'There is no run for this task.' };
+  const problems = screenHandoff(prompt, run, { includeDrafts });
+  if (problems.length) return { ok: false, status: 400, error: `Not handed off: ${problems.join('; ')}. Edit the prompt and try again.`, problems };
+  const d = deps();
+  const hash = require('crypto').createHash('sha256').update(String(prompt)).digest('hex').slice(0, 16);
+  run.claudeHandoffs = run.claudeHandoffs || [];
+  let h = run.claudeHandoffs.find((x) => x.hash === hash);
+  const fresh = !h;
+  if (!h) {
+    h = { id: `ch-${run.claudeHandoffs.length + 1}`, at: _iso(d.now()), hash, chars: String(prompt).length, includeDrafts: Boolean(includeDrafts), status: 'copied', desk: null };
+    run.claudeHandoffs.push(h);
+    _step(run, 'note', `You handed this to Claude on desktop (prompt copied${openOnDesk ? ', Claude asked to open on the laptop' : ''}).`);
+  }
+  if (openOnDesk && !h.desk) {
+    try {
+      const q = d.deskQueue(`Do this — task #${id}`);
+      h.desk = q && q.ok !== false ? { id: q.id || (q.intent && q.intent.id) || null, status: 'requested' } : { id: null, status: 'refused', why: (q && (q.reason || q.error)) || 'refused' };
+    } catch (e) { h.desk = { id: null, status: 'failed', why: e.message }; }
+  }
+  run.updatedAt = _iso(d.now());
+  _save(run);
+  if (fresh) _audit('claude-handoff', run, { handoffId: h.id, chars: h.chars, includeDrafts: h.includeDrafts, openOnDesk: Boolean(openOnDesk) });
+  return { ok: true, handoff: h, repeated: !fresh, prompt: String(prompt), ...view(id) };
+}
+
 /** For Drafts: every task with agent work in progress (outputs, a handoff or a question). */
 function activeRuns() {
   let rows = [];
@@ -551,8 +840,8 @@ function activeRuns() {
 
 module.exports = {
   CONTRACT, STATUS, QUESTION_KINDS, OUTPUT_KINDS, TOOLS,
-  view, start, answer, stop, activeRuns,
-  sensitivityOf, sourcesFrom, addressesIn,
+  view, start, answer, stop, activeRuns, prepareSave, handoffPreview, handoff, budgetView,
+  sensitivityOf, sourcesFrom, addressesIn, classifyError, composeHandoff, screenHandoff, DEFAULT_MODEL,
   _internals: {
     setDeps: (o) => { _deps = o ? { ...deps(), ...o } : null; },
     waitFor: (id) => RUNNING.get(Number(id)) || Promise.resolve(),
