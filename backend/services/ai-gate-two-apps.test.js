@@ -79,7 +79,10 @@ test('two apps, one ledger, one cap: no overspend, no duplicate ticket, a second
   const barrier = path.join(dir, 'go');
   const env = { ...process.env, AI_GATE_DB_PATH: ledger, AI_GATE_MODE: 'enforce', AI_GATE_DAILY_CAP_USD: '1' };
   // VANTAGE's checkout may not carry the native driver; it resolves NEURO's.
-  env.NODE_PATH = [path.resolve(__dirname, '..', '..', 'node_modules'), path.resolve(__dirname, '..', 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
+  // In a worktree that has no node_modules of its own (junctions are banned — they
+  // deleted the main checkout three times), that is the main checkout's, by path.
+  const main = require('./electron-driver-support').mainCheckout(path.resolve(__dirname, '..', '..'));
+  env.NODE_PATH = [path.resolve(__dirname, '..', '..', 'node_modules'), path.resolve(__dirname, '..', 'node_modules'), path.join(main, 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
 
   // Mint the ledger first so neither process races CREATE TABLE.
   const gate = require('./ai-gate');
