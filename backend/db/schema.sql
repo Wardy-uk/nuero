@@ -993,6 +993,68 @@ CREATE TABLE IF NOT EXISTS drink_profiles (
   updated_at TEXT NOT NULL
 );
 
+-- Jira tickets Nick follows (23 Oct 2026, services/watched-tickets.js).
+-- phase: active (shown, every customer reply notifies) → background (resolved;
+-- listening until background_until, flags only a real follow-up) → ended.
+-- seen_comment_id NULL = the baseline has not been taken, so nothing that was
+-- already on the ticket when he started watching is ever announced.
+CREATE TABLE IF NOT EXISTS watched_tickets (
+  ticket_key TEXT PRIMARY KEY,
+  summary TEXT,
+  status TEXT,
+  status_category TEXT,
+  url TEXT,
+  phase TEXT NOT NULL DEFAULT 'active' CHECK (phase IN ('active', 'background', 'ended')),
+  watched_at TEXT NOT NULL,
+  resolved_at TEXT,
+  background_until TEXT,
+  ended_at TEXT,
+  ended_reason TEXT,
+  seen_comment_id INTEGER,
+  jira_updated TEXT,
+  last_checked_at TEXT,
+  last_error TEXT
+);
+
+-- One row per CUSTOMER comment seen on a watched ticket. comment_id is the
+-- idempotency key: a re-run of the poll can never announce the same reply twice.
+CREATE TABLE IF NOT EXISTS watched_ticket_replies (
+  comment_id TEXT PRIMARY KEY,
+  ticket_key TEXT NOT NULL,
+  author TEXT,
+  created TEXT,
+  excerpt TEXT,
+  phase TEXT NOT NULL,
+  verdict TEXT NOT NULL CHECK (verdict IN ('reply', 'follow-up', 'thanks')),
+  judged_by TEXT,
+  flagged INTEGER NOT NULL DEFAULT 0,
+  read_at TEXT,
+  detected_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_watched_replies_ticket ON watched_ticket_replies(ticket_key, created);
+
+-- An update Nick promised the customer on a watched ticket (23 Oct 2026).
+-- proposed (spotted in his public reply, awaiting his confirm) → open → kept
+-- (his next public reply) | dismissed (not a commitment) | cancelled.
+-- comment_id is UNIQUE so one reply can never propose twice.
+CREATE TABLE IF NOT EXISTS watched_ticket_commitments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_key TEXT NOT NULL,
+  due_at TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('detected', 'manual')),
+  state TEXT NOT NULL CHECK (state IN ('proposed', 'open', 'kept', 'dismissed', 'cancelled')),
+  phrase TEXT,
+  comment_id TEXT UNIQUE,
+  made_at TEXT NOT NULL,
+  confirmed_at TEXT,
+  reminded_at TEXT,
+  missed_at TEXT,
+  closed_at TEXT,
+  closed_by TEXT,
+  kept_late INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_watched_commitments_ticket ON watched_ticket_commitments(ticket_key, state);
+
 
 -- One row per day, derived from health_samples.
 --

@@ -1027,6 +1027,9 @@ async function evaluate(options = {}) {
     ...collectSourceBlindness(),
     ...collectWeeklyReport(),
     ...collectCapacity(),
+    // An update Nick promised a customer on a watched ticket, from 30 min before
+    // its time until his public reply (watched-tickets, 23 Oct 2026).
+    ...require('./watched-tickets').nowCards(),
     // Build 12.3K: a synthetic P0 for proving the watch end to end. Built from
     // its own store, contacts nothing, expires in minutes, titled "Test —".
     ...require('./synthetic-attention').collect(),

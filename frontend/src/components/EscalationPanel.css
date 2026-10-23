@@ -1,7 +1,8 @@
 .escalation-panel {
   padding: 20px;
-  max-width: 780px;
-  margin: 0 auto;
+  /* Full width (Nick's standing rule): the page is a grid of cards, not a
+     narrow centred column. */
+  margin: 0;
   font-family: var(--font-mono);
   /* .main-panel is display:flex, so a child stretches to the container height by
      default — which leaves the scroll container with nothing to scroll and simply
@@ -43,7 +44,7 @@
   border-radius: 10px;
   font-size: 11px;
   letter-spacing: 0;
-  color: var(--text);
+  color: var(--text-primary);
 }
 .esc-btn-sm { padding: 5px 10px; font-size: 11px; }
 
@@ -59,7 +60,7 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--text);
+  color: var(--text-primary);
   /* The row separators are top borders, so without this the first row's border
      sits flush against the summary and reads as an underline on the heading. */
   border-bottom: 1px solid var(--border);
@@ -136,11 +137,28 @@
   font-size: 11px;
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
 }
-.esc-row-action:hover { border-color: var(--accent); color: var(--text); }
+.esc-row-action:hover { border-color: var(--accent); color: var(--text-primary); }
+.esc-row-action:disabled { opacity: 0.5; cursor: default; }
+/* A second button sits beside the first, so only the first is pushed right. */
+.esc-row-action-tight { margin-left: 0; }
+
+/* ------------------------------------------------------- watched tickets */
+.esc-tag-watching { margin-left: auto; color: var(--accent); }
+.esc-watched .esc-lookup { margin-bottom: 12px; }
+.esc-watch-reply {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.esc-watch-reply-muted { color: var(--text-muted); }
 
 /* ------------------------------------------------------------- lookup bar */
 
@@ -153,10 +171,10 @@
   font-size: 15px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  background: var(--bg-input, var(--bg-elevated));
+  background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
-  color: var(--text);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
 }
 .esc-key-input:focus { outline: none; border-color: var(--accent); }
 
@@ -164,16 +182,16 @@
   padding: 10px 16px;
   font-family: var(--font-mono);
   font-size: 13px;
-  background: var(--bg-elevated);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
-  color: var(--text);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   cursor: pointer;
 }
 .esc-btn:hover:not(:disabled) { border-color: var(--accent); }
 .esc-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.esc-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+.esc-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); font-weight: 600; }
 .esc-btn-ghost { background: transparent; color: var(--text-muted); }
 
 /* ----------------------------------------------------------- ticket card */
@@ -181,7 +199,7 @@
 .esc-error {
   padding: 10px 12px;
   border: 1px solid var(--danger);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-sm);
   color: var(--danger);
   font-size: 13px;
   margin-bottom: 16px;
@@ -193,7 +211,7 @@
   padding: 8px 12px;
   border-left: 3px solid var(--danger, #e5534b);
   background: color-mix(in srgb, var(--danger, #e5534b) 10%, transparent);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 13px;
   margin: 12px 0;
 }
@@ -202,7 +220,7 @@
   padding: 8px 12px;
   border-left: 3px solid var(--warning);
   background: color-mix(in srgb, var(--warning) 10%, transparent);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 12px;
   margin: 12px 0;
 }
@@ -262,10 +280,10 @@
   padding: 9px 11px;
   font-family: var(--font-mono);
   font-size: 13px;
-  background: var(--bg-input, var(--bg-elevated));
+  background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
-  color: var(--text);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   resize: vertical;
 }
 .esc-form select:focus,
@@ -276,7 +294,7 @@
 
 .esc-confirm {
   border: 1px solid var(--accent);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-sm);
   padding: 14px;
 }
 .esc-confirm-title { margin: 0 0 8px; font-size: 13px; }
@@ -323,4 +341,244 @@
   /* The action can't sit right of six wrapped meta chips at 360px — give it
      its own line rather than letting margin-left:auto push it somewhere odd. */
   .esc-row-action { margin-left: 0; }
+}
+
+/* Update commitments on a watched ticket. Missed is the only red. */
+.esc-commitments { display: flex; flex-direction: column; gap: 6px; }
+.esc-commitment {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  font-size: 12px; padding: 6px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.esc-commitment-proposed { border-style: dashed; }
+.esc-commitment-open { border-color: color-mix(in srgb, var(--warning) 50%, var(--border)); }
+.esc-commitment-missed { border-color: var(--danger); color: var(--danger); }
+.esc-commitment-kept { border-color: transparent; padding-left: 0; }
+.esc-commitment-phrase { color: var(--text-muted); font-style: italic; flex-basis: 100%; }
+.esc-commitment-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+.esc-commitment-add input { margin-left: 6px; font: inherit; }
+.esc-link-btn {
+  align-self: flex-start; background: none; border: none; padding: 0;
+  color: var(--accent); font-size: 12px; cursor: pointer;
+}
+.esc-link-btn:hover { text-decoration: underline; }
+
+/* ================================================================ layout */
+/* Two columns from 1100px: what is escalated and the escalate form on the
+   left, watched tickets on the right. One column below, watched second. */
+.esc-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+  grid-template-areas: "active" "watched" "escalate";
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .esc-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas: "active watched" "escalate watched";
+    /* The watched card spans both rows; without this the grid splits its
+       height evenly and leaves a hole under "Currently escalated". */
+    grid-template-rows: auto 1fr;
+  }
+}
+.esc-area-active { grid-area: active; }
+.esc-area-watched { grid-area: watched; }
+.esc-area-escalate { grid-area: escalate; }
+
+.esc-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+.esc-card .esc-active { margin-bottom: 0; }
+.esc-card .esc-group:last-child { margin-bottom: 0; }
+.esc-card-blurb { margin: 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.esc-card .esc-lookup { margin-bottom: 14px; }
+.esc-card .esc-key-input { flex: 1 1 auto; max-width: 260px; min-width: 0; }
+
+.esc-btn-primary { color: #0b1220; }
+
+/* ================================================================= pills */
+.esc-pill {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.esc-pill-alert { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); font-weight: 600; }
+.esc-pill-warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); background: color-mix(in srgb, var(--warning) 10%, transparent); }
+
+/* ========================================================= watched cards */
+.esc-watch {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.esc-watch-unread { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
+.esc-watch-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.esc-watch-key { color: var(--accent); font-weight: 600; font-size: 14px; text-decoration: none; }
+.esc-watch-key:hover { text-decoration: underline; }
+.esc-watch-summary { font-family: var(--font-sans); font-size: 14px; color: var(--text-primary); flex: 1 1 200px; min-width: 0; }
+.esc-watch-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.esc-watch-notes { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); }
+
+.esc-watch-reply {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-tertiary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.esc-watch-reply-muted { border-left-color: var(--border); color: var(--text-muted); }
+.esc-watch-reply-text { font-family: var(--font-sans); font-size: 13px; line-height: 1.45; }
+
+.esc-watch-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.esc-watch-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+
+.esc-mini {
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.esc-mini:hover:not(:disabled) { border-color: var(--accent); color: var(--text-primary); }
+.esc-mini:disabled { opacity: 0.5; cursor: default; }
+.esc-mini-primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+/* Commitment strip: text left, actions right; the countdown is the pill. */
+.esc-commitment { padding: 8px 10px; background: var(--bg-secondary); }
+.esc-commitment-open { border-left: 3px solid var(--warning); }
+.esc-commitment-missed { border-left: 3px solid var(--danger); color: var(--text-primary); }
+.esc-commitment-proposed { border-left: 3px dashed var(--accent); }
+.esc-commitment-kept { background: transparent; padding: 0; }
+.esc-commitment-text { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.esc-commitment-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+.esc-commitment-add input {
+  padding: 4px 8px; background: var(--bg-primary); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); color-scheme: dark;
+}
+
+/* Opt out of App.css's 960px page cap (.main-view > *), the way About me does:
+   this page is a two-column grid and needs the whole screen. */
+.main-view > .escalation-panel,
+.main-panel > .escalation-panel { max-width: none; }
+
+/* The row's two buttons stay together, on the right, and never split across
+   lines among the meta text. */
+.esc-row-actions { display: inline-flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+
+/* ======================================================= one ticket list */
+/* (23 Oct 2026) Escalated and watched tickets as ONE list, a ticket once. */
+.esc-page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.esc-page-head h2 { margin: 0; font-size: 18px; }
+.esc-page-head .esc-sub { margin: 4px 0 0; }
+.esc-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.esc-toolbar .esc-lookup { margin: 0; }
+.esc-toolbar .esc-key-input { flex: 0 1 200px; }
+
+.esc-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.esc-filter {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.esc-filter:hover { border-color: var(--accent); color: var(--text-primary); }
+.esc-filter-on { color: var(--text-primary); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)); }
+.esc-filter-count { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); }
+.esc-filter-count-alert { background: color-mix(in srgb, var(--danger) 25%, transparent); color: var(--danger); font-weight: 600; }
+
+/* Cards fill the width in columns; one per row on a phone. */
+.esc-ticket-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr));
+  align-items: start;
+}
+.esc-ticket-list > .esc-empty { grid-column: 1 / -1; }
+
+.esc-ticket-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 0;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.esc-ticket-card-needs { border-left-color: var(--danger); }
+.esc-ticket-card-quiet { opacity: 0.8; }
+.esc-ticket-card-highlight { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+.esc-pill-esc { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
+.esc-pill-watch { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+.esc-ticket-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.esc-commitments .esc-link-btn { margin-top: 2px; }
+.esc-commitment-kept-text { color: var(--text-muted); font-size: 12px; }
+
+/* Escalating happens inside the ticket's own card. */
+.esc-escalate {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.esc-escalate-head { display: flex; flex-direction: column; gap: 2px; }
+.esc-escalate-title { font-weight: 600; font-size: 13px; color: var(--warning); }
+.esc-escalate-sub { font-size: 11px; color: var(--text-secondary); }
+.esc-escalate .esc-form { margin-top: 0; }
+.esc-escalate .esc-meta { margin-top: 0; }
+.esc-ticket-card .esc-result { padding: 12px; }
+
+@media (max-width: 768px) {
+  .esc-toolbar { width: 100%; }
+  .esc-toolbar .esc-lookup { flex: 1; flex-wrap: nowrap; }
+  .esc-toolbar .esc-key-input { flex: 1 1 auto; max-width: none; }
+}
+
+/* One list, top to bottom in priority order (no zigzag). On a wide screen a
+   card splits: the ticket and the customer's reply left, your promises and
+   actions right. Escalating spans the whole card. */
+.esc-ticket-list { grid-template-columns: 1fr; }
+.esc-ticket-main, .esc-ticket-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (min-width: 1100px) {
+  .esc-ticket-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+    column-gap: 24px;
+    row-gap: 10px;
+    align-items: start;
+  }
+  .esc-ticket-side { border-left: 1px solid var(--border); padding-left: 20px; min-height: 100%; justify-content: space-between; }
+  .esc-ticket-full { grid-column: 1 / -1; }
 }

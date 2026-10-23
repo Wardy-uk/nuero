@@ -281,6 +281,19 @@ async function fetchIssueStates(keys) {
 }
 
 /**
+ * Every comment on one issue, newest first, raw from Jira (author.accountType,
+ * jsdPublic, ADF body). Used by watched-tickets. `complete` is false when the
+ * page did not reach the end, so a caller never mistakes a cut list for all of it.
+ */
+async function fetchIssueComments(key, { maxResults = 100 } = {}) {
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(String(key || ''))) throw new Error(`"${key}" is not a ticket key`);
+  if (!isConfigured()) return null;
+  const r = await jiraRequest(`/rest/api/3/issue/${encodeURIComponent(key)}/comment?orderBy=-created&maxResults=${maxResults}`);
+  const comments = r.comments || [];
+  return { comments, complete: (r.total == null) || comments.length >= r.total };
+}
+
+/**
  * The still-open subset of a list of keys, in the same shape.
  *
  * Urgency escalations are known only to NOVA's log, which records that an
@@ -637,6 +650,7 @@ function stopPolling() {
 module.exports = {
   fetchAssignedToMe,
   fetchIssueStates,
+  fetchIssueComments,
   mapAssignedIssue,
   isConfigured,
   fetchEscalationTickets,

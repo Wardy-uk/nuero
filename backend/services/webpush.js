@@ -85,6 +85,10 @@ const ALWAYS_DELIVER = new Set([
   // ending at 22:30 still needs its check-in prompt, and missing one is how an
   // alert reaches Helen while Nick is sitting at home.
   'hike_checkin',
+  // An update Nick promised a customer on a watched ticket: 30 min before, and
+  // once if it passes (watched-tickets). Nick's call, 23 Oct 2026 — a missed
+  // promise to a customer is the expensive failure.
+  'ticket_commitment',
   'test',
 ]);
 
