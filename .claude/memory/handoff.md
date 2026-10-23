@@ -1,3 +1,19 @@
+# Session Handoff — 2026-10-23 (Do this Stage 1 LIVE at `684fe48d`; off-site Backblaze DISABLED by Nick; watchdog `90774f48`)
+
+Supersedes the pre-deployment sections below. The full record is in the vault at `Projects/NEURO/NEURO — Do this Stage 1 deployment (2026-10-23).md`.
+
+- **Stage 1 is live and approved; do not roll back.** Do this is OFF and no Anthropic key is configured. Settings shows $1/day and 10 runs, with hard caps for Do this only; the AI gate stays in shadow. Owner-only Settings: API token, kiosk, MCP and machine clients get 403; unauthenticated gets 401. Verified: nothing was written by the deploy.
+- **Backup incident, 19 Sep → 23 Oct:** no database went off-site. `backup-offsite.sh` read the DB from snapshots after `backup-data.sh` began excluding `/backups/` on 18 Sep, and it still reported `ok`. Repaired: it reads `/mnt/data/backups/nuero-db`, pushes the DB first, never syncs an empty stage, and reports failed if none is staged. Rehearsed against a local crypt remote (stage, push, download, byte-identical, `integrity_check` ok, 0 secrets in logs).
+- **Off-site Backblaze push DISABLED by Nick (23 Oct 16:22).** Status reads: "Local backups active; off-site Backblaze backup intentionally disabled by Nick on 23 Oct 2026."
+  - Root cron line commented out; flag `/etc/neuro/offsite-disabled` checked before any rclone call; the job writes state `disabled`, never `ok`.
+  - Verify timer removed. The local job's done line says "local only".
+  - Watchdog `disabled` = info (commit `90774f48`).
+  - No real Backblaze recovery test has been run. Existing B2 contents were not touched.
+  - Re-enable steps are in the vault record: remove the flag, uncomment the cron line, run once, then `sudo /root/verify-offsite.sh`.
+- **Permissions:** the live DB, all local copies, snapshot DB copies, and the scratch `/mnt/data/tmp/b17/agent.db` (+57 snapshot copies) are 600 in 700 folders. `b17` is a disposable 7 Oct copy for Build 17 validation, holding production data and secrets as of 7 Oct. Kept; deleting it is Nick's call.
+- **pm2 lives under Node 22.22.2** on pi5 (`~/.nvm/versions/node/v22.22.2/bin`), not 22.23.2.
+- **Still gated:** Nick may add the restricted Anthropic key and run the synthetic connection test. Do not enable Do this or run a Task Agent attempt without his say. Stage 2 (encrypted key storage) is branch-only.
+
 # Session Handoff — 2026-10-23 ("Do this" task agent, pre-deployment pass — branch `task-agent-do-this`, LOCAL only, NOT deployed)
 
 Work happens in the separate full CLONE at `C:\Users\NickW\Claude\nuero-do-this`, which has its own `npm ci`. It is never a worktree, and the shared tree was not switched. The branch is pushed only to the LOCAL repo `nuero`, not GitHub. ⚠ Do not `rm -rf` the clone: its node_modules hold workspace junctions. Full contract: `docs/task-agent.md`.
