@@ -99,6 +99,67 @@ function checkBackups() {
 }
 
 /**
+ * PURE judgement of one off-site status file (no fs, no clock): `now` is passed.
+ * Split out of checkOffsiteBackup so the states can be pinned without a Pi.
+ */
+function judgeOffsite(raw, now) {
+  const out = [];
+  const finished = Date.parse((raw && raw.finishedAt) || '');
+  const age = Number.isFinite(finished) ? (now - finished) / 3600000 : Infinity;
+
+  // Nick switched the off-site push OFF on purpose (23 Oct 2026). That is a
+  // decision, not a failure, so it is `info` and it never ages into "stopped":
+  // the age rule below would otherwise turn a deliberate choice into a
+  // critical alert within two days. Local backups are watched separately.
+  if (raw && raw.state === 'disabled') {
+    out.push({
+      key: 'offsite:disabled',
+      level: 'info',
+      title: 'Off-site backup intentionally disabled',
+      detail: raw.detail || 'Local backups active; off-site Backblaze backup intentionally disabled.',
+    });
+    return out;
+  }
+
+  if (raw.state === 'unconfigured') {
+    out.push({
+      key: 'offsite:unconfigured',
+      level: 'info',
+      title: 'Off-site backup is waiting on its remote',
+      detail: raw.detail || 'the rclone remote has not been configured yet',
+    });
+    return out;
+  }
+
+  if (raw.state === 'failed') {
+    out.push({
+      key: 'offsite:failed',
+      level: 'critical',
+      title: 'Off-site backup is failing',
+      detail: raw.detail || 'the last run did not complete',
+    });
+    return out;
+  }
+
+  if (age >= OFFSITE_CRIT_HOURS) {
+    out.push({
+      key: 'offsite:stale',
+      level: 'critical',
+      title: 'Off-site backup has stopped',
+      detail: `last successful copy was ${Math.round(age / 24)} days ago`,
+    });
+  } else if (age >= OFFSITE_WARN_HOURS) {
+    out.push({
+      key: 'offsite:stale',
+      level: 'warn',
+      title: 'Off-site backup is late',
+      detail: `last successful copy was ${Math.round(age)}h ago`,
+    });
+  }
+  return out;
+}
+
+/**
  * The off-site copy (#59).
  *
  * Local backups are watched above; this watches the copy that leaves the
@@ -139,44 +200,7 @@ function checkOffsiteBackup() {
     }
 
     const raw = JSON.parse(fs.readFileSync(OFFSITE_STATUS, 'utf8'));
-    const finished = Date.parse(raw.finishedAt || '');
-    const age = Number.isFinite(finished) ? _hoursSince(finished) : Infinity;
-
-    if (raw.state === 'unconfigured') {
-      out.push({
-        key: 'offsite:unconfigured',
-        level: 'info',
-        title: 'Off-site backup is waiting on its remote',
-        detail: raw.detail || 'the rclone remote has not been configured yet',
-      });
-      return out;
-    }
-
-    if (raw.state === 'failed') {
-      out.push({
-        key: 'offsite:failed',
-        level: 'critical',
-        title: 'Off-site backup is failing',
-        detail: raw.detail || 'the last run did not complete',
-      });
-      return out;
-    }
-
-    if (age >= OFFSITE_CRIT_HOURS) {
-      out.push({
-        key: 'offsite:stale',
-        level: 'critical',
-        title: 'Off-site backup has stopped',
-        detail: `last successful copy was ${Math.round(age / 24)} days ago`,
-      });
-    } else if (age >= OFFSITE_WARN_HOURS) {
-      out.push({
-        key: 'offsite:stale',
-        level: 'warn',
-        title: 'Off-site backup is late',
-        detail: `last successful copy was ${Math.round(age)}h ago`,
-      });
-    }
+    out.push(...judgeOffsite(raw, Date.now()));
   } catch (e) {
     out.push({ key: 'offsite:check-failed', level: 'warn', title: 'Off-site check failed', detail: e.message });
   }
@@ -690,7 +714,7 @@ async function run({ notify = true } = {}) {
 }
 
 module.exports = {
-  checkSenses, run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue,
+  checkSenses, run, checkBackups, checkOffsiteBackup, judgeOffsite, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue,
   checkEventSpine, checkRuntimeJobs,
   checkIntegrations, integrationIssues, microsoftSignInIssue, microsoftSyncedAt, integrationNotifications, foldedBy,
   MICROSOFT_SIGNIN_KEY };
