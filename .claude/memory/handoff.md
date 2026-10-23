@@ -10,7 +10,11 @@ Nothing touched: Pi lock, allowances, context-linking enable/backfill, real gove
 
 ## Before deploying
 - Deploy NEURO and VANTAGE together (shared gate file; parity test in each).
-- ⚠ **FIRST** add `AI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db` to BOTH `/mnt/data/nuero/backend/.env` and `/mnt/data/vantage/backend/.env`, and `install -d -m 2775 /mnt/data/ai-gate` — without them both servers refuse to start (by design, 23 Oct). After restarting both: `node backend/scripts/ai-gate-verify.js` (read-only) must print ✔. Contract: `docs/ai-gate-inventory.md`.
+- ⚠ **FIRST** (as nickw, no sudo): `install -d -m 0700 /mnt/data/ai-gate`, back up both `.env` files, then add `AI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db` to BOTH `/mnt/data/nuero/backend/.env` and `/mnt/data/vantage/backend/.env` — without them both servers refuse to start (by design). Exact reviewed steps: `docs/ai-gate-inventory.md` → "Pi configuration". After restarting both (wait 60 s), with Node 22: `node backend/scripts/ai-gate-verify.js --live --lock-probe` must print ✔.
+- Branch REBASED onto main `93e6a04f` on 23 Oct (backup ref `saim-budget-gate-slice-prerebase-2026-10-23`).
+
+## ⚠ Incident 23 Oct — main checkout deleted through a node_modules junction (third time)
+Closed: tracked files restored; forensic audit found nothing recoverable missing (`.env`/`agent.db`/token cache were already gone since the 19 Oct incident; no uncommitted source existed). Record: `docs/incident-2026-10-23-worktree-junction-deletion.md`. Now ENFORCED by `~/.claude/hooks/guard-link-delete.js` (PreToolUse, all repos): every `git worktree remove` and any recursive delete through a junction/symlink is blocked; use `~/.claude/hooks/safe-remove.js`. Never junction node_modules into a worktree — tests read the main checkout's deps by path (`electron-driver-support.mainCheckout`).
 - VANTAGE on the laptop has no better-sqlite3; its tests pass with `NODE_PATH=…/nuero/node_modules`.
 
 ## Waiting on Nick

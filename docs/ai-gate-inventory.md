@@ -53,38 +53,67 @@ the same Unix user. So:
 - Cap: `AI_GATE_DAILY_CAP_USD` exists (committed = settled cost + open worst cases,
   read inside the IMMEDIATE transaction) and is **unset** — Nick has not chosen one.
 
-**Pi configuration** (both apps run as `nickw` today, but this does not rely on it):
+**Pi configuration — reviewed 23 Oct 2026, NOT yet applied (needs Nick's approval).**
+
+Measured read-only on pi5 (not assumed):
+
+| | NEURO | VANTAGE |
+|---|---|---|
+| PM2 process | `neuro-backend` | `vantage-backend` |
+| runs as | `nickw` (uid 1000), umask 0022 | `nickw` (uid 1000), umask 0022 |
+| working directory | `/mnt/data/nuero/backend` | `/mnt/data/vantage` |
+| env file it loads | `/mnt/data/nuero/backend/.env` (`dotenv.config()` — relative to the working dir) | `/mnt/data/vantage/backend/.env` (explicit `__dirname` path) |
+| `AI_GATE_*` set today | none | none |
+
+`/mnt/data` is `nickw:nickw 755` on ext4 (SQLite locking is reliable there). Both apps
+are ONE user, so the narrowest folder that works is **owner-only `0700`** — no group
+bit, no setgid, no sudo. (The earlier `2775` recipe was wider than needed.) The
+startup check and the verifier still never ASSUME one user: if the apps are ever
+split across users, the startup check refuses the one that cannot read and write,
+and the verifier names it.
+
+Steps, in order, as `nickw` on pi5 — **before** the code deploys:
 
 ```bash
-sudo install -d -o nickw -g nickw -m 2775 /mnt/data/ai-gate     # setgid: new files keep the group
-echo 'AI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db' >> /mnt/data/nuero/backend/.env
-echo 'AI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db' >> /mnt/data/vantage/backend/.env
+install -d -m 0700 /mnt/data/ai-gate
+cp -p /mnt/data/nuero/backend/.env   /mnt/data/nuero/backend/.env.bak-ai-gate-2026-10-23
+cp -p /mnt/data/vantage/backend/.env /mnt/data/vantage/backend/.env.bak-ai-gate-2026-10-23
+printf '\nAI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db\n' >> /mnt/data/nuero/backend/.env
+printf '\nAI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db\n' >> /mnt/data/vantage/backend/.env
+grep -H '^AI_GATE_DB_PATH=' /mnt/data/nuero/backend/.env /mnt/data/vantage/backend/.env   # both lines, same path
+stat -c '%U %a' /mnt/data/ai-gate                                                          # nickw 700
 ```
 
-⚠ **Set both lines BEFORE the code deploys** — without them both servers refuse to
-start, by design. If the apps ever run as different users, put both users in one
-group that owns `/mnt/data/ai-gate`, keep the folder `2775`, and run each app with
-`umask 0002` so the ledger and its `-wal`/`-shm` files stay group-writable.
+⚠ Without those lines both servers refuse to start — by design. Then deploy BOTH apps
+and restart both (`pm2 restart neuro-backend vantage-backend`); `saim-backend` is
+unaffected. Rollback: redeploy the previous commits — older code ignores the variable.
 
-**Post-deploy verification** (read-only — opens the ledger `readonly`, writes
-nothing; restart both apps first so each has registered):
+**Post-deploy verification** (wait ≥ 60 s after the restart so NEURO's first peer
+check has run). Node 22 explicitly — a bare `node` over ssh is v20, which segfaults
+better-sqlite3:
 
 ```bash
-cd /mnt/data/nuero && node backend/scripts/ai-gate-verify.js
-#   [--neuro-env /mnt/data/nuero/backend/.env] [--vantage-env /mnt/data/vantage/backend/.env]
+cd /mnt/data/nuero && PATH=$HOME/.nvm/versions/node/v22.22.2/bin:$PATH \
+  node backend/scripts/ai-gate-verify.js --live --lock-probe
 ```
 
-Exit 0 and `✔ NEURO and VANTAGE write the one shared ledger.` means: both `.env`
-files name the same absolute path (after realpath), the file exists, both apps
-registered on it from a running process, and today's counts print. Anything else
-exits 1 naming the problem.
+It must end `✔ NEURO and VANTAGE write the one shared ledger.` It checks, each by name:
+the two `.env` paths (unset / relative / different after realpath); the folder (missing /
+not a folder / not readable+writable / writable by group or others); the file (not
+created yet / not readable+writable); WAL mode; both apps registered on THIS file from a
+running process; **`--live`**: each running app's `/api/ai-gate/profile` reports the
+same ledger id as the file (an identity mismatch, or an app that cannot be asked, is a
+problem; NEURO's own peer check is shown); **`--lock-probe`**: takes the write lock and
+rolls back with a 3 s busy timeout — a held or unlockable ledger is a lock/concurrency
+failure. It writes no data, never prints a PIN, and exits 0 / 1 (problems) / 2 (could
+not run). Then Settings → AI budget should read "VANTAGE writes the same ledger ✓".
 
 Proven by `ai-gate-two-apps.test.js` (two processes — NEURO's gate + registry and
 VANTAGE's own copy + registry — racing $0.05 tickets under a $1 cap in enforce:
 exactly 20 allowed, ≤ cap, 60 unique ids, every second settle refused and recorded),
 `ai-gate-ledger-config.test.js` (startup refusals in a child process with the test
 context removed; one file = one id across processes) and
-`scripts/ai-gate-verify.test.js`. ⚠ Measured: a DEFERRED transaction does not
+`scripts/ai-gate-verify.test.js` (9: dotenv parsing, path rules, missing/not-a-folder/unwritable, too-wide folder, identity against stub apps with PINs never printed, and a real second process holding the write lock; identity, lock and width mutation-checked). ⚠ Measured: a DEFERRED transaction does not
 overspend either (SQLite WAL refuses the stale write), but that refusal returns a
 degraded, admitted ticket — fail-open under contention. IMMEDIATE is pinned.
 
