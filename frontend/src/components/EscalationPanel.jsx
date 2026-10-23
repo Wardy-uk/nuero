@@ -232,7 +232,7 @@ function defaultWhen() {
  * confirms it — no reminder or Now card before then. An open one counts down
  * and is closed by his next public reply on the ticket.
  */
-function Commitments({ t, busy, onCommit }) {
+function Commitments({ t, busy, onCommit, children }) {
   const [adding, setAdding] = useState(false);
   const [when, setWhen] = useState(defaultWhen);
   const list = t.commitments || [];
@@ -247,17 +247,24 @@ function Commitments({ t, busy, onCommit }) {
         <div key={c.id} className={`esc-commitment esc-commitment-${c.missed ? 'missed' : c.state}`}>
           {c.state === 'proposed' && (
             <>
-              <span><strong>Spotted in your reply:</strong> update by {clockLabel(c.dueAt)}</span>
+              <span className="esc-commitment-text"><strong>Spotted in your reply:</strong> update by {clockLabel(c.dueAt)}</span>
+              <span className="esc-commitment-actions">
+                <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/confirm`)}>Confirm</button>
+                <button type="button" className="esc-mini" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Not a commitment</button>
+              </span>
               {c.phrase && <span className="esc-commitment-phrase">“{c.phrase}”</span>}
-              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/confirm`)}>Confirm</button>
-              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Not a commitment</button>
             </>
           )}
           {c.state === 'open' && (
             <>
-              <span><strong>Update promised by {clockLabel(c.dueAt)}</strong> · {untilLabel(c.dueAt)}</span>
-              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/done`)}>Done</button>
-              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Remove</button>
+              <span className="esc-commitment-text">
+                <strong>Update promised by {clockLabel(c.dueAt)}</strong>
+                <span className={c.missed ? 'esc-pill esc-pill-alert' : 'esc-pill esc-pill-warn'}>{untilLabel(c.dueAt)}</span>
+              </span>
+              <span className="esc-commitment-actions">
+                <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/done`)}>Done</button>
+                <button type="button" className="esc-mini" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Remove</button>
+              </span>
             </>
           )}
           {c.state === 'kept' && (
@@ -273,11 +280,14 @@ function Commitments({ t, busy, onCommit }) {
           <label>Update the customer by
             <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
           </label>
-          <button type="submit" className="esc-row-action esc-row-action-tight" disabled={busy || !when}>Add</button>
-          <button type="button" className="esc-row-action esc-row-action-tight" onClick={() => setAdding(false)}>Cancel</button>
+          <button type="submit" className="esc-mini esc-mini-primary" disabled={busy || !when}>Add</button>
+          <button type="button" className="esc-mini" onClick={() => setAdding(false)}>Cancel</button>
         </form>
       ) : (
-        <button type="button" className="esc-link-btn" onClick={() => { setWhen(defaultWhen()); setAdding(true); }}>+ Add update commitment</button>
+        <div className="esc-watch-foot">
+          <button type="button" className="esc-link-btn" onClick={() => { setWhen(defaultWhen()); setAdding(true); }}>+ Add update commitment</button>
+          <span className="esc-watch-actions">{children}</span>
+        </div>
       )}
     </div>
   );
@@ -285,43 +295,51 @@ function Commitments({ t, busy, onCommit }) {
 
 function WatchedRow({ t, onRead, onUnwatch, onCommit, busy }) {
   const latest = t.replies[0];
-  return (
-    <div className="esc-row">
-      <div className="esc-row-main">
-        <a href={t.url || '#'} target="_blank" rel="noreferrer" className="esc-row-key"
-          onClick={() => { if (t.unread) onRead(t.key); }}>{t.key}</a>
-        <span className="esc-row-summary">{t.summary || '—'}</span>
-      </div>
-      <div className="esc-row-meta">
-        {t.unread > 0 && (
-          <span className="esc-tag esc-tag-awaiting">
-            {t.unread} new {t.unread === 1 ? 'reply' : 'replies'}
-          </span>
-        )}
-        {t.status && <span>{t.status}</span>}
-        {t.phase === 'background' && t.listeningUntil && (
-          <span title="Resolved. Only a real follow-up from the customer — not a thank-you — will flag it.">
-            listening until {dayMonth(t.listeningUntil)}
-          </span>
-        )}
-        {!t.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
-        {t.lastError && <span className="esc-row-touched-cold" title={t.lastError}>couldn’t check</span>}
-        {t.unread > 0 && (
-          <button type="button" className="esc-row-action" disabled={busy} onClick={() => onRead(t.key)}>Mark read</button>
-        )}
-        <button type="button" className={t.unread > 0 ? 'esc-row-action esc-row-action-tight' : 'esc-row-action'}
-          disabled={busy} onClick={() => onUnwatch(t.key)}>Unwatch</button>
-      </div>
-      {latest && (
-        <p className={latest.flagged ? 'esc-watch-reply' : 'esc-watch-reply esc-watch-reply-muted'}>
-          <span className="esc-comment-author">{latest.author} · {dayMonth(latest.created)}</span>
-          {!latest.flagged && <span className="esc-tag">judged a thank-you</span>}
-          {latest.judgedBy === 'model-unavailable' && <span className="esc-tag" title="The model could not judge it, so it was flagged rather than dropped">not judged</span>}
-          {' '}{latest.excerpt}
-        </p>
+  const actions = (
+    <>
+      {t.unread > 0 && (
+        <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onRead(t.key)}>Mark read</button>
       )}
-      {onCommit && <Commitments t={t} busy={busy} onCommit={onCommit} />}
-    </div>
+      <button type="button" className="esc-mini" disabled={busy} onClick={() => onUnwatch(t.key)}>Unwatch</button>
+    </>
+  );
+  const notes = [
+    t.phase === 'background' && t.listeningUntil && (
+      <span key="l" title="Resolved. Only a real follow-up from the customer — not a thank-you — will flag it.">
+        Resolved · listening until {dayMonth(t.listeningUntil)}
+      </span>
+    ),
+    !t.baselineTaken && <span key="b" title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>,
+    t.lastError && <span key="e" className="esc-row-touched-cold" title={t.lastError}>couldn’t check</span>,
+  ].filter(Boolean);
+  return (
+    <article className={t.unread > 0 ? 'esc-watch esc-watch-unread' : 'esc-watch'}>
+      <div className="esc-watch-head">
+        <a href={t.url || '#'} target="_blank" rel="noreferrer" className="esc-watch-key"
+          onClick={() => { if (t.unread) onRead(t.key); }}>{t.key}</a>
+        <span className="esc-watch-summary">{t.summary || '—'}</span>
+        <span className="esc-watch-badges">
+          {t.unread > 0 && (
+            <span className="esc-pill esc-pill-alert">{t.unread} new {t.unread === 1 ? 'reply' : 'replies'}</span>
+          )}
+          {t.status && <span className="esc-pill">{t.status}</span>}
+        </span>
+      </div>
+      {notes.length > 0 && <div className="esc-watch-notes">{notes}</div>}
+      {latest && (
+        <blockquote className={latest.flagged ? 'esc-watch-reply' : 'esc-watch-reply esc-watch-reply-muted'}>
+          <span className="esc-comment-author">
+            {latest.author} · {dayMonth(latest.created)}
+            {!latest.flagged && <span className="esc-tag">judged a thank-you</span>}
+            {latest.judgedBy === 'model-unavailable' && <span className="esc-tag" title="The model could not judge it, so it was flagged rather than dropped">not judged</span>}
+          </span>
+          <span className="esc-watch-reply-text">{latest.excerpt}</span>
+        </blockquote>
+      )}
+      {onCommit
+        ? <Commitments t={t} busy={busy} onCommit={onCommit}>{actions}</Commitments>
+        : <div className="esc-watch-foot"><span /><span className="esc-watch-actions">{actions}</span></div>}
+    </article>
   );
 }
 
@@ -340,7 +358,7 @@ export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnw
   const active = data?.active || [];
   const listening = data?.listening || [];
   return (
-    <section className="esc-active esc-watched">
+    <section className="esc-watched">
       <div className="esc-active-head">
         <h3>
           Watched tickets
@@ -350,12 +368,11 @@ export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnw
           {busy ? 'Checking…' : 'Check now'}
         </button>
       </div>
-      <p className="esc-group-blurb">
-        You get a push when the customer replies. Your team’s replies and internal notes don’t count.
-        Once a ticket is resolved, NEURO keeps listening for 10 working days and flags it only if the customer follows up with more than a thank-you.
+      <p className="esc-card-blurb">
+        A push when the customer replies (not your team, not internal notes). After a ticket is resolved, NEURO listens for 10 working days and flags only a real follow-up, not a thank-you.
       </p>
 
-      <form className="esc-lookup" onSubmit={add}>
+      <form className="esc-lookup esc-lookup-compact" onSubmit={add}>
         <input className="esc-key-input" value={key} onChange={e => setKey(e.target.value)}
           placeholder="NT-28061" aria-label="Ticket to watch" />
         <button type="submit" className="esc-btn" disabled={busy || !key.trim()}>Watch</button>
@@ -541,6 +558,8 @@ export default function EscalationPanel() {
         <p className="esc-sub">Make a ticket jump the queue, and record why.</p>
       </header>
 
+      <div className="esc-grid">
+      <div className="esc-card esc-area-active">
       <ActiveEscalations
         items={active}
         loading={activeLoading}
@@ -552,7 +571,9 @@ export default function EscalationPanel() {
         watchedKeys={watchedKeys}
         onWatch={watchKey}
       />
+      </div>
 
+      <div className="esc-card esc-area-watched">
       <WatchedTickets
         data={watched}
         error={watchedError}
@@ -564,7 +585,11 @@ export default function EscalationPanel() {
         onCheck={() => watchAction('/check')}
         onCommit={async (k, path, body) => !!(await watchAction(`/${encodeURIComponent(k)}/commitments${path}`, body))}
       />
+      </div>
 
+      <section className="esc-card esc-area-escalate">
+      <div className="esc-active-head"><h3>Escalate a ticket</h3></div>
+      <p className="esc-card-blurb">Raise its priority, tighten the due date and leave an internal note, through NOVA. Nothing changes until you confirm.</p>
       <form className="esc-lookup" onSubmit={lookup}>
         <input
           ref={keyInput}
@@ -706,6 +731,8 @@ export default function EscalationPanel() {
           <button className="esc-btn" onClick={reset}>Escalate another</button>
         </div>
       )}
+      </section>
+      </div>
     </div>
   );
 }

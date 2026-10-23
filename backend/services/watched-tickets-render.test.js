@@ -87,7 +87,7 @@ test('commitments: a spotted promise asks to be confirmed; an open one counts do
   assert.match(html, /before 5pm today/);
   assert.match(html, /Confirm/);
   assert.match(html, /Not a commitment/);
-  assert.match(html, /Update promised by .* in 1h 30m|Update promised by .* in 1h 29m/);
+  assert.match(html, /Update promised by .*in 1h (30|29)m/);
   assert.match(html, /overdue by 20m|overdue by 19m/);
   assert.match(html, /esc-commitment-missed/);
   assert.match(html, /\+ Add update commitment/);
