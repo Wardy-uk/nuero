@@ -34,54 +34,95 @@ like Nick.
 | Routes (all owner-only) | `backend/routes/task-agent.js` → `/api/task-agent/…` |
 | Draft → existing project-note prepared move | `planAgentOutput` in `backend/services/prepared-move-planner.js` |
 | Full-note reader with the scan's own screen | `task-context.readForAgent(rel)` |
-| AI-gate class + Settings limit | `task_agent` in `backend/services/ai-gate-classes.js` (`setClassLimit`, `limitOf`); `POST /api/ai-gate/class-limit`; `classLimits` on `GET /api/ai-gate/profile` |
-| Settings control | `TaskAgentLimit` in `frontend/src/components/AiBudgetCard.jsx` |
-| Provider | `anthropic-provider._create` passes `options.requestOptions` (timeout, retries) to the SDK |
+| Settings: key, on/off, model, hard daily limits, connection test | `backend/services/task-agent-settings.js`; routes `GET/POST /api/task-agent/settings`, `POST /api/task-agent/settings/test` |
+| Settings screen | `frontend/src/components/TaskAgentSettings.jsx` + `.css`, in Settings → AI & SAiM → Anthropic |
+| AI-gate classes | `task_agent` and `task_agent_test` in `backend/services/ai-gate-classes.js` (no gate limit; the limits are NEURO's own, above) |
+| Provider | `anthropic-provider._create` passes `options.requestOptions` (timeout, retries) to the SDK, uses `options.apiKey` (a caller's own key) and calls `options.beforeRequest` before every request |
 | UI (shared) | `saim/shared-ui/TaskAgent.jsx` + `.css` |
 | Drafts | `AgentWork` in `saim/app/src/views/Drafts.jsx` |
 
 Routes: `GET tasks/:id`, `GET active`, `POST tasks/:id/start` (`fresh`), `POST tasks/:id/answer`,
 `POST tasks/:id/stop`, `POST tasks/:id/outputs/:outputId/save`,
-`GET tasks/:id/handoff/preview` (`includeDrafts=1`), `POST tasks/:id/handoff`.
+`GET tasks/:id/handoff/preview` (`includeDrafts=1`), `POST tasks/:id/handoff`,
+`GET settings`, `POST settings`, `POST settings/test` (`confirm`).
 
 ## The provider path (reused, nothing bypassed)
 
 ```
 task-agent._turn
-  → refuse before any call if: no key · the model has no gate price · ai-routing.isCloudAllowed('task_agent') is false
+  → refuse before any call if: Do this is off · no saved key · the model has no gate price
+    · not enough of today's Do this budget for one step · ai-routing.isCloudAllowed('task_agent') is false
   → anthropic-provider.chatWithTools(…, { callClass: 'task_agent', model, maxTokens: 4000, maxRounds: 12,
+                                          apiKey: <the saved Do this key>,
+                                          beforeRequest: task-agent-settings.guardRequest,
                                           requestOptions: { timeout: 90 s, maxRetries: 0 } })
-       → _create → gate-call.open/close    ONE AI-gate ticket per model request, on the shared ledger
+       → _create → beforeRequest           the hard $ cap, before EVERY request
+                 → gate-call.open/close    ONE AI-gate ticket per model request, on the shared ledger
   → ai-routing.recordUsage(usage, { provider: 'anthropic', model, taskType: 'task_agent' })   ai_calls cost ledger
   → ai-cost.resolveCost → run.usage.costUsd   (unpriced = "cost not known", never $0)
 ```
 
-- **Model.** Default `claude-sonnet-4-6` (`TASK_AGENT_MODEL` overrides). It is in the
+- **Model.** Chosen in Settings from a closed list: `claude-sonnet-4-6` (default) or
+  `claude-haiku-4-5-20251001`. `TASK_AGENT_MODEL` is gone. Each is in the
   installed `@anthropic-ai/sdk`'s own model list and priced in BOTH the gate's table
   ($3 / $15 per Mtok) and `ai-cost` — pinned by a test. The first pass defaulted to
-  `claude-sonnet-5`, which the installed SDK does not list; that was changed. An override
-  the gate cannot price is refused before any request.
+  `claude-sonnet-5`, which the installed SDK does not list; that was changed. A model off
+  the list is refused at Save.
 - **Cost.** A typical 3–4 request run is ~5–6k input + ~1.4k output tokens ≈ **$0.04**;
   the ceiling is 12 requests × 4k output.
 - **No hidden retries.** `maxRetries: 0`; a retry is Nick's press.
-- **The API key never reaches a browser.**
+- **The API key never reaches a browser.** Do this uses ITS OWN key from Settings, never
+  `ANTHROPIC_API_KEY` (which other Anthropic features keep using, unchanged).
 
-### Budget — the corrected statement
+### Settings → AI & SAiM → Anthropic (Stage 1, 23 Oct 2026)
 
-- **The AI gate is in SHADOW mode in production and has NO daily cap.** It records every
-  `task_agent` request on the shared ledger and blocks nothing.
-- **New: a Do this limit — model requests per day — in Settings → AI budget**
-  (`POST /api/ai-gate/class-limit`, owner-only, machine-refused, gateway interactive).
-  **None is set.** It is NEURO's class registry's `maxPerDay` for `task_agent` (the shared
-  `ai-gate.js`, byte-identical with VANTAGE, is untouched): past the limit the gate records
-  a `volume` refusal. **In shadow mode that is recorded and the run still goes ahead; only
-  `AI_GATE_MODE=enforce` refuses** — and then the run fails before any request with nothing
-  kept and a message pointing to Settings. Both proven in tests.
-- Every run shows the gate line in words: *"Recorded by the AI gate in shadow mode. No Do
-  this limit is set, so it is not budget-blocked by the gate."*
-- **Separately, NEURO's own `ai-routing` daily call/token limits and `AI_MODE` still apply**
-  (they are what `isCloudAllowed` checks). pi5 (read-only check, 23 Oct): `AI_MODE=hybrid`,
-  an Anthropic key is set. Anthropic account credit was NOT inspected.
+Fields: **Enabled** (off by default; it cannot be switched on without a key), **API key**
+(masked paste / replace / clear), **Model**, **Do this daily budget** (default **$1.00**),
+**Do this daily run limit** (default **10**). The screen also shows today's Do this spend,
+model requests, runs, what is left and when it resets (midnight UK time), the cap statement,
+an explicit save result with field errors, and **Test Anthropic connection**.
+
+**The two limits are HARD from the first release, NEURO's own, and independent of the gate's
+mode** (which stays shadow). They apply to Do this only: nothing else reads them (pinned by a
+source scan), VANTAGE, OpenRouter, other Anthropic callers and the shared gate are unchanged.
+
+- **Runs.** A NEW attempt is counted when it is admitted. The (N+1)th is refused before
+  anything is created — no run record, no request — naming the limit and the reset. A press
+  on an existing run (resume, answer) is not a new run.
+- **Dollars.** Today's spend is read from the shared AI ledger (classes `task_agent` +
+  `task_agent_test`, London day). A run — or a resume, or a turn — starts only if the most one
+  step could cost (8k in + 4k out; $0.084 on Sonnet, $0.028 on Haiku) still fits. Before EVERY
+  request inside a turn, `guardRequest` checks spend + that request's worst case (× other Do
+  this requests in flight); if it would cross the budget the request is NOT sent, the turn
+  fails with `errorKind: 'limit'` and, being transactional, keeps nothing.
+- **An unreadable ledger fails closed**: no start, no request.
+- So on Sonnet the usable part of a $1.00 day is about $0.92 before the door closes.
+
+**The key — TEMPORARY storage, approved by Nick on 23 Oct 2026 because it was blocking work.**
+It is kept in `agent_state.task_agent_anthropic_key` in the server's SQLite file: owner-only
+on the Pi (`0600`, parent `0700`, rotated backups too) but **not encrypted**. The Settings
+screen says so in the server's own words: *"This key is stored on this NEURO server.
+Encrypted secret storage is the next security upgrade."* This exception covers this one key;
+it is not a precedent for any other secret, and the OpenRouter, mailbox and Google secrets
+were not touched. No route returns the key, its last four, its length or a hash —
+`configured: true|false` only (tested over every route and in the browser). It is never put
+in browser storage, logs, activity or errors (`redact`). Settings routes are owner-only;
+saving is `config.security` (machine-refused) and every settings operation is interactive in
+the MCP gateway. Stage 2 (encrypted store) is below.
+
+**Test Anthropic connection** (`POST /api/task-agent/settings/test`, `confirm: true`): one
+request, fixed fixture text, `max_tokens` 16, 30 s, no retries, class `task_agent_test`,
+inside the Do this budget. It reports the model, tokens, cost, whether the shared ledger
+recorded it, and a sanitised failure reason — never the prompt or the key. It creates no task
+attempt, draft, email, vault write, calendar item, task change, prepared action, confirmation
+or allowance change, and does not count as a run. About $0.0008.
+
+**Gate line on every run:** *"Today: $0.16 of $1.00 and 2 of 10 runs. These Do this limits are
+enforced; the wider AI gate is in shadow mode."* NEURO's own `ai-routing` daily call/token
+limits and `AI_MODE` still apply too.
+
+The first-pass "class limit" (`POST /api/ai-gate/class-limit`, a shadow-only `maxPerDay`)
+was never released and is removed: two different limits for one feature would be confusing.
 
 ## The run
 
@@ -224,9 +265,16 @@ through NEURO's own confirmation and authority routes.
 | `routes/task-agent-next.test.js` (22) | the immutable handoff envelope: only `brief` accepted; envelope leads and closes the server-composed prompt; adversarial edits refused with specific reasons (secret/restricted requests, authority/confirmation overrides, excluded or extra source paths, destination changes, people-matter contact, pasted excerpts/titles/drafts); the default brief is clean. Also: save via the real prepared move + real `/request` through its boundaries (device lock → allowance → confirmation shown, never confirmed); people matter cannot be saved or handed off with any excerpt/draft/restricted title; Claude preview/sanitisation/confirmation/idempotency/one desk request; credit / timeout / overload failures keep nothing and resume once; email prepared only at the end of a completed turn; class limit Settings-only, recorded in shadow, refused under enforce; unpriced model refused; blocked end state; default model verified; limited surfaces 403 on the new routes; kiosk proxy never forwards any task-agent path |
 | `services/task-agent-render.test.js` (10) | real render of every state incl. save, Claude preview, blocked, budget line; kiosk renders `''`; both shells mount it, SAiM read-only on the kiosk ONLY |
 | `services/task-agent-browser.test.js` (8, Electron) | the real TodoItem (1440, 390) and the SAiM mount as phone, as the Electron desktop and as the kiosk: press → ready; Save to vault → the real Confirm VISIBLE and never pressed, vault byte-identical; Claude preview + recorded handoff; question; people matter; email; kiosk renders nothing |
-| `services/task-agent-live.test.js` (1) | the real Anthropic API on a disposable key — **NOT RUN** (see below) |
+| `routes/task-agent-settings.test.js` (9) | Settings: defaults; owner only (API token, machine client, kiosk, no auth); the key never returned (key, last four, length, hash) by any route or written to activity, replace and clear; field validation, an invalid save changes nothing; off / no saved key refused with nothing created and `ANTHROPIC_API_KEY` not used; the run limit; the $ limit at the door and mid-run (nothing kept); an unreadable ledger fails closed; the saved key reaches the provider; the limits block only Do this (another Anthropic call still runs, gate stays shadow, source scan: no other reader); the connection test (confirm, one bounded request, model/tokens/cost/ledger, no prompt or key, no work, redacted failures) |
+| `services/task-agent-settings-render.test.js` (6) | real render: every field, the notice, the cap statement, empty key field, confirm-before-test, results, errors; no browser storage; the Do this button says when it is off; mounted in the Anthropic group |
+| `services/task-agent-settings-browser.test.js` (3, Electron) | the real Settings screen at 1440 and 390 against the real routes: defaults, invalid budget, key saved and emptied, connection test; the key is not in the page, browser storage or any response; no horizontal scroll |
+| `services/task-agent-live.test.js` (1) | the real Anthropic API on a disposable key, now saved through the same Settings path, plus the live connection test — **NOT RUN** (no disposable key) |
 
-Mutation checks: first pass 13 of 13 caught; second pass 19 of 20; third pass (the immutable
+Mutation checks: Stage 1 (settings and hard limits) 10 of 11 caught — run limit, door $
+check, per-request $ guard, guard not passed to the provider, start ignoring "off", read()
+leaking the last four, exact-key redaction, test without confirm, unreadable ledger passing,
+enabling without a key. The survivor (falling back to `ANTHROPIC_API_KEY` when no key is saved)
+is unreachable: a run is refused at "no saved key" before any call. First pass 13 of 13 caught; second pass 19 of 20; third pass (the immutable
 envelope) 6 of 6 — envelope dropped from the prompt, brief rules off, people-matter contact
 rule off, restricted-title check off, route accepting a client prompt/destination/sources/
 envelope, and the client brief used as the whole prompt. The second pass broke
@@ -279,17 +327,67 @@ SDK's real error shape in `task-agent-next.test.js`.
 
 ## Decisions still Nick's
 
-1. **A disposable Anthropic key** in `%LOCALAPPDATA%\neuro\task-agent-live-anthropic.key`, to run the
-   live proof. Without it the real provider path is unproven. The production key is not used.
-2. **The daily Do this limit.** UNSET. Recommended first day: **40 model requests a day**. A run
-   uses 2–12 (typically 3–4), so that is about 10 ordinary runs, or 3 that hit the ceiling. Worst
-   case ≈ $3.60 a day at claude-sonnet-4-6 ($0.09 a request: ≈10k in + 4k out); typical ≈ $0.40.
-   In shadow mode a limit is RECORDED (a would-refuse appears in Settings → AI budget) and does
-   not block, so setting it now shows where real use lands, before enforcement.
-3. **Whether and when to enable gate enforcement** (`AI_GATE_MODE=enforce`, on the Pi, for BOTH
-   apps — it is shared with VANTAGE). Off now. Until it is on, nothing about Do this is blocked
-   by the gate; NEURO's own `ai-routing` daily call/token limits still apply.
-4. **Deploy.** Backend restart, NEURO frontend build, saim/app (Netlify, on merge), MCP gateway
-   rebuild.
+1. **Paste the key, run the connection test, then turn Do this on** (Settings → AI & SAiM →
+   Anthropic). Deployment leaves it OFF with no key.
+2. **The limits.** Defaults $1.00 and 10 runs a day, enforced.
+3. **Gate enforcement** (`AI_GATE_MODE`, shared with VANTAGE): unchanged, shadow.
+4. **Stage 2 deployment**, after review (below).
 5. **Evening saves** stay held by the existing off-duty rule (unchanged, deliberately).
 
+## Stage 2 — encrypted server-side secrets (designed; branch only, NOT deployed)
+
+**Goal.** No usable secret in the database file, its rotated backups, `/mnt/data` snapshots
+or the off-site B2 copy. The Anthropic Do this key moves first; the rest follow in a separate
+reviewed migration.
+
+**Store.** `backend/services/secret-store.js`: `put(name, value)`, `get(name)`, `has(name)`,
+`remove(name)`, `status()` (names and versions only). AES-256-GCM (Node `crypto`): a fresh
+12-byte IV per write, a 16-byte tag, and AAD = `neuro-secret:v1:<name>`, so a ciphertext
+cannot be moved to another name. Stored in a new table `secrets(name PK, v, key_id, iv, tag,
+ct, updated_at)`. A wrong key, a moved row or a changed byte fails the tag check and reads as
+*unavailable* — never as empty, never as a guess.
+
+**The master key** is 32 random bytes in `/home/nickw/.config/neuro/secret.key`, mode `0600`,
+directory `0700`, owner nickw. That path is on the SD card's root filesystem: outside the
+repo, `/mnt/data`, `backups/nuero-db`, the 6-hourly `/mnt/backup` snapshots (which copy
+`/mnt/data`) and the off-site job (which ships the vault, HA, one `agent.db` and syncthing
+config). Env override `NEURO_SECRET_KEY_FILE`, absolute path only. `key_id` = the first 8 hex
+of SHA-256(master key), so a row encrypted under a different key says so. Created only by a
+shell script (`backend/scripts/secret-key-init.js`: refuses to overwrite, prints the path and
+key_id, never the key). No route can create, read or rotate it. **Losing the file loses the
+secrets** (they must be re-pasted), so Nick keeps an offline copy (password manager), never
+in the vault or B2. If the file is missing or unreadable, the store reports
+`unavailable: master key missing` and Do this shows "the key cannot be read" — it does not
+fall back to plaintext.
+
+**Migration of the Do this key** (`backend/scripts/migrate-secret.js --name task_agent_anthropic_key`,
+dry run by default):
+1. Read the plaintext from `agent_state`; if empty, stop (nothing to do).
+2. Back up the current DB file with `sqlite3 .backup` to `backups/nuero-db/pre-secret-<ts>.db`
+   (0600).
+3. In ONE SQLite transaction: `put` the ciphertext, then read it back through `get` and compare
+   with the plaintext byte for byte — only if equal, set the plaintext row to `''` and write
+   `agent_state.task_agent_key_storage = 'encrypted:v1'`. Any failure rolls the whole
+   transaction back: the plaintext stays exactly as it was.
+4. After commit, `task-agent-settings.apiKey()` reads from the store (`storage` says
+   `encrypted`), and the Settings notice is removed only when `get` succeeds and the plaintext
+   row is empty.
+5. `VACUUM` once, so the freed page with the old plaintext is not left in the file.
+6. **Reverse** (`--revert`): decrypt, write the plaintext back, clear the ciphertext, in one
+   transaction — tested both ways.
+7. The `pre-secret` backup still contains the plaintext: it is deleted after Nick confirms Do
+   this works (or kept 0600 for 7 days and then deleted by the script), and the B2 copy of
+   that day ages out under the bucket's existing 1-day hidden-version lifecycle.
+
+**Tests (to write on the branch):** round trip; a wrong key, a moved row (AAD) and a flipped
+byte all fail closed; a missing key file is `unavailable` and never empty; migration is atomic
+(an injected failure after `put` leaves the plaintext intact); revert restores the original;
+nothing about the secret appears in routes, logs or activity; the settings API still answers
+`configured: true|false` only.
+
+**Other secrets** — OpenRouter (`ai_setting_openrouter_api_key`), the personal mailbox
+passwords, the Google refresh token and client secret, the Bright credentials, the RescueTime
+and Notion tokens, `wu_api_key`, the approval code (already scrypt-hashed, stays as is), the
+Tally login — are a SEPARATE plan: one reviewed migration per family, each with its own read
+path change and test, never moved silently in the Anthropic step. `.env` (`-rw-rw-r--` today)
+should go to `0600` at the same time.

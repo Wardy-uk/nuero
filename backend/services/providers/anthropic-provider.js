@@ -8,6 +8,18 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 let _client = null;
+// A client for a caller's OWN key (23 Oct 2026: the "Do this" task agent keeps its
+// key in its own Settings, separate from ANTHROPIC_API_KEY, which other features
+// use). One cached client; replaced when the key changes. The key never leaves
+// this process. `_injected` is the test seam's scripted client, used for every call.
+let _keyed = null;
+let _injected = null;
+function _clientFor(apiKey) {
+  if (_injected) return _injected;
+  if (!apiKey) return _getClient();
+  if (!_keyed || _keyed.key !== apiKey) _keyed = { key: apiKey, client: new Anthropic({ apiKey }) };
+  return _keyed.client;
+}
 
 function _key() { return process.env.ANTHROPIC_API_KEY || ''; }
 function _model() { return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001'; }
@@ -17,6 +29,7 @@ function isConfigured() {
 }
 
 function _getClient() {
+  if (_injected) return _injected;
   if (!_client) {
     _client = new Anthropic({ apiKey: _key() });
   }
@@ -40,11 +53,15 @@ function _open(params, options, fallbackClass) {
   });
 }
 async function _create(params, options, fallbackClass) {
+  // A caller's own pre-request check (the task agent's hard daily caps). It sees
+  // the request's bounds before the gate ticket is opened; throwing stops the call.
+  if (typeof options.beforeRequest === 'function') options.beforeRequest({ model: params.model, maxInputTokens: _inputEstimate(params), maxOutputTokens: params.max_tokens });
   const ticket = _open(params, options, fallbackClass);
   try {
     // `requestOptions` (e.g. { timeout, signal }) is the SDK's own per-request
     // option bag; absent, the call is exactly what it was.
-    const r = options.requestOptions ? await _getClient().messages.create(params, options.requestOptions) : await _getClient().messages.create(params);
+    const client = _clientFor(options.apiKey);
+    const r = options.requestOptions ? await client.messages.create(params, options.requestOptions) : await client.messages.create(params);
     gateCall.close(ticket, { ok: true, model: r.model || params.model, promptTokens: r.usage?.input_tokens, completionTokens: r.usage?.output_tokens });
     return r;
   } catch (e) {
@@ -54,7 +71,7 @@ async function _create(params, options, fallbackClass) {
 }
 
 async function chat(systemPrompt, messages, options = {}) {
-  if (!_key()) throw new Error('Anthropic API key not configured');
+  if (!(options.apiKey || _key())) throw new Error('Anthropic API key not configured');
 
   const model = options.model || _model();
   const maxTokens = options.maxTokens || 512;
@@ -232,7 +249,7 @@ function _normaliseHistory(messages) {
  * @returns {{ text, usage, toolCalls }} toolCalls is what actually ran, in order
  */
 async function chatWithTools(systemPrompt, messages, tools, runTool, options = {}) {
-  if (!_key()) throw new Error('Anthropic API key not configured');
+  if (!(options.apiKey || _key())) throw new Error('Anthropic API key not configured');
 
   const model = options.model || _model();
   const maxTokens = options.maxTokens || 1024;
@@ -327,5 +344,5 @@ module.exports = {
   // Test seam. The truncation rules in `chatWithTools` are about what the SDK
   // hands back, so they can only be pinned by handing back a scripted response
   // — exercising them for real means paying Anthropic to run out of tokens.
-  _internals: { setClient: (c) => { _client = c; } },
+  _internals: { setClient: (c) => { _injected = c || null; _client = null; _keyed = null; } },
 };

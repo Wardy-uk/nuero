@@ -150,8 +150,10 @@ const ROUTE_RULES = Object.freeze([
   R('GET', '/api/task-agent/tasks/:taskId/handoff/preview', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/handoff', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/outputs/:outputId/save', 'task-agent.run'),
-  // An AI limit is Nick's decision about spend, in Settings — never a machine's.
-  R('POST', '/api/ai-gate/class-limit', 'internal.state', { machine: 'refuse' }),
+  // Do this's key, on/off and daily limits are Nick's, in Settings — never a machine's.
+  R('GET', '/api/task-agent/settings', 'task-agent.run'),
+  R('POST', '/api/task-agent/settings', 'config.security', { machine: 'refuse' }),
+  R('POST', '/api/task-agent/settings/test', 'task-agent.run'),
   R('GET', '/api/task-agent/active', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/start', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/answer', 'task-agent.run'),

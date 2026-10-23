@@ -12,6 +12,7 @@ import VestaAccounts from './VestaAccounts';
 import PersonalMailCard from './PersonalMailCard';
 import TaskContextActivation from './TaskContextActivation.jsx';
 import AiBudgetCard from './AiBudgetCard.jsx';
+import TaskAgentSettings from './TaskAgentSettings.jsx';
 import { signInOutcome, DeviceCodePanel } from './MicrosoftSignIn';
 
 
@@ -809,6 +810,7 @@ function AiSettingsSection() {
           </select>
           {saved === 'anthropic_enabled' && <span className="ai-setting-saved">✓</span>}
         </div>
+        <TaskAgentSettings />
       </div>
 
       {/* OpenRouter */}

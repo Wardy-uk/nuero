@@ -36,9 +36,8 @@ process.env.OBSIDIAN_VAULT_PATH = VAULT;
 process.env.NEURO_PIN = 'pin-1234';
 process.env.NEURO_API_TOKEN = 'tok-5678';
 process.env.NEURO_KIOSK_TOKEN = 'kiosk-9012';
-process.env.ANTHROPIC_API_KEY = 'test-key';
+delete process.env.ANTHROPIC_API_KEY; // Do this must not depend on it
 process.env.AI_MODE = 'hybrid';
-process.env.TASK_AGENT_MODEL = 'claude-sonnet-5';
 for (const k of ['HA_TOKEN', 'HA_URL', 'VAULT_SENSITIVE_DIRS', 'VAULT_PERSONAL_DIRS', 'VAULT_SECURITY_DIRS', 'OPENROUTER_ALLOWED_TASKS']) delete process.env[k];
 
 const fetchCalls = [];
@@ -55,6 +54,8 @@ const taskStore = require('../services/task-store');
 const tc = require('../services/task-context');
 const agent = require('../services/task-agent');
 const anthropic = require('../services/providers/anthropic-provider');
+const taSettings = require('../services/task-agent-settings');
+// Do this runs on ITS OWN saved key (Settings), never ANTHROPIC_API_KEY. Generous limits here; the caps have their own test.
 
 const PLAN = 'Projects/Support Rota/Q4 rota notes.md';
 const HR = 'Meetings/2026/10/2026-10-15 – Heidi Example leaver catch up.md';
@@ -71,7 +72,7 @@ const seen = [];   // every request the provider sent (system + messages)
 let script = [];
 let nextId = 1;
 function toolUse(name, input) { return { type: 'tool_use', id: `tu_${nextId++}`, name, input }; }
-function reply(blocks, stop = 'tool_use') { return { model: 'claude-sonnet-5', content: blocks, stop_reason: stop, usage: { input_tokens: 1200, output_tokens: 300 } }; }
+function reply(blocks, stop = 'tool_use') { return { model: 'claude-sonnet-4-6', content: blocks, stop_reason: stop, usage: { input_tokens: 1200, output_tokens: 300 } }; }
 anthropic._internals.setClient({ messages: { create: async (params) => {
   seen.push(JSON.stringify({ system: params.system, messages: params.messages }));
   const step = script.shift();
@@ -101,6 +102,7 @@ function snapshot() {
 test.before(async () => {
   fs.mkdirSync(VAULT, { recursive: true });
   await db.init();
+  taSettings.save({ apiKey: 'sk-ant-test-not-a-real-key-0000000000', enabled: true, dailyUsd: 50, dailyRuns: 200 });
   write('People/Jane Doe.md', '---\ntype: person\nemail: jane.doe@example.com\n---\n# Jane Doe\n');
   // Heidi HAS an address, so refusing her email is the people-matter guard's doing, not an unresolvable recipient.
   write('People/Heidi Example.md', '---\ntype: person\nemail: heidi.example@example.com\n---\n# Heidi Example\n');
@@ -180,12 +182,12 @@ test('ordinary task: reads linked context, saves real outputs, finishes without 
   assert.match(src.provenance, /./, 'with its provenance');
   assert.deepEqual(run.summary.completed, ['Drafted the Q4 cover plan', 'Drafted a publishing checklist']);
   assert.equal(run.understanding, 'Plan cover for Q4 using the rota notes.');
-  assert.equal(run.usage.model, 'claude-sonnet-5');
+  assert.equal(run.usage.model, 'claude-sonnet-4-6');
   assert.ok(run.usage.promptTokens >= 1200 * 3 && run.usage.costUsd > 0, 'tokens and cost recorded');
   assert.equal(seen.length - n0, 4, 'four provider requests (one gate ticket each)');
   assert.ok(seen.slice(n0).some((p) => p.includes('Cover gaps: weeks 44 and 47')), 'the note text reached the model only through read_note');
   const act = db.all("SELECT event_data FROM activity_log WHERE event_type = 'task_agent'").map((x) => x.event_data).join('\n');
-  assert.match(act, /"model":"claude-sonnet-5"/);
+  assert.match(act, /"model":"claude-sonnet-4-6"/);
   assert.doesNotMatch(act, /Week 47|Cover gaps/, 'activity carries no output or prompt text');
   const after = snapshot();
   assert.deepEqual(after, before, 'nothing written outside the run record');

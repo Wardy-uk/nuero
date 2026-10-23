@@ -41,6 +41,8 @@ const REGISTRY = {
   // ── "Do this" task agent (Anthropic tool loop, cloud only; one ticket per
   //    round). Prepares and drafts; grants no authority. See services/task-agent.js.
   task_agent: text({ local: false, maxOutputTokens: 8000 }),
+  // The synthetic "Test Anthropic connection" in Settings: one bounded fixture request.
+  task_agent_test: text({ local: false, maxOutputTokens: 64 }),
   // ── vision (Anthropic, cloud only) ─────────────────────────────────────
   vesta_photo: text({ local: false, maxOutputTokens: 8000 }),
   medical_scan: text({ local: false, maxOutputTokens: 8000 }),
@@ -62,40 +64,7 @@ const REGISTRY = {
   },
 };
 
-/**
- * Per-class daily request limits Nick sets in Settings → AI budget (23 Oct 2026).
- * ONLY the classes listed in SETTABLE, and NONE is set by default: no limit is a
- * decision not yet made, never zero. The gate counts a class's allowed tickets
- * per London day and, past the limit, records a `volume` refusal — in shadow mode
- * that is recorded and the call still runs; only AI_GATE_MODE=enforce refuses.
- * Read live on every reserve, so a change needs no restart. One ticket = one
- * model request, so a single "Do this" run uses between 2 and 12.
- */
-const LIMIT_KEY = 'ai_gate_class_limits';
-const SETTABLE = Object.freeze(['task_agent']);
-const MAX_LIMIT = 1000;
-function classLimits() {
-  try {
-    const raw = require('../db/database').getState(LIMIT_KEY);
-    const o = raw ? JSON.parse(raw) : {};
-    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
-  } catch { return {}; }
-}
-function limitOf(cls) { const v = classLimits()[cls]; return Number.isInteger(v) && v > 0 ? v : null; }
-/** Set (an integer 1..1000) or clear (null) one class's limit. Refused, never clamped. */
-function setClassLimit(cls, value) {
-  if (!SETTABLE.includes(cls)) return { ok: false, status: 400, error: `${cls} has no settable limit` };
-  if (value !== null && !(Number.isInteger(value) && value >= 1 && value <= MAX_LIMIT)) return { ok: false, status: 400, error: `the limit must be a whole number from 1 to ${MAX_LIMIT}, or null to remove it` };
-  const all = classLimits();
-  if (value === null) delete all[cls]; else all[cls] = value;
-  require('../db/database').setState(LIMIT_KEY, JSON.stringify(all));
-  return { ok: true, callClass: cls, maxPerDay: value };
-}
-for (const cls of SETTABLE) {
-  Object.defineProperty(REGISTRY[cls], 'maxPerDay', { enumerable: true, configurable: false, get: () => limitOf(cls) || undefined });
-}
-
 /** The class names (without the provider table) — for the registry test and the profile. */
 const CLASS_NAMES = Object.keys(REGISTRY).filter((k) => !k.startsWith('$'));
 
-module.exports = { REGISTRY, CLASS_NAMES, SETTABLE, MAX_LIMIT, limitOf, setClassLimit };
+module.exports = { REGISTRY, CLASS_NAMES };

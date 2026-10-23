@@ -44,11 +44,10 @@ process.env.OBSIDIAN_VAULT_PATH = VAULT;
 process.env.NEURO_PIN = 'pin-1234';
 process.env.NEURO_API_TOKEN = 'tok-5678';
 process.env.NEURO_KIOSK_TOKEN = 'kiosk-9012';
-process.env.ANTHROPIC_API_KEY = 'test-key-not-real';
+delete process.env.ANTHROPIC_API_KEY;
 process.env.AI_MODE = 'hybrid';
 // The device lock open in THIS throwaway process only, so the real confirmation can be SHOWN.
 process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
-delete process.env.TASK_AGENT_MODEL;
 delete process.env.AI_GATE_MODE;
 for (const k of ['HA_TOKEN', 'HA_URL', 'VAULT_SENSITIVE_DIRS', 'VAULT_PERSONAL_DIRS', 'VAULT_SECURITY_DIRS', 'OPENROUTER_ALLOWED_TASKS']) delete process.env[k];
 const nodePaths = [path.join(ROOT, 'node_modules'), ...String(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean)];
@@ -87,6 +86,7 @@ let server; let base; let skipWhy = null; const results = {};
 let vaultBefore = null; let outward = null;
 
 const anthropic = require('./providers/anthropic-provider');
+const taSettings = require('./task-agent-settings');
 let script = []; let nid = 1;
 const tu = (name, input) => ({ type: 'tool_use', id: `tu_${nid++}`, name, input });
 const reply = (blocks, stop = 'tool_use') => ({ model: 'claude-sonnet-4-6', content: blocks, stop_reason: stop, usage: { input_tokens: 1400, output_tokens: 350 } });
@@ -135,6 +135,7 @@ test.before(async () => {
   require('./prepared-move').readDuty = async () => ({ onDuty: true, why: 'working' });
   fs.mkdirSync(VAULT, { recursive: true });
   await db.init();
+  taSettings.save({ apiKey: 'sk-ant-test-not-a-real-key-0000000000', enabled: true, dailyUsd: 50, dailyRuns: 200 });
   require('./authority-budget')._test.grantToday({ now: Date.now() }); // Nick's allowance for today, in the test DB
   write('People/Jane Doe.md', '---\ntype: person\nemail: jane.doe@example.com\n---\n# Jane Doe\n');
   write(PLAN, '# Q4 rota notes\n\nCover gaps: weeks 44 and 47. Two people on leave in week 47.\n');
@@ -331,7 +332,7 @@ test('desktop: Nick presses Do this; NEURO completes several safe steps without 
   assert.deepEqual(after.outputs, ['plan', 'checklist']);
   assert.equal(after.questions, 0);
   assert.match(after.text, /Plan Q4 rota cover from the rota notes\./);
-  assert.match(after.text, /Recorded by the AI gate in shadow mode/);
+  assert.match(after.text, /These Do this limits are enforced; the wider AI gate is in shadow mode/);
   clean(after, 'press');
 });
 

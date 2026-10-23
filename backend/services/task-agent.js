@@ -41,7 +41,10 @@ const CONTRACT = 'task-agent-v1';
 // (ai-gate PRICES and ai-cost), so the gate can bound and cost every request.
 // An override the gate cannot price is refused before any call (task-agent-model.test).
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
-const MODEL = () => process.env.TASK_AGENT_MODEL || DEFAULT_MODEL;
+// The model, key, on/off and the two hard daily limits live in Settings → AI & SAiM →
+// Anthropic (task-agent-settings.js). Do this never reads ANTHROPIC_API_KEY.
+const settingsSvc = () => deps().settings;
+const MODEL = () => settingsSvc().model() || DEFAULT_MODEL;
 const REQUEST_TIMEOUT_MS = 90 * 1000; // per model request; a timeout fails the turn with nothing kept
 /** The per-request timeout. TASK_AGENT_REQUEST_TIMEOUT_MS may only SHORTEN it (the live test proves a real timeout); unset in production. */
 function requestTimeout() {
@@ -87,7 +90,7 @@ function deps() {
     actionStatus: (id) => { try { return db.get('SELECT action_id, status FROM prepared_actions WHERE action_id = ?', [id]); } catch { return null; } },
     priceOf: (model) => { try { return require('./ai-gate').priceOf(model); } catch { return null; } },
     gateMode: () => (String(process.env.AI_GATE_MODE || 'shadow').toLowerCase() === 'enforce' ? 'enforce' : 'shadow'),
-    gateLimit: () => { try { return require('./ai-gate-classes').limitOf('task_agent'); } catch { return null; } },
+    settings: require('./task-agent-settings'),
     gateToday: () => {
       try {
         const p = require('./ai-gate').profile({});
@@ -380,11 +383,12 @@ function makeRunTool(work, task, turn) {
 function classifyError(e) {
   const msg = String((e && e.message) || e || '');
   const status = e && (e.status || (e.response && e.response.status));
+  if (e && e.name === 'TaskAgentLimitError') return { kind: 'limit', limit: e.limit, say: e.say };
   if (e && (e.name === 'GateRefused' || /gate refused/i.test(msg))) return { kind: 'budget', say: `The AI gate refused this request (${(e.reasons || (e.ticket && e.ticket.reasons) || []).join(', ') || 'enforcement is on'}). Nothing was kept. Change the limit in Settings → AI budget, or try tomorrow.` };
   if (/credit balance|insufficient.*credit|billing/i.test(msg)) return { kind: 'credit', say: 'The Anthropic account has no credit left, so the model could not run. Nothing was kept. Press Do this to try again once it is topped up.' };
   if ((e && /timeout/i.test(e.name || '')) || /timed? ?out/i.test(msg)) return { kind: 'timeout', say: 'The model did not answer in time. Nothing from this step was kept. Press Do this to try again.' };
   if (status === 429 || status === 529 || (Number(status) >= 500) || /overloaded|rate limit/i.test(msg)) return { kind: 'overloaded', say: 'Anthropic is busy or rate-limiting right now. Nothing from this step was kept. Press Do this to try again in a minute.' };
-  return { kind: 'error', say: `The model call failed (${msg.slice(0, 160)}). Nothing from this step was kept. Press Do this to try again.` };
+  return { kind: 'error', say: `The model call failed (${require('./task-agent-settings').redact(msg).slice(0, 160)}). Nothing from this step was kept. Press Do this to try again.` };
 }
 
 /** Prepare the turn's queued email (if any) — only ever after the turn completed. */
@@ -411,10 +415,14 @@ async function _turn(taskId) {
   if (!task) { run.status = 'failed'; run.error = 'The task no longer exists.'; return _save(run); }
 
   const model = MODEL();
-  const refuseBefore = !d.provider.isConfigured() ? 'The Anthropic API key is not configured on NEURO, so this cannot run.'
-    : !d.priceOf(model) ? `The model “${model}” has no price in the AI gate, so NEURO will not call it. Set TASK_AGENT_MODEL to a priced model.`
-      : !d.isCloudAllowed('task_agent') ? `Cloud AI is not available for this right now${d.fallbackReason() ? ` — ${d.fallbackReason()}` : ''}. Nothing was sent to a model.`
-        : null;
+  const s = d.settings;
+  const open = s.enabled() && s.configured() ? s.budgetOpen() : { ok: true };
+  const refuseBefore = !s.enabled() ? 'Do this is switched off in Settings → AI & SAiM → Anthropic. Nothing was sent to a model.'
+    : !s.configured() ? 'No Anthropic key is saved for Do this (Settings → AI & SAiM → Anthropic), so this cannot run.'
+      : !d.priceOf(model) ? `The model “${model}” has no price in the AI gate, so NEURO will not call it. Choose a supported model in Settings.`
+        : !open.ok ? open.say
+          : !d.isCloudAllowed('task_agent') ? `Cloud AI is not available for this right now${d.fallbackReason() ? ` — ${d.fallbackReason()}` : ''}. Nothing was sent to a model.`
+            : null;
   if (refuseBefore) {
     run.status = 'failed'; run.error = refuseBefore; run.heartbeatAt = null;
     _step(run, 'note', run.error);
@@ -428,7 +436,10 @@ async function _turn(taskId) {
   let result;
   try {
     result = await d.provider.chatWithTools(systemPrompt(work), [{ role: 'user', content: userPrompt(work, task) }], TOOLS, makeRunTool(work, task, turn),
-      { model, maxTokens: MAX_OUTPUT_TOKENS, maxRounds: MAX_ROUNDS, callClass: 'task_agent', requestOptions: { timeout: requestTimeout(), maxRetries: 0 } });
+      { model, maxTokens: MAX_OUTPUT_TOKENS, maxRounds: MAX_ROUNDS, callClass: 'task_agent', requestOptions: { timeout: requestTimeout(), maxRetries: 0 },
+        apiKey: s.apiKey(),
+        // ⚠ The hard dollar cap: checked before EVERY request of the turn, in shadow mode too.
+        beforeRequest: (spec) => s.guardRequest(spec, { othersInFlight: Math.max(0, RUNNING.size - 1) }) });
   } catch (e) {
     const c = classifyError(e);
     const fresh = _load(taskId) || run; // the committed state, untouched by the failed turn
@@ -575,6 +586,21 @@ function start(taskId, { fresh = false, awaitTurn = false } = {}) {
   let run = _settleStale(_load(id));
   if (run && run.unreadable) return { ok: false, status: 500, error: 'The saved run could not be read.' };
 
+  // ⚠ Refused BEFORE anything is created: switched off, no key, or a daily limit reached.
+  const s = d.settings;
+  const blocked = (newAttempt) => {
+    if (!s.enabled()) return { ok: false, status: 409, limit: 'disabled', error: 'Do this is switched off. Turn it on in Settings → AI & SAiM → Anthropic.' };
+    if (!s.configured()) return { ok: false, status: 409, limit: 'no-key', error: 'No Anthropic key is saved for Do this. Add one in Settings → AI & SAiM → Anthropic.' };
+    const c = newAttempt ? s.claimRun() : s.budgetOpen();
+    return c.ok ? null : { ok: false, status: 429, limit: c.limit, resetsAt: c.resetsAt, error: c.say };
+  };
+  const isNew = !run || (fresh && SETTLED.has(run.status));
+  const isResume = run && (run.status === 'interrupted' || run.status === 'failed');
+  if (isNew || isResume) {
+    const refused = blocked(isNew);
+    if (refused) { _audit('refused-limit', run || { id: null, taskId: id }, { limit: refused.limit }); return awaitTurn ? Promise.resolve(refused) : refused; }
+  }
+
   let kicked = false;
   if (!run) {
     run = _save(_fresh(task, d.forTask(id)));
@@ -638,17 +664,19 @@ function stop(taskId) {
 
 // ── next steps for finished work ────────────────────────────────────────────
 
-/** The AI-gate line every run shows. Honest about shadow mode: a limit recorded is not a limit enforced. */
+/**
+ * The limits line every run shows. The two Do this limits are HARD and NEURO's own;
+ * the shared AI gate's mode (shadow) is stated beside them, never confused with them.
+ */
 function budgetView() {
   const d = deps();
-  const mode = d.gateMode();
-  const limit = d.gateLimit();
-  const today = d.gateToday();
-  let say;
-  if (!limit) say = `Recorded by the AI gate in ${mode} mode. No Do this limit is set, so it is not budget-blocked by the gate.`;
-  else if (mode === 'shadow') say = `Limit: ${limit} model requests a day — recorded in shadow mode, which does not block.`;
-  else say = `Limit: ${limit} model requests a day — enforced.`;
-  return { mode, limit, today, say, routingNote: 'NEURO’s own daily AI call and token limits (ai-routing) still apply.' };
+  const v = d.settings.read();
+  const t = v.today || {};
+  const spent = t.usd == null ? 'unknown' : `$${t.usd.toFixed(2)}`;
+  const runs = t.runs == null ? '?' : t.runs;
+  const say = `Today: ${spent} of $${v.dailyUsd.toFixed(2)} and ${runs} of ${v.dailyRuns} runs. These Do this limits are enforced; the wider AI gate is in ${d.gateMode()} mode.`;
+  return { mode: d.gateMode(), enabled: v.enabled, configured: v.configured, model: v.model, dailyUsd: v.dailyUsd, dailyRuns: v.dailyRuns, today: t, resetsAt: v.resetsAt, say,
+    routingNote: 'NEURO’s own daily AI call and token limits (ai-routing) still apply.' };
 }
 
 /** The facts a saved note may quote: only what Nick can see, never a restricted excerpt. */

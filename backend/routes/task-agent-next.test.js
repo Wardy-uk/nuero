@@ -39,9 +39,8 @@ process.env.OBSIDIAN_VAULT_PATH = VAULT;
 process.env.NEURO_PIN = 'pin-1234';
 process.env.NEURO_API_TOKEN = 'tok-5678';
 process.env.NEURO_KIOSK_TOKEN = 'kiosk-9012';
-process.env.ANTHROPIC_API_KEY = 'test-key-not-real';
+delete process.env.ANTHROPIC_API_KEY; // Do this must not depend on it
 process.env.AI_MODE = 'hybrid';
-delete process.env.TASK_AGENT_MODEL;
 delete process.env.AI_GATE_MODE;
 for (const k of ['HA_TOKEN', 'HA_URL', 'VAULT_SENSITIVE_DIRS', 'VAULT_PERSONAL_DIRS', 'VAULT_SECURITY_DIRS', 'OPENROUTER_ALLOWED_TASKS', 'SAIM_PREPARED_MOVE_EXECUTION']) delete process.env[k];
 
@@ -55,6 +54,8 @@ const taskStore = require('../services/task-store');
 const tc = require('../services/task-context');
 const agent = require('../services/task-agent');
 const anthropic = require('../services/providers/anthropic-provider');
+const taSettings = require('../services/task-agent-settings');
+// Do this runs on ITS OWN saved key (Settings), never ANTHROPIC_API_KEY. Generous limits here; the caps have their own test.
 require('../services/prepared-move').readDuty = async () => ({ onDuty: true, why: 'working' }); // the request route holds off duty
 
 const PLAN = 'Projects/Support Rota/Q4 rota notes.md';
@@ -97,6 +98,7 @@ function snapshot() {
 test.before(async () => {
   fs.mkdirSync(VAULT, { recursive: true });
   await db.init();
+  taSettings.save({ apiKey: 'sk-ant-test-not-a-real-key-0000000000', enabled: true, dailyUsd: 50, dailyRuns: 200 });
   write('People/Jane Doe.md', '---\ntype: person\nemail: jane.doe@example.com\n---\n# Jane Doe\n');
   write(PLAN, '# Q4 rota notes\n\nCover gaps: weeks 44 and 47. Two people on leave in week 47.\n');
   write(HR, `---\nprivate: true\n---\n# Leaver catch up\n\nHeidi Example disclosed a private family matter which is confidential.\n${EXCERPT}\n`);
@@ -165,7 +167,7 @@ test('ordinary task, then Save to vault: the real prepared move is stored and th
   assert.equal(seen[seen.length - 1].model, 'claude-sonnet-4-6', 'the default model ran');
   assert.equal(seen[seen.length - 1].opts.timeout, 90000, 'every request carries the timeout');
   assert.equal(v.run.outputs[0].next.canSave, true);
-  assert.match(v.budget.say, /shadow mode.*not budget-blocked/);
+  assert.match(v.budget.say, /These Do this limits are enforced; the wider AI gate is in shadow mode/);
 
   const before = snapshot();
   const s1 = await call('POST', `/api/task-agent/tasks/${T.plain}/outputs/o1/save`, {});
@@ -411,57 +413,24 @@ test('an email queued in a turn that completes is prepared exactly once, at the 
   assert.equal(v.run.handoffs[0].status, 'prepared');
 });
 
-// ── 5: the class limit ───────────────────────────────────────────────────────
-test('class limit: Settings route only; recorded in shadow; refused under enforce with nothing kept', async () => {
-  for (const h of [{ 'X-NEURO-API-TOKEN': 'tok-5678' }, { 'X-NEURO-PIN': 'pin-1234', 'X-Neuro-Machine-Client': 'mcp-local' }, { 'X-NEURO-KIOSK-TOKEN': 'kiosk-9012' }]) {
-    assert.equal((await call('POST', '/api/ai-gate/class-limit', { callClass: 'task_agent', maxPerDay: 1 }, h)).status, 403);
-  }
-  assert.equal((await call('POST', '/api/ai-gate/class-limit', { callClass: 'chat_sync', maxPerDay: 5 })).status, 400, 'only task_agent is settable');
-  assert.equal((await call('POST', '/api/ai-gate/class-limit', { callClass: 'task_agent', maxPerDay: 0 })).status, 400, 'refused, never clamped');
-  assert.equal((await call('POST', '/api/ai-gate/class-limit', { callClass: 'task_agent' })).status, 400, 'omitted is not "remove"');
-  const set = await call('POST', '/api/ai-gate/class-limit', { callClass: 'task_agent', maxPerDay: 1 });
-  assert.equal(set.status, 200);
-  const prof = await call('GET', '/api/ai-gate/profile');
-  assert.equal(prof.json.classLimits.task_agent.maxPerDay, 1);
-
-  // Shadow: already over today's limit, the run still runs — and the gate records it.
+// ── 5: the gate stays shadow; an unsupported model cannot be chosen ──────────
+test('in shadow mode the shared gate records Do this; enforcement remains its own switch', async () => {
   script = [reply([tu('save_output', { kind: 'notes', title: 'Summary', markdown: 'rota summary' })]), reply([tu('finish', { completed: ['ok'], remaining: [] })]), end()];
   await press(T.budget);
-  let v = await state(T.budget);
+  const v = await state(T.budget);
   assert.equal(v.run.status, 'ready');
-  assert.match(v.budget.say, /Limit: 1 model requests a day — recorded in shadow mode, which does not block/);
+  assert.equal(v.budget.mode, 'shadow');
+  assert.match(v.budget.say, /These Do this limits are enforced; the wider AI gate is in shadow mode/);
   const p2 = await call('GET', '/api/ai-gate/profile');
-  assert.ok((p2.json.refusals || []).some((r) => r.reason === 'volume' && r.classes.includes('neuro:task_agent')), 'the would-refuse is on the shared ledger');
-
-  // Enforce: the gate refuses before any call; nothing kept; the message names Settings.
-  process.env.AI_GATE_MODE = 'enforce';
-  try {
-    const id = taskStore.createTask({ text: 'Blocked by the enforced limit', source: 'test' }).id;
-    const n0 = seen.length;
-    script = [reply([tu('save_output', { kind: 'notes', title: 'Never', markdown: 'never' })])];
-    await press(id);
-    v = await state(id);
-    assert.equal(v.run.status, 'failed');
-    assert.equal(v.run.errorKind, 'budget');
-    assert.match(v.run.error, /volume/);
-    assert.equal(seen.length, n0, 'no request reached the provider');
-    assert.equal((v.run.outputs || []).length, 0);
-  } finally { delete process.env.AI_GATE_MODE; }
-  assert.equal((await call('POST', '/api/ai-gate/class-limit', { callClass: 'task_agent', maxPerDay: null })).status, 200, 'null removes it');
-  assert.equal((await call('GET', '/api/ai-gate/profile')).json.classLimits.task_agent.maxPerDay, null);
+  assert.ok((p2.json.byClass || []).some((r) => r.app === 'neuro' && r.callClass === 'task_agent'), 'the requests are on the shared ledger');
+  assert.equal(p2.json.mode, 'shadow');
 });
 
-test('a model the gate cannot price is refused before any request', async () => {
-  process.env.TASK_AGENT_MODEL = 'claude-imaginary-9';
-  try {
-    const id = taskStore.createTask({ text: 'Unpriced model task', source: 'test' }).id;
-    const n0 = seen.length;
-    await press(id);
-    const v = await state(id);
-    assert.equal(v.run.status, 'failed');
-    assert.match(v.run.error, /has no price in the AI gate/);
-    assert.equal(seen.length, n0, 'nothing sent to the provider');
-  } finally { delete process.env.TASK_AGENT_MODEL; }
+test('an unsupported model is refused at Save, never stored', async () => {
+  const r = await call('POST', '/api/task-agent/settings', { model: 'claude-imaginary-9' });
+  assert.equal(r.status, 400);
+  assert.ok(r.json.errors.some((e) => e.field === 'model'));
+  assert.equal((await call('GET', '/api/task-agent/settings')).json.model, 'claude-sonnet-4-6');
 });
 
 // ── 6: blocked ───────────────────────────────────────────────────────────────

@@ -541,6 +541,3 @@
 .aib__h { font-weight: 600; margin-bottom: 4px; }
 .aib__refusals ul { margin: 0; padding-left: 18px; }
 @media (max-width: 600px) { .aib__table th:nth-child(2), .aib__table td:nth-child(2) { display: none; } }
-.aib__limit { margin-top: 12px; }
-.aib__limit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
-.aib__limit-row input { width: 8em; }

@@ -5645,8 +5645,24 @@
     "route": "/api/task-agent/active",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 43,
+    "line": 81,
     "description": "GET /api/task-agent/active. tasks with Do this work in progress, for Drafts. Owner only.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_agent_settings",
+    "method": "GET",
+    "route": "/api/task-agent/settings",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 46,
+    "description": "GET /api/task-agent/settings. Do this settings: enabled, whether an Anthropic key is saved (configured true/false only, never the key), model, daily budget and run limit, today's spend/requests/runs and remaining allowance. Owner only.",
     "params": [],
     "query": [],
     "body": [],
@@ -5679,7 +5695,7 @@
     "route": "/api/task-agent/tasks/:taskId/handoff/preview",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 95,
+    "line": 133,
     "description": "GET /api/task-agent/tasks/:taskId/handoff/preview. the Claude-desktop handoff Nick would send: why, what is included and excluded, the destination, and the editable prompt (query.includeDrafts=1 to include draft text). Sends nothing. Owner only.",
     "params": [
       "taskId"
@@ -7841,25 +7857,6 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
-    "multipart": false,
-    "stream": false
-  },
-  {
-    "id": "post_ai_gate_class_limit",
-    "method": "POST",
-    "route": "/api/ai-gate/class-limit",
-    "domain": "ai-gate",
-    "source": "routes/ai-gate.js",
-    "line": 34,
-    "description": "POST /api/ai-gate/class-limit. Nick sets or clears ONE class's daily model-request limit (body.callClass, body.maxPerDay: 1..1000 or null). Only task_agent is settable. In shadow mode the gate records a limit and does not block; only AI_GATE_MODE=enforce refuses. Owner only.",
-    "params": [],
-    "query": [],
-    "body": [
-      "callClass",
-      "maxPerDay"
-    ],
-    "queryOpen": false,
-    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -14258,12 +14255,53 @@
     "stream": false
   },
   {
+    "id": "post_task_agent_settings",
+    "method": "POST",
+    "route": "/api/task-agent/settings",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 54,
+    "description": "POST /api/task-agent/settings. save Do this settings: body.enabled, body.model, body.dailyUsd, body.dailyRuns, body.apiKey (paste/replace; never returned), body.clearKey. Omitted fields are unchanged; any invalid field refuses the whole save with field errors. Owner only.",
+    "params": [],
+    "query": [],
+    "body": [
+      "apiKey",
+      "clearKey",
+      "dailyRuns",
+      "dailyUsd",
+      "enabled",
+      "model"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_settings_test",
+    "method": "POST",
+    "route": "/api/task-agent/settings/test",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 69,
+    "description": "POST /api/task-agent/settings/test. \"Test Anthropic connection\": one bounded synthetic request with the saved key (body.confirm must be true; without it the answer is the estimated cost). Reports model, tokens, cost and the ledger result — never the prompt or the key. Creates no task attempt or othe",
+    "params": [],
+    "query": [],
+    "body": [
+      "confirm"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_task_agent_tasks_by_taskId_answer",
     "method": "POST",
     "route": "/api/task-agent/tasks/:taskId/answer",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 62,
+    "line": 100,
     "description": "POST /api/task-agent/tasks/:taskId/answer. Nick answers the run's one open question (body.questionId, body.text), or says the manual step is done (body.manualDone). The run continues at once. Owner only.",
     "params": [
       "taskId"
@@ -14285,7 +14323,7 @@
     "route": "/api/task-agent/tasks/:taskId/handoff",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 103,
+    "line": 141,
     "description": "POST /api/task-agent/tasks/:taskId/handoff. Nick presses \"Continue this with Claude on desktop\" with his working brief (body.brief). The brief is screened; the final prompt is composed by NEURO from its fixed policy envelope, destination and context plus the brief, recorded by hash and returned for ",
     "params": [
       "taskId"
@@ -14307,7 +14345,7 @@
     "route": "/api/task-agent/tasks/:taskId/outputs/:outputId/save",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 84,
+    "line": 122,
     "description": "POST /api/task-agent/tasks/:taskId/outputs/:outputId/save. prepare ONE finished Do this draft to be saved to the vault: stores the existing project-note prepared move and returns its recordId. Saves nothing; the save happens only through /api/prepared-moves/request + /confirm. Owner only.",
     "params": [
       "taskId",
@@ -14326,7 +14364,7 @@
     "route": "/api/task-agent/tasks/:taskId/start",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 51,
+    "line": 89,
     "description": "POST /api/task-agent/tasks/:taskId/start. the Do this press: start, or resume the same attempt (repeated presses never duplicate work). body.fresh starts a new attempt on a settled run. Owner only.",
     "params": [
       "taskId"
@@ -14346,7 +14384,7 @@
     "route": "/api/task-agent/tasks/:taskId/stop",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 74,
+    "line": 112,
     "description": "POST /api/task-agent/tasks/:taskId/stop. Nick stops the Do this run; its outputs and prepared actions are kept as they are. Owner only.",
     "params": [
       "taskId"

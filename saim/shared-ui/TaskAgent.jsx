@@ -93,6 +93,9 @@ export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnsw
     return (
       <div className="tagent tagent--idle" data-tagent="idle">
         <button type="button" className="tagent__go" onClick={() => onStart(false)} disabled={busy}>{busy ? 'Starting…' : 'Do this'}</button>
+        {budget && (budget.enabled === false || budget.configured === false) && (
+          <p className="tagent__meta" data-tagent-off>Do this is switched off. Nick turns it on in NEURO → Settings → AI &amp; SAiM → Anthropic.</p>
+        )}
         <p className="tagent__hint">NEURO works on this as far as it safely can — drafts, plans, research — and asks you only when it must. It sends, books and changes nothing without your confirmation.</p>
         {budget && <p className="tagent__meta tagent__budget">{budget.say}</p>}
         {error && <p className="tagent__err" role="alert">{error}</p>}

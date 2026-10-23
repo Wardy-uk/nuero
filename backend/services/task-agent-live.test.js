@@ -44,7 +44,6 @@ const VAULT = path.join(tmp, 'vault');
 process.env.NEURO_DB_PATH = path.join(tmp, 'agent.db');
 process.env.OBSIDIAN_VAULT_PATH = VAULT;
 process.env.AI_MODE = 'hybrid';
-if (process.env.TASK_AGENT_LIVE_MODEL) process.env.TASK_AGENT_MODEL = process.env.TASK_AGENT_LIVE_MODEL; else delete process.env.TASK_AGENT_MODEL;
 delete process.env.ANTHROPIC_API_KEY; // never the production key
 delete process.env.AI_GATE_DB_PATH;   // the gate's per-test throwaway ledger
 delete process.env.AI_GATE_MODE;
@@ -61,6 +60,8 @@ test('real Anthropic path: failure and timeout keep nothing; the real run is gat
   const agent = require('./task-agent');
   const gate = require('./ai-gate');
   const anthropic = require('./providers/anthropic-provider');
+  const settings = require('./task-agent-settings');
+  anthropic._internals.setClient(null);
   const id = taskStore.createTask({ text: 'Write a three-item checklist for looking after the office fern', source: 'test' }).id;
   tc.ensure();
   assert.equal(tc.link({ taskId: id, type: 'note', ref: 'Projects/Garden/Plant care.md' }).ok, true);
@@ -74,10 +75,12 @@ test('real Anthropic path: failure and timeout keep nothing; the real run is gat
     grants: count('SELECT COUNT(*) n FROM saim_authority_grants'), moves: count('SELECT COUNT(*) n FROM prepared_moves'),
   });
   const before = outward();
-  const use = (key) => { process.env.ANTHROPIC_API_KEY = key; anthropic._internals.setClient(null); };
+  // The key goes in through the SAME Settings save Nick uses, into this throwaway DB only.
+  const LIVE_MODEL = process.env.TASK_AGENT_LIVE_MODEL || agent.DEFAULT_MODEL;
+  const use = (key) => { const r = settings.save({ apiKey: key, enabled: true, model: LIVE_MODEL, dailyUsd: 1, dailyRuns: 10 }); assert.equal(r.ok, true, JSON.stringify(r.errors)); };
 
   // 1. A real provider failure: an invalid key → the real API answers 401.
-  use('sk-ant-invalid-for-test-only');
+  use('sk-ant-invalid-for-test-only-0000000000');
   await agent.start(id, { awaitTurn: true });
   let v = agent.view(id);
   assert.equal(v.run.status, 'failed');
@@ -100,7 +103,7 @@ test('real Anthropic path: failure and timeout keep nothing; the real run is gat
   v = agent.view(id);
   assert.ok(['ready', 'needs-answer'].includes(v.run.status), `a useful safe result: ${v.run.status} ${v.run.error || ''}`);
   if (v.run.status === 'ready') assert.ok((v.run.outputs || []).length >= 1 && /fern|water|light|mist/i.test(v.run.outputs.map((o) => o.markdown).join(' ')), 'a checklist grounded in the fixture note');
-  const model = process.env.TASK_AGENT_MODEL || agent.DEFAULT_MODEL;
+  const model = LIVE_MODEL;
   assert.equal(v.run.usage.model, model, 'the configured model was accepted by Anthropic');
   assert.ok(v.run.usage.promptTokens > 0 && v.run.usage.completionTokens > 0, 'real tokens on the run');
   assert.ok(v.run.usage.costUsd > 0 && v.run.usage.costUsd < 0.5, `cost recorded and bounded: $${v.run.usage.costUsd}`);
@@ -117,5 +120,14 @@ test('real Anthropic path: failure and timeout keep nothing; the real run is gat
   const again = agent.start(id);
   assert.equal(again.kicked, false);
   assert.deepEqual(outward(), before, 'no vault, task, calendar, prepared action, confirmation, allowance or move');
-  delete process.env.ANTHROPIC_API_KEY;
+
+  // 5. The Settings connection test, live: one bounded request, reported without the prompt or key.
+  const t = await settings.testConnection({ confirm: true });
+  assert.equal(t.ok, true, t.error);
+  assert.ok(t.promptTokens > 0 && t.completionTokens > 0 && t.completionTokens <= 16);
+  assert.equal(t.ledger.recorded, true);
+  assert.ok(!JSON.stringify(t).includes(LIVE), 'the key is not in the result');
+  console.log(`[live] connection test: model ${t.model}; ${t.promptTokens} in / ${t.completionTokens} out; $${t.costUsd}; ${t.ledger.say}`);
+  // 6. Today's spend is what the hard cap reads, and it stayed under the $1 test budget.
+  assert.ok(settings.spendToday().usd < 1);
 });

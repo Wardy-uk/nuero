@@ -23,7 +23,7 @@ function owner(req, res) {
   return false;
 }
 function send(res, r) {
-  if (r && r.ok === false) return res.status(r.status || 400).json({ ok: false, error: r.error });
+  if (r && r.ok === false) return res.status(r.status || 400).json({ ok: false, error: r.error, ...(r.limit ? { limit: r.limit } : {}), ...(r.resetsAt ? { resetsAt: r.resetsAt } : {}) });
   res.json(r);
 }
 function strict(body, allowed) {
@@ -37,6 +37,44 @@ router.get('/tasks/:taskId', (req, res) => {
     if (!owner(req, res)) return;
     send(res, svc().view(req.params.taskId));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Settings → AI & SAiM → Anthropic (the Do this key, model and hard daily limits) ──
+const settings = () => require('../services/task-agent-settings');
+
+// GET /api/task-agent/settings — Do this settings: enabled, whether an Anthropic key is saved (configured true/false only, never the key), model, daily budget and run limit, today's spend/requests/runs and remaining allowance. Owner only.
+router.get('/settings', (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    res.json(settings().read());
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/task-agent/settings — save Do this settings: body.enabled, body.model, body.dailyUsd, body.dailyRuns, body.apiKey (paste/replace; never returned), body.clearKey. Omitted fields are unchanged; any invalid field refuses the whole save with field errors. Owner only.
+router.post('/settings', (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const bad = strict(req.body, ['enabled', 'model', 'dailyUsd', 'dailyRuns', 'apiKey', 'clearKey']);
+    if (bad) return res.status(400).json({ ok: false, errors: [{ field: null, error: bad }] });
+    const { enabled, model, dailyUsd, dailyRuns, apiKey, clearKey } = req.body;
+    const r = settings().save({ enabled, model, dailyUsd, dailyRuns, apiKey, clearKey });
+    if (!r.ok) return res.status(r.status || 400).json({ ok: false, errors: r.errors, settings: r.settings });
+    // Which fields changed — never a value, and never anything about the key beyond "changed".
+    try { require('../db/database').logActivity('task_agent_settings', { event: 'saved', changed: r.changed }); } catch { /* never fails the save */ }
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: 'The settings could not be saved.' }); }
+});
+
+// POST /api/task-agent/settings/test — "Test Anthropic connection": one bounded synthetic request with the saved key (body.confirm must be true; without it the answer is the estimated cost). Reports model, tokens, cost and the ledger result — never the prompt or the key. Creates no task attempt or other work. Owner only.
+router.post('/settings/test', async (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const bad = strict(req.body, ['confirm']);
+    const { confirm } = req.body;
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    const r = await settings().testConnection({ confirm: confirm === true });
+    res.status(r.ok ? 200 : (r.status || 400)).json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: 'The connection test could not run.' }); }
 });
 
 // GET /api/task-agent/active — tasks with Do this work in progress, for Drafts. Owner only.
