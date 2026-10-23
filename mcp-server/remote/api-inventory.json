@@ -5773,7 +5773,7 @@
     "domain": "task-context",
     "source": "routes/task-context.js",
     "line": 44,
-    "description": "GET /api/task-context/tasks/:taskId. a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question",
+    "description": "GET /api/task-context/tasks/:taskId. a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question. A restricted note is title-only except on Nick's own PIN session, which also g",
     "params": [
       "taskId"
     ],
@@ -13075,7 +13075,7 @@
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
     "line": 32,
-    "description": "POST /api/report-fixes.",
+    "description": "POST /api/report-fixes. propose a report fix (bug fixed, data correction) after deploying it. Body: { system: nova|vantage|neuro|n8n|other, title, problem, impact: [figures|team|customers], affects: [{ measure, from, to }] (with figures), fixedIn, deployedOn: YYYY-MM-DD }. Arrives proposed; Nick inc",
     "params": [],
     "query": [],
     "body": [

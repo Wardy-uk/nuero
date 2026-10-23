@@ -28,7 +28,7 @@ router.get('/', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// POST /api/report-fixes — propose a fix for the SOAP / Weekly Risk report (report fix, bug fixed, data correction, deploy). Post only when the fix changed a reported figure or affected the team or customers. Body: { system: nova|vantage|neuro|n8n|other, title, problem, impact: ['figures'|'team'|'customers'], affects: [{ measure, from, to }] (required when impact includes figures; measure as the report names it), fixedIn (version or commit), deployedOn (YYYY-MM-DD) }. Arrives PROPOSED; Nick includes it.
+// POST /api/report-fixes — propose a report fix (bug fixed, data correction) after deploying it. Body: { system: nova|vantage|neuro|n8n|other, title, problem, impact: [figures|team|customers], affects: [{ measure, from, to }] (with figures), fixedIn, deployedOn: YYYY-MM-DD }. Arrives proposed; Nick includes it.
 router.post('/', (req, res) => {
   const { system, title, problem, impact, affects, fixedIn, deployedOn } = req.body || {};
   try {
