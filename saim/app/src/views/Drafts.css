@@ -47,3 +47,8 @@
 .drafts__today-title { font-weight: 600; overflow-wrap: anywhere; }
 .drafts__today-meta { opacity: 0.85; font-size: 0.92em; overflow-wrap: anywhere; }
 .drafts__today-meta code { font-size: 0.95em; }
+/* "Do this" work in progress (23 Oct 2026) — its own hooks, same look as a row. */
+.drafts__agent-h { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 22px 0 8px; opacity: 0.85; }
+.drafts__agent-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.drafts__agent-row { border: 1px solid rgba(255,255,255,0.12); border-left-width: 3px; border-radius: 8px; padding: 12px 14px; background: rgba(255,255,255,0.03); }
+.drafts__agent-line { margin: 4px 0 0; overflow-wrap: anywhere; }

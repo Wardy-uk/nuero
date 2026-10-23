@@ -191,6 +191,27 @@ function _ownerDetail(row, rawRow, task) {
   return out;
 }
 
+/**
+ * READ-ONLY. May a task agent read this note IN FULL (23 Oct 2026, "Do this")?
+ * Only a note the scan itself would accept: never a hard exclusion (Security
+ * review/, Archive, generated output), never an opted-out note, never a
+ * restricted one (Personal/, private, employment-sensitive) — for those the
+ * agent gets only the task-bounded excerpt Nick already sees via forTask.
+ * Same deps and rules as the scan, so the two cannot disagree.
+ */
+function readForAgent(rel) {
+  const r = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!r || r.includes('\0') || !/\.md$/i.test(r)) return { ok: false, why: 'not a vault note' };
+  const deps = _deps(new Set());
+  if (model.isHardExcluded(r, deps)) return { ok: false, why: 'excluded from NEURO' };
+  const read = _readInsideVault(r);
+  if (!read.ok) return { ok: false, why: read.why };
+  const { fm, body } = model.splitNote(read.text);
+  const s = model.screenNote({ rel: r, fm, body }, { ...deps, exists: () => false });
+  if (!s.ok && (s.restricted || ['security', 'opted-out', 'excluded'].includes(s.reason))) return { ok: false, why: s.restricted ? 'restricted' : s.reason, restricted: Boolean(s.restricted) };
+  return { ok: true, rel: r, title: model.titleOf(r), body };
+}
+
 function _view(rawRows, viewer, taskById) {
   if (!VIEWERS.includes(viewer)) viewer = 'limited';
   return rawRows.map((r) => {
@@ -919,7 +940,7 @@ function registerJob() {
 }
 
 module.exports = {
-  viewerOf, VIEWERS,
+  viewerOf, VIEWERS, readForAgent,
   ensure, vaultRoot, buildIndex, listScopes, runScan, status, activate, deactivate, WAITING_SAY, ENABLE_SAY, nextRunAt, lastResultSay, forTask, pinnedFor, suggestions, lastRun, runs,
   resolveTarget, link, remove, pin, dismissQuestion, search, registerJob,
   _internals: { _exists, _row },

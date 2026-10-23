@@ -411,7 +411,7 @@ function AuthenticatedApp() {
       case 'eod': return <StandupEditor startWithEod />;
       case 'people': return <PeopleBoard />;
       // 'plan' (the 90-Day Plan) retired in Build 9 — the plan ended in July and its folder is archived; a bookmarked ?view=plan falls through to Now.
-      case 'todos': return <TodoPanel focusContext={navContext} onClearContext={() => setNavContext(null)} />;
+      case 'todos': return <TodoPanel focusContext={navContext} onClearContext={() => setNavContext(null)} onNavigate={handleNavigate} />;
       case 'calendar': return <CalendarView />;
       case 'meeting-prep': return <MeetingPrep />;
       case 'item': return <ItemLink item={navContext && navContext.item} onNavigate={handleNavigate} />;

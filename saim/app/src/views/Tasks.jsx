@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { apiFetch, apiUrl, authHeaders } from '../api';
+import { makeCall } from '../preparedMove.mjs';
+import TaskAgent from '../../../shared-ui/TaskAgent.jsx';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { completeTask } from '../completeTask';
 import { msPlanBadge } from '../../../../shared/ms-task.cjs';
 import { domainBadge } from '../../../../shared/task-domain.cjs';
@@ -99,6 +102,9 @@ function heldLine(row) {
  * write to Planner / To Do belong to NEURO and are handed off by name. The lane's "not today" is
  * about the lane, not the owner, so any lane row gets it.
  */
+// The raw {status, body} transport the shared TaskAgent speaks.
+const agentCall = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+
 function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, onChanged }) {
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(null);
@@ -211,6 +217,12 @@ function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, 
         <div className="tasks__group">
           <span className="tasks__note">To change MoSCoW, priority, estimate or due date, open Tasks in NEURO.</span>
         </div>
+      )}
+
+      {/* "Do this" (23 Oct 2026): only on the phone app — the kiosk (and the Electron
+          window, which reaches NEURO through the kiosk proxy) never draws it. */}
+      {isNeuro && (
+        <TaskAgent taskId={item.task_id} call={agentCall} readOnly={platformNow() !== 'phone-app'} />
       )}
 
       {error && <div className="tasks__rowerr">{error}</div>}

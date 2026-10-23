@@ -33,6 +33,13 @@ export const interactive = {
   post_prepared_moves_drafts_outcome: 'Abandoning or restoring a saved draft is Nick’s decision about his own work, in NEURO → Drafts.',
   post_task_context_activate: 'Turning on automatic context linking runs the backfill over the whole vault. Only Nick can do it, in NEURO → Settings, after the vault cleanup. Read get_task_context_status instead.',
   post_task_context_deactivate: 'Turning automatic context linking off is Nick’s decision, in NEURO → Settings.',
+  // 23 Oct 2026: "Do this" — the task agent. Neither the control nor its working
+  // output reaches an agent: the output can quote a restricted note Nick alone may see.
+  get_task_agent_tasks_by_taskId: 'A task’s “Do this” workspace is Nick’s alone, in NEURO on his desktop or phone. It is not available to agents.',
+  get_task_agent_active: 'The list of “Do this” work in progress is Nick’s alone, in NEURO → Drafts. It is not available to agents.',
+  post_task_agent_tasks_by_taskId_start: 'Only Nick can press “Do this” on a task, in NEURO. An agent cannot start NEURO’s task agent.',
+  post_task_agent_tasks_by_taskId_answer: 'Answering the task agent’s question is Nick, in NEURO, on that task.',
+  post_task_agent_tasks_by_taskId_stop: 'Stopping a “Do this” run is Nick’s decision, in NEURO, on that task.',
   // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
   get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',
   post_saim_authority_grant_preview: 'Giving SAiM authority to act is Nick, in SAiM, reading exactly what it would allow. An agent cannot do it.',

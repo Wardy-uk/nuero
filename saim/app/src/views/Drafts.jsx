@@ -95,7 +95,33 @@ export function TodayHistory({ today, readOnly = false, onOpenNote = null }) {
 }
 
 /** PURE view. */
-export function DraftsView({ data, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, message = null }) {
+/**
+ * "Do this" work in progress (23 Oct 2026) — tasks NEURO's task agent is working on,
+ * read from /api/task-agent/active (Nick's own surface; never on the kiosk). Its OWN
+ * hooks (drafts__agent / data-agent-task), never a Drafts section or a move key.
+ */
+export function AgentWork({ agent, onOpenTask = null }) {
+  if (!agent || !agent.ok || !(agent.runs || []).length) return null;
+  return (
+    <div className="drafts__agent" id="drafts-agent">
+      <h2 className="drafts__agent-h">Do this — NEURO working on your tasks</h2>
+      <ul className="drafts__agent-list">
+        {agent.runs.map((r) => (
+          <li key={r.taskId} className="drafts__agent-row" data-agent-task={r.taskId}>
+            <div className="drafts__head"><span className="drafts__status">{r.question ? 'Needs you' : r.status === 'running' ? 'Working on it' : 'Prepared'}</span><span className="drafts__kind">Task #{r.taskId}</span></div>
+            <p className="drafts__agent-line">{r.taskText}</p>
+            {r.question && <p className="drafts__agent-line">Asking: {r.question}</p>}
+            {(r.outputs || []).length > 0 && <p className="drafts__agent-line">{r.outputs.map((o) => `${o.kind}: ${o.title}`).join(' · ')}</p>}
+            {r.handoffs > 0 && <p className="drafts__agent-line">{r.handoffs} prepared for your confirmation on Actions.</p>}
+            {onOpenTask && <button type="button" className="drafts__go drafts__go--quiet" onClick={() => onOpenTask({ id: r.taskId, text: r.taskText })}>Open the task</button>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function DraftsView({ data, agent = null, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, message = null }) {
   if (!data) return <section className="drafts" aria-label="Drafts"><h1 className="drafts__title">Drafts</h1><p className="drafts__sub">Reading Drafts…</p></section>;
   if (!data.ok) {
     return (
@@ -122,6 +148,7 @@ export function DraftsView({ data, openKey = null, openMode = null, readOnly = f
       {nothing && <p className="drafts__empty">Nothing in Drafts. When SAiM prepares something — or you ask it to make a Now item ready — it waits here until you save it, confirm it or put it off.</p>}
 
       <TodayHistory today={data.today} readOnly={readOnly} onOpenNote={onOpenNote} />
+      {!readOnly && <AgentWork agent={agent} onOpenTask={onOpenTask} />}
 
       <h2 className="drafts__section" id="drafts-confirm">Needs your confirmation</h2>
       {confirmItems.length === 0 && replyItems.length === 0 ? (
@@ -197,7 +224,14 @@ export default function Drafts({ call: injectedCall = null, context = null, onOp
   const [opening, setOpening] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [agent, setAgent] = useState(null);
   const reload = useCallback(async () => { const d = await loadDrafts(call); setData(d); return d; }, [call]);
+  useEffect(() => {
+    if (readOnly) return undefined; // the kiosk never asks for Do this work
+    let live = true;
+    call('/api/task-agent/active').then((r) => { if (live) setAgent(r.status === 200 && r.body ? r.body : null); }).catch(() => {});
+    return () => { live = false; };
+  }, [call, readOnly]);
   useEffect(() => {
     let live = true;
     loadDrafts(call).then((d) => {
@@ -214,6 +248,7 @@ export default function Drafts({ call: injectedCall = null, context = null, onOp
   return (
     <DraftsView
       data={data}
+      agent={agent}
       openKey={open && open.moveKey}
       openMode={open && open.mode}
       readOnly={readOnly}

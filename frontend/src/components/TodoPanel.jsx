@@ -18,6 +18,7 @@ import TaskDedupe from './TaskDedupe';
 import TaskBlocks, { BlockTimeControl } from './TaskBlocks';
 import TaskTriage from './TaskTriage.jsx';
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
+import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
 import { desktopCall } from '../desktopCall';
 import { openInVault } from '../openVault';
 import './TodoPanel.css';
@@ -1271,6 +1272,9 @@ function taskIdBadge(todo) {
  * the ones furthest away. Two copies of this block would be two cards free to
  * disagree about what a task can be told.
  */
+// The shell's navigate, set by TodoPanel each render, so a prepared email can hand off to Actions.
+let _navigate = null;
+
 function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
   if (todo.task_id) {
     // Context (22 Oct 2026) sits under the task's own controls — one place, so the
@@ -1282,6 +1286,12 @@ function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
         <div className="todo-context" onClick={(e) => e.stopPropagation()}>
           <TaskContext taskId={todo.task_id} call={desktopCall} onOpen={openInVault} editable />
         </div>
+        {/* "Do this" (23 Oct 2026): NEURO progresses the task as far as it safely can. Never on a closed task. */}
+        {!todo.done && (
+          <div className="todo-agent" onClick={(e) => e.stopPropagation()}>
+            <TaskAgent taskId={todo.task_id} call={desktopCall} onOpenNote={(s) => s.path && openInVault(s.path)} onOpenActions={() => _navigate && _navigate('actions')} />
+          </div>
+        )}
       </>
     );
   }
@@ -1941,7 +1951,8 @@ function MustMoveLane({ items, held, gaps, toggling, onToggle, onSetWip, onDefer
   );
 }
 
-export default function TodoPanel({ focusContext, onClearContext }) {
+export default function TodoPanel({ focusContext, onClearContext, onNavigate }) {
+  _navigate = onNavigate || null;
   // Determine initial mode: if arriving from Focus, start in focused shortlist mode
   const fromFocus = focusContext?.fromFocus;
   const initialFilter = focusContext?.filter || 'overdue';

@@ -240,6 +240,7 @@ app.use('/api/prepared-actions', require('./routes/prepared-actions'));
 // saim_prepared_move_execution is on (checked inside prepared-move-exec).
 app.use('/api/prepared-moves', require('./routes/prepared-moves'));
 app.use('/api/task-context', require('./routes/task-context'));
+app.use('/api/task-agent', require('./routes/task-agent'));
 app.use('/api/promises', require('./routes/promise-delivery'));
 app.use('/api/saim-authority', require('./routes/saim-authority'));
 app.use('/api/greeting', require('./routes/greeting'));

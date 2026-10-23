@@ -38,6 +38,9 @@ const REGISTRY = {
   capability_suggestions: text(), event_parse: text(), drink_lookup: text(), task_short_title: text(),
   // ── SAiM prepared moves (drafting only) ────────────────────────────────
   saim_move_reply: text(), saim_move_prep: text(), saim_move_note: text(),
+  // ── "Do this" task agent (Anthropic tool loop, cloud only; one ticket per
+  //    round). Prepares and drafts; grants no authority. See services/task-agent.js.
+  task_agent: text({ local: false, maxOutputTokens: 8000 }),
   // ── vision (Anthropic, cloud only) ─────────────────────────────────────
   vesta_photo: text({ local: false, maxOutputTokens: 8000 }),
   medical_scan: text({ local: false, maxOutputTokens: 8000 }),

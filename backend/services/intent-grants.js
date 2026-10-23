@@ -78,6 +78,8 @@ const ORIGIN_INITIATOR = Object.freeze({
   chat: 'neuro_autonomous',
   standup: 'neuro_autonomous',
   eod: 'neuro_autonomous',
+  // "Do this" (23 Oct 2026): an email the task agent prepared is NEURO's draft, so it keeps the approval code.
+  'task-agent': 'neuro_autonomous',
 });
 
 // The only proofs that may authorise an action from now on. `trusted_device`

@@ -4996,7 +4996,7 @@
     "route": "/api/report-fixes",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 25,
+    "line": 26,
     "description": "GET /api/report-fixes. fixes for the SOAP and Weekly Risk reports (report fixes, fixed bugs, data corrections), newest deploy first. Query: status=proposed|included|dismissed.",
     "params": [],
     "query": [
@@ -5611,7 +5611,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 283,
+    "line": 284,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5629,6 +5629,40 @@
     "source": "routes/task-activity.js",
     "line": 16,
     "description": "GET /api/task-activity/:taskId. what kind of work a task is: Nick's stated activity choice (or \"not sure\"), suggestions (where it came from, app use observed in focus sessions) with their basis, observations and history. Task activity.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_agent_active",
+    "method": "GET",
+    "route": "/api/task-agent/active",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 43,
+    "description": "GET /api/task-agent/active. tasks with Do this work in progress, for Drafts. Owner only.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_task_agent_tasks_by_taskId",
+    "method": "GET",
+    "route": "/api/task-agent/tasks/:taskId",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 35,
+    "description": "GET /api/task-agent/tasks/:taskId. Nick's \"Do this\" workspace for one task: understanding, sources used, steps, private outputs, prepared handoffs, the open question. Owner only.",
     "params": [
       "taskId"
     ],
@@ -13074,7 +13108,7 @@
     "route": "/api/report-fixes",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 32,
+    "line": 33,
     "description": "POST /api/report-fixes. propose a report fix (bug fixed, data correction) after deploying it. Body: { system: nova|vantage|neuro|n8n|other, title, problem, impact: [figures|team|customers], affects: [{ measure, from, to }] (with figures), fixedIn, deployedOn: YYYY-MM-DD }. Arrives proposed; Nick inc",
     "params": [],
     "query": [],
@@ -13098,7 +13132,7 @@
     "route": "/api/report-fixes/:id/decide",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 51,
+    "line": 52,
     "description": "POST /api/report-fixes/:id/decide. include a proposed fix in the reports, leave it out, or put it back to proposed. Body: { decision: include|dismiss|restore }. Nick only.",
     "params": [
       "id"
@@ -13118,7 +13152,7 @@
     "route": "/api/report-fixes/:id/edit",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 58,
+    "line": 59,
     "description": "POST /api/report-fixes/:id/edit. Nick corrects a fix's wording, figures or dates. Body: any of { system, title, problem, impact, affects, fixedIn, deployedOn }; omitted fields are kept. Nick only.",
     "params": [
       "id"
@@ -13144,7 +13178,7 @@
     "route": "/api/report-fixes/manual",
     "domain": "report-fixes",
     "source": "routes/report-fixes.js",
-    "line": 41,
+    "line": 42,
     "description": "POST /api/report-fixes/manual. Nick enters a fix himself; it is included in the reports at once. Same body as POST /api/report-fixes. Nick only.",
     "params": [],
     "query": [],
@@ -14179,6 +14213,66 @@
     "body": [
       "decision"
     ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_tasks_by_taskId_answer",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/answer",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 62,
+    "description": "POST /api/task-agent/tasks/:taskId/answer. Nick answers the run's one open question (body.questionId, body.text), or says the manual step is done (body.manualDone). The run continues at once. Owner only.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [
+      "manualDone",
+      "questionId",
+      "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_tasks_by_taskId_start",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/start",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 51,
+    "description": "POST /api/task-agent/tasks/:taskId/start. the Do this press: start, or resume the same attempt (repeated presses never duplicate work). body.fresh starts a new attempt on a settled run. Owner only.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [
+      "fresh"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_tasks_by_taskId_stop",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/stop",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 74,
+    "description": "POST /api/task-agent/tasks/:taskId/stop. Nick stops the Do this run; its outputs and prepared actions are kept as they are. Owner only.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,

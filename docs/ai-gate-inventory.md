@@ -159,6 +159,7 @@ worker, retired 15 Aug 2026 — its Ollama calls are gated at
 | `saim_move_reply`, `saim_move_prep`, `saim_move_note` | `prepared-move-drafter.js` | ai-routing (cloud) |
 | `vesta_photo` | `vesta-vision.js` | Anthropic vision |
 | `medical_scan` | `medical-records.js` | Anthropic vision |
+| `task_agent` | `task-agent.js` ("Do this", 23 Oct 2026; branch `task-agent-do-this`, not deployed) | Anthropic `chatWithTools`, one ticket per round; budget via `ai-routing.isCloudAllowed`, cost via `recordUsage`. See `docs/task-agent.md`. |
 | `embeddings_index`, `embeddings_query` | `embeddings.js` (3 sites) | Voyage |
 | `tts_speak` | `tts.js` | OpenRouter audio |
 | `voice_transcribe` | `voice-capture.js` | local faster-whisper |

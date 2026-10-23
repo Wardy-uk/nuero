@@ -398,7 +398,8 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // whole-vault scan, none of which belongs behind the kiosk touchscreen. The ONE read
 // the shared views make there — GET /task-context/tasks/<id> — is a GET-only door
 // (neuroProxy READ_ONLY_DOORS), pinned by saim/backend's neuroProxy tests.
-const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context']);
+// task-agent (23 Oct 2026): "Do this" is Nick's own surface; TaskAgent renders nothing on the kiosk.
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent']);
 
 // EXACT paths a shared view calls only when it is NOT read-only — the kiosk renders
 // those views read-only (platformNow() === 'kiosk'), so the control that calls them

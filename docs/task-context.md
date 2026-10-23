@@ -152,6 +152,15 @@ changed and no scan was rerun for this — it is presentation only.
 - **Not checked:** the desktop and phone screens were verified through the API plus the Electron render tests of the same components, not with a production screenshot.
 - **Not yet live in the laptop's local MCP:** it runs from the main checkout, which is on another branch with another session's uncommitted work. It picks up the new `contextLine` when that checkout moves to `main`. The NEURO API already sends it limited payloads.
 
+## Consumers that read context for Nick: "Do this" (23 Oct 2026)
+
+The task agent (`services/task-agent.js`, `docs/task-agent.md`) reads a task's context ONLY through
+`forTask(id, { viewer: 'owner' })` — pinned items, Nick's own view. A restricted note gives it the
+task-bounded excerpt and nothing more (no path, no full read); a hard exclusion gives it nothing, not
+even the title. A full read goes through `readForAgent(rel)`, which applies this scan's own
+`screenNote` (security, opted-out, Personal/, private, employment-sensitive, excluded) and refuses
+anything restricted. It changes no link, runs no scan and does not touch the automatic-linking setting.
+
 ## Surfaces
 
 - **NEURO task card** (list and Must Move lane, one place): editable.
