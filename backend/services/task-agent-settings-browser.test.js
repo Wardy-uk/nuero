@@ -68,13 +68,20 @@ const MEASURE = `(() => {
     text: root ? root.textContent : '', html: document.documentElement.outerHTML,
     keyValue: (document.getElementById('tas-key') || {}).value,
     keyType: (document.getElementById('tas-key') || {}).type,
-    enabledDisabled: (document.getElementById('tas-enabled') || {}).disabled,
+    enabledDisabled: !!(document.querySelector('#tas-enabled option[value="enabled"]') || {}).disabled,
+    enabledTag: (document.getElementById('tas-enabled') || {}).tagName,
+    enabledValue: (document.getElementById('tas-enabled') || {}).value,
+    usdValue: (document.getElementById('tas-usd') || {}).value,
+    runsValue: (document.getElementById('tas-runs') || {}).value,
+    status: (document.querySelector('[data-tas-status]') || {}).textContent || '',
+    statusFirst: (() => { const st = document.querySelector('[data-tas-status]'); const ti = document.querySelector('.tas__title'); return !!(st && ti && (st.compareDocumentPosition(ti) & Node.DOCUMENT_POSITION_FOLLOWING)); })(),
+    unsaved: (document.querySelector('[data-tas-unsaved]') || {}).textContent || '',
     store,
     over: [...document.querySelectorAll('.tas *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).slice(0, 5).map((e) => String(e.className || e.tagName)),
   };
 })()`;
 
-const setVal = (sel, v) => `(() => { const el = document.querySelector(${JSON.stringify(sel)}); const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set; set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
+const setVal = (sel, v) => `(() => { const el = document.querySelector(${JSON.stringify(sel)}); const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set; set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
 const click = (t) => `(() => { const b = [...document.querySelectorAll('.tas button')].find((x) => x.textContent.trim() === ${JSON.stringify(t)}); if (!b || b.disabled) return false; b.click(); return true; })()`;
 const textIs = (t) => `(document.querySelector('[data-testid="task-agent-settings"]') || {}).textContent?.includes(${JSON.stringify(t)})`;
 
@@ -125,9 +132,12 @@ createRoot(document.getElementById('root')).render(React.createElement('main', {
     const steps = [
       { name: 'initial', run: 'true', until: textIs('No key saved.') },
       { name: 'bad-budget', run: `${setVal('#tas-usd', '0')} && ${click('Save settings')}`, until: textIs('Not saved — see the highlighted field.') },
-      { name: 'key-saved', run: `${setVal('#tas-key', KEY)} && ${click('Save key')}`, until: textIs('A key is saved.') },
+      { name: 'key-saved', run: `${setVal('#tas-key', KEY)} && ${click('Save key')}`, until: textIs('Anthropic key saved. This is configuration only') },
+      { name: 'decimal-saved', run: `${setVal('#tas-usd', '1.5')} && ${setVal('#tas-runs', '2')} && ${click('Save settings')}`, until: `${textIs('Saved.')} && document.getElementById('tas-usd').value === '1.50'` },
+      { name: 'reloaded', run: '(window.__pre = 1, setTimeout(() => location.reload(), 0), true)', until: "!window.__pre && !!document.getElementById('tas-usd') && document.getElementById('tas-usd').value === '1.50'" },
       { name: 'test-confirm', run: click('Test connection…'), until: textIs('Send the test request') },
       { name: 'test-result', run: click('Send the test request'), until: textIs('Connected') },
+      { name: 'unsaved', run: setVal('#tas-usd', '15'), until: textIs('Not saved yet: daily budget.') },
     ];
     const env = { ...process.env, NW_URL: base, NW_JOB: path.join(tmp, 'job.json'), NW_OUT: path.join(tmp, 'out.json') };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -189,7 +199,14 @@ for (const size of ['1440x900', '390x844']) {
     }
     const i = by.initial;
     assert.match(i.text, /No key saved\./);
-    assert.equal(i.enabledDisabled, true, 'Enabled cannot be switched on without a key');
+    assert.equal(i.enabledDisabled, true, 'Enabled cannot be chosen without a key');
+    assert.equal(i.enabledTag, 'SELECT', 'a labelled Disabled/Enabled select, not a bare checkbox');
+    assert.equal(i.enabledValue, 'disabled');
+    assert.match(i.status, /Task Agent: Disabled/);
+    assert.match(i.status, /No task attempts can start while Do this is disabled\./);
+    assert.equal(i.statusFirst, true, 'the status is at the top of the section');
+    assert.match(i.text, /These limits are configured\. They are enforced for new Do this runs once Do this is enabled\./);
+    assert.ok(!/limits are active/.test(i.text));
     assert.match(i.text, /\$0\.00 spent of \$1\.00/);
     assert.match(i.text, /0 of 10 runs/);
     assert.match(i.text, /This key is stored on this NEURO server\. Encrypted secret storage is the next security upgrade\./);
@@ -199,10 +216,22 @@ for (const size of ['1440x900', '390x844']) {
     assert.match(by['bad-budget'].text, /Enter an amount above \$0 and up to \$50\./);
 
     const k = by['key-saved'];
-    assert.match(k.text, /A key is saved\./);
+    assert.match(k.text, /Anthropic key saved\. This is configuration only: it does not turn Do this on\./);
+    assert.match(k.status, /Task Agent: Disabled/, 'a saved key does not change the state');
+
+    const d = by['decimal-saved'];
+    assert.equal(d.usdValue, '1.50'); assert.equal(d.runsValue, '2');
+    assert.match(d.text, /\$0\.00 spent of \$1\.50/, 'Today shows the saved budget, not 15');
+    assert.match(d.text, /0 of 2 runs/, 'Today shows the saved runs, not 20');
+    assert.equal(d.unsaved, '');
+    const rl = by.reloaded;
+    assert.equal(rl.usdValue, '1.50', 'after a real reload'); assert.equal(rl.runsValue, '2');
+    assert.match(rl.text, /\$0\.00 spent of \$1\.50/); assert.match(rl.text, /0 of 2 runs/);
+    const u = by.unsaved;
+    assert.match(u.unsaved, /Not saved yet: daily budget\. Saved values: Disabled, \$1\.50 a day, 2 runs a day\./);
     assert.match(k.text, /Key saved\. It will not be shown again\./);
     assert.equal(k.keyValue, '', 'the field is emptied');
-    for (const s of r.steps.slice(2)) {
+    for (const s of r.steps.filter((x) => !['initial', 'bad-budget'].includes(x.name))) {
       assert.ok(!s.html.includes(KEY) && !s.html.includes(KEY.slice(-4)), `${s.name}: the key (or its last four) is not in the page`);
       assert.ok(!s.store.includes(KEY) && !s.store.includes(KEY.slice(-4)), `${s.name}: not in browser storage`);
     }

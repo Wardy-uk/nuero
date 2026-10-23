@@ -12,7 +12,7 @@
 .tas__input--key { flex: 1 1 260px; min-width: 0; }
 .tas__input--num { width: 8em; }
 .tas__keystate { font-size: 12px; margin-bottom: 4px; }
-.tas__keystate[data-tas-configured="yes"] { color: var(--success); }
+.tas__keystate[data-tas-configured="yes"] { color: var(--text-primary); } /* configuration, not operation: never the "running" green */
 .tas__check { display: flex; gap: 8px; align-items: center; font-size: 13px; padding-top: 4px; }
 .tas__err { color: var(--danger); font-size: 12px; margin: 4px 0 0; }
 .tas__actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
@@ -32,3 +32,12 @@
   .tas__row { grid-template-columns: 1fr; }
   .tas__label { padding-top: 0; }
 }
+
+/* One status line at the top: the state, never the configuration. */
+.tas__status { border: 1px solid var(--border); border-left-width: 4px; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; background: var(--bg-card, transparent); }
+.tas__status-label { font-weight: 600; font-size: 1.05em; }
+.tas__status-say { color: var(--text-muted); margin-top: 2px; }
+.tas__status--disabled { border-left-color: var(--text-muted); }
+.tas__status--enabled { border-left-color: var(--success, #3fb950); }
+.tas__status--needs-key, .tas__status--blocked { border-left-color: var(--warning, #d29922); }
+.tas__unsaved { color: var(--warning, #d29922); margin: 6px 0 0; }

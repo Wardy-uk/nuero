@@ -54,7 +54,7 @@ test('every Stage 1 field is there: enabled, masked key, model, $ budget, run li
   assert.match(h, /type="password"/);
   assert.match(h, /autoComplete="new-password"|autocomplete="new-password"/);
   assert.match(h, /No key saved\./);
-  assert.match(h, /id="tas-enabled"[^>]*disabled/, 'cannot be switched on without a key');
+  assert.match(h, /<option value="enabled" disabled="">Enabled<\/option>/, 'cannot be switched on without a key');
   assert.match(h, /Claude Sonnet 4\.6/); assert.match(h, /Claude Haiku 4\.5/);
   assert.match(h, /Do this daily budget/); assert.match(h, /value="1"/);
   assert.match(h, /Do this daily run limit/); assert.match(h, /value="10"/);
@@ -66,9 +66,9 @@ test('every Stage 1 field is there: enabled, masked key, model, $ budget, run li
   assert.ok(!/encrypted (at rest|key)/i.test(h));
 });
 
-test('with a key: only "A key is saved" — the key input is empty and nothing of the key is shown; the test asks before sending', () => {
+test('with a key: only the configuration line — the key input is empty and nothing of the key is shown; the test asks before sending', () => {
   const h = view(S({ configured: true }));
-  assert.match(h, /A key is saved\./);
+  assert.match(h, /Anthropic key saved\. This is configuration only: it does not turn Do this on\./);
   assert.match(h, /id="tas-key"[^>]*value=""/);
   assert.match(h, /Replace key/); assert.match(h, /Clear key/);
   assert.match(h, /Test connection…/);
@@ -106,4 +106,57 @@ test('AdminPanel mounts it inside the Anthropic group', () => {
   const j = src.indexOf('<div className="ai-setting-group-title">OpenRouter</div>');
   const k = src.indexOf('<TaskAgentSettings />');
   assert.ok(i > 0 && k > i && k < j);
+});
+
+// ── 24 Oct 2026 production fix ──
+const CAP_OFF = 'These limits are configured. They are enforced for new Do this runs once Do this is enabled. No task attempts can start while Do this is disabled.';
+const RULES = { dailyUsd: 'A dollar amount from $0.01 to $50, at most two decimal places (for example 1.5 or 1.50). Use a full stop for decimals.', dailyRuns: 'A whole number of runs from 1 to 200.' };
+
+test('the status sits at the top and is the server\'s own words; Disabled / Enabled is a labelled select, not a bare checkbox', () => {
+  const h = view(S({ configured: true, capSay: CAP_OFF, status: { state: 'disabled', label: 'Task Agent: Disabled', say: 'No task attempts can start while Do this is disabled.' } }));
+  assert.ok(h.indexOf('data-tas-status="disabled"') < h.indexOf('Do this (task agent)'), 'status comes first');
+  assert.match(h, /Task Agent: Disabled/);
+  assert.match(h, /No task attempts can start while Do this is disabled\./);
+  assert.match(h, /<label class="tas__label" for="tas-enabled">Do this<\/label>/);
+  assert.match(h, /<select id="tas-enabled"[^>]*><option value="disabled" selected="">Disabled<\/option><option value="enabled">Enabled<\/option>/);
+  assert.ok(!/type="checkbox"/.test(h), 'no unlabeled checkbox');
+  assert.ok(!/>Off</.test(h));
+  assert.match(h, /These limits are configured\./);
+  for (const [state, label] of [['enabled', 'Task Agent: Enabled'], ['needs-key', 'Task Agent: Needs a key'], ['blocked', 'Task Agent: Blocked']]) {
+    const x = view(S({ configured: true, enabled: state !== 'disabled', status: { state, label, say: 'why' } }));
+    assert.match(x, new RegExp(`data-tas-status="${state}"`)); assert.match(x, new RegExp(label));
+  }
+});
+
+test('budget and runs are text fields showing the saved value exactly, with the rule stated before save', () => {
+  const h = view(S({ dailyUsd: 1.5, dailyRuns: 2, limitRules: RULES }), { draft: { enabled: false, model: 'claude-sonnet-4-6', dailyUsd: '1.50', dailyRuns: '2' } });
+  assert.match(h, /id="tas-usd"[^>]*type="text"[^>]*inputMode="decimal"/);
+  assert.match(h, /id="tas-usd"[^>]*value="1\.50"/);
+  assert.match(h, /id="tas-runs"[^>]*type="text"[^>]*value="2"/);
+  assert.match(h, /at most two decimal places/);
+  assert.match(h, /A whole number of runs from 1 to 200\./);
+  assert.ok(!/type="number"/.test(h), 'no number inputs (they dropped the decimal point on some keyboards)');
+  assert.ok(!/data-tas-unsaved/.test(h), 'saved and shown agree: no unsaved line');
+});
+
+test('an unsaved edit says so, and names what is saved — stale screen state cannot pass for the saved value', () => {
+  const h = view(S({ dailyUsd: 15, dailyRuns: 20 }), { draft: { enabled: false, model: 'claude-sonnet-4-6', dailyUsd: '1.5', dailyRuns: '2.0' } });
+  assert.match(h, /data-tas-unsaved/);
+  assert.match(h, /Not saved yet: daily budget, daily run limit\./);
+  assert.match(h, /Saved values: Disabled, \$15\.00 a day, 20 runs a day\./);
+  assert.deepEqual(TS.unsavedFields({ enabled: false, model: 'm', dailyUsd: 1.5, dailyRuns: 2 }, { enabled: false, model: 'm', dailyUsd: '1.50', dailyRuns: '2' }), []);
+  assert.deepEqual(TS.unsavedFields({ enabled: false, model: 'm', dailyUsd: 1.5, dailyRuns: 2 }, { enabled: true, model: 'm', dailyUsd: '15', dailyRuns: '2' }), ['Do this on/off', 'daily budget']);
+  assert.deepEqual(TS.unsavedFields({ enabled: false, model: 'm', dailyUsd: 1.5, dailyRuns: 2 }, { enabled: false, model: 'm', dailyUsd: '1,5', dailyRuns: '2' }), ['daily budget'], 'a comma is not 1.5');
+});
+
+test('the save sends the typed text, and the draft shows a saved 1.5 as "1.50", never "15"', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'frontend/src/components/TaskAgentSettings.jsx'), 'utf8');
+  assert.match(src, /dailyUsd: String\(draft\.dailyUsd\)\.trim\(\)/);
+  assert.match(src, /Number\(s\.dailyUsd\)\.toFixed\(2\)/);
+  assert.ok(!/dailyUsd: Number\(draft\.dailyUsd\)/.test(src));
+});
+
+test('a failed connection test shows Anthropic\'s own reason', () => {
+  const r = view(S({ configured: true }), { test: { stage: null, result: { ok: false, error: 'Anthropic refused the request (400).', anthropic: { type: 'invalid_request_error', message: 'something specific' }, model: 'claude-sonnet-4-6', ledger: null } } });
+  assert.match(r, /Anthropic said: invalid_request_error — something specific/);
 });

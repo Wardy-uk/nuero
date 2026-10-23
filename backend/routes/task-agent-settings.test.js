@@ -127,7 +127,11 @@ test('defaults: off, no key, $1.00 and 10 runs; the notice and the cap statement
   assert.equal(r.json.model, 'claude-sonnet-4-6');
   assert.deepEqual(r.json.models.map((m) => m.id), ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001']);
   assert.equal(r.json.notice, 'This key is stored on this NEURO server. Encrypted secret storage is the next security upgrade.');
-  assert.match(r.json.capSay, /limits are active/);
+  assert.match(r.json.capSay, /These limits are configured\. They are enforced for new Do this runs once Do this is enabled\. No task attempts can start while Do this is disabled\./);
+  assert.ok(!/limits are (active|enforced for new)/.test(r.json.capSay.split('.')[0]), 'disabled limits are never described as active');
+  assert.equal(r.json.status.state, 'disabled');
+  assert.equal(r.json.status.label, 'Task Agent: Disabled');
+  assert.equal(r.json.status.say, 'No task attempts can start while Do this is disabled.');
   assert.match(r.json.capSay, /independent of the wider AI gate, which is still in shadow mode/);
   assert.equal(r.json.gateMode, 'shadow');
   assert.equal(r.json.today.runs, 0);
@@ -369,4 +373,81 @@ test('the connection test: confirm required; one bounded request; reports model/
   const act = JSON.stringify(db.all("SELECT * FROM activity_log WHERE event_type = 'task_agent_settings'"));
   assert.deepEqual(leaks(act), []);
   assert.ok(!/connection check|Reply OK/i.test(act), 'no prompt in activity');
+});
+
+// ── 10 (24 Oct 2026 production fix) ──
+test('limits: decimals save and reload exactly, typed text is parsed not reinterpreted, and nothing is rounded silently', async () => {
+  settings.save({ clearKey: true });
+  // Strings, as the screen now sends them, and numbers, as older clients did.
+  for (const [usdIn, runsIn, usdOut, runsOut] of [['1.5', '2', 1.5, 2], ['1.50', '2.0', 1.5, 2], [1.5, 2, 1.5, 2], ['15', '20', 15, 20], ['0.01', '1', 0.01, 1], ['50', '200', 50, 200], [' 3.25 ', ' 7 ', 3.25, 7]]) {
+    const s = await call('POST', '/api/task-agent/settings', { dailyUsd: usdIn, dailyRuns: runsIn });
+    assert.equal(s.status, 200, `${usdIn}/${runsIn}: ${s.raw}`);
+    const g = await call('GET', '/api/task-agent/settings');
+    assert.equal(g.json.dailyUsd, usdOut, `saved ${usdIn} reads back ${usdOut}`);
+    assert.equal(g.json.dailyRuns, runsOut, `saved ${runsIn} reads back ${runsOut}`);
+    assert.equal(s.json.settings.dailyUsd, g.json.dailyUsd, 'the save answer and a reload agree');
+  }
+  // Refused, never rounded, multiplied or clamped — and nothing changes.
+  const held = (await call('GET', '/api/task-agent/settings')).json;
+  for (const [body, field] of [[{ dailyUsd: '1,5' }, 'dailyUsd'], [{ dailyUsd: '1.555' }, 'dailyUsd'], [{ dailyUsd: 1.555 }, 'dailyUsd'], [{ dailyUsd: '' }, 'dailyUsd'],
+    [{ dailyUsd: '$2' }, 'dailyUsd'], [{ dailyUsd: '-1' }, 'dailyUsd'], [{ dailyUsd: '50.01' }, 'dailyUsd'], [{ dailyUsd: '0.00' }, 'dailyUsd'], [{ dailyUsd: '1e1' }, 'dailyUsd'],
+    [{ dailyRuns: '2.5' }, 'dailyRuns'], [{ dailyRuns: '201' }, 'dailyRuns'], [{ dailyRuns: '' }, 'dailyRuns'], [{ dailyRuns: '1,000' }, 'dailyRuns']]) {
+    const r = await call('POST', '/api/task-agent/settings', body);
+    assert.equal(r.status, 400, JSON.stringify(body));
+    assert.ok(r.json.errors.some((e) => e.field === field), JSON.stringify(body));
+  }
+  const after = (await call('GET', '/api/task-agent/settings')).json;
+  assert.equal(after.dailyUsd, held.dailyUsd); assert.equal(after.dailyRuns, held.dailyRuns);
+  // The rules are stated before save.
+  assert.match(after.limitRules.dailyUsd, /at most two decimal places/);
+  assert.match(after.limitRules.dailyRuns, /whole number of runs from 1 to 200/);
+});
+
+test('one explicit status: Disabled / Needs a key / Blocked (with why) / Enabled — a saved key is configuration, not operation', async () => {
+  settings.save({ clearKey: true }); resetRuns();
+  let g = (await call('GET', '/api/task-agent/settings')).json;
+  assert.equal(g.status.label, 'Task Agent: Disabled');
+  assert.equal(g.credentialSay, null);
+
+  settings.save({ apiKey: KEY, dailyUsd: 5, dailyRuns: 3 });
+  g = (await call('GET', '/api/task-agent/settings')).json;
+  assert.equal(g.status.label, 'Task Agent: Disabled', 'a saved key alone is not Enabled');
+  assert.match(g.credentialSay, /^Anthropic key saved\. This is configuration only/);
+  assert.match(g.capSay, /No task attempts can start while Do this is disabled/);
+
+  settings.save({ enabled: true });
+  g = (await call('GET', '/api/task-agent/settings')).json;
+  assert.equal(g.status.label, 'Task Agent: Enabled');
+  assert.match(g.capSay, /enforced for new Do this runs/);
+  assert.ok(!/No task attempts can start/.test(g.capSay));
+
+  // Blocked: today's runs are used — and it says which limit.
+  for (let i = 0; i < 3; i++) settings.claimRun(`status-probe-${i}`);
+  g = (await call('GET', '/api/task-agent/settings')).json;
+  assert.equal(g.status.state, 'blocked');
+  assert.match(g.status.say, /run limit is used \(3 of 3\)/);
+  resetRuns();
+
+  // Needs a key: on, but the key is gone (cleared outside the screen).
+  db.setState(settings._internals.SETTINGS_KEY, JSON.stringify({ enabled: true, model: 'claude-sonnet-4-6', dailyUsd: 5, dailyRuns: 3 }));
+  db.setState(settings._internals.SECRET_KEY, '');
+  g = (await call('GET', '/api/task-agent/settings')).json;
+  assert.equal(g.status.label, 'Task Agent: Needs a key');
+  settings.save({ apiKey: KEY, enabled: false });
+});
+
+test('the connection test names Anthropic\'s own reason (type + message), key removed, never the raw body', async () => {
+  settings.save({ apiKey: KEY, enabled: false });
+  const err = Object.assign(new Error('400 bad'), { status: 400, error: { type: 'error', error: { type: 'invalid_request_error', message: `model: something about ${KEY} was not right` } } });
+  script = [err];
+  const f = await call('POST', '/api/task-agent/settings/test', { confirm: true });
+  assert.equal(f.json.ok, false);
+  assert.equal(f.json.anthropic.type, 'invalid_request_error');
+  assert.match(f.json.anthropic.message, /^model: something about/);
+  assert.deepEqual(leaks(f.raw), []);
+  assert.ok(!/"error":\s*\{\s*"type":\s*"error"/.test(f.raw), 'no raw provider body');
+  const act = db.all("SELECT * FROM activity_log WHERE event_type = 'task_agent_settings' ORDER BY id DESC LIMIT 1");
+  assert.match(JSON.stringify(act), /invalid_request_error/);
+  assert.deepEqual(leaks(JSON.stringify(act)), []);
+  assert.equal(settings.read().enabled, false, 'the test never switches Do this on');
 });

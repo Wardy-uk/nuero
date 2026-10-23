@@ -82,6 +82,33 @@ Fields: **Enabled** (off by default; it cannot be switched on without a key), **
 model requests, runs, what is left and when it resets (midnight UK time), the cap statement,
 an explicit save result with field errors, and **Test Anthropic connection**.
 
+**Production fix, 24 Oct 2026 (state, limits, connection-test reason).**
+- **One status at the top.** The server composes `status` (`statusOf`, pure). It is one of
+  *Task Agent: Disabled* / *Enabled* (enabled + a key + room today) / *Needs a key* / *Blocked*,
+  and Blocked always says why (run or budget used, no room for one step, spend unreadable).
+  "Anthropic key saved" is `credentialSay`, configuration only, and never means Enabled.
+  On/off is a labelled **Disabled / Enabled** select.
+- **What the cap statement says depends on the state.** While disabled, the limits are
+  *configured*: "No task attempts can start while Do this is disabled." Once enabled, they are
+  *enforced for new Do this runs*. The enforcement code is unchanged.
+- **Limits are parsed, never reinterpreted** (`parseUsd`, `parseRuns`, rules in `limitRules`
+  and shown before save):
+  - $0.01–$50, at most two decimal places, full stop only;
+  - runs are whole numbers 1–200 ("2.0" is 2);
+  - anything else is refused with the field named, never rounded or clamped.
+  - The fields are text inputs, and the save sends the typed text. A saved 1.5 shows "1.50".
+  - An edit not yet saved says so, and names the saved values.
+- **Why.** On 23 Oct the screen showed `$1.5` / `2.0` while the store held **$15 / 20 runs**.
+  The old `type="number"` inputs could drop the decimal point (keyboard or region), and nothing
+  showed unsaved state.
+- **Connection-test failures** now carry `anthropic: {type, message}`: Anthropic's own error
+  type, plus its message with the key removed, at most 200 characters. Never the request,
+  the prompt or the raw body. The `type` is also in the activity row.
+- **`anthropic-version` was never missing.** `anthropic-provider-headers.test.js` drives the
+  REAL SDK through the real provider and the real connection test against a local capture
+  server. Every request carries the version the installed SDK sets (0.80.0: `2023-06-01`) and
+  the saved key in `x-api-key`.
+
 **The two limits are HARD from the first release, NEURO's own, and independent of the gate's
 mode** (which stays shadow). They apply to Do this only: nothing else reads them (pinned by a
 source scan), VANTAGE, OpenRouter, other Anthropic callers and the shared gate are unchanged.

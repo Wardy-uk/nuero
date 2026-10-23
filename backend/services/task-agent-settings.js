@@ -39,7 +39,16 @@ const MAX_RUNS = 200;
 const CLASSES = Object.freeze(['task_agent', 'task_agent_test']);
 
 const NOTICE = 'This key is stored on this NEURO server. Encrypted secret storage is the next security upgrade.';
-const CAP_SAY = 'These limits are active: Do this is refused once either is reached. They apply only to Do this, and are independent of the wider AI gate, which is still in shadow mode and blocks nothing.';
+const CAP_SAY = 'These limits are enforced for new Do this runs: a run, or its next step, is refused once either is reached. They apply only to Do this, and are independent of the wider AI gate, which is still in shadow mode and blocks nothing.';
+// While Do this is disabled nothing can start, so the limits are only configured.
+// (Enforcement in claimRun/budgetOpen/guardRequest is unchanged either way.)
+const CAP_SAY_DISABLED = 'These limits are configured. They are enforced for new Do this runs once Do this is enabled. No task attempts can start while Do this is disabled. They apply only to Do this, and are independent of the wider AI gate, which is still in shadow mode and blocks nothing.';
+const KEY_SAY = 'Anthropic key saved. This is configuration only: it does not turn Do this on.';
+// Stated on screen before save and enforced here (never rounded silently).
+const LIMIT_RULES = Object.freeze({
+  dailyUsd: `A dollar amount from $0.01 to $${MAX_USD}, at most two decimal places (for example 1.5 or 1.50). Use a full stop for decimals.`,
+  dailyRuns: `A whole number of runs from 1 to ${MAX_RUNS}.`,
+});
 
 class TaskAgentLimitError extends Error {
   constructor(limit, say) { super(say); this.name = 'TaskAgentLimitError'; this.limit = limit; this.say = say; }
@@ -186,13 +195,54 @@ function guardRequest({ model, maxInputTokens, maxOutputTokens }, { othersInFlig
   return { ok: true, worst, spentUsd: spend.usd };
 }
 
+// ── limit parsing (the ONE rule; the screen states it, the server enforces it) ──
+/**
+ * PURE. The daily dollar budget, from a number or a string. Refused, never rounded
+ * or clamped: more than two decimal places, a comma, a sign, blank, 0, or over the
+ * maximum each come back as an error — a silently changed budget is how a screen
+ * and the store come to disagree.
+ */
+function parseUsd(v) {
+  if (typeof v === 'boolean' || v == null) return { error: 'Enter an amount.' };
+  const t = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : String(v).trim();
+  if (/,/.test(t)) return { error: 'Use a full stop for decimals (for example 1.50), not a comma.' };
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return { error: `Enter an amount above $0 and up to $${MAX_USD}, with at most two decimal places.` };
+  const n = Number(t);
+  if (!(n > 0) || n > MAX_USD) return { error: `Enter an amount above $0 and up to $${MAX_USD}.` };
+  return { value: Math.round(n * 100) / 100 };
+}
+/** PURE. The daily run limit: a whole number (2 and "2.0" are both two runs; 2.5 is refused). */
+function parseRuns(v) {
+  if (typeof v === 'boolean' || v == null) return { error: 'Enter a number of runs.' };
+  const t = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : String(v).trim();
+  if (!/^\d+(\.0+)?$/.test(t)) return { error: `Enter a whole number from 1 to ${MAX_RUNS}.` };
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_RUNS) return { error: `Enter a whole number from 1 to ${MAX_RUNS}.` };
+  return { value: n };
+}
+
+/**
+ * PURE. The one status line at the top of the section. Configuration (a saved key)
+ * is never reported as operation: only enabled + a key + room today is "Enabled".
+ */
+function statusOf({ enabled, configured: hasKey, unreadable, today, stepUsd: step, dailyUsd, dailyRuns }) {
+  if (!enabled) return { state: 'disabled', label: 'Task Agent: Disabled', say: 'No task attempts can start while Do this is disabled.' };
+  if (!hasKey) return { state: 'needs-key', label: 'Task Agent: Needs a key', say: 'Do this is switched on but no Anthropic key is saved, so nothing can run.' };
+  if (unreadable) return { state: 'blocked', label: 'Task Agent: Blocked', say: 'The saved Do this settings could not be read, so nothing will run until they are saved again.' };
+  if (!today || today.known === false) return { state: 'blocked', label: 'Task Agent: Blocked', say: 'NEURO cannot read today’s Do this spend, so no run will start until it can.' };
+  if (today.runs >= dailyRuns) return { state: 'blocked', label: 'Task Agent: Blocked', say: `Today’s run limit is used (${today.runs} of ${dailyRuns}). Runs resume at midnight (UK time).` };
+  if (today.usd >= dailyUsd) return { state: 'blocked', label: 'Task Agent: Blocked', say: `Today’s budget is used ($${today.usd.toFixed(2)} of $${dailyUsd.toFixed(2)}). Runs resume at midnight (UK time).` };
+  if (step != null && today.remainingUsd != null && step > today.remainingUsd) return { state: 'blocked', label: 'Task Agent: Blocked', say: `Not enough budget left today for one more step (needs up to $${step.toFixed(3)}, $${today.remainingUsd.toFixed(2)} left). Runs resume at midnight (UK time).` };
+  return { state: 'enabled', label: 'Task Agent: Enabled', say: 'Do this can start new runs within today’s limits.' };
+}
+
 // ── the public view (never the key) ──────────────────────────────────────────
 function read() {
   const s = _settings();
   const now = deps().now();
   const spend = spendToday();
   const runs = runsToday(now);
-  return {
+  const view = {
     ok: true,
     contract: 'task-agent-settings-v1',
     enabled: s.enabled,
@@ -212,11 +262,15 @@ function read() {
     ..._resetSay(now),
     stepUsd: stepUsd(s.model),
     gateMode: deps().gateMode(),
-    capSay: CAP_SAY,
+    capSay: s.enabled ? CAP_SAY : CAP_SAY_DISABLED,
+    credentialSay: configured() ? KEY_SAY : null,
+    limitRules: { ...LIMIT_RULES },
     notice: NOTICE,
     storage: 'server-plaintext-temporary',
     unreadable: Boolean(s.unreadable),
   };
+  view.status = statusOf(view);
+  return view;
 }
 
 const ALLOWED = new Set(['enabled', 'model', 'dailyUsd', 'dailyRuns', 'apiKey', 'clearKey']);
@@ -234,14 +288,12 @@ function save(body = {}) {
   if (body.enabled !== undefined) { if (typeof body.enabled !== 'boolean') errors.push({ field: 'enabled', error: 'Must be on or off.' }); else next.enabled = body.enabled; }
   if (body.model !== undefined) { if (!MODELS.some((m) => m.id === body.model)) errors.push({ field: 'model', error: 'Choose one of the supported models.' }); else next.model = body.model; }
   if (body.dailyUsd !== undefined) {
-    const v = Number(body.dailyUsd);
-    if (typeof body.dailyUsd === 'boolean' || body.dailyUsd === '' || !Number.isFinite(v) || v <= 0 || v > MAX_USD) errors.push({ field: 'dailyUsd', error: `Enter an amount above $0 and up to $${MAX_USD}.` });
-    else next.dailyUsd = Math.round(v * 100) / 100;
+    const r = parseUsd(body.dailyUsd);
+    if (r.error) errors.push({ field: 'dailyUsd', error: r.error }); else next.dailyUsd = r.value;
   }
   if (body.dailyRuns !== undefined) {
-    const v = Number(body.dailyRuns);
-    if (typeof body.dailyRuns === 'boolean' || !Number.isInteger(v) || v < 1 || v > MAX_RUNS) errors.push({ field: 'dailyRuns', error: `Enter a whole number from 1 to ${MAX_RUNS}.` });
-    else next.dailyRuns = v;
+    const r = parseRuns(body.dailyRuns);
+    if (r.error) errors.push({ field: 'dailyRuns', error: r.error }); else next.dailyRuns = r.value;
   }
   let newKey = null;
   if (body.apiKey !== undefined) {
@@ -321,9 +373,10 @@ async function testConnection({ confirm = false } = {}) {
               : status === 429 || status === 529 ? 'Anthropic is busy or rate-limiting (try again in a minute).'
                 : /timed? ?out/i.test(String(e && e.message)) ? 'Anthropic did not answer within 30 seconds.'
                   : `The request failed: ${redact(String((e && e.message) || e)).slice(0, 160)}`;
+    const said = anthropicSaid(e);
     const ledger = _ledgerAfter(before);
-    _log({ ok: false, model: m, status: status || null, ledger: ledger.recorded });
-    return { ok: false, status: 502, model: m, error: reason, httpStatus: status || null, ledger, estimateUsd, ms: d.now() - started };
+    _log({ ok: false, model: m, status: status || null, errorType: said ? said.type : null, ledger: ledger.recorded });
+    return { ok: false, status: 502, model: m, error: reason, anthropic: said, httpStatus: status || null, ledger, estimateUsd, ms: d.now() - started };
   }
   const usage = r.usage || {};
   let costUsd = null;
@@ -333,6 +386,20 @@ async function testConnection({ confirm = false } = {}) {
   _log({ ok: true, model: m, promptTokens: usage.prompt_tokens || 0, completionTokens: usage.completion_tokens || 0, costUsd, ledger: ledger.recorded });
   return { ok: true, model: m, promptTokens: usage.prompt_tokens || 0, completionTokens: usage.completion_tokens || 0, costUsd, replied, ledger, estimateUsd, ms: d.now() - started,
     say: replied ? 'Connected: Anthropic answered with this key and model.' : 'Anthropic answered with this key and model (the reply was not the expected word, but the connection works).' };
+}
+
+/**
+ * Anthropic's own reason for a refusal: the error TYPE and its message, with the
+ * key and anything key-shaped removed, at most 200 characters. Never the request,
+ * the prompt or the raw response body. null when the failure was not an API answer.
+ */
+function anthropicSaid(e) {
+  const body = e && (e.error || (e.response && e.response.data));
+  const inner = body && (body.error || body);
+  const type = inner && typeof inner.type === 'string' && inner.type !== 'error' ? inner.type : null;
+  const msg = inner && typeof inner.message === 'string' ? inner.message : null;
+  if (!type && !msg) return null;
+  return { type: type ? type.slice(0, 60) : null, message: msg ? redact(msg).slice(0, 200) : null };
 }
 
 function _ledgerAfter(before) {
@@ -352,6 +419,7 @@ function model() { return _settings().model; }
 module.exports = {
   read, save, apiKey, testConnection, testEstimate, redact, configured, enabled, model,
   claimRun, budgetOpen, guardRequest, stepUsd, runsToday, spendToday,
-  TaskAgentLimitError, MODELS, DEFAULTS, NOTICE, CAP_SAY, CLASSES,
+  TaskAgentLimitError, MODELS, DEFAULTS, NOTICE, CAP_SAY, CAP_SAY_DISABLED, KEY_SAY, LIMIT_RULES, CLASSES,
+  parseUsd, parseRuns, statusOf, anthropicSaid,
   _internals: { setDeps: (d) => { _deps = d ? { ...deps(), ...d } : null; }, SETTINGS_KEY, SECRET_KEY, RUNS_KEY, midnightAfter: _midnightAfter },
 };

@@ -24,8 +24,15 @@ const fieldError = (errors, f) => ((errors || []).find((e) => e.field === f) || 
 export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText, busy, result, errors, onSave, onSaveKey, onClearKey, test, onTestAsk, onTestConfirm, onTestCancel }) {
   if (!s) return <p className="tas__muted">Loading Do this settings…</p>;
   const t = s.today || {};
+  const st = s.status || { state: s.enabled ? 'enabled' : 'disabled', label: s.enabled ? 'Task Agent: Enabled' : 'Task Agent: Disabled', say: '' };
+  const rules = s.limitRules || {};
+  const unsaved = unsavedFields(s, draft);
   return (
     <div className="tas" data-testid="task-agent-settings">
+      <div className={`tas__status tas__status--${st.state}`} role="status" data-tas-status={st.state}>
+        <div className="tas__status-label">{st.label}</div>
+        {st.say && <div className="tas__status-say">{st.say}</div>}
+      </div>
       <div className="tas__title">Do this (task agent)</div>
       <p className="tas__muted">Do this uses its own Anthropic key, below. It is separate from the Anthropic setting above.</p>
 
@@ -34,7 +41,7 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
       <div className="tas__row">
         <label className="tas__label" htmlFor="tas-key">API key</label>
         <div className="tas__control">
-          <div className="tas__keystate" data-tas-configured={s.configured ? 'yes' : 'no'}>{s.configured ? 'A key is saved.' : 'No key saved.'}</div>
+          <div className="tas__keystate" data-tas-configured={s.configured ? 'yes' : 'no'}>{s.configured ? (s.credentialSay || 'Anthropic key saved. This is configuration only: it does not turn Do this on.') : 'No key saved.'}</div>
           <div className="tas__inline">
             <input id="tas-key" className="tas__input tas__input--key" type="password" autoComplete="new-password" spellCheck={false}
               placeholder={s.configured ? 'Paste a new key to replace it' : 'Paste the Anthropic API key'} value={keyText}
@@ -47,12 +54,13 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
       </div>
 
       <div className="tas__row">
-        <label className="tas__label" htmlFor="tas-enabled">Enabled</label>
+        <label className="tas__label" htmlFor="tas-enabled">Do this</label>
         <div className="tas__control">
-          <label className="tas__check">
-            <input id="tas-enabled" type="checkbox" checked={draft.enabled} disabled={busy || (!s.configured && !draft.enabled)} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />
-            {draft.enabled ? 'On — Do this can run' : 'Off'}
-          </label>
+          <select id="tas-enabled" className="tas__input" value={draft.enabled ? 'enabled' : 'disabled'} disabled={busy}
+            onChange={(e) => setDraft({ ...draft, enabled: e.target.value === 'enabled' })}>
+            <option value="disabled">Disabled</option>
+            <option value="enabled" disabled={!s.configured}>Enabled</option>
+          </select>
           {!s.configured && <p className="tas__muted">Save a key first. Running the connection test before turning it on is recommended.</p>}
           {fieldError(errors, 'enabled') && <p className="tas__err">{fieldError(errors, 'enabled')}</p>}
         </div>
@@ -71,7 +79,8 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
       <div className="tas__row">
         <label className="tas__label" htmlFor="tas-usd">Do this daily budget</label>
         <div className="tas__control">
-          <div className="tas__inline"><span>$</span><input id="tas-usd" className="tas__input tas__input--num" type="number" min="0.01" max="50" step="0.01" value={draft.dailyUsd} disabled={busy} onChange={(e) => setDraft({ ...draft, dailyUsd: e.target.value })} /></div>
+          <div className="tas__inline"><span>$</span><input id="tas-usd" className="tas__input tas__input--num" type="text" inputMode="decimal" autoComplete="off" value={draft.dailyUsd} disabled={busy} onChange={(e) => setDraft({ ...draft, dailyUsd: e.target.value })} aria-describedby="tas-usd-rule" /></div>
+          <p id="tas-usd-rule" className="tas__muted" data-tas-rule="dailyUsd">{rules.dailyUsd}</p>
           {fieldError(errors, 'dailyUsd') && <p className="tas__err">{fieldError(errors, 'dailyUsd')}</p>}
         </div>
       </div>
@@ -79,7 +88,8 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
       <div className="tas__row">
         <label className="tas__label" htmlFor="tas-runs">Do this daily run limit</label>
         <div className="tas__control">
-          <input id="tas-runs" className="tas__input tas__input--num" type="number" min="1" max="200" step="1" value={draft.dailyRuns} disabled={busy} onChange={(e) => setDraft({ ...draft, dailyRuns: e.target.value })} />
+          <input id="tas-runs" className="tas__input tas__input--num" type="text" inputMode="numeric" autoComplete="off" value={draft.dailyRuns} disabled={busy} onChange={(e) => setDraft({ ...draft, dailyRuns: e.target.value })} aria-describedby="tas-runs-rule" />
+          <p id="tas-runs-rule" className="tas__muted" data-tas-rule="dailyRuns">{rules.dailyRuns}</p>
           {fieldError(errors, 'dailyRuns') && <p className="tas__err">{fieldError(errors, 'dailyRuns')}</p>}
         </div>
       </div>
@@ -88,6 +98,9 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
         <button type="button" className="btn btn-primary" onClick={onSave} disabled={busy}>Save settings</button>
         {result && <span className={`tas__result tas__result--${result.ok ? 'ok' : 'bad'}`} role="status" data-tas-result>{result.say}</span>}
       </div>
+      {unsaved.length > 0 && (
+        <p className="tas__unsaved" data-tas-unsaved>Not saved yet: {unsaved.join(', ')}. Saved values: {s.enabled ? 'Enabled' : 'Disabled'}, {usd(s.dailyUsd)} a day, {s.dailyRuns} runs a day.</p>
+      )}
 
       <div className="tas__today" data-tas-today>
         <div className="tas__h">Today</div>
@@ -117,6 +130,9 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
         {test.result && (
           <div className={`tas__testresult tas__testresult--${test.result.ok ? 'ok' : 'bad'}`} data-tas-test-result role="status">
             <div>{test.result.ok ? test.result.say : `Failed: ${test.result.error}`}</div>
+            {!test.result.ok && test.result.anthropic && (
+              <div className="tas__muted" data-tas-test-anthropic>Anthropic said: {[test.result.anthropic.type, test.result.anthropic.message].filter(Boolean).join(' — ')}</div>
+            )}
             {test.result.model && <div className="tas__muted">Model {test.result.model}{test.result.ok ? ` · ${test.result.promptTokens} in / ${test.result.completionTokens} out · ${test.result.costUsd == null ? 'cost unknown' : usd(test.result.costUsd, 5)}` : ''}</div>}
             {test.result.ledger && <div className="tas__muted">{test.result.ledger.say}</div>}
           </div>
@@ -126,7 +142,21 @@ export function TaskAgentSettingsView({ s, draft, setDraft, keyText, setKeyText,
   );
 }
 
-const draftOf = (s) => ({ enabled: Boolean(s && s.enabled), model: (s && s.model) || 'claude-sonnet-4-6', dailyUsd: s ? String(s.dailyUsd) : '1.00', dailyRuns: s ? String(s.dailyRuns) : '10' });
+// The draft shows the SAVED values exactly (1.5 stays "1.50", never "15").
+const draftOf = (s) => ({ enabled: Boolean(s && s.enabled), model: (s && s.model) || 'claude-sonnet-4-6', dailyUsd: s ? Number(s.dailyUsd).toFixed(2) : '1.00', dailyRuns: s ? String(s.dailyRuns) : '10' });
+
+/** PURE. Which fields on screen differ from what NEURO has saved. */
+export function unsavedFields(s, draft) {
+  if (!s || !draft) return [];
+  const out = [];
+  if (Boolean(draft.enabled) !== Boolean(s.enabled)) out.push('Do this on/off');
+  if (draft.model !== s.model) out.push('model');
+  const u = String(draft.dailyUsd).trim();
+  if (!(/^\d+(\.\d{1,2})?$/.test(u) && Number(u) === Number(s.dailyUsd))) out.push('daily budget');
+  const r = String(draft.dailyRuns).trim();
+  if (!(/^\d+(\.0+)?$/.test(r) && Number(r) === Number(s.dailyRuns))) out.push('daily run limit');
+  return out;
+}
 
 export default function TaskAgentSettings() {
   const [s, setS] = useState(null);
@@ -158,7 +188,9 @@ export default function TaskAgentSettings() {
     } catch { setResult({ ok: false, say: 'Not saved — NEURO did not answer.' }); return false; } finally { setBusy(false); }
   };
 
-  const onSave = () => post({ enabled: draft.enabled, model: draft.model, dailyUsd: Number(draft.dailyUsd), dailyRuns: Number(draft.dailyRuns) }, 'Saved.');
+  // The typed text goes as-is; the server parses it and refuses anything it would
+  // otherwise have to round or reinterpret.
+  const onSave = () => post({ enabled: draft.enabled, model: draft.model, dailyUsd: String(draft.dailyUsd).trim(), dailyRuns: String(draft.dailyRuns).trim() }, 'Saved.');
   const onSaveKey = async () => {
     const k = keyText;
     setKeyText(''); // never keep it in the page longer than the request
