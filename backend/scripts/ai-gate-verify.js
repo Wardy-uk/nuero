@@ -99,7 +99,11 @@ async function getProfile(url, headers) {
   try {
     const res = await fetch(`${url.replace(/\/$/, '')}/api/ai-gate/profile`, { headers, signal: AbortSignal.timeout(8000) });
     if (!res.ok) return { error: `HTTP ${res.status}` };
-    return { body: await res.json() };
+    // VANTAGE answers every route as { ok, data } (its wrap()); NEURO answers bare.
+    // Unwrap exactly as services/vantage-client.js does, or VANTAGE's real ledger
+    // reads as "no id" (the first live run on 23 Oct did precisely that).
+    const payload = await res.json();
+    return { body: payload && payload.data !== undefined ? payload.data : payload };
   } catch (e) { return { error: e.cause && e.cause.code ? e.cause.code : e.message }; }
 }
 

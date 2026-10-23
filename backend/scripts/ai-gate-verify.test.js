@@ -136,7 +136,9 @@ test('--live end to end: both running apps are asked with their own PINs; a mism
     const s = http.createServer((req, res) => {
       seen[name] = req.headers[header];
       if (req.url !== '/api/ai-gate/profile' || req.headers[header] !== pin) { res.writeHead(401); return res.end('{}'); }
-      res.end(JSON.stringify({ ok: true, ledger: { id: reportId }, ...(name === 'neuro' ? { peer: { state: reportId === id ? 'match' : 'mismatch' } } : {}) }));
+      // The REAL shapes: NEURO answers bare; VANTAGE wraps every route as { ok, data }.
+      const profile = { ok: true, ledger: { id: reportId }, ...(name === 'neuro' ? { peer: { state: reportId === id ? 'match' : 'mismatch' } } : {}) };
+      res.end(JSON.stringify(name === 'vantage' ? { ok: true, data: profile } : profile));
     }).listen(0, '127.0.0.1', () => r(s));
   });
   const n = await serve('neuro', 'x-neuro-pin', 'neuro-secret-pin', id);
