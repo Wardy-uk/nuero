@@ -1,6 +1,8 @@
 # Session Handoff — 2026-10-23 (AI gate, Settings, receipt truth, Holding the week — release checks done, LOCAL ONLY)
 
-## Built, committed, NOT pushed or deployed
+## DEPLOYED 23 Oct 2026 (shadow) — NEURO main 11d0631f, VANTAGE main fa2c890; live verifier ✔ shared ledger f4388203; record in docs/release-2026-10-23-…md
+
+## Built, committed (history)
 Branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`), REBASED onto main `93e6a04f`, head `ca4064ad`. Commits, evidence and the reviewed Pi steps: `docs/release-2026-10-23-ai-gate-settings-receipts-week.md`.
 - B context linking in Settings only (`a26452a6`); A shared AI gate, shadow (`4ffdfe03`; VANTAGE `ai-gate-radar` `fa2c890`); C receipt truth (`5aba24d6` `e530423f` `ba845e54`); D Holding the week (`e9f50203`); ledger contract (`f71fecac` `14eb753b` `9291aac0`); test isolation (`d8ba9243` `ca4064ad`); incident (`e7e61925`).
 - Evidence on `ca4064ad`: NEURO 7,867 tests — 7,843 pass, 4 fail (all also fail on clean main), 20 environmental skips; Electron 80/80 twice in parallel; two-app race 8/8; VANTAGE 310/310; four builds OK.

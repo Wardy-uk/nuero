@@ -1,6 +1,6 @@
 # Release candidate — AI gate, Settings, receipt truth, Holding the week (23 Oct 2026)
 
-**Status:** rebased, re-tested, waiting for Nick's approval. Nothing is pushed, deployed or restarted, and no Pi configuration has been changed.
+**Status:** DEPLOYED 23 Oct 2026, ~10:36 UTC, in shadow mode (Nick approved). NEURO `main` `11d0631f` (release `eb96f57c` plus the verifier fix `11d0631f`, after a second rebase onto `fdc7fe17`), VANTAGE `main` `fa2c890`. The Pi configuration was applied idempotently, with backups `*.env.bak-ai-gate-2026-10-23`. The live verifier passed: ✔ one shared ledger `f4388203…`, both apps registered, identity matched, lock probe passed. No rollback.
 
 - NEURO branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`), rebased onto `main` **`93e6a04f`**. Head **`ca4064ad`**. The pre-rebase ref is kept as `saim-budget-gate-slice-prerebase-2026-10-23`.
 - VANTAGE branch `ai-gate-radar` at **`fa2c890`**, already level with VANTAGE `main` (`836b388`, 0 behind).
@@ -167,3 +167,42 @@ cd /mnt/data/nuero && PATH=$HOME/.nvm/versions/node/v22.22.2/bin:$PATH \
 - Context linking stays off: no scan, backfill or write.
 - No allowance granted, no Pi lock altered, no real action executed.
 - The cap and enforce mode remain unset. Both are Nick's decision.
+
+## Deployment record (23 Oct 2026)
+
+1. **Rebased again before deploying.** `main` had gained `6cc08e13` and `fdc7fe17`. On the new head `eb96f57c`, the full suite ran 7,868 tests: 7,844 pass, the same 4 clean-`main` failures, 20 skips. The Electron browser suites passed 80/80.
+2. **Pi configuration**, as `nickw`. A second run changed nothing.
+   - `/mnt/data/ai-gate` was created at `0700`.
+   - Both `.env` files were backed up with their modes preserved (`664` / `600`).
+   - Each `.env` gained exactly one line, `AI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db` (verified with `diff`).
+3. **Fast-forward pushes:** NEURO `fdc7fe17..eb96f57c`, VANTAGE `836b388..fa2c890`.
+4. **Pi build and test** (Node 22):
+   - NEURO frontend, kiosk (`saim/frontend`) and VANTAGE all built; lockfiles were unchanged.
+   - Backend suite on the Pi: 7,868 tests, 7,764 pass, **0 fail**, 104 skipped (no Electron or iOS checkout on the Pi).
+   - Netlify published the SAiM PWA (`eb96f57c`) and VANTAGE (`fa2c890`).
+   - The MCP gateway container was rebuilt for the new route inventory.
+5. **Restarts:** `neuro-backend`, then `vantage-backend`, both on Node 22. ⚠ `pm2 restart neuro-backend vantage-backend` restarted only the first name, so VANTAGE was restarted on its own. `saim-backend` was not restarted; it serves the kiosk build statically.
+6. **The first verifier run reported VANTAGE "no ledger id". That was a verifier bug, not a ledger fault.**
+   - VANTAGE wraps every response as `{ ok, data }`, and the verifier read the top level. The test stub had returned the unwrapped shape I intended, not the real one.
+   - Independent proof that the ledger was shared all along: VANTAGE's raw profile reported the same `f4388203…`, both apps had registered rows, and NEURO's own peer check said **match**. So there was no rollback.
+   - Fixed in `11d0631f`: the verifier now unwraps like `vantage-client`, the stub uses the real envelope, and the mutant is caught. Deployed as a CLI-only pull, with no restart.
+   - The second verifier run passed.
+7. **Health:** all 200.
+   - NEURO `/api/status` and `/api/canonical/now`; the frontend served the new bundle `index-B5aUr9Su.js`.
+   - SAiM backend `/api/health`; the kiosk served the new bundle `index-3bgYhba6.js`.
+   - VANTAGE `/api/health`, `/api/leading` and `/api/findings`.
+8. **Live UI**, checked read-only in a real browser against production. Screenshots are in the session scratchpad.
+   - **Settings → AI budget:** "Shadow mode. No daily cap — Nick has not chosen one… nothing is blocked."; ledger id `f4388203` registered by neuro and vantage; "VANTAGE writes the same ledger ✓".
+   - **Holding the week:** all four cards (Keeping my word, Monday report, Next, Needs your judgement) open their detail sheets in place, with no error.
+   - **Drafts → Today:** renders on desktop and phone.
+   - **No horizontal overflow:** desktop at 1440, phone at 390 (Surface, Now, Drafts), kiosk at 1024×552 and 1280×720.
+9. ⚠ **Automatic context linking was already ON before this release.** Nick enabled it from Brain Health on 22 Oct at 15:59, and its backfill (run 1) ran then. The release did not change it:
+   - the activation record's hash is identical before and after;
+   - there are still two runs (that backfill and last night's 03:40 run) and 39 links;
+   - no new run happened.
+   Settings now shows it **On**, with "Turn automatic linking off" available. It was left untouched.
+10. **Governed state unchanged** against the pre-deploy baseline:
+    - prepared actions 61, attempts 47, external-write ledger 143, authority grants 3, authority events 6, intent grants 43;
+    - the `SAIM_PREPARED_MOVE_EXECUTION` line and the `governed_execution` flag are unchanged;
+    - no new message, calendar write, allowance or authority change;
+    - the only gate tickets are 4 shadow-admitted `embeddings_index` calls (normal indexing).
