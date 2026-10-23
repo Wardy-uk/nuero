@@ -303,7 +303,11 @@ router.post('/greeting/hear', express.raw({ type: 'application/octet-stream', li
     return res.status(502).json({ ok: false, reason: out.why });
   }
   // The fact it was heard, never the words (a room in the house).
-  console.log(`[presence] ${room}: transcribed ${Math.round(pcm.length / 32000)}s of audio (${out.text.length} chars)`);
+  // How loud the clip was (peak of 16-bit samples) — tells "the mic gave silence"
+  // apart from "nobody spoke", without keeping anything that was said.
+  let peak = 0;
+  for (let i = 0; i + 1 < pcm.length; i += 2) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i)));
+  console.log(`[presence] ${room}: transcribed ${Math.round(pcm.length / 32000)}s of audio, peak ${peak} (${out.text.length} chars)`);
   return res.json({ ok: true, text: out.text });
 });
 
