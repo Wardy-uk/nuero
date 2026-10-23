@@ -109,11 +109,15 @@ const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.flatMap((i) => [
   ...(i.group ? VIEW_GROUPS[i.group].map((t) => [t.id, g.id]) : []),
 ])));
 
+// Option B (Brief 003): when the `saim_desktop_workspace` switch is on, SAiM
+// leads the primary row and Now stays right beneath it as the fallback.
+const SAIM_ITEM = { id: 'saim', label: 'SAiM', icon: '◉' };
+
 function readOpenGroups() {
   try { return JSON.parse(localStorage.getItem('sidebar_groups_open') || '{}') || {}; } catch { return {}; }
 }
 
-export default function Sidebar({ activeView, onNavigate, open }) {
+export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = false }) {
   const [workOnly] = useWorkOnly();
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
@@ -207,7 +211,7 @@ export default function Sidebar({ activeView, onNavigate, open }) {
       <div className="sidebar-nav">
         {/* Primary: Now / Capture / Ask / Actions / Commitments */}
         <div className="sidebar-group sidebar-group-primary">
-          {PRIMARY_ITEMS.map(item => renderItem({ ...item, primary: true }))}
+          {[...(saimWorkspace ? [SAIM_ITEM] : []), ...PRIMARY_ITEMS].map(item => renderItem({ ...item, primary: true }))}
         </div>
 
         {GROUPS.filter((g) => !(workOnly && WORK_ONLY_HIDDEN_GROUPS.has(g.id))).map(group => (

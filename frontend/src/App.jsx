@@ -11,6 +11,8 @@ import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
 import CacheIndicator from './components/CacheIndicator';
 import SessionBadge from './components/SessionBadge';
+import useFeatureFlag from './useFeatureFlag';
+import { SAIM_FLAG, shouldOpenSaim, isDefaultLaunch } from './saimWorkspace';
 import './App.css';
 
 // ── Eager: the surfaces used from a standing start ───────────────────────────
@@ -54,6 +56,8 @@ const lazyLoad = (load) => lazy(() => load().then((m) => {
 const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
 const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
+// The SAiM workspace (Brief 003): only mounted when its switch is on.
+const SaimWorkspace = lazyLoad(() => import('./components/SaimWorkspace'));
 const PeopleBoard = lazyLoad(() => import('./components/PeopleBoard'));
 const StandupEditor = lazyLoad(() => import('./components/StandupEditor'));
 const TodoPanel = lazyLoad(() => import('./components/TodoPanel'));
@@ -276,6 +280,21 @@ function AuthenticatedApp() {
     return () => registerVaultOpener(null);
   }, []);
   const [navContext, setNavContext] = useState(() => readNueroLaunchIntent().context); // context passed from Focus to drill-down views
+  // Option B (Brief 003): the `saim_desktop_workspace` switch. Unreadable = off,
+  // and off is today's behaviour exactly. A DEFAULT launch (no ?view= / ?item=)
+  // moves from Now to SAiM once the switch reads on; an explicit ?view=today
+  // always stays on Now.
+  const saimFlag = useFeatureFlag(SAIM_FLAG);
+  const saimOn = saimFlag.enabled === true;
+  const defaultLaunchRef = React.useRef(isDefaultLaunch(window.location.search));
+  useEffect(() => {
+    if (!saimFlag.known && !saimOn) return; // still asking, or could not ask: stay where we are
+    if (shouldOpenSaim({ defaultLaunch: defaultLaunchRef.current, activeView, flagOn: saimOn })) {
+      setActiveView('saim');
+      syncNueroLaunchIntent('saim');
+    }
+    defaultLaunchRef.current = false;
+  }, [saimFlag.known, saimOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const [weekendOverride, setWeekendOverride] = useState(false);
   const weekend = isWeekend() && !weekendOverride;
   const location = useLocation();
@@ -402,6 +421,8 @@ function AuthenticatedApp() {
     switch (activeView) {
       case 'state': return <StateOfPlay onNavigate={handleNavigate} />;
       case 'today': return <AdhdPanel onNavigate={handleNavigate} />;
+      // Off (or unreadable), ?view=saim lands on Now: the fallback is the old home.
+      case 'saim': return saimOn ? <SaimWorkspace onNavigate={handleNavigate} /> : <AdhdPanel onNavigate={handleNavigate} />;
       case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
@@ -472,7 +493,7 @@ function AuthenticatedApp() {
       </Topbar>
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <div className="app-body">
-        <Sidebar activeView={activeView} onNavigate={handleNavigate} open={sidebarOpen} />
+        <Sidebar activeView={activeView} onNavigate={handleNavigate} open={sidebarOpen} saimWorkspace={saimOn} />
         <main className="main-panel">
           {/* ⚠ Inside the shell, not around it: the sidebar and chat must keep
               working when a view throws. Before this, one panel crashing
@@ -510,10 +531,18 @@ function AuthenticatedApp() {
         {/* Matches the sidebar's primary group: Now first, on both. Two navs
             disagreeing about what the main screen is was how "Today" ended up
             being the view nobody opened. */}
-        <button className={activeView === 'today' ? 'active' : ''} onClick={() => handleNavigate('today')}>
-          <span className="bottom-nav-icon">&#x25D0;</span>
-          <span>Now</span>
-        </button>
+        {saimOn ? (
+          // Option B: SAiM is the home on the phone-width bar too; Now stays in the sidebar and "Open Now".
+          <button className={activeView === 'saim' ? 'active' : ''} onClick={() => handleNavigate('saim')}>
+            <span className="bottom-nav-icon">&#x25C9;</span>
+            <span>SAiM</span>
+          </button>
+        ) : (
+          <button className={activeView === 'today' ? 'active' : ''} onClick={() => handleNavigate('today')}>
+            <span className="bottom-nav-icon">&#x25D0;</span>
+            <span>Now</span>
+          </button>
+        )}
         <button className={activeView === 'todos' ? 'active' : ''} onClick={() => handleNavigate('todos')}>
           <span className="bottom-nav-icon">&#x2611;</span>
           <span>Tasks</span>

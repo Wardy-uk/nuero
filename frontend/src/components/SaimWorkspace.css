@@ -1,0 +1,71 @@
+/* The SAiM workspace (Brief 003). The scene keeps Now's own styles
+   (.adhd__now--situation); this file only adds the header and the Why strip. */
+
+.saim-ws__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.saim-ws__title {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.saim-ws__now {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.saim-ws__now:hover { color: var(--text-primary); border-color: var(--accent); }
+
+.saim-ws__body { display: flex; flex-direction: column; gap: 1rem; }
+.saim-ws__status { margin: 0; color: var(--text-secondary); }
+
+.saim-why {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+}
+
+.saim-why__title {
+  margin: 0 0 0.2rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.saim-why__row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+@container now (max-width: 560px) {
+  .saim-why__row { grid-template-columns: 1fr; gap: 0.15rem; }
+}
+@media (max-width: 600px) {
+  .saim-why__row { grid-template-columns: 1fr; gap: 0.15rem; }
+}
+
+.saim-why__label { color: var(--text-muted); }
+.saim-why__line { margin: 0; }
+.saim-why__list { margin: 0; padding-left: 1.1rem; }
+.saim-why__list li { margin: 0.1rem 0; }
+.saim-why__meta { color: var(--text-muted); }
+.saim-why__warn, .saim-why__line--warn { color: var(--warning, #f5a524); }
+.saim-why__age { margin: 0; color: var(--text-muted); font-size: 0.8rem; }

@@ -229,6 +229,19 @@ const FLAGS = [
       + 'until you confirm it. Off: she only does this when you press “Make this ready”.',
     impact: 'one AI draft per changed candidate; no external writes',
   },
+  {
+    // 23 Oct 2026 (Build Brief 003, Option B): the SAiM workspace as NEURO
+    // Desktop's primary tab. Presentation only: it reads the same
+    // /api/canonical/now and reuses Now's governed callbacks. Off = Now is the
+    // home exactly as before; ?view=today always reaches Now either way.
+    key: 'saim_desktop_workspace',
+    env: 'SAIM_DESKTOP_WORKSPACE',
+    default: false,
+    label: 'SAiM workspace replaces Now',
+    description: 'NEURO Desktop opens on the SAiM workspace instead of Now: the same situation, with why it leads, '
+      + 'what is held back and what SAiM can’t see shown beside it. Now stays one click away. Off: Now is the home, as before.',
+    impact: 'desktop navigation only; nothing is written or sent',
+  },
 ];
 
 const BY_KEY = new Map(FLAGS.map((f) => [f.key, f]));

@@ -413,7 +413,8 @@ test('the shared component holds no URL and no send/approve call — the shells 
   const src = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'), 'utf-8');
   assert.ok(!/['"`]\/api\//.test(src), 'no API path in shared UI');
   assert.ok(!/approve|execute|intent-grant|challenge/i.test(src.replace(/\/\/.*$/gm, '')), 'no approval or execution in code');
-  for (const f of ['saim/app/src/promiseDelivery.mjs', 'frontend/src/components/AdhdPanel.jsx']) {
+  // Brief 003: the desktop's delivery-note call lives in NowScene (shared by Now and SAiM).
+  for (const f of ['saim/app/src/promiseDelivery.mjs', 'frontend/src/components/NowScene.jsx']) {
     const body = fs.readFileSync(path.join(ROOT, f), 'utf-8');
     assert.ok(body.includes('/api/promises/${encodeURIComponent(key)}/prepare'), `${f} calls only the prepare route`);
   }

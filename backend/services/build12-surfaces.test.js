@@ -106,9 +106,13 @@ test('situation is the default look; the corridor and the list stay reachable on
 });
 
 test('the desktop Now draws the shared composition in the desktop profile and does not draw NowSituation beside it', () => {
+  // Brief 003: the scene moved into NowScene, shared by Now and the SAiM workspace.
   const src = read('frontend', 'src', 'components', 'AdhdPanel.jsx');
-  assert.match(src, /<Situation[\s\S]*profile="desktop"/);
-  assert.match(src, /!\(attention\.data\?\.presentation[^)]*\) && \(\s*<NowSituation/);
+  const scene = read('frontend', 'src', 'components', 'NowScene.jsx');
+  assert.match(scene, /<Situation[\s\S]*profile="desktop"/);
+  assert.match(scene, /presentation\.contract === 'presentation-v1'/, 'hasScene is the presentation-v1 test');
+  assert.match(src, /<NowScene\b/, 'Now draws the shared scene');
+  assert.match(src, /!hasScene\(attention\.data\) && \(\s*<NowSituation/);
 });
 
 test('the kiosk hides its thumb-sized nav on the ambient surface, behind a deliberate reveal', () => {

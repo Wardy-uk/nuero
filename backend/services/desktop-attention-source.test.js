@@ -54,7 +54,8 @@ function code(source) {
 // Every desktop file that renders work. Listed rather than globbed, so adding a
 // new work surface is a deliberate act that includes adding it here.
 // Build 10E: Briefing and Focus were MERGED into Now and deleted.
-const WORK_SURFACES = ['AdhdPanel.jsx', 'AttentionCard.jsx'];
+// Brief 003: NowScene (the shared scene) and SaimWorkspace (the SAiM tab) render work too.
+const WORK_SURFACES = ['AdhdPanel.jsx', 'AttentionCard.jsx', 'NowScene.jsx', 'SaimWorkspace.jsx'];
 
 test('no desktop work surface logs an outcome — /api/focus/action-done is gone', () => {
   for (const file of WORK_SURFACES) {
@@ -73,9 +74,10 @@ test('no desktop work surface logs an outcome — /api/focus/action-done is gone
 });
 
 test('the desktop work surfaces render the shared canonical card, not their own', () => {
-  for (const file of ['AdhdPanel.jsx']) {
+  for (const file of ['AdhdPanel.jsx', 'NowScene.jsx']) {
     const source = read(file);
     assert.ok(source.includes('AttentionCard'), `${file} must render the shared AttentionCard`);
+    if (file === 'NowScene.jsx') continue; // the scene is handed the feed; it never reads one of its own
     assert.ok(source.includes('useAttention'), `${file} must read the canonical feed`);
   }
   // Briefing and Focus are gone (merged into Now), not merely unlinked.
@@ -116,7 +118,7 @@ test('there is no legacy suppression path at all — a card without a record say
 });
 
 test('an unreadable pool is never rendered as a clear day on any desktop surface', () => {
-  for (const file of ['AdhdPanel.jsx']) {
+  for (const file of ['AdhdPanel.jsx', 'SaimWorkspace.jsx']) {
     const source = read(file);
     assert.ok(
       source.includes('poolAvailable === false'),
