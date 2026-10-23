@@ -23,7 +23,7 @@ router.get('/profile', (req, res) => {
     return res.status(400).json({ ok: false, error: 'day must be YYYY-MM-DD' });
   }
   try {
-    res.json({ ...gate.profile({ day: day || null }), neuroClasses: CLASS_NAMES.length });
+    res.json({ ...gate.profile({ day: day || null }), neuroClasses: CLASS_NAMES.length, peer: require('../services/ai-gate-peer').last() });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

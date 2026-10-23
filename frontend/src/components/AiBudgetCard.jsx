@@ -20,12 +20,47 @@ const REASON_SAY = {
   'output-over-bound': 'the output bound was over the class bound',
   concurrency: 'too many calls were already running',
   volume: 'the class volume limit was reached',
+  'daily-cap': 'it would have taken today past the daily cap',
 };
+
+const PEER_SAY = {
+  match: null,
+  mismatch: 'NEURO and VANTAGE are writing DIFFERENT ledgers',
+  unreachable: 'VANTAGE could not be asked which ledger it writes',
+  'not-configured': 'VANTAGE is not configured here, so its ledger could not be compared',
+  unknown: 'Not yet checked whether VANTAGE writes the same ledger',
+};
+
+/** Where the shared ledger is, whether it is configured properly, and whether VANTAGE writes the same one. */
+export function LedgerLine({ profile }) {
+  const cfg = profile.config || {};
+  const led = profile.ledger;
+  const peer = profile.peer;
+  const peerSay = peer ? (PEER_SAY[peer.state] === undefined ? peer.say : PEER_SAY[peer.state]) : null;
+  return (
+    <div className="aib__ledger" data-testid="aib-ledger">
+      {cfg.ok === false && (
+        <p className="aib__note" role="alert">The shared ledger is misconfigured: {(cfg.problems || []).join(' ')}</p>
+      )}
+      {peer && peer.state === 'mismatch' && <p className="aib__note" role="alert">{peer.say}</p>}
+      <p className="aib__muted">
+        Shared ledger: {led ? <><code>{led.path}</code>{led.id ? ` · id ${String(led.id).slice(0, 8)}` : ''}{led.apps ? ` · registered: ${led.apps.map((a) => a.app).join(', ') || 'none'}` : ''}</> : 'not open'}
+        {peer && peer.state === 'match' ? ' · VANTAGE writes the same ledger ✓' : ''}
+        {peer && peer.state !== 'match' && peer.state !== 'mismatch' && peerSay ? ` · ${peerSay}.` : ''}
+      </p>
+    </div>
+  );
+}
 
 export function AiBudgetView({ profile, error = null }) {
   if (!profile) return <p className="admin-card-detail">{error || 'Loading the AI budget…'}</p>;
   if (!profile.known) {
-    return <p className="admin-card-detail" role="alert">The shared AI ledger couldn’t be read — this is not “nothing spent”. {profile.degraded || ''}</p>;
+    return (
+      <div className="aib">
+        <p className="admin-card-detail" role="alert">The shared AI ledger couldn’t be read — this is not “nothing spent”. {profile.degraded || ''}</p>
+        <LedgerLine profile={profile} />
+      </div>
+    );
   }
   const share = profile.share || {};
   const classes = (profile.byClass || []).slice(0, 14);
@@ -76,6 +111,7 @@ export function AiBudgetView({ profile, error = null }) {
         <p className="aib__muted">Last {profile.history.length} days: {profile.history.map((h) => `${h.day.slice(5)} ${usd(h.usd)}`).join(' · ')}</p>
       )}
       {profile.degraded && <p className="aib__note" role="alert">{profile.degraded}</p>}
+      <LedgerLine profile={profile} />
     </div>
   );
 }

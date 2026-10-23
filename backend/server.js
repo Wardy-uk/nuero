@@ -2,6 +2,9 @@ require('dotenv').config();
 // Pre-rename SARA_* variables still in a deployed .env are carried over to
 // SAIM_* here, BEFORE any module reads them. See shared/legacy-env.cjs.
 require('../shared/legacy-env.cjs').applyLegacyEnv();
+// The shared NEURO + VANTAGE AI ledger: an explicit ABSOLUTE AI_GATE_DB_PATH whose
+// folder exists and is writable, or NEURO refuses to start, saying why.
+require('./services/ai-gate').assertLedgerConfig('NEURO');
 
 // Prevent EPIPE errors from crashing the process
 process.on('uncaughtException', (err) => {
@@ -446,6 +449,10 @@ async function start() {
   // `email-triage` (scheduler-driven) is the only inbox scan now.
 
   scheduler.start();
+
+  // Record that NEURO writes this ledger, then compare it with VANTAGE's.
+  require('./services/ai-gate').register('neuro');
+  require('./services/ai-gate-peer').start();
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] NUERO running on 0.0.0.0:${PORT}`);

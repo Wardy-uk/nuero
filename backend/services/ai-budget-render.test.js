@@ -4,6 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
 const path = require('path');
 const React = require('react');
 const { renderToString } = require('react-dom/server');
@@ -71,4 +72,56 @@ test('Settings: an unreadable ledger is never rendered as nothing spent', () => 
   assert.match(out, /EACCES/);
   const empty = html(React.createElement(V.AiBudgetView, { profile: profile({ calls: 0, spendUsd: 0, byClass: [], refusals: [], wouldRefuse: 0, unknownCostCalls: 0, pessimisticCalls: 0, unpricedModels: [] }) }));
   assert.match(empty, /No model, embedding or TTS calls have gone through the gate today/);
+});
+
+test('Settings: where the shared ledger is, and whether VANTAGE writes the same one', () => {
+  const ledger = { id: '0c9a3e1f-1111-4222-8333-444455556666', path: '/mnt/data/ai-gate/ledger.db', apps: [{ app: 'neuro' }, { app: 'vantage' }] };
+  const ok = html(React.createElement(V.AiBudgetView, { profile: profile({ config: { ok: true, problems: [] }, ledger, peer: { state: 'match' } }) }));
+  assert.match(ok, /Shared ledger: <code>\/mnt\/data\/ai-gate\/ledger\.db<\/code> · id 0c9a3e1f · registered: neuro, vantage/);
+  assert.match(ok, /VANTAGE writes the same ledger ✓/);
+  assert.doesNotMatch(ok, /role="alert">The shared ledger is misconfigured/);
+
+  const mm = html(React.createElement(V.AiBudgetView, { profile: profile({ ledger, peer: { state: 'mismatch', say: 'The two apps write DIFFERENT ledgers (/mnt/data/ai-gate/ledger.db vs /home/x/ledger.db). Set the same absolute AI_GATE_DB_PATH in both.' } }) }));
+  assert.match(mm, /role="alert">The two apps write DIFFERENT ledgers/);
+  assert.doesNotMatch(mm, /writes the same ledger ✓/);
+
+  const down = html(React.createElement(V.AiBudgetView, { profile: profile({ ledger, peer: { state: 'unreachable', say: 'x' } }) }));
+  assert.match(down, /VANTAGE could not be asked which ledger it writes/);
+  assert.doesNotMatch(down, /writes the same ledger ✓/, 'unreachable is never a match');
+
+  // Misconfigured AND unreadable: the reason is shown, not just "couldn’t be read".
+  const bad = html(React.createElement(V.AiBudgetView, { profile: { ok: true, known: false, degraded: 'AI_GATE_DB_PATH is not set, so there is no shared AI ledger.', config: { ok: false, problems: ['AI_GATE_DB_PATH is not set.'] }, ledger: null, peer: { state: 'unknown' } } }));
+  assert.match(bad, /couldn’t be read — this is not “nothing spent”/);
+  assert.match(bad, /role="alert">The shared ledger is misconfigured: AI_GATE_DB_PATH is not set\./);
+  assert.match(bad, /Shared ledger: not open/);
+});
+
+test('VANTAGE Admin: the same ledger line, and a loud warning when NEURO is not on its ledger', async (t) => {
+  const roots = [path.resolve(__dirname, '..', '..', '..'), path.resolve(__dirname, '..', '..', '..', '..', '..', '..')];
+  const admin = roots.flatMap((r) => [
+    path.join(r, 'Service Desk Continual Improvement', '.claude', 'worktrees', 'ai-gate', 'frontend', 'src', 'views', 'Admin.jsx'),
+    path.join(r, 'Service Desk Continual Improvement', 'frontend', 'src', 'views', 'Admin.jsx'),
+  ]).find((p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').includes('export function LedgerLine'));
+  if (!admin) return t.skip('no VANTAGE checkout with the ledger line beside this one');
+  const out = await esbuild.build({
+    entryPoints: [admin], bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
+    external: ['react', 'react-dom'], logLevel: 'silent',
+    plugins: [{ name: 'stub', setup(b) {
+      b.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
+      b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
+      b.onResolve({ filter: /api\.js$/ }, () => ({ path: 'api', namespace: 'stub' }));
+      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const api = {}; export const setPin = () => {};', loader: 'js' }));
+    } }],
+  });
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
+  const { AiBudgetView } = mod.exports;
+  const ledger = (apps) => ({ id: '0c9a3e1f-1111-4222-8333-444455556666', path: '/mnt/data/ai-gate/ledger.db', apps: apps.map((app) => ({ app })) });
+  const both = html(React.createElement(AiBudgetView, { profile: profile({ config: { ok: true, problems: [] }, ledger: ledger(['neuro', 'vantage']) }) }));
+  assert.match(both, /Shared ledger: <code>\/mnt\/data\/ai-gate\/ledger\.db<\/code> · id 0c9a3e1f · registered: neuro, vantage/);
+  assert.doesNotMatch(both, /NEURO has not registered/);
+  const alone = html(React.createElement(AiBudgetView, { profile: profile({ ledger: ledger(['vantage']) }) }));
+  assert.match(alone, /NEURO has not registered on this ledger/);
+  const bad = html(React.createElement(AiBudgetView, { profile: { known: false, degraded: 'x', config: { ok: false, problems: ['AI_GATE_DB_PATH is not set.'] }, ledger: null } }));
+  assert.match(bad, /The shared ledger is misconfigured: AI_GATE_DB_PATH is not set\./);
 });

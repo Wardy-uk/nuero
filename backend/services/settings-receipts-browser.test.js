@@ -66,6 +66,9 @@ const PROFILE = {
   byApp: [], wouldRefuse: 2,
   refusals: [{ reason: 'unknown-price', count: 2, classes: ['neuro:tts_speak'] }, { reason: 'unbounded-output', count: 2, classes: ['neuro:tts_speak'] }],
   events: {}, unpricedModels: ['openai/gpt-audio-mini'], history: [{ day: '2026-10-21', usd: 0.51 }, { day: '2026-10-22', usd: 0.41 }], degraded: null,
+  config: { ok: true, path: '/mnt/data/ai-gate/ledger.db', problems: [] },
+  ledger: { id: '0c9a3e1f-1111-4222-8333-444455556666', path: '/mnt/data/ai-gate/ledger.db', apps: [{ app: 'neuro' }, { app: 'vantage' }] },
+  peer: { state: 'match', say: 'Both apps write the same shared ledger.' },
 };
 const NOTE = 'Projects/Working/Call metrics in Nova (private draft).md';
 const DRAFTS = {
@@ -169,8 +172,10 @@ test.before(async () => {
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.SR_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron'); const fs = require('fs'); const path = require('path');
+${LOAD_WITH_RETRY}
 const job = JSON.parse(fs.readFileSync(process.env.SR_JOB, 'utf8'));
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -180,7 +185,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: job.w, height: job.h, useContentSize: true, show: false, webPreferences: { offscreen: true } });
   win.setContentSize(job.w, job.h);
-  await win.loadURL(job.url);
+  await loadWithRetry(win, job.url);
   const js = (c) => win.webContents.executeJavaScript(c);
   const t0 = Date.now(); while (Date.now() - t0 < 20000 && !(await js('!!document.querySelector(' + JSON.stringify(job.wait) + ')'))) await sleep(150);
   await sleep(600);
@@ -246,6 +251,8 @@ test('Settings: AI budget (shadow) — today’s shared spend, Radar’s share, 
     assert.match(r.aib, /Radar — 73% of today/);
     assert.match(r.aib, /the model has no known price/);
     assert.match(r.aib, /openai\/gpt-audio-mini/);
+    assert.match(r.aib, /Shared ledger: \/mnt\/data\/ai-gate\/ledger\.db · id 0c9a3e1f · registered: neuro, vantage/);
+    assert.match(r.aib, /VANTAGE writes the same ledger ✓/);
   }
 });
 

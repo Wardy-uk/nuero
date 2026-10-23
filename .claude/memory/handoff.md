@@ -1,4 +1,4 @@
-# Session Handoff — 2026-10-22 (AI gate, Settings, receipt truth, Holding the week — LOCAL ONLY)
+# Session Handoff — 2026-10-23 (AI gate, Settings, receipt truth, Holding the week — release checks done, LOCAL ONLY)
 
 ## Built, committed, NOT pushed or deployed
 Branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`, from main 90a8b826):
@@ -9,7 +9,8 @@ Branch `saim-budget-gate-slice` (worktree `.claude/worktrees/budget-gate`, from 
 Nothing touched: Pi lock, allowances, context-linking enable/backfill, real governed actions.
 
 ## Before deploying
-- Deploy NEURO and VANTAGE together (shared gate file; parity test in each). The ledger lives at `~/.ai-gate/ledger.db` for the user both apps run as on the Pi — check they share a user, or set `AI_GATE_DB_PATH` identically in both `.env`s.
+- Deploy NEURO and VANTAGE together (shared gate file; parity test in each).
+- ⚠ **FIRST** add `AI_GATE_DB_PATH=/mnt/data/ai-gate/ledger.db` to BOTH `/mnt/data/nuero/backend/.env` and `/mnt/data/vantage/backend/.env`, and `install -d -m 2775 /mnt/data/ai-gate` — without them both servers refuse to start (by design, 23 Oct). After restarting both: `node backend/scripts/ai-gate-verify.js` (read-only) must print ✔. Contract: `docs/ai-gate-inventory.md`.
 - VANTAGE on the laptop has no better-sqlite3; its tests pass with `NODE_PATH=…/nuero/node_modules`.
 
 ## Waiting on Nick
