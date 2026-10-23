@@ -353,15 +353,29 @@ function EscalatePanel({ ticketKey, reasons, onEscalated, onClose, showDetail = 
   );
 }
 
-// ── One ticket ───────────────────────────────────────────────────────────────
+// ── One ticket: a compact row that expands ──────────────────────────────────
+
+/** The one thing at the end of a row: a promised update first, else how fresh the ticket is. */
+function rowTail(item) {
+  const open = (item.watch?.commitments || []).filter((c) => c.state === 'open')
+    .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))[0];
+  if (open) {
+    return { cls: open.missed ? 'esc-tail esc-tail-alert' : 'esc-tail esc-tail-warn', text: `update ${clockLabel(open.dueAt).replace(' today', '')} · ${untilLabel(open.dueAt).replace('overdue by', 'overdue')}` };
+  }
+  if ((item.watch?.commitments || []).some((c) => c.state === 'proposed')) return { cls: 'esc-tail esc-tail-ask', text: 'confirm a commitment' };
+  const touched = ageDays(item.esc?.updated);
+  if (touched != null) return { cls: touched >= 7 ? 'esc-tail esc-tail-cold' : 'esc-tail', text: `touched ${agoLabel(touched)}` };
+  if (item.listening) return { cls: 'esc-tail', text: `listening until ${dayMonth(item.watch.listeningUntil)}` };
+  return null;
+}
 
 /**
- * Everything about one ticket on one card. A ticket that is escalated says how
- * (urgency / customer / tier); a watched one carries the customer's latest
- * reply and any update Nick promised. A reply NEURO judged a thank-you is
- * shown muted, so "it went quiet" and "it was filtered" stay different.
+ * One ticket, one line: key, summary, status, how it got here, and whatever is
+ * due. Click the line to see the rest — the customer's latest reply, the
+ * updates promised, and the actions. A reply NEURO judged a thank-you is shown
+ * muted, so "it went quiet" and "it was filtered" stay different.
  */
-export function TicketCard({ item, busy, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated }) {
+export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated }) {
   const { esc, watch } = item;
   const route = escalationRoute(esc);
   const latest = watch?.replies?.[0];
@@ -369,76 +383,71 @@ export function TicketCard({ item, busy, highlighted, escalating, reasons, onWat
   // "touched", not "replied": Jira bumps `updated` for NOVA triage, a
   // round-robin assignment or the CSAT bot as readily as for a human.
   const touched = ageDays(esc?.updated);
-  const cls = ['esc-ticket-card'];
-  if (item.needs.length) cls.push('esc-ticket-card-needs');
-  if (highlighted) cls.push('esc-ticket-card-highlight');
-  if (item.listening) cls.push('esc-ticket-card-quiet');
+  const tail = rowTail(item);
+  const open = expanded || escalating;
+  const cls = ['esc-trow'];
+  if (item.needs.length) cls.push('esc-trow-needs');
+  if (highlighted) cls.push('esc-trow-highlight');
+  if (item.listening) cls.push('esc-trow-quiet');
+  if (open) cls.push('esc-trow-open');
   return (
     <article className={cls.join(' ')} id={`esc-ticket-${item.key}`}>
-      <div className="esc-ticket-main">
-      <div className="esc-watch-head">
-        <a href={item.url || '#'} target="_blank" rel="noreferrer" className="esc-watch-key"
-          onClick={() => { if (watch?.unread) onRead(item.key); }}>{item.key}</a>
-        <span className="esc-watch-summary">{item.summary || '—'}</span>
-        <span className="esc-watch-badges">
-          {item.needs.map((n) => <span key={n} className="esc-pill esc-pill-alert">{n}</span>)}
-          {route && <span className="esc-pill esc-pill-esc" title={route.title}>{route.label}</span>}
+      <div className="esc-trow-line" role="button" tabIndex={0} aria-expanded={open}
+        onClick={() => onToggle?.(item.key)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle?.(item.key); } }}>
+        <span className="esc-trow-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <a href={item.url || '#'} target="_blank" rel="noreferrer" className="esc-trow-key"
+          onClick={(e) => { e.stopPropagation(); if (watch?.unread) onRead(item.key); }}>{item.key}</a>
+        <span className="esc-trow-summary" title={item.summary}>{item.summary || '—'}</span>
+        <span className="esc-trow-pills">
+          {item.needs.filter((n) => !/^update due|^promised update|^confirm/.test(n)).map((n) => <span key={n} className="esc-pill esc-pill-alert">{n}</span>)}
+          {route && <span className="esc-pill esc-pill-esc" title={route.title}>{route.label.replace('escalated · ', '')}</span>}
           {watch && !item.listening && <span className="esc-pill esc-pill-watch" title="You get a push when the customer replies">watching</span>}
-          {item.listening && (
-            <span className="esc-pill" title="Resolved. Only a real follow-up from the customer — not a thank-you — will flag it.">
-              resolved · listening until {dayMonth(watch.listeningUntil)}
-            </span>
-          )}
-          {item.status && <span className="esc-pill">{item.status}</span>}
         </span>
+        <span className="esc-trow-status">{item.status || ''}</span>
+        <span className="esc-trow-tail">{tail && <span className={tail.cls}>{tail.text}</span>}</span>
       </div>
 
-      {esc && (
-        <div className="esc-watch-notes">
-          <span>{esc.priority || 'No priority'}</span>
-          <span>{esc.assignee || 'Unassigned'}</span>
-          {raised != null && <span title="When this escalation was raised">raised {agoLabel(raised)}</span>}
-          {touched != null && (
-            <span className={touched >= 7 ? 'esc-row-touched esc-row-touched-cold' : 'esc-row-touched'}
-              title="Last change of any kind on the ticket — includes NOVA automation, not just a human reply">touched {agoLabel(touched)}</span>
-          )}
-        </div>
-      )}
-      {watch && (!watch.baselineTaken || watch.lastError) && (
-        <div className="esc-watch-notes">
-          {!watch.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
-          {watch.lastError && <span className="esc-row-touched-cold" title={watch.lastError}>couldn’t check</span>}
-        </div>
-      )}
-
-      {latest && (
-        <blockquote className={latest.flagged ? 'esc-watch-reply' : 'esc-watch-reply esc-watch-reply-muted'}>
-          <span className="esc-comment-author">
-            {latest.author} · {dayMonth(latest.created)}
-            {!latest.flagged && <span className="esc-tag">judged a thank-you</span>}
-            {latest.judgedBy === 'model-unavailable' && <span className="esc-tag" title="The model could not judge it, so it was flagged rather than dropped">not judged</span>}
-          </span>
-          <span className="esc-watch-reply-text">{latest.excerpt}</span>
-        </blockquote>
-      )}
-
-      </div>
-
-      <div className="esc-ticket-side">
-        {watch && onCommit && <Commitments t={watch} busy={busy} onCommit={onCommit} />}
-        {!escalating && (
-          <div className="esc-ticket-actions">
-            {!watch && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(item.key)}>Watch</button>}
-            {watch?.unread > 0 && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onRead(item.key)}>Mark read</button>}
-            <button type="button" className="esc-mini" onClick={() => onEscalate(item.key)}>{esc ? 'Escalate again' : 'Escalate'}</button>
-            {watch && <button type="button" className="esc-mini" disabled={busy} onClick={() => onUnwatch(item.key)}>Unwatch</button>}
+      {open && (
+        <div className="esc-trow-body">
+          <div className="esc-watch-notes">
+            {esc && <span>{esc.priority || 'No priority'}</span>}
+            {esc && <span>{esc.assignee || 'Unassigned'}</span>}
+            {raised != null && <span title="When this escalation was raised">escalated {agoLabel(raised)}</span>}
+            {touched != null && (
+              <span className={touched >= 7 ? 'esc-row-touched esc-row-touched-cold' : 'esc-row-touched'}
+                title="Last change of any kind on the ticket — includes NOVA automation, not just a human reply">touched {agoLabel(touched)}</span>
+            )}
+            {route && <span title={route.title}>{route.label}</span>}
+            {item.listening && <span>resolved · listening until {dayMonth(watch.listeningUntil)}</span>}
+            {watch && !watch.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
+            {watch?.lastError && <span className="esc-row-touched-cold" title={watch.lastError}>couldn’t check</span>}
           </div>
-        )}
-      </div>
 
-      {escalating && (
-        <div className="esc-ticket-full">
-          <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />
+          {latest && (
+            <blockquote className={latest.flagged ? 'esc-watch-reply' : 'esc-watch-reply esc-watch-reply-muted'}>
+              <span className="esc-comment-author">
+                {latest.author} · {dayMonth(latest.created)}
+                {!latest.flagged && <span className="esc-tag">judged a thank-you</span>}
+                {latest.judgedBy === 'model-unavailable' && <span className="esc-tag" title="The model could not judge it, so it was flagged rather than dropped">not judged</span>}
+              </span>
+              <span className="esc-watch-reply-text">{latest.excerpt}</span>
+            </blockquote>
+          )}
+          {watch && !latest && <p className="esc-trow-quietnote">No customer reply since you started watching.</p>}
+
+          {watch && onCommit && <Commitments t={watch} busy={busy} onCommit={onCommit} />}
+
+          {escalating
+            ? <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />
+            : (
+              <div className="esc-ticket-actions">
+                {!watch && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(item.key)}>Watch</button>}
+                {watch?.unread > 0 && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onRead(item.key)}>Mark read</button>}
+                <button type="button" className="esc-mini" onClick={() => onEscalate(item.key)}>{esc ? 'Escalate again' : 'Escalate'}</button>
+                {watch && <button type="button" className="esc-mini" disabled={busy} onClick={() => onUnwatch(item.key)}>Unwatch</button>}
+              </div>
+            )}
         </div>
       )}
     </article>
@@ -504,8 +513,13 @@ export function TicketsView({
   highlightKey, escalatingKey, onEscalate, onCloseEscalate, onEscalated,
   onWatch, onRead, onUnwatch, onCommit, onRefresh,
   initialFilter = 'all',
+  initialExpanded = [],
 }) {
   const [filter, setFilter] = useState(initialFilter);
+  const [expanded, setExpanded] = useState(() => new Set(initialExpanded));
+  const toggle = (k) => setExpanded((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  // A ticket opened from the key box opens up when it is found in the list.
+  useEffect(() => { if (highlightKey) setExpanded((prev) => new Set(prev).add(highlightKey)); }, [highlightKey]);
   const [key, setKey] = useState('');
   const items = mergeTickets(escalations || [], watched);
   const counts = Object.fromEntries(FILTERS.map(([id, , test]) => [id, items.filter(test).length]));
@@ -580,6 +594,8 @@ export function TicketsView({
             item={item}
             busy={busy}
             reasons={reasons}
+            expanded={expanded.has(item.key)}
+            onToggle={toggle}
             highlighted={item.key === highlightKey}
             escalating={item.key === escalatingKey}
             onWatch={onWatch}
