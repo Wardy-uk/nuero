@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { PreparedCard, approveWithCode, fetchApprovalState, gateFor } from './PreparedActions';
 import { executeDirect, directOutcome } from '../directAction';
-import ReportFixes from './ReportFixes';
 import './WeeklyRiskPanel.css';
 
 /**
@@ -488,8 +487,6 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           }
         }}
       />
-
-      <ReportFixes onChanged={load} />
 
       {/* The gate, first. These block publication, so they are not a footnote. */}
       {blockers.length > 0 && (

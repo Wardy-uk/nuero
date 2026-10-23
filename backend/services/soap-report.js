@@ -336,7 +336,7 @@ function carriedForward(previousReds, reds) {
 
 /** The included fixes this report carries. Read at render time, so including one shows at once. */
 function fixesFor(report) {
-  return reportFixes.forReport(reportFixes.includedForReports(), { from: report.from, to: report.to, shownFrom: addDays(report.from, -7) });
+  return reportFixes.forReport(reportFixes.logForReports(), { from: report.from, to: report.to, shownFrom: addDays(report.from, -7) });
 }
 
 // ── Manual (Nick's words) ────────────────────────────────────────────────────
@@ -402,7 +402,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   const v = report.verdicts;
   // Fixes Nick included (services/report-fixes.js). Not verdicts: they never
   // hold a send, and an approved send carries the words as they were approved.
-  const fx = fixes || { fixed: [], corrections: [], rowNotes: {} };
+  const fx = fixes || { fixed: [], corrections: [], rowNotes: {}, unreadable: null };
   // Each line is tagged with the section it belongs to, so a section Nick
   // excluded is dropped whole at the end (heading, body and blank line).
   const L = { rows: [], cur: null, push(...xs) { for (const x of xs) this.rows.push([this.cur, x]); } };
@@ -465,11 +465,14 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   const pctOr = (x) => (x === null || x === undefined ? 'no data' : `${x}%`);
   const light = (r) => (r === 'green' ? '🟢' : r === 'amber' ? '🟠' : r === 'red' ? '🔴' : '');
 
-  if (fx.corrections.length) {
+  if (fx.corrections.length || fx.unreadable) {
     L.cur = 'corrections';
     L.push('## Data corrections', '');
     fx.corrections.forEach((c, i) => L.push(`- ${reportFixes.correctionLine(c, i + 1)}`));
-    L.push('', '_Rows marked [n] below were affected; their figures stand as reported at the time._', '');
+    // An unreadable fixes log is not "no corrections".
+    if (fx.unreadable) L.push(`- Not available — the fixes log could not be read: ${fx.unreadable}. There may be corrections not shown here.`);
+    if (fx.corrections.length) L.push('', '_Rows marked [n] below were affected; their figures stand as reported at the time._');
+    L.push('');
   }
 
   L.cur = 'perQueue';

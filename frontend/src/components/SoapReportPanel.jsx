@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
-import ReportFixes from './ReportFixes';
 import './SoapReportPanel.css';
 
 // ── SOAP report — the Monday debrief for Chris, Ricky and Liam (15 Oct 2026) ─
@@ -475,7 +474,6 @@ export default function SoapReportPanel() {
       {error && <p className="soap-error">Couldn’t load the SOAP report — {error}</p>}
       {note && <p className="soap-note" role="status">{note}</p>}
       <Distribution onChanged={load} />
-      <ReportFixes onChanged={load} />
       {data && <SoapReportView data={data} draft={draft} setDraft={setDraft} dirty={dirty} busy={busy} onSave={save} onBuild={build} onQueue={queue}
         onPublish={publish} onTest={testSend} onMarkSent={markSent} onReopen={reopen} preview={preview} onPreview={togglePreview} note={note} />}
     </div>

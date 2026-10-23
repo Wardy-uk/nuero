@@ -27,3 +27,7 @@
 .rf-impact label { flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; color: var(--text-primary); font-size: 0.88rem; }
 .rf-impact input { width: auto; }
 .rf-affects { display: flex; flex-direction: column; gap: 6px; }
+.rf-page { width: 100%; box-sizing: border-box; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.rf-page-top h1 { margin: 0 0 4px; font-size: 1.3rem; }
+.rf-unreadable { border-left: 3px solid var(--warning); padding-left: 10px; }
+.rf-meta code { font-family: var(--font-mono); font-size: 0.78rem; }

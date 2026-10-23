@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Fixes for the reports (23 Oct 2026) — services/report-fixes.js, its routes,
- * and the two reports that carry it.
+ * The fixes log (23 Oct 2026) — services/report-fixes.js, its routes, and the
+ * two reports that carry it. The vault is the master: every case runs against a
+ * real temp vault, one note per fix.
  *
  *   1. Validation refuses, never repairs.
  *   2. A session's post is PROPOSED; Nick's manual entry is INCLUDED at once.
@@ -12,6 +13,9 @@
  *   6. Weekly Risk: correction lines in section 5 and marked compliance rows.
  *   7. Routes over real HTTP + the real authority guard: a machine may propose,
  *      never include, edit or enter one manually.
+ *   8. The note: editing status in Obsidian is a decision; Nick's own sections
+ *      survive NEURO's writes; a broken note is reported, never dropped.
+ *   9. An unreadable vault is a named gap in the report, never "no fixes".
  *
  *   run: node --test backend/services/report-fixes.test.js
  */
@@ -24,7 +28,12 @@ const fs = require('fs');
 const http = require('http');
 const express = require('express');
 
-process.env.NEURO_DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-report-fixes-')), 'a.db');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-report-fixes-'));
+process.env.NEURO_DB_PATH = path.join(TMP, 'a.db');
+const VAULT = path.join(TMP, 'vault');
+fs.mkdirSync(VAULT);
+process.env.OBSIDIAN_VAULT_PATH = VAULT;
+const LOG_DIR = path.join(VAULT, 'Projects', 'Fixes Log');
 
 const db = require('../db/database');
 const RF = require('./report-fixes');
@@ -136,7 +145,7 @@ test('5. SOAP: Fixed line in Success, a corrections section, the affected row ma
 test('6. Weekly Risk: correction and fix lines in section 5, the compliance row marked', () => {
   const a = wr.assess({
     week: '2026-10-26', trend: [], orgTrend: null, kpi: null, manual: wr.getManual ? wr.getManual('2026-10-26') : undefined,
-    sources: [], fixes: RF.list({ status: 'included' }),
+    sources: [], fixes: RF.logForReports(),
   });
   assert.equal(a.fixes.corrections.length, 1);
   a.trend = [{ kpi: 'Tier 2 — FRT compliance', measured: true, reported: { value: 90 }, compare: { value: 92 }, delta: -2, target: 95 }];
@@ -170,4 +179,44 @@ test('7. routes: a machine may propose, never include, edit or enter one by hand
   assert.equal(inc.body.fix.status, 'included');
   const ls = await call('GET', '/api/report-fixes?status=included');
   assert.ok(ls.body.fixes.some((f) => f.id === id));
+});
+
+test('8. the note: status edited in Obsidian is a decision; added sections survive; a broken note is reported', () => {
+  const r = RF.post(base({ title: 'Ageing used created date', affects: [{ measure: 'Oldest actionable', from: '2026-10-01', to: '2026-10-02' }] }), { postedBy: 'machine:x', now: NOW });
+  const abs = path.join(VAULT, r.fix.path);
+  let note = fs.readFileSync(abs, 'utf-8');
+  assert.match(note, /^---\ntype: report-fix\nfix_id: fx-[0-9a-f]{10}\nsystem: nova\nstatus: proposed/);
+  assert.match(note, /\| Oldest actionable \| 2026-10-01 \| 2026-10-02 \|/);
+  // Nick edits in Obsidian (CRLF, as Windows writes it): includes it and adds his own section.
+  note = note.replace('status: proposed', 'status: included') + '\n## My notes\n\nChris asked about this on Tuesday.\n';
+  fs.writeFileSync(abs, note.replace(/\n/g, '\r\n'));
+  assert.equal(RF.get(r.fix.id).status, 'included');
+  // A NEURO write (edit) keeps his section and his decision.
+  RF.edit(r.fix.id, { problem: 'Ageing counted from the created date, not the due date.' }, { now: NOW });
+  const after = fs.readFileSync(abs, 'utf-8');
+  assert.match(after, /## My notes\n\nChris asked about this on Tuesday\./);
+  assert.match(after, /status: included/);
+  assert.match(after, /Ageing counted from the created date/);
+  // A note he breaks is named and left out — never silently dropped.
+  fs.writeFileSync(path.join(LOG_DIR, 'broken.md'), '---\ntype: report-fix\nfix_id: fx-broken\nsystem: jira\nstatus: included\n---\n# x\n');
+  const ls = RF.list();
+  assert.ok(ls.unreadable.some((u) => u.path.endsWith('broken.md') && /system must be/.test(u.why)));
+  assert.ok(!ls.fixes.some((f) => f.id === 'fx-broken'));
+  fs.unlinkSync(path.join(LOG_DIR, 'broken.md'));
+  // An unrelated note in the folder is not a fix and not an error.
+  fs.writeFileSync(path.join(LOG_DIR, '_about.md'), '# About\n');
+  assert.equal(RF.list().unreadable.length, 0);
+});
+
+test('9. an unreadable vault is a named gap in the SOAP report, never "no fixes"', () => {
+  const keep = process.env.OBSIDIAN_VAULT_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = path.join(TMP, 'missing');
+  try {
+    const report = soapReport();
+    const fx = soap.fixesFor(report);
+    assert.ok(fx.unreadable);
+    const md = soap.render(report, soap.emptyManual(), { fixes: fx });
+    assert.match(md, /## Data corrections\n\n- Not available — the fixes log could not be read/);
+    assert.throws(() => RF.post(base({ title: 'x' }), { now: NOW }), /could not be read|could not be written/);
+  } finally { process.env.OBSIDIAN_VAULT_PATH = keep; }
 });

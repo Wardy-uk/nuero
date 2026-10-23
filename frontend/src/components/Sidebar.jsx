@@ -69,6 +69,8 @@ const GROUPS = [
     { id: 'weekly-risk',    label: 'Weekly Risk',    icon: '▲' },
     // The Monday debrief for Ricky and Chris — emailed only when Nick is off (15 Oct 2026).
     { id: 'soap',           label: 'SOAP report',    icon: '◆' },
+    // Fixes that reach the SOAP and Weekly Risk reports; the vault is the master (23 Oct 2026).
+    { id: 'fixes-log',      label: 'Fixes log',      icon: '✓' },
     // A running record, logged the day it happens (Nick, 7 Sep 2026).
     { id: 'management-log', label: 'Management Log', icon: '▤' },
   ] },

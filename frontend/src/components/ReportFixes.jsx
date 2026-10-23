@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import './ReportFixes.css';
 
-// ── Fixes for the reports (23 Oct 2026) ─────────────────────────────────────
+// ── The fixes log (23 Oct 2026) ─────────────────────────────────────────────
 //
-// Mounted on BOTH the SOAP and Weekly Risk panels; one store
+// Its own page (REPORTS → Fixes log). The VAULT is the master: one note per fix
+// in Projects/Fixes Log/, which the SOAP and Weekly Risk reports read
 // (services/report-fixes.js). A Claude Code session PROPOSES a fix at deploy;
 // nothing reaches a report until Nick includes it. A fix Nick types here is his
 // own statement, so it is included at once. Figures a fix affected are FLAGGED
@@ -97,6 +98,7 @@ export function FixSummary({ fix }) {
 
 export default function ReportFixes({ onChanged }) {
   const [fixes, setFixes] = useState(null);
+  const [log, setLog] = useState({ folder: 'Projects/Fixes Log', unreadable: [] });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(null);
   const [formErr, setFormErr] = useState(null);
@@ -109,7 +111,8 @@ export default function ReportFixes({ onChanged }) {
       const res = await apiFetch('/api/report-fixes');
       const j = await res.json();
       if (!res.ok || !j.ok) throw new Error(j.error || `HTTP ${res.status}`);
-      setFixes(j.fixes); setErr(null);
+      if (j.known === false) throw new Error(j.why || 'the vault could not be read');
+      setFixes(j.fixes); setLog({ folder: j.folder, unreadable: j.unreadable || [] }); setErr(null);
     } catch (e) { setErr(e.message); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -126,8 +129,8 @@ export default function ReportFixes({ onChanged }) {
     } finally { setBusy(null); }
   };
 
-  if (err) return <section className="rf-panel"><h3>Fixes</h3><p className="rf-error">Could not read the fixes: {err}</p></section>;
-  if (!fixes) return <section className="rf-panel"><h3>Fixes</h3><p className="rf-meta">Loading…</p></section>;
+  if (err) return <section className="rf-panel"><p className="rf-error">Could not read the fixes log: {err}. This is not "no fixes" — the reports will say the log could not be read.</p></section>;
+  if (!fixes) return <section className="rf-panel"><p className="rf-meta">Loading…</p></section>;
 
   const proposed = fixes.filter((f) => f.status === 'proposed');
   const included = fixes.filter((f) => f.status === 'included');
@@ -136,10 +139,16 @@ export default function ReportFixes({ onChanged }) {
   return (
     <section className="rf-panel">
       <div className="rf-head">
-        <h3>Fixes{proposed.length ? ` — ${proposed.length} waiting on you` : ''}</h3>
+        <h3>{proposed.length ? `${proposed.length} waiting on you` : 'Fixes'}</h3>
         {!adding && <button className="rf-btn" onClick={() => { setAdding(true); setFormErr(null); }}>Add a fix</button>}
       </div>
-      <p className="rf-meta">A fix appears in the report for the week it was deployed (SOAP: under Success). Where it changed figures, both reports flag those figures without changing them. Proposed fixes reach no report until you include them.</p>
+      <p className="rf-meta">Kept in your vault, one note per fix, in <code>{log.folder}</code>. You can edit a note in Obsidian: changing <code>status: proposed</code> to <code>status: included</code> is the same as pressing Include. A fix appears in the SOAP and Weekly Risk reports for the week it was deployed; where it changed figures, both reports flag them without changing them.</p>
+      {log.unreadable.length > 0 && (
+        <div className="rf-unreadable" role="alert">
+          <p className="rf-error">{log.unreadable.length} note{log.unreadable.length === 1 ? '' : 's'} in the log could not be read, so the reports leave {log.unreadable.length === 1 ? 'it' : 'them'} out:</p>
+          <ul className="rf-figs">{log.unreadable.map((u) => <li key={u.path}><code>{u.path}</code> — {u.why}</li>)}</ul>
+        </div>
+      )}
 
       {adding && (
         <FixForm submitLabel="Add to the reports" busy={busy === 'add'} error={formErr}

@@ -635,7 +635,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     })(),
     manual: getManual(week),
     // Fixes Nick included for the reports (services/report-fixes.js).
-    fixes: require('./report-fixes').includedForReports(),
+    fixes: require('./report-fixes').logForReports(),
   };
 }
 
@@ -1393,8 +1393,8 @@ function assess(snap) {
     sources: snap.sources,
     manual: snap.manual,
     fixes: reportWeek
-      ? require('./report-fixes').forReport(snap.fixes || [], { from: reportWeek, to: addDays(reportWeek, 6), shownFrom: previousWeek(reportWeek) })
-      : { fixed: [], corrections: [], rowNotes: {} },
+      ? require('./report-fixes').forReport(snap.fixes || null, { from: reportWeek, to: addDays(reportWeek, 6), shownFrom: previousWeek(reportWeek) })
+      : { fixed: [], corrections: [], rowNotes: {}, unreadable: null },
     overtime: snap.overtime || null,
     blockers: manualBlockers(snap.manual || emptyManual(), snap.overtime),
   };
@@ -1879,6 +1879,7 @@ function render(a) {
   const rf = require('./report-fixes');
   const fx = a.fixes || { fixed: [], corrections: [] };
   fx.corrections.forEach((c, i) => lines.push(`- **Data correction [${i + 1}]:** ${rf.correctionLine(c)}`));
+  if (fx.unreadable) lines.push(`- **Fixes log not read:** ${fx.unreadable}. There may be data corrections not shown here.`);
   const plainFixes = fx.fixed.filter(f => !f.impact.includes('figures'));
   if (plainFixes.length) lines.push(bullet(plainFixes, f => `- **${rf.fixedLine(f)}**`));
   if (Array.isArray(manual.dataQuality) && manual.dataQuality.length) {

@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * Fixes for the SOAP and Weekly Risk reports (services/report-fixes.js).
+ * The fixes log (services/report-fixes.js) — one vault note per fix under
+ * Projects/Fixes Log/, read by the SOAP and Weekly Risk reports.
  *
  * POST /api/report-fixes is the door a Claude Code session uses at deploy: it
  * PROPOSES. Everything that decides — include, dismiss, restore, edit, and the
@@ -17,14 +18,14 @@ const router = express.Router();
 const fail = (res, e) => res.status(e.status || 500).json({ ok: false, error: e.message });
 const machineRefused = (req, res) => {
   if (!req.apiClient) return false;
-  res.status(403).json({ ok: false, error: "Including a fix in a report is Nick's decision. He does it in NEURO → SOAP report or Weekly Risk → Fixes." });
+  res.status(403).json({ ok: false, error: "Including a fix in a report is Nick's decision. He does it in NEURO → Reports → Fixes log, or in the note in Projects/Fixes Log/." });
   return true;
 };
 
 // GET /api/report-fixes — fixes for the SOAP and Weekly Risk reports (report fixes, fixed bugs, data corrections), newest deploy first. Query: status=proposed|included|dismissed.
 router.get('/', (req, res) => {
   try {
-    res.json({ ok: true, fixes: fixes.list({ status: req.query.status || null }), systems: fixes.SYSTEMS, impacts: fixes.IMPACTS });
+    res.json({ ok: true, ...fixes.list({ status: req.query.status || null }), systems: fixes.SYSTEMS, impacts: fixes.IMPACTS });
   } catch (e) { fail(res, e); }
 });
 
