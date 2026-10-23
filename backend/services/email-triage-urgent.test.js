@@ -69,6 +69,23 @@ test('the banner and the panel are the same mail — a dismissal moves both', ()
   assert.equal(nudges.getUrgentEmails().length, 1, 'and so must the nudge');
 });
 
+// 23 Oct 2026: Nick replied to Rob Price from the composer and the Actions queue
+// still offered "Draft a reply to Rob Price". A dealt-with email retires its
+// pending reply cards — superseded, not rejected — and touches no other email's.
+test('dismissing an email retires its pending draft-reply card, and only that one', () => {
+  seed([email(), email({ id: 'AAMk-2' })]);
+  const mine = db.createSaimAction('draft_reply', { emailId: 'AAMk-1' }, 0.8, 'Draft a reply', 'email-urgent');
+  const other = db.createSaimAction('draft_reply', { emailId: 'AAMk-2' }, 0.8, 'Draft a reply', 'email-urgent');
+  const decided = db.createSaimAction('draft_reply', { emailId: 'AAMk-1' }, 0.8, 'Draft a reply', 'email-urgent');
+  db.updateSaimActionStatus(decided, 'rejected');
+
+  emailTriage.dismissEmail('AAMk-1', 'replied');
+
+  assert.equal(db.getSaimAction(mine).status, 'superseded');
+  assert.equal(db.getSaimAction(other).status, 'pending', 'another email\'s card is untouched');
+  assert.equal(db.getSaimAction(decided).status, 'rejected', 'a decision already made is never rewritten');
+});
+
 test('nothing outstanding says nothing at all', () => {
   seed([email({ dismissed: true })]);
   assert.equal(nudges.getUrgentEmails().length, 0);

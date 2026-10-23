@@ -2998,6 +2998,22 @@ function getDecidedSaimActionsByType(type, limit = 2000) {
   return rows;
 }
 
+/**
+ * An email Nick has dealt with (replied, done, not relevant) makes any PENDING
+ * card offering to draft or send a reply to it moot. Nothing retired those, so a
+ * "Draft a reply to Rob Price" card sat under the reply Nick had already sent
+ * (23 Oct 2026). `superseded`, never `rejected`: Nick decided nothing on the card.
+ */
+function supersedePendingEmailActions(emailId) {
+  if (!emailId) return 0;
+  return run(
+    `UPDATE saim_actions SET status = 'superseded', resolved_at = datetime('now')
+       WHERE status = 'pending' AND type IN ('draft_reply', 'reply_email')
+         AND json_extract(payload, '$.emailId') = ?`,
+    [emailId]
+  ).changes;
+}
+
 function getSaimActionsByType(type, limit = 5000) {
   const rows = all(
     'SELECT * FROM saim_actions WHERE type = ? ORDER BY created_at DESC LIMIT ?',
@@ -3213,5 +3229,6 @@ module.exports = {
   getDecidedSaimActionsByType,
   getSaimActionsBySource,
   getSaimActionsByType,
+  supersedePendingEmailActions,
   countSaimActionsSince,
 };

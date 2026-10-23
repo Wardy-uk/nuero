@@ -1174,6 +1174,13 @@ function dismissEmail(emailId, reason = 'unspecified', { selfAddress = null, mut
   // exactly the bug this whole change exists to fix.
   try { require('./nudges').triggerUrgentEmailNudge(); } catch {}
 
+  // A dealt-with email retires any pending "draft a reply" card for it, or the
+  // Actions queue offers to draft a reply already sent (23 Oct 2026).
+  try {
+    const n = db.supersedePendingEmailActions(emailId);
+    if (n) console.log(`[Triage] Retired ${n} pending reply card(s) for "${(item?.subject || emailId).slice(0, 60)}" (${clean})`);
+  } catch (e) { console.warn('[Triage] Could not retire pending reply cards:', e.message); }
+
   // The caller says what happened to the SENDER, not just to the message - a
   // refused mute (no address, or Nick's own) must reach the panel in words
   // rather than being a silent no-op behind a button that looked like it fired.
