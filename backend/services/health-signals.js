@@ -447,14 +447,27 @@ function unacknowledge(id) {
   return { ok: true, id };
 }
 
-function snapshot({ now = new Date(), days = 45 } = {}) {
+// The last good metric summary. Reused ONLY by a caller that passes
+// `metricsMaxAgeMs` (ambient's per-poll read): the summary answers "has this
+// sensor gone quiet", judged in days, so minutes of staleness change nothing —
+// while the query itself is a full scan that blocked the event loop for
+// seconds on every attention poll (23 Oct 2026). A failed read is never cached.
+let _metricsMemo = null;
+
+function snapshot({ now = new Date(), days = 45, metricsMaxAgeMs = 0 } = {}) {
   let rows = [];
   let metrics = [];
   const gaps = [];
   try { rows = healthDaily.recentDays(days); }
   catch (e) { gaps.push({ input: 'health_daily', why: e.message }); }
-  try { metrics = db.getHealthMetricSummary(null); }
-  catch (e) { gaps.push({ input: 'metric summary', why: e.message }); }
+  try {
+    if (metricsMaxAgeMs > 0 && _metricsMemo && Date.now() - _metricsMemo.at < metricsMaxAgeMs) {
+      metrics = _metricsMemo.rows;
+    } else {
+      metrics = db.getHealthMetricSummary(null);
+      _metricsMemo = { at: Date.now(), rows: metrics };
+    }
+  } catch (e) { gaps.push({ input: 'metric summary', why: e.message }); }
 
   const result = assess({ days: rows, metrics, now });
 
