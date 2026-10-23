@@ -487,3 +487,98 @@
 /* The row's two buttons stay together, on the right, and never split across
    lines among the meta text. */
 .esc-row-actions { display: inline-flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+
+/* ======================================================= one ticket list */
+/* (23 Oct 2026) Escalated and watched tickets as ONE list, a ticket once. */
+.esc-page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.esc-page-head h2 { margin: 0; font-size: 18px; }
+.esc-page-head .esc-sub { margin: 4px 0 0; }
+.esc-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.esc-toolbar .esc-lookup { margin: 0; }
+.esc-toolbar .esc-key-input { flex: 0 1 200px; }
+
+.esc-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.esc-filter {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.esc-filter:hover { border-color: var(--accent); color: var(--text-primary); }
+.esc-filter-on { color: var(--text-primary); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)); }
+.esc-filter-count { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); }
+.esc-filter-count-alert { background: color-mix(in srgb, var(--danger) 25%, transparent); color: var(--danger); font-weight: 600; }
+
+/* Cards fill the width in columns; one per row on a phone. */
+.esc-ticket-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr));
+  align-items: start;
+}
+.esc-ticket-list > .esc-empty { grid-column: 1 / -1; }
+
+.esc-ticket-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 0;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.esc-ticket-card-needs { border-left-color: var(--danger); }
+.esc-ticket-card-quiet { opacity: 0.8; }
+.esc-ticket-card-highlight { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+.esc-pill-esc { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
+.esc-pill-watch { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+.esc-ticket-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.esc-commitments .esc-link-btn { margin-top: 2px; }
+.esc-commitment-kept-text { color: var(--text-muted); font-size: 12px; }
+
+/* Escalating happens inside the ticket's own card. */
+.esc-escalate {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.esc-escalate-head { display: flex; flex-direction: column; gap: 2px; }
+.esc-escalate-title { font-weight: 600; font-size: 13px; color: var(--warning); }
+.esc-escalate-sub { font-size: 11px; color: var(--text-secondary); }
+.esc-escalate .esc-form { margin-top: 0; }
+.esc-escalate .esc-meta { margin-top: 0; }
+.esc-ticket-card .esc-result { padding: 12px; }
+
+@media (max-width: 768px) {
+  .esc-toolbar { width: 100%; }
+  .esc-toolbar .esc-lookup { flex: 1; flex-wrap: nowrap; }
+  .esc-toolbar .esc-key-input { flex: 1 1 auto; max-width: none; }
+}
+
+/* One list, top to bottom in priority order (no zigzag). On a wide screen a
+   card splits: the ticket and the customer's reply left, your promises and
+   actions right. Escalating spans the whole card. */
+.esc-ticket-list { grid-template-columns: 1fr; }
+.esc-ticket-main, .esc-ticket-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (min-width: 1100px) {
+  .esc-ticket-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+    column-gap: 24px;
+    row-gap: 10px;
+    align-items: start;
+  }
+  .esc-ticket-side { border-left: 1px solid var(--border); padding-left: 20px; min-height: 100%; justify-content: space-between; }
+  .esc-ticket-full { grid-column: 1 / -1; }
+}
