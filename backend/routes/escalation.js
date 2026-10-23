@@ -265,6 +265,32 @@ router.post('/ledger/resolve', (req, res) => {
   res.status(r.ok ? 200 : 409).json(r);
 });
 
+// ── Replies (23 Oct 2026, services/ticket-replies.js) ─────────────────────────
+
+// POST /api/escalation/reply/draft — draft a Jira reply or internal note to the golden rules (Ownership, What's happening, Timeframes); body { key, visibility: public|internal, guidance? }. Posts nothing.
+router.post('/reply/draft', async (req, res) => {
+  const { key, visibility, guidance } = req.body || {};
+  const r = await require('../services/ticket-replies').draft({ key, visibility, guidance });
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// POST /api/escalation/reply/preview — what posting this reply would do: who sees it, any gap left to fill, any promised update it sets.
+router.post('/reply/preview', (req, res) => {
+  const { key, text, visibility } = req.body || {};
+  const k = String(key || '').trim().toUpperCase();
+  res.json(require('../services/ticket-replies').preview({ key: k, text, visibility, watched: require('../services/watched-tickets').isWatched(k) }));
+});
+
+// POST /api/escalation/reply/post — post the reply to the Jira ticket as Nick (public or internal), ledgered and read back. Human only.
+router.post('/reply/post', async (req, res) => {
+  if (req.apiClient) {
+    return res.status(403).json({ error: 'Posting on a Jira ticket is Nick, writing as himself — a machine client cannot do it on his behalf.' });
+  }
+  const { key, text, visibility } = req.body || {};
+  const r = await require('../services/ticket-replies').post({ key, text, visibility });
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
 // ── Watched tickets (23 Oct 2026, services/watched-tickets.js) ───────────────
 
 // GET /api/escalation/watched — watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.

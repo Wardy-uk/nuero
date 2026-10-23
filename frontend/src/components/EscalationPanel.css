@@ -627,3 +627,35 @@
   .esc-trow-summary { white-space: normal; }
   .esc-trow-body { padding-left: 16px; }
 }
+
+/* ============================================ reply composer (23 Oct 2026) */
+.esc-reply { border-top: 1px dashed var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.esc-reply-public { border-top-color: color-mix(in srgb, var(--warning) 60%, var(--border)); }
+.esc-reply-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.esc-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.esc-seg button {
+  padding: 5px 12px; font-family: var(--font-mono); font-size: 12px;
+  background: transparent; color: var(--text-secondary); border: none; cursor: pointer;
+}
+.esc-seg button + button { border-left: 1px solid var(--border); }
+.esc-seg button:disabled { cursor: default; }
+.esc-seg-on { background: var(--bg-tertiary); color: var(--text-primary) !important; font-weight: 600; }
+.esc-seg-public { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning) !important; }
+.esc-reply-draft { display: flex; gap: 8px; }
+.esc-reply-draft input, .esc-reply-text {
+  flex: 1; min-width: 0; padding: 8px 10px; font-family: var(--font-sans); font-size: 13px;
+  background: var(--bg-primary); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.esc-reply-draft input:focus, .esc-reply-text:focus { outline: none; border-color: var(--accent); }
+.esc-reply-text { resize: vertical; line-height: 1.5; }
+.esc-reply-note { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.esc-reply-audience { margin: 0; padding: 8px 12px; border-left: 3px solid var(--border); background: var(--bg-primary); font-size: 13px; }
+.esc-reply-audience-public { border-left-color: var(--warning); color: var(--warning); font-weight: 600; }
+.esc-reply-preview {
+  margin: 0; padding: 12px; white-space: pre-wrap; font-family: var(--font-sans); font-size: 13px; line-height: 1.5;
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary);
+}
+.esc-reply-done { margin: 0; color: var(--success); font-size: 13px; }
+.esc-btn-public { background: var(--warning); border-color: var(--warning); }
+.esc-ticket-actions-left { justify-content: flex-start; align-items: center; }

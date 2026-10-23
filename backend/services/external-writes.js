@@ -41,6 +41,12 @@ const WRITERS = Object.freeze({
     why: 'Nick fills the form with the exact ticket and reason, so the submit IS the approval of that payload; machine clients are refused. Not A4 because nothing reaches a customer and every change is raise/tighten-only.',
     readback: 'ticket re-read through NOVA for a new internal comment',
   },
+  'jira.comment': {
+    target: 'Jira Service Management (request comment)', authority: 'A3', initiation: 'human-only', ledger: true,
+    effect: 'one comment as Nick: a PUBLIC reply the customer sees, or an INTERNAL note (JSM public:false)',
+    why: 'Nick reads the exact text and its visibility in a preview and clicks Post, so the click IS the approval of that payload (the Inbox Send rule); machine clients are refused. Not A4 because the approver is the author, writing in his own name.',
+    readback: 'comments re-read: the new comment exists, by Nick, with the visibility asked for',
+  },
   'microsoft.task.complete': {
     target: 'Microsoft Planner / To Do', authority: 'A3', initiation: 'human', ledger: true,
     // Setting 100% / completed again is harmless, so an unknown outcome may be

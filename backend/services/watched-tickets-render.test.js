@@ -122,3 +122,21 @@ test('the page mounts the one list', () => {
   assert.match(src, /<TicketsView\b/);
   assert.doesNotMatch(src, /function WatchedTickets\b/, 'the separate watched card is gone');
 });
+
+test('the reply composer opens on INTERNAL note, with a draft button and no post button until previewed', () => {
+  const html = renderToString(React.createElement(mod.ReplyComposer, { ticketKey: 'NT-35291', onClose: () => {}, onPosted: () => {} })).split('<!-- -->').join('');
+  assert.match(html, /aria-checked="true" class="esc-seg-on"[^>]*>Internal note/);
+  assert.match(html, /aria-checked="false"[^>]*>Reply to customer/);
+  assert.match(html, /Draft it/);
+  assert.match(html, /Anything in \[square brackets\] is a gap to fill/);
+  assert.doesNotMatch(html, /Post reply to customer|Post internal note/);
+});
+
+test('every expanded ticket offers Reply', () => {
+  const html = renderToString(React.createElement(mod.TicketsView, {
+    onOpen: async () => true, onWatch: async () => true, onRead: async () => true, onUnwatch: async () => true, onCommit: async () => true, onEscalate: () => {}, onRefresh: () => {},
+    escalations: [{ key: 'NT-10', summary: 'x', created: '2026-10-20T10:00:00Z', updated: '2026-10-22T10:00:00Z', viaTier: true, url: '#' }],
+    watched: { active: [], listening: [] }, initialExpanded: ['NT-10'],
+  }));
+  assert.match(html, />Reply</);
+});

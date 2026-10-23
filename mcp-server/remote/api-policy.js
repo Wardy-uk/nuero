@@ -69,6 +69,7 @@ export const interactive = {
   // stops the gateway offering it. Resolving an unknown outcome is Nick saying
   // what is on the ticket, which an agent cannot know.
   post_escalation: 'Escalating a Jira ticket is Nick\'s decision. He escalates it in NEURO → Escalation, where the ticket is shown first.',
+  post_escalation_reply_post: 'Posting on a Jira ticket is Nick writing to a customer (or his team) as himself. He posts it in NEURO → Escalations, after reading the preview.',
   post_escalation_ledger_resolve: 'Only Nick can say what is on the ticket after an unknown escalation outcome.',
   // 14 Oct 2026: archiving a PLAUD transcript moves Nick's notes out of the vault's live set.
   post_plaud_transcripts_archive: 'Archiving a transcript is Nick\'s decision. He does it in NEURO → PLAUD transcripts.',

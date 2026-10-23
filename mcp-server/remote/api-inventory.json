@@ -2165,7 +2165,7 @@
     "route": "/api/escalation/watched",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 271,
+    "line": 297,
     "description": "GET /api/escalation/watched. watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.",
     "params": [],
     "query": [],
@@ -9643,12 +9643,72 @@
     "stream": false
   },
   {
+    "id": "post_escalation_reply_draft",
+    "method": "POST",
+    "route": "/api/escalation/reply/draft",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 271,
+    "description": "POST /api/escalation/reply/draft. draft a Jira reply or internal note to the golden rules (Ownership, What's happening, Timeframes); body { key, visibility: public|internal, guidance? }. Posts nothing.",
+    "params": [],
+    "query": [],
+    "body": [
+      "guidance",
+      "key",
+      "visibility"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_reply_post",
+    "method": "POST",
+    "route": "/api/escalation/reply/post",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 285,
+    "description": "POST /api/escalation/reply/post. post the reply to the Jira ticket as Nick (public or internal), ledgered and read back. Human only.",
+    "params": [],
+    "query": [],
+    "body": [
+      "key",
+      "text",
+      "visibility"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_reply_preview",
+    "method": "POST",
+    "route": "/api/escalation/reply/preview",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 278,
+    "description": "POST /api/escalation/reply/preview. what posting this reply would do: who sees it, any gap left to fill, any promised update it sets.",
+    "params": [],
+    "query": [],
+    "body": [
+      "key",
+      "text",
+      "visibility"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_escalation_watched",
     "method": "POST",
     "route": "/api/escalation/watched",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 276,
+    "line": 302,
     "description": "POST /api/escalation/watched. watch a Jira ticket; body { key }. A customer reply then sends a push. Watch, follow, track a ticket.",
     "params": [],
     "query": [],
@@ -9666,7 +9726,7 @@
     "route": "/api/escalation/watched/:key/commitments",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 294,
+    "line": 320,
     "description": "POST /api/escalation/watched/:key/commitments. promise the customer an update by a time; body { due: \"HH:MM\" (today) or \"YYYY-MM-DDTHH:MM\", London }. Update commitment, deadline, reminder.",
     "params": [
       "key"
@@ -9686,7 +9746,7 @@
     "route": "/api/escalation/watched/:key/commitments/:id/:action",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 301,
+    "line": 327,
     "description": "POST /api/escalation/watched/:key/commitments/:id/:action. confirm a spotted update commitment, dismiss it, or mark it done by hand (action = confirm | dismiss | done).",
     "params": [
       "key",
@@ -9706,7 +9766,7 @@
     "route": "/api/escalation/watched/:key/read",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 288,
+    "line": 314,
     "description": "POST /api/escalation/watched/:key/read. mark a watched ticket's customer replies as read.",
     "params": [
       "key"
@@ -9724,7 +9784,7 @@
     "route": "/api/escalation/watched/:key/unwatch",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 307,
+    "line": 333,
     "description": "POST /api/escalation/watched/:key/unwatch. stop watching a ticket (history kept).",
     "params": [
       "key"
@@ -9742,7 +9802,7 @@
     "route": "/api/escalation/watched/check",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 283,
+    "line": 309,
     "description": "POST /api/escalation/watched/check. check every watched ticket for customer replies now, instead of waiting for the 5-minute poll.",
     "params": [],
     "query": [],

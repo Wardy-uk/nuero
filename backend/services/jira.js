@@ -293,6 +293,36 @@ async function fetchIssueComments(key, { maxResults = 100 } = {}) {
   return { comments, complete: (r.total == null) || comments.length >= r.total };
 }
 
+/** Summary, status, reporter and description of one issue (for drafting a reply). */
+async function fetchIssueBasics(key) {
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(String(key || ''))) throw new Error(`"${key}" is not a ticket key`);
+  if (!isConfigured()) return null;
+  const r = await jiraRequest(`/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,status,reporter,description,priority,assignee`);
+  const f = r.fields || {};
+  return {
+    key: r.key, summary: f.summary || '', status: f.status?.name || null,
+    statusCategory: f.status?.statusCategory?.key || null,
+    reporter: f.reporter?.displayName || null, assignee: f.assignee?.displayName || null,
+    priority: f.priority?.name || null, description: f.description || null,
+  };
+}
+
+/**
+ * Post a comment through Jira Service Management's REQUEST API. `public: false`
+ * is JSM's real internal-note marker (what the Jira UI's toggle sets); the
+ * platform API's legacy role/group restriction was measured NOT to hide a
+ * comment from the customer portal on this instance, so it is never used here.
+ * Posts as the API token's user (Nick). Returns the created comment's id.
+ */
+async function postRequestComment(key, body, isPublic) {
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(String(key || ''))) throw new Error(`"${key}" is not a ticket key`);
+  if (typeof isPublic !== 'boolean') throw new Error('public must be true or false');
+  const r = await jiraRequest(`/rest/servicedeskapi/request/${encodeURIComponent(key)}/comment`, {
+    method: 'POST', body: { body, public: isPublic }, timeoutMs: 30000,
+  });
+  return { id: r.id != null ? String(r.id) : null, public: r.public };
+}
+
 /**
  * The still-open subset of a list of keys, in the same shape.
  *
@@ -651,6 +681,8 @@ module.exports = {
   fetchAssignedToMe,
   fetchIssueStates,
   fetchIssueComments,
+  fetchIssueBasics,
+  postRequestComment,
   mapAssignedIssue,
   isConfigured,
   fetchEscalationTickets,

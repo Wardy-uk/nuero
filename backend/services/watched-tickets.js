@@ -558,6 +558,35 @@ function nowCards(nowMs = Date.now()) {
   return out;
 }
 
+/**
+ * Nick just posted `comment` from NEURO (ticket-replies). Do now what the next
+ * poll would do — keep what it fulfils — and, for a promise he has just read in
+ * the preview, set it OPEN rather than proposing it (his call, 23 Oct 2026).
+ * Idempotent on the comment id: the poll that later sees the same comment
+ * proposes nothing new.
+ */
+function recordMyReply(rawKey, comment, nowMs = Date.now()) {
+  const key = normaliseKey(rawKey);
+  if (!key || !comment || comment.id == null) return { kept: 0, commitment: null };
+  const isPublic = comment.jsdPublic !== false;
+  const kept = isPublic ? _keepWith(key, comment) : 0;
+  let commitment = null;
+  if (isPublic) {
+    const found = detectCommitment(adfText(comment.body), comment.created);
+    if (found && Date.parse(found.dueAt) > nowMs) {
+      const at = new Date(nowMs).toISOString();
+      db.run(`INSERT OR IGNORE INTO watched_ticket_commitments
+          (ticket_key, due_at, source, state, phrase, comment_id, made_at, confirmed_at) VALUES (?, ?, 'detected', 'open', ?, ?, ?, ?)`,
+      [key, found.dueAt, found.phrase, String(comment.id), comment.created || at, at]);
+      // watch() may already have proposed it from the same reply — confirm that one.
+      db.run(`UPDATE watched_ticket_commitments SET state = 'open', confirmed_at = COALESCE(confirmed_at, ?) WHERE comment_id = ? AND state = 'proposed'`,
+        [at, String(comment.id)]);
+      commitment = _shapeCommitment(db.get('SELECT * FROM watched_ticket_commitments WHERE comment_id = ?', [String(comment.id)]), nowMs);
+    }
+  }
+  return { kept, commitment };
+}
+
 /** What the Escalations page renders. */
 function list() {
   const rows = db.all(`SELECT * FROM watched_tickets WHERE phase IN ('active', 'background') ORDER BY watched_at ASC`);
@@ -766,7 +795,7 @@ async function check(depsOver) {
 }
 
 module.exports = {
-  watch, unwatch, markRead, list, check, addCommitment, actOnCommitment, nowCards,
+  watch, unwatch, markRead, list, check, addCommitment, actOnCommitment, nowCards, recordMyReply, isWatched: (k) => { const r = _row(normaliseKey(k)); return !!r && r.phase !== 'ended'; },
   PUSH_TYPE, LISTEN_WORKING_DAYS,
   // pure, for the tests
   normaliseKey, isCustomerReply, detectCommitment, commitmentTiming, parseDue, ownWords, judgeByRule, listenUntil, adfText, excerptOf,

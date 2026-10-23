@@ -97,6 +97,7 @@ const CAPABILITIES = Object.freeze({
   'microsoft.task.progress': { authority: 'A3', effect: 'Planner 50%/0% (team-visible) or To Do inProgress', machine: 'refuse', approval: 'click', registry: 'external-writes:microsoft.task.progress', ledger: false, verification: null, idempotent: true },
   'microsoft.task.fields': { authority: 'A3', effect: 'rename / re-date / re-describe a card on a shared board', machine: 'refuse', approval: 'click', registry: 'external-writes:microsoft.task.fields', ledger: false, verification: null, idempotent: false },
   'jira.escalate': { authority: 'A3', effect: 'raise Jira priority, tighten due date, one internal comment (via NOVA)', machine: 'refuse', approval: 'click', registry: 'external-writes:nova.escalate', ledger: true, verification: 'ticket re-read', idempotent: 'one per ticket+reason per day; unknown outcome blocks' },
+  'jira.comment': { authority: 'A3', effect: 'post a comment on a Jira ticket as Nick — a public reply the customer sees, or an internal note', machine: 'refuse', approval: 'click', registry: 'external-writes:jira.comment', ledger: true, verification: 'comments re-read: exists, by Nick, visibility as asked', idempotent: 'one post per exact text; unknown outcome blocks' },
   'jira.escalation.resolve': { authority: 'A3', effect: 'record what is on a ticket after an unknown escalation outcome', machine: 'refuse', approval: 'click', registry: 'external-writes:nova.escalate', ledger: true, verification: null, idempotent: true },
   'notion.publish': { authority: 'A3', effect: 'publish mapped vault notes to Notion (read by an external AI)', machine: 'refuse', approval: 'click', registry: 'external-writes:notion.sync', ledger: false, verification: 'next reconcile', idempotent: 'per-note state' },
   'nova.121': { authority: 'A3', effect: 'NOVA 1-2-1 sessions / cadence / transcript candidates', machine: 'refuse', approval: 'click', registry: 'external-writes:nova.121', ledger: false, verification: 'morning reconcile', idempotent: true },
@@ -228,6 +229,7 @@ const ROUTE_RULES = Object.freeze([
   // Jira.
   R('POST', '/api/escalation', 'jira.escalate'),
   R('POST', '/api/escalation/ledger/resolve', 'jira.escalation.resolve'),
+  R('POST', '/api/escalation/reply/post', 'jira.comment'),
 
   // Microsoft tasks.
   R('POST', '/api/todos/complete-ms', 'microsoft.task.complete'),

@@ -353,6 +353,139 @@ function EscalatePanel({ ticketKey, reasons, onEscalated, onClose, showDetail = 
   );
 }
 
+// ── Reply on the ticket ──────────────────────────────────────────────────────
+
+async function postJson(path, body) {
+  const res = await fetch(apiUrl(path), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+/**
+ * Draft → edit → preview → post. Internal note by default; the preview says in
+ * words who will see it. Posting is Nick's click on that preview. A public
+ * reply that promises an update sets it as an open commitment and starts
+ * watching the ticket. A gap the draft left ("[time of next update]") must be
+ * filled before it can be posted.
+ */
+export function ReplyComposer({ ticketKey, onClose, onPosted }) {
+  const [visibility, setVisibility] = useState('internal');
+  const [guidance, setGuidance] = useState('');
+  const [text, setText] = useState('');
+  const [step, setStep] = useState('edit');
+  const [pv, setPv] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [ledgerKey, setLedgerKey] = useState(null);
+  const [result, setResult] = useState(null);
+
+  const runDraft = async () => {
+    setBusy(true); setError(null);
+    const { ok, data } = await postJson('/api/escalation/reply/draft', { key: ticketKey, visibility, guidance: guidance || undefined });
+    setBusy(false);
+    if (!ok) { setError(data.error || 'Could not draft it.'); return; }
+    setText(data.text || '');
+  };
+  const runPreview = async () => {
+    setBusy(true); setError(null);
+    const { data } = await postJson('/api/escalation/reply/preview', { key: ticketKey, text, visibility });
+    setBusy(false);
+    setPv(data); setStep('preview');
+  };
+  const runPost = async () => {
+    setBusy(true); setError(null); setLedgerKey(null);
+    const { ok, data } = await postJson('/api/escalation/reply/post', { key: ticketKey, text, visibility });
+    setBusy(false);
+    if (!ok) { setError(data.error || 'Not posted.'); setLedgerKey(data.ledgerKey || null); return; }
+    setResult(data); setStep('done');
+    onPosted?.();
+  };
+  const resolve = async (applied) => {
+    setBusy(true);
+    const { ok, data } = await postJson('/api/escalation/ledger/resolve', { key: ledgerKey, applied });
+    setBusy(false);
+    if (!ok) { setError(data.why || data.error || 'Could not record that.'); return; }
+    setLedgerKey(null);
+    setError(applied ? 'Recorded as posted — it will not be posted again.' : 'Recorded as not posted — you can post it now.');
+    if (applied) onPosted?.();
+  };
+
+  if (step === 'done' && result) {
+    return (
+      <div className="esc-reply">
+        <p className={result.warning ? 'esc-warn' : 'esc-reply-done'}>
+          {result.warning || `Posted on ${ticketKey} as ${result.visibility === 'public' ? 'a reply to the customer' : 'an internal note'} — read back from Jira.`}
+        </p>
+        {result.commitment && <p className="esc-reply-note">Commitment set: update by {clockLabel(result.commitment.dueAt)}.</p>}
+        {result.watchedNow && <p className="esc-reply-note">Now watching {ticketKey} — you’ll get a push when the customer replies.</p>}
+        <div className="esc-ticket-actions"><button type="button" className="esc-mini" onClick={onClose}>Close</button></div>
+      </div>
+    );
+  }
+
+  const isPublic = visibility === 'public';
+  return (
+    <div className={isPublic ? 'esc-reply esc-reply-public' : 'esc-reply'}>
+      <div className="esc-reply-head">
+        <span className="esc-escalate-title">{step === 'preview' ? 'Check before posting' : `Reply on ${ticketKey}`}</span>
+        <span className="esc-seg" role="radiogroup" aria-label="Who sees it">
+          <button type="button" role="radio" aria-checked={!isPublic} className={!isPublic ? 'esc-seg-on' : ''}
+            disabled={step === 'preview'} onClick={() => setVisibility('internal')}>Internal note</button>
+          <button type="button" role="radio" aria-checked={isPublic} className={isPublic ? 'esc-seg-on esc-seg-public' : ''}
+            disabled={step === 'preview'} onClick={() => setVisibility('public')}>Reply to customer</button>
+        </span>
+      </div>
+
+      {error && <div className={ledgerKey ? 'esc-error' : 'esc-warn'}>{error}</div>}
+      {ledgerKey && (
+        <div className="esc-ticket-actions esc-ticket-actions-left">
+          <span className="esc-reply-note">Look at {ticketKey} in Jira. Is it there?</span>
+          <button type="button" className="esc-mini" disabled={busy} onClick={() => resolve(true)}>It’s there</button>
+          <button type="button" className="esc-mini" disabled={busy} onClick={() => resolve(false)}>It isn’t there</button>
+        </div>
+      )}
+
+      {step === 'edit' && (
+        <>
+          <div className="esc-reply-draft">
+            <input value={guidance} onChange={(e) => setGuidance(e.target.value)} maxLength={2000}
+              placeholder="What should it say? e.g. fix is in testing, next update 5pm" aria-label="What should the reply say" />
+            <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={runDraft}>
+              {busy ? 'Drafting…' : text ? 'Redraft' : 'Draft it'}
+            </button>
+          </div>
+          <textarea className="esc-reply-text" rows={9} value={text} onChange={(e) => setText(e.target.value)}
+            placeholder={isPublic ? 'Write to the customer, or press Draft it.' : 'Write the note for your team, or press Draft it.'} />
+          <p className="esc-reply-note">Golden rules: who owns it, what’s happening, and when the next update comes. Anything in [square brackets] is a gap to fill.</p>
+          <div className="esc-ticket-actions esc-ticket-actions-left">
+            <button type="button" className="esc-mini esc-mini-primary" disabled={busy || !text.trim()} onClick={runPreview}>Preview</button>
+            <button type="button" className="esc-mini" onClick={onClose}>Cancel</button>
+          </div>
+        </>
+      )}
+
+      {step === 'preview' && pv && (
+        <>
+          <p className={isPublic ? 'esc-reply-audience esc-reply-audience-public' : 'esc-reply-audience'}>{pv.audience}</p>
+          <pre className="esc-reply-preview">{text}</pre>
+          {pv.problem && <div className="esc-error">{pv.problem}</div>}
+          {pv.promise && <p className="esc-reply-note">Posting sets a commitment: update by {clockLabel(pv.promise.dueAt)}.</p>}
+          {pv.willWatch && <p className="esc-reply-note">Posting starts watching {ticketKey}.</p>}
+          <div className="esc-ticket-actions esc-ticket-actions-left">
+            <button type="button" className={isPublic ? 'esc-btn esc-btn-primary esc-btn-public' : 'esc-btn esc-btn-primary'}
+              disabled={busy || !!pv.problem} onClick={runPost}>
+              {busy ? 'Posting…' : isPublic ? 'Post reply to customer' : 'Post internal note'}
+            </button>
+            <button type="button" className="esc-btn esc-btn-ghost" disabled={busy} onClick={() => setStep('edit')}>Back to edit</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── One ticket: a compact row that expands ──────────────────────────────────
 
 /** The one thing at the end of a row: a promised update first, else how fresh the ticket is. */
@@ -375,8 +508,9 @@ function rowTail(item) {
  * updates promised, and the actions. A reply NEURO judged a thank-you is shown
  * muted, so "it went quiet" and "it was filtered" stay different.
  */
-export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated }) {
+export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated, onPosted }) {
   const { esc, watch } = item;
+  const [replying, setReplying] = useState(false);
   const route = escalationRoute(esc);
   const latest = watch?.replies?.[0];
   const raised = ageDays(esc?.created);
@@ -384,7 +518,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
   // round-robin assignment or the CSAT bot as readily as for a human.
   const touched = ageDays(esc?.updated);
   const tail = rowTail(item);
-  const open = expanded || escalating;
+  const open = expanded || escalating || replying;
   const cls = ['esc-trow'];
   if (item.needs.length) cls.push('esc-trow-needs');
   if (highlighted) cls.push('esc-trow-highlight');
@@ -438,16 +572,17 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
 
           {watch && onCommit && <Commitments t={watch} busy={busy} onCommit={onCommit} />}
 
-          {escalating
-            ? <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />
-            : (
+          {escalating && <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />}
+          {replying && !escalating && <ReplyComposer ticketKey={item.key} onClose={() => setReplying(false)} onPosted={onPosted} />}
+          {!escalating && !replying && (
               <div className="esc-ticket-actions">
+                <button type="button" className="esc-mini esc-mini-primary" onClick={() => setReplying(true)}>Reply</button>
                 {!watch && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(item.key)}>Watch</button>}
                 {watch?.unread > 0 && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onRead(item.key)}>Mark read</button>}
                 <button type="button" className="esc-mini" onClick={() => onEscalate(item.key)}>{esc ? 'Escalate again' : 'Escalate'}</button>
                 {watch && <button type="button" className="esc-mini" disabled={busy} onClick={() => onUnwatch(item.key)}>Unwatch</button>}
               </div>
-            )}
+          )}
         </div>
       )}
     </article>
@@ -458,10 +593,11 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
  * A ticket opened from the key box that is not in the list yet: enough to know
  * it is the right one, then Watch or Escalate.
  */
-function OpenedTicket({ ticketKey, busy, reasons, onWatch, onClose, onEscalated }) {
+function OpenedTicket({ ticketKey, busy, reasons, onWatch, onClose, onEscalated, onPosted }) {
   const [ticket, setTicket] = useState(null);
   const [error, setError] = useState(null);
   const [escalating, setEscalating] = useState(false);
+  const [replying, setReplying] = useState(false);
   useEffect(() => {
     let live = true;
     setTicket(null); setError(null); setEscalating(false);
@@ -485,12 +621,14 @@ function OpenedTicket({ ticketKey, busy, reasons, onWatch, onClose, onEscalated 
         </span>
       </div>
       {error && <div className="esc-error">{error}</div>}
-      {ticket && !escalating && <TicketDetail ticket={ticket} />}
-      {ticket && (escalating
+      {ticket && !escalating && !replying && <TicketDetail ticket={ticket} />}
+      {ticket && replying && <ReplyComposer ticketKey={ticketKey} onClose={() => setReplying(false)} onPosted={onPosted} />}
+      {ticket && !replying && (escalating
         ? <EscalatePanel ticketKey={ticketKey} reasons={reasons} showDetail={false} onClose={() => setEscalating(false)} onEscalated={onEscalated} />
         : (
           <div className="esc-ticket-actions">
-            <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(ticketKey)}>Watch</button>
+            <button type="button" className="esc-mini esc-mini-primary" onClick={() => setReplying(true)}>Reply</button>
+            <button type="button" className="esc-mini" disabled={busy} onClick={() => onWatch(ticketKey)}>Watch</button>
             <button type="button" className="esc-mini" onClick={() => setEscalating(true)}>Escalate</button>
             <button type="button" className="esc-mini" onClick={onClose}>Close</button>
           </div>
@@ -511,7 +649,7 @@ export function TicketsView({
   watched, watchedError, note, busy, reasons = [],
   opened, onOpen, onCloseOpened,
   highlightKey, escalatingKey, onEscalate, onCloseEscalate, onEscalated,
-  onWatch, onRead, onUnwatch, onCommit, onRefresh,
+  onWatch, onRead, onUnwatch, onCommit, onRefresh, onPosted,
   initialFilter = 'all',
   initialExpanded = [],
 }) {
@@ -572,7 +710,7 @@ export function TicketsView({
 
       <div className="esc-ticket-list">
         {opened && (
-          <OpenedTicket ticketKey={opened} busy={busy} reasons={reasons} onWatch={onWatch} onClose={onCloseOpened} onEscalated={onEscalated} />
+          <OpenedTicket ticketKey={opened} busy={busy} reasons={reasons} onWatch={onWatch} onClose={onCloseOpened} onEscalated={onEscalated} onPosted={onPosted} />
         )}
 
         {loading && <p className="esc-empty">Loading…</p>}
@@ -605,6 +743,7 @@ export function TicketsView({
             onEscalate={onEscalate}
             onCloseEscalate={onCloseEscalate}
             onEscalated={onEscalated}
+            onPosted={onPosted}
           />
         ))}
       </div>
@@ -726,6 +865,8 @@ export default function EscalationPanel() {
       onUnwatch={(k) => watchAction(`/${encodeURIComponent(k)}/unwatch`)}
       onCommit={async (k, path, body) => !!(await watchAction(`/${encodeURIComponent(k)}/commitments${path}`, body))}
       onRefresh={async () => { await Promise.all([loadEscalations(), watchAction('/check')]); }}
+      // A posted reply may have kept a promise, set a new one or started a watch.
+      onPosted={() => { loadWatched(); loadEscalations(); }}
     />
   );
 }
