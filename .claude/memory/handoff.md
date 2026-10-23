@@ -1,3 +1,12 @@
+# Session Handoff — 2026-10-23 (task-context previews — LOCAL ONLY, awaiting Nick's review)
+
+Branch `task-context-previews` (worktree `.claude/worktrees/task-context-previews`). NOT pushed, NOT deployed; linking not enabled/disabled; no backfill; no link changed.
+- Diagnosis (read-only, pi5): 39 links (24 suggested, 15 pinned); 10 pinned restricted, all `nightly-scan` origin links into `Meetings/2026/…` — 7 `employee-cases-note`, 3 `hr-wording`+`employee-cases-note`; tasks 344, 350, 189, 322, 369, 372, 442, 459, 460, 461. No manual restricted links, none into Security review/ or excluded folders.
+- Fix: classification unchanged; `task-context.viewerOf(req)` (owner = PIN with no machine identity) → owner gets provenance, plain restriction reason, task-bounded excerpt, Open source note; kiosk/API token/MCP/in-process get title only (no path, no open route). Hard exclusions (Security review/, Archive etc., `neuro_context: exclude`) now never pinned/linked/searched — they could be origin-pinned before.
+- Tests: `routes/task-context-previews.test.js` (15), `services/task-context-previews-browser.test.js` (5, Electron; screenshots with TC_SHOTS); existing task-context suites updated for the new limited shape.
+- Limit to tell Nick: a PIN holder that does not declare itself a machine looks like Nick.
+- Next: Nick reviews screenshots → merge → deploy (rebuild frontend + saim/app + kiosk; restart backend). The local MCP needs no change to be safe (it declares itself), but `mcp-server/index.js` prints no path for a restricted row now.
+
 # Session Handoff — 2026-10-23 (AI gate, Settings, receipt truth, Holding the week — release checks done, LOCAL ONLY)
 
 ## DEPLOYED 23 Oct 2026 (shadow) — NEURO main 11d0631f, VANTAGE main fa2c890; live verifier ✔ shared ledger f4388203; record in docs/release-2026-10-23-…md

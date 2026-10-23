@@ -237,7 +237,7 @@ test('the backfill: explicit evidence and supported titles pin; vague matches an
   assert.ok(pinned.has(OWNER), 'the note that names task #A');
   assert.ok(pinned.has(DRAFT), 'a title match with body support');
   assert.ok(a.pinned.every((p) => p.automatic && p.origin === 'nightly-scan' && p.originLabel === 'Found automatically'));
-  const every = [...a.pinned, ...a.suggestions].map((p) => p.ref);
+  const every = [...tc.forTask(A.id, { viewer: 'owner' }).pinned, ...a.suggestions].map((p) => p.ref);
   for (const bad of [IDEAS, DUP, 'Daily/2026-10-21.md', 'Documents/System/SAiM Import Reports/2026-10-21.md', 'Personal/Disciplinary Prep.md', HR, 'Untitled.md']) {
     assert.ok(!every.includes(bad), `${bad} must not be context for task A`);
   }
@@ -252,15 +252,18 @@ test('the backfill: explicit evidence and supported titles pin; vague matches an
 });
 
 test('an employment-sensitive origin note is pinned to its OWN task only, restricted: title, no preview', () => {
-  const c = tc.forTask(C.id);
+  const c = tc.forTask(C.id, { viewer: 'owner' });
   const hr = c.pinned.find((p) => p.ref === HR);
   assert.ok(hr, 'the 1-2-1 the task came from is its context');
   assert.equal(hr.restricted, true);
   assert.equal(hr.preview, null);
+  // the default (limited) view of the same link is title-only: no path, no open route
+  const lim = tc.forTask(C.id).pinned.find((p) => p.id === hr.id);
+  assert.equal(lim.ref, null); assert.equal(lim.open, null); assert.equal(lim.excerpt, undefined); assert.equal(lim.title, hr.title);
   const raw = db.get(`SELECT preview FROM task_context_links WHERE id = ?`, [hr.id]);
   assert.equal(raw.preview, null, 'not even stored');
   // …and never reaches the unrelated task with the same words
-  assert.ok(![...tc.forTask(A.id).pinned, ...tc.forTask(A.id).suggestions].some((p) => p.ref === HR));
+  assert.ok(![...tc.forTask(A.id, { viewer: 'owner' }).pinned, ...tc.forTask(A.id, { viewer: 'owner' }).suggestions].some((p) => p.ref === HR));
 });
 
 test('two plausible projects: one question, neither pinned', () => {

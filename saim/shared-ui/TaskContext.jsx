@@ -19,19 +19,33 @@ const TYPE_LABEL = { note: 'Note', project: 'Project', area: 'Area' };
 const enc = encodeURIComponent;
 
 export function ContextItem({ item, onOpen = null, onRemove = null, busy = false, compact = false }) {
-  const open = onOpen ? () => onOpen(item) : null;
+  // An open route exists only when the server gave one: a restricted note on a
+  // limited view (kiosk, MCP, any machine) comes back with no path at all, so it
+  // cannot be opened from here however the shell is wired.
+  const route = item.open || null;
+  const href = route && route.obsidianUrl;
+  const open = route && onOpen ? () => onOpen(item) : null;
+  const ex = item.excerpt || null;
   return (
-    <li className={`tctx__item tctx__item--${item.type}${item.restricted ? ' tctx__item--restricted' : ''}`} data-ref={item.ref}>
+    <li className={`tctx__item tctx__item--${item.type}${item.restricted ? ' tctx__item--restricted' : ''}`} data-ref={item.ref || undefined}>
       <div className="tctx__head">
         {open
-          ? <button type="button" className="tctx__title" onClick={open} title={item.ref}>{item.title}</button>
-          : <span className="tctx__title" title={item.ref}>{item.title}</span>}
+          ? <button type="button" className="tctx__title" onClick={open} title={item.ref || undefined}>{item.title}</button>
+          : <span className="tctx__title" title={item.ref || undefined}>{item.title}</span>}
         <span className="tctx__badge">{TYPE_LABEL[item.type] || item.type}</span>
         <span className={`tctx__badge tctx__badge--${item.automatic ? 'auto' : 'manual'}`}>{item.originLabel}</span>
       </div>
-      <p className="tctx__reason">{item.reason}</p>
-      {item.restricted && <p className="tctx__restricted">Restricted — preview withheld.</p>}
-      {!compact && item.preview && <p className="tctx__preview">{item.preview}</p>}
+      <p className="tctx__reason">{item.provenance || item.reason}</p>
+      {item.restricted && <p className="tctx__restricted">{item.restrictedSay || 'Restricted — shown as a title only on this screen.'}</p>}
+      {ex && (
+        <blockquote className={`tctx__excerpt${compact ? ' tctx__excerpt--compact' : ''}`}>
+          {ex.heading && !compact && <span className="tctx__excerpt-head">{ex.heading}</span>}
+          <span className="tctx__excerpt-text">{ex.text}</span>
+          {!compact && ex.say && <span className="tctx__excerpt-why">{ex.say}</span>}
+        </blockquote>
+      )}
+      {!ex && !compact && item.excerptGap && <p className="tctx__quiet">{item.excerptGap}</p>}
+      {!ex && !compact && item.preview && <p className="tctx__preview">{item.preview}</p>}
       {!compact && Array.isArray(item.scopeItems) && item.scopeItems.length > 0 && (
         <ul className="tctx__scope">
           {item.scopeItems.map((s) => (
@@ -44,7 +58,13 @@ export function ContextItem({ item, onOpen = null, onRemove = null, busy = false
           ))}
         </ul>
       )}
-      {onRemove && <button type="button" className="tctx__remove" disabled={busy} onClick={() => onRemove(item)}>Remove</button>}
+      {(route && item.type === 'note' && (open || href)) || onRemove ? (
+        <div className="tctx__row">
+          {route && item.type === 'note' && open && <button type="button" className="tctx__open" onClick={open}>Open source note</button>}
+          {route && item.type === 'note' && !open && href && <a className="tctx__open" href={href}>Open source note</a>}
+          {onRemove && <button type="button" className="tctx__remove" disabled={busy} onClick={() => onRemove(item)}>Remove</button>}
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -204,7 +224,7 @@ export default function TaskContext({ taskId, call, onOpen = null, compact = fal
             {sugg.map((it) => (
               <li key={it.id} className="tctx__item tctx__item--suggested">
                 <div className="tctx__head">
-                  {onOpen ? <button type="button" className="tctx__title" onClick={() => onOpen(it)}>{it.title}</button> : <span className="tctx__title">{it.title}</span>}
+                  {onOpen && it.open ? <button type="button" className="tctx__title" onClick={() => onOpen(it)}>{it.title}</button> : <span className="tctx__title">{it.title}</span>}
                   <span className="tctx__badge">{TYPE_LABEL[it.type] || it.type}</span>
                 </div>
                 <p className="tctx__reason">{it.reason}</p>

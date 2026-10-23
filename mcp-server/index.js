@@ -829,7 +829,8 @@ function contextLine(it) {
   const bits = [`${it.title} [${it.type}${it.restricted ? ', restricted' : ''}] — ${it.originLabel}`, `  ${it.reason}`];
   if (it.preview) bits.push(`  "${it.preview}"`);
   if (it.staleSay) bits.push(`  ${it.staleSay}`);
-  bits.push(`  link #${it.id} · ${it.ref}`);
+  if (it.restricted && it.restrictedSay) bits.push(`  ${it.restrictedSay}`);
+  bits.push(`  link #${it.id}${it.ref ? ` · ${it.ref}` : ''}`);
   return bits.join('\n');
 }
 

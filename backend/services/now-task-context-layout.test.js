@@ -108,7 +108,9 @@ const CONTEXT = {
   ok: true, contract: 'task-context-v1', taskId: TASK, task: { id: TASK, text: TITLE, status: 'open' },
   pinned: [
     ctxItem(1, { title: 'Onboarding Checklist Draft', reason: 'Its title matches the task (onboarding, checklist).' }),
-    ctxItem(2, { title: '2026-10-14 – 1-2-1 Kit Varga', restricted: true, preview: null, reason: 'This task was raised in this note.' }),
+    ctxItem(2, { title: '2026-10-14 – 1-2-1 Kit Varga', restricted: true, preview: null, reason: 'This task was raised in this note.',
+      restrictedSay: 'Contains personnel-sensitive material — colleagues are named alongside absence, health, conduct or performance.',
+      excerpt: { text: 'Nick to draft the onboarding checklist for the new starter.', heading: 'Actions', basis: 'task-marker', say: 'The line in this note that names this task.' } }),
     ctxItem(3, { type: 'project', ref: 'Projects/Onboarding', title: 'Onboarding', origin: 'manual', originLabel: 'Linked by you', automatic: false, reason: 'Linked by you.', open: { kind: 'folder', path: 'Projects/Onboarding' }, scopeItems: [{ ref: 'Projects/Onboarding/Plan.md', title: 'Plan', reason: 'Mentions starter, checklist.' }] }),
   ],
   suggestions: [ctxItem(9, { state: 'suggested', title: 'New Starter IT Kit', reason: 'Its title matches the task (starter).' })],
@@ -328,7 +330,8 @@ test('Now shows context for the ONE task in focus, once; none when nothing is in
     assert.equal(s.contexts, 1, `${s.size}: exactly one context block`);
     assert.match(s.contextText, /Context for this task/);
     assert.match(s.contextText, /Onboarding Checklist Draft/);
-    assert.match(s.contextText, /Restricted — preview withheld/);
+    assert.match(s.contextText, /Contains personnel-sensitive material/);
+    assert.match(s.contextText, /Nick to draft the onboarding checklist/, 'the owner view shows the task-bounded excerpt, even compact');
     assert.doesNotMatch(s.contextText, /New Starter IT Kit/, 'a suggestion is not shown on Now');
   }
   for (const s of sizes('cards-honest')) assert.equal(s.contexts, 0, `${s.size}: no task in focus, no block`);

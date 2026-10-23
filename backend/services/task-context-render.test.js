@@ -80,14 +80,17 @@ test('every item says what it is, why it is there and who put it there', () => {
   const out = html(React.createElement(TC.default, { taskId: 31, call, editable: true, onOpen: () => {}, initial: data({ pinned: [
     item(1),
     item(2, { origin: 'manual', originLabel: 'Linked by you', automatic: false, type: 'project', title: 'NOVA', ref: 'Projects/NOVA', reason: 'Linked by you.', scopeItems: [{ ref: 'Projects/NOVA/Plan.md', title: 'Plan', reason: 'Mentions leaderboard.' }] }),
-    item(3, { restricted: true, preview: null, title: 'A 1-2-1', reason: 'This task was raised in this note.' }),
+    // limited view of a restricted note: no ref, no open route, no preview
+    item(3, { restricted: true, preview: null, ref: null, open: null, title: 'A 1-2-1', reason: 'This task was raised in this note.', restrictedSay: 'Restricted — shown as a title only on this screen.' }),
   ] }) }));
   assert.match(out, /Found automatically/);
   assert.match(out, /Linked by you/);
   assert.match(out, />Project</);
   assert.match(out, /Plan<\/button>/, 'a project shows a few notes within it');
-  assert.match(out, /Restricted — preview withheld/);
+  assert.match(out, /Restricted — shown as a title only on this screen/);
+  assert.doesNotMatch(out, /title="null"|data-ref="null"/);
   assert.equal((out.match(/>Remove</g) || []).length, 3);
+  assert.equal((out.match(/>Open source note</g) || []).length, 1, 'only the unrestricted note gets an open route; the restricted one has none');
   assert.match(out, /Add context/);
 });
 

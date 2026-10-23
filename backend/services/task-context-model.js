@@ -73,6 +73,8 @@ const SKIP_SAY = {
   'index-note': 'an index of links',
   'unprocessed-import': 'an unprocessed import',
   excluded: 'excluded from NEURO’s index (retired, infrastructure or generated)',
+  security: 'in Security review/ (never used, never linked)',
+  'opted-out': 'marked never-for-context in its own frontmatter',
   restricted: 'restricted (the Personal/ folder or marked private)',
   'employment-sensitive': 'about a named colleague’s employment',
   'other-domain': 'from the other half of life (work vs personal)',
@@ -168,6 +170,124 @@ function previewOf(body) {
   return null;
 }
 
+/** PURE. The note's own frontmatter says never use it as context. */
+function optedOut(fm = {}) {
+  return /^(exclude|never|off)$/i.test(String(fm.neuro_context || fm['neuro-context'] || '').trim());
+}
+
+const EXCERPT_MAX = 240;
+
+function _cleanLine(raw) {
+  return String(raw)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
+    .replace(/^\[[ xX]\]\s*/, '')
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2').replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function _clip(text, max = EXCERPT_MAX) {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}…`;
+}
+
+/**
+ * PURE. The ONE line of a note that ties it to this task — never a summary and never
+ * surrounding text. It is taken from the note (markdown stripped, at most
+ * EXCERPT_MAX characters, cut at a word) or it is null:
+ *   1. a line carrying the task's own marker (`<!--task:N-->`, `task #N`);
+ *   2. otherwise the line that carries most of the task's distinctive wording —
+ *      at least MIN_EXCERPT_SHARED words and half of them, or nothing.
+ * `tokenize` is the scan's own (task-dedupe's). Returns
+ * { text, heading, line, basis: 'task-marker'|'task-wording', say } or null.
+ */
+const MIN_EXCERPT_SHARED = 2;
+function taskExcerpt(body, task = {}, tokenize = null) {
+  const lines = String(body || '').replace(/\r\n/g, '\n').split('\n');
+  const id = Number(task.id);
+  const marker = Number.isInteger(id) && id > 0 ? new RegExp(`<!--\\s*task:${id}\\s*-->|\\btask\\s*#${id}\\b`, 'i') : null;
+  const want = tokenize && task.text ? new Set(tokenize(task.text)) : new Set();
+  let heading = null; let inFence = false; let best = null;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const t = raw.trim();
+    if (t.startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence || !t || t.startsWith('|')) continue;
+    const h = t.match(/^#{1,6}\s+(.+)$/);
+    if (h) { heading = _cleanLine(h[1]).slice(0, 80) || null; continue; }
+    const text = _cleanLine(raw);
+    if (text.length < 8) continue;
+    if (marker && marker.test(raw)) return { text: _clip(text), heading, line: i + 1, basis: 'task-marker', say: 'The line in this note that names this task.' };
+    if (!want.size) continue;
+    const got = new Set(tokenize(text));
+    let shared = 0;
+    for (const w of want) if (got.has(w)) shared += 1;
+    const coverage = shared / want.size;
+    if (shared >= MIN_EXCERPT_SHARED && coverage >= 0.5 && (!best || coverage > best.coverage)) {
+      best = { coverage, out: { text: _clip(text), heading, line: i + 1, basis: 'task-wording', say: 'The line in this note this task’s wording comes from.' } };
+    }
+  }
+  return best ? best.out : null;
+}
+
+const RESTRICTION_SAY = {
+  security: 'It is in Security review/, which NEURO never shows.',
+  excluded: 'It is in a folder NEURO never uses (archived, generated or excluded).',
+  'opted-out': 'The note is marked never-for-context in its own frontmatter.',
+  'personal-folder': 'It is in your Personal folder.',
+  private: 'The note is marked private.',
+  'employee-cases-note': 'Contains personnel-sensitive material — colleagues are named alongside absence, health, conduct or performance.',
+  'hr-wording': 'Its title or wording is about an HR matter.',
+  'pip-deliverable': 'It is part of a performance-plan deliverable.',
+  'no-longer': 'It was restricted when it was linked; no restriction rule fires on it now, so it stays restricted until it is linked again.',
+};
+
+/**
+ * PURE. Why a note is restricted, in words. `hard` = it must never be shown or linked
+ * on ANY screen (Security review/, excluded folders, an opt-out). The screens are
+ * injected (vault-exclusions and prepared-move's employment screen). An employment
+ * screen that could not run counts as sensitive — never less restricted.
+ */
+/**
+ * PURE. A HARD exclusion: never shown, never linked, on any screen. Security review/
+ * always; an excluded folder (Archive, generated, infrastructure) — but NOT the
+ * sensitive Personal/Private folders, which vault-exclusions also keeps out of
+ * entity extraction: those are restricted, not hard (a task may still be raised in one).
+ */
+function isHardExcluded(rel, deps = {}) {
+  const r = relNorm(rel);
+  if (deps.isSecurityPath && deps.isSecurityPath(r)) return true;
+  if (deps.isSensitivePath && deps.isSensitivePath(r)) return false;
+  return Boolean(deps.isExcludedPath && deps.isExcludedPath(r));
+}
+
+function restrictionOf({ rel, fm = {}, body = '' }, deps = {}) {
+  const r = relNorm(rel);
+  if (deps.isSecurityPath && deps.isSecurityPath(r)) return { hard: true, codes: ['security'], say: RESTRICTION_SAY.security };
+  if (isHardExcluded(r, deps)) return { hard: true, codes: ['excluded'], say: RESTRICTION_SAY.excluded };
+  if (optedOut(fm)) return { hard: true, codes: ['opted-out'], say: RESTRICTION_SAY['opted-out'] };
+  const codes = [];
+  if (deps.isSensitivePath && deps.isSensitivePath(r)) codes.push('personal-folder');
+  if (String(fm.private || '').toLowerCase() === 'true') codes.push('private');
+  if (deps.employmentScreen) {
+    let cats = null;
+    try { const s = deps.employmentScreen({ sourceTitle: titleOf(r), sourceText: body }); cats = s && s.sensitive ? s.categories || [] : []; } catch { cats = ['employee-cases-note']; }
+    for (const c of ['employee-cases-note', 'hr-wording', 'pip-deliverable']) if (cats.includes(c)) codes.push(c);
+  }
+  if (!codes.length) codes.push('no-longer');
+  return { hard: false, codes, say: codes.map((c) => RESTRICTION_SAY[c]).join(' ') };
+}
+
+/** PURE. "Found automatically — this task was raised in this note." */
+function provenanceLine(link) {
+  const label = ORIGIN_LABEL[link.origin] || 'Linked';
+  const rs = Array.isArray(link.reasons) ? link.reasons : [];
+  const first = rs.find((r) => r.code !== 'recent') || rs[0];
+  if (!first || !first.say) return `${label}.`;
+  return `${label} — ${first.say.charAt(0).toLowerCase()}${first.say.slice(1)}`;
+}
+
 /**
  * PURE. May the SCAN use this note at all? Returns { ok, reason, restricted }.
  * `deps.isExcludedPath` / `isSensitivePath` / `noteDomain` / `employmentScreen`
@@ -177,9 +297,14 @@ function previewOf(body) {
 function screenNote({ rel, fm = {}, body = '', readable = true }, deps = {}) {
   const r = relNorm(rel);
   if (!readable) return { ok: false, reason: 'unreadable' };
+  // HARD exclusions first, and deliberately NOT `restricted`: a restricted note can
+  // still be pinned as a task's own source (title only), and these must never be
+  // linked at all (23 Oct 2026). Security review/ sits inside isSensitivePath, so
+  // it has to be decided before that check, not by it.
+  if (deps.isSecurityPath && deps.isSecurityPath(r)) return { ok: false, reason: 'security' };
+  if (optedOut(fm)) return { ok: false, reason: 'opted-out' };
   if (deps.isSensitivePath && deps.isSensitivePath(r)) return { ok: false, reason: 'restricted', restricted: true };
-  const priv = String(fm.private || '').toLowerCase() === 'true' || /^(exclude|never|off)$/i.test(String(fm.neuro_context || fm['neuro-context'] || ''));
-  if (priv) return { ok: false, reason: 'restricted', restricted: true };
+  if (String(fm.private || '').toLowerCase() === 'true') return { ok: false, reason: 'restricted', restricted: true };
   for (const s of SCAN_SKIP_PREFIXES) if (r.startsWith(s.prefix)) return { ok: false, reason: s.reason };
   if (deps.isExcludedPath && deps.isExcludedPath(r)) return { ok: false, reason: 'excluded' };
   // "X 2.md" is a duplicate only when "X.md" sits beside it — "Session 2.md" is a real note.
@@ -390,8 +515,10 @@ const STALE_SAY = {
 };
 
 module.exports = {
+  isHardExcluded,
   CONTRACT, SOURCE_TYPES, ORIGINS, STATES, MAX_AUTO_PINS, MAX_SUGGESTIONS, MAX_SCOPE_ITEMS,
   COMMON_DF_SHARE, SCAN_SKIP_PREFIXES, SKIP_SAY, ORIGIN_LABEL, STALE_SAY,
   relNorm, titleOf, projectOf, areaOf, splitNote, tagsOf, wikilinksOf, taskRefsOf, previewOf,
   screenNote, indexNote, corpusStats, indexTask, scoreNote, namedScopes, scopeItems, tasksForMeeting, reasonLine,
+  optedOut, taskExcerpt, restrictionOf, provenanceLine, RESTRICTION_SAY, EXCERPT_MAX,
 };

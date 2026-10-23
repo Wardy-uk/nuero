@@ -65,7 +65,17 @@ raw Plaud transcripts, People notes, MOCs, unprocessed imports, reflections/jour
 `employmentScreen`), `" 2.md"` duplicates (only when the original exists), sync conflicts,
 untitled/generic notes, empty or unreadable notes, and anything across the work/personal line.
 The **one exception**: a task's own origin note when it is sensitive is pinned **restricted** —
-title only, no preview stored.
+title only, no preview stored. **Never** for a hard exclusion (below), not even as the origin.
+
+**Hard exclusions (23 Oct 2026)** — `task-context-model.isHardExcluded`: `Security review/`,
+an excluded folder (Archive, `_toDelete`, generated, infrastructure — but **not** `Personal/` /
+`Private/`, which vault-exclusions also keeps out of entity extraction: those are *restricted*),
+and a note whose own frontmatter says `neuro_context: exclude`. Never pinned by the scan (not
+even as a task's origin), never linkable by hand or by MCP (400 with the reason), never offered
+by search, and a legacy row pointing at one is title-only even for Nick — the note is never
+read. Before this, a `Security review/` or `neuro_context: exclude` note could be pinned as an
+origin (they screened as merely `restricted`), and search/manual link offered `Security review/`
+and `Archive/` notes.
 
 **Ambiguity asks:** two or more projects named by the wording → one question
 ("Which project is this task part of?"), nothing pinned. Answered by linking one, or "Neither".
@@ -85,7 +95,37 @@ On the NEURO task card (expanded) → **Context** → **Add context**: choose a 
 area, search, pick. Each item shows title, type, one-line reason, **Found automatically / Linked
 by you / Linked from a chat**, and Open / Remove. Suggestions are folded ("N suggestions — not
 pinned") with **Pin it / Not related**. A name that fits several things comes back as a choice.
-Machine output cannot be linked; a `Personal/` or employment-sensitive note links **restricted**.
+Machine output and hard exclusions cannot be linked; a `Personal/` or employment-sensitive note
+links **restricted**.
+
+## Who sees what of a restricted note (23 Oct 2026)
+
+**Classification and viewer are separate.** Whether a link is restricted is the scan's call,
+stored, and unchanged by this. What a screen may SHOW of it is decided per request by
+`task-context.viewerOf(req)`, from the authenticated credential, never from a header the client
+chooses about its surface:
+
+| viewer | who | a restricted note shows |
+|---|---|---|
+| `owner` | a PIN session with no machine identity: NEURO desktop, the NEURO phone PWA, the SAiM phone | title, **provenance** ("Found automatically — this task was raised in this note."), the **restriction reason in words** (`restrictedSay`, e.g. "Contains personnel-sensitive material — colleagues are named alongside absence, health, conduct or performance."), a **task-bounded excerpt**, and **Open source note** (`open.path` + `open.obsidianUrl`); Remove stays |
+| `limited` | the kiosk token (`attendedSurface`), the API token, any caller declaring `X-Neuro-Machine-Client` (the local MCP), and every in-process caller by default | title and "Restricted — shown as a title only on this screen." — `ref`, `open`, `preview` are null and no excerpt is sent |
+
+**The excerpt** (`task-context-model.taskExcerpt`) is ONE line of the note, read at request
+time, never stored, ≤240 characters, markdown stripped: the line carrying the task's own marker
+(`<!--task:N-->`, `task #N`), else the line holding at least two and half of the task's words,
+else nothing ("No line in this note could be matched to this task, so no excerpt is shown.") —
+never a summary, never the surrounding text. The note is read only inside the vault root
+(realpath-checked). Reading writes nothing.
+
+**Honest limit:** a PIN holder that does not declare itself a machine cannot be told from Nick —
+the same boundary every NEURO button has (intent grants say the same). The kiosk, the API token
+and the local MCP are all told apart.
+
+Live at the time of the fix (read-only diagnosis on pi5, 23 Oct): 39 links (24 suggested, 15
+pinned); 10 pinned were restricted — all `nightly-scan` origin links to `Meetings/2026/…`
+notes, 7 for `employee-cases-note` alone and 3 for `hr-wording` + `employee-cases-note`; no
+manual restricted link; no link into `Security review/` or an excluded folder. No link was
+changed and no scan was rerun for this — it is presentation only.
 
 ## Surfaces
 
@@ -97,7 +137,9 @@ Machine output cannot be linked; a `Personal/` or employment-sensitive note link
 - **Meeting prep**: open tasks raised in a note the prep shows, or naming an attendee in FULL,
   with their pinned items not already on the sheet (≤3 tasks; skipped above 8 attendees).
 - **Kiosk**: read-only — a GET-only proxy door for `/task-context/tasks/<id>`; search, link,
-  unlink and scan stay closed.
+  unlink and scan stay closed. Restricted notes are title-only there (limited viewer).
+- **Meeting prep** passes the viewer of its own request (`_buildPrep(m, { viewer })`), so the
+  kiosk's prep is limited and Nick's is owner.
 
 ## MCP
 
@@ -111,7 +153,8 @@ Remote gateway (Claude/ChatGPT desktop), from the inventory:
 | `post_task_context_scan` | **interactive** (refused to machines in the authority matrix) |
 
 Local MCP (Claude Code): `get_task_context`, `search_task_context`, `link_task_context`,
-`unlink_task_context`. Every write tool says: only on Nick's explicit word, one item, never bulk.
+`unlink_task_context`. Every MCP read is the **limited** view: a restricted note is a title, no
+path. Every write tool says: only on Nick's explicit word, one item, never bulk.
 A body with any unnamed field (a list, an `items` array) is refused with 400.
 
 ## Backfill

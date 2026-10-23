@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
       if (!event || event.length > 600) return res.status(400).json({ error: 'event must be a calendar event id' });
       const found = await _getMeetingById(event);
       if (!found) return res.json({ meeting: null, requested: event, message: 'NEURO can’t find that meeting in today’s diary, so there’s no prep to show for it.' });
-      return res.json({ meeting: { ...found, prep: _buildPrep(found) }, requested: event, laterToday: [] });
+      return res.json({ meeting: { ...found, prep: _buildPrep(found, { viewer: _viewer(req) }) }, requested: event, laterToday: [] });
     }
     const meetings = await _getUpcomingMeetings(4);
     if (meetings.length === 0) {
@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
 
     // Enrich the next meeting with full prep
     const next = meetings[0];
-    const prep = _buildPrep(next);
+    const prep = _buildPrep(next, { viewer: _viewer(req) });
 
     res.json({
       meeting: { ...next, prep },
@@ -67,7 +67,7 @@ router.get('/all', async (req, res) => {
     const meetings = await _getUpcomingMeetings(12);
     const enriched = meetings.map(m => ({
       ...m,
-      prep: _buildPrep(m),
+      prep: _buildPrep(m, { viewer: _viewer(req) }),
     }));
     res.json({ meetings: enriched });
   } catch (e) {
@@ -108,7 +108,7 @@ router.get('/week', async (req, res) => {
         dayLabel: meetings[0]?.dayLabel || date,
         meetings: meetings.map(m => ({
           ...m,
-          prep: _buildPrep(m),
+          prep: _buildPrep(m, { viewer: _viewer(req) }),
         })),
       }));
 
@@ -138,7 +138,7 @@ router.get('/:id', async (req, res) => {
       endFormatted: new Date(event.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       dayLabel: start.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }),
       minutesAway: Math.round((start - now) / 60000),
-      prep: _buildPrep(event),
+      prep: _buildPrep(event, { viewer: _viewer(req) }),
     };
 
     res.json({ meeting: enriched });
@@ -223,7 +223,10 @@ async function _getUpcomingMeetings(hoursAhead) {
     });
 }
 
-function _buildPrep(meeting) {
+// Who is looking decides what a restricted task-context note may show (23 Oct 2026).
+function _viewer(req) { return require('../services/task-context').viewerOf(req); }
+
+function _buildPrep(meeting, { viewer = 'limited' } = {}) {
   const prep = {
     attendees: [],
     recentDecisions: [],
@@ -599,7 +602,7 @@ function _buildPrep(meeting) {
       for (const a of prep.attendees || []) for (const it of a.agreedLastTime || []) if (it.sourcePath) shown.add(it.sourcePath);
       const open = require('../db/database').listTaskRows({ status: 'all', includeDone: false }).filter((r) => r.status === 'open' || r.status === 'in-progress');
       const ids = tcm.tasksForMeeting(open, { people: matchedPeople, notePaths: shown });
-      const pinned = require('../services/task-context').pinnedFor(ids, { limit: 3 });
+      const pinned = require('../services/task-context').pinnedFor(ids, { limit: 3, viewer });
       for (const id of ids) {
         const items = (pinned.get(id) || []).filter((it) => !shown.has(it.ref));
         if (!items.length) continue;
