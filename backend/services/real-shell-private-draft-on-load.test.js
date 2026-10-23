@@ -220,8 +220,10 @@ test.before(async () => {
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.SHELL_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron');
+${LOAD_WITH_RETRY}
 const fs = require('fs'); const path = require('path');
 const cfg = JSON.parse(fs.readFileSync(process.env.J, 'utf8'));
 const j = cfg.job;
@@ -236,24 +238,25 @@ app.whenReady().then(async () => {
   const r = { name: j.name, shots: [], logs };
   const js = (code) => win.webContents.executeJavaScript(code);
   const shot = async (n) => { const img = await win.webContents.capturePage(); const f = path.join(cfg.shots, j.name + '-' + n + '.png'); fs.writeFileSync(f, img.toPNG()); r.shots.push(f); };
-  const waitFor = async (code, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await js(code); if (v) return v; } catch {} await sleep(150); } return null; };
+  const waitFor = async (code, ms = 45000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await js(code); if (v) return v; } catch {} await sleep(150); } return null; };
   const openCard = 'document.querySelectorAll("details").forEach((d) => { if (d.querySelector(".kmw__thread")) d.open = true; })';
   const btn = (label) => '[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === ' + JSON.stringify(label) + ' && !b.disabled)';
+  const press = async (sel) => { await mustWait(js, '!!(' + sel + ')', sel); await js('(' + sel + ').click()'); };
   const scrollTo = (sel) => js('(() => { const el = ' + sel + '; if (el) el.scrollIntoView({ block: "center" }); return !!el; })()');
   const saveBox = () => js('(() => { const b = document.querySelector(".kmw__save"); return b ? { text: b.innerText, buttons: [...b.querySelectorAll("button")].map((x) => ({ t: x.textContent.trim(), disabled: x.disabled })) } : null; })()');
   const page = () => js('({ text: document.body.innerText, buttons: [...document.querySelectorAll("button")].map((x) => x.textContent.trim()) })');
   const setField = (prefix, value) => js('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes(' + JSON.stringify(prefix) + ')); const f = document.getElementById(l.htmlFor); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set; set.call(f, ' + JSON.stringify(value) + '); f.dispatchEvent(new Event("input", { bubbles: true })); return true; })()');
   const label = (prefix) => '[...document.querySelectorAll("label")].find((x) => x.textContent.includes(' + JSON.stringify(prefix) + '))';
-  const answer = async (prefix, text) => { await waitFor('!!(' + label(prefix) + ')'); await setField(prefix, text); await waitFor('!!(' + btn('Tell SAiM') + ')'); await js('(' + btn('Tell SAiM') + ').click()'); };
-  const park = async (prefix) => { await waitFor('!!(' + label(prefix) + ')'); await waitFor('!!(' + btn('Park this for now') + ')'); await js('(' + btn('Park this for now') + ').click()'); };
+  const answer = async (prefix, text) => { await waitFor('!!(' + label(prefix) + ')'); await setField(prefix, text); await waitFor('!!(' + btn('Tell SAiM') + ')'); await press(btn('Tell SAiM')); };
+  const park = async (prefix) => { await waitFor('!!(' + label(prefix) + ')'); await waitFor('!!(' + btn('Park this for now') + ')'); await press(btn('Park this for now')); };
   try {
-    await win.loadURL(j.url); // a clean page load: nothing pressed in this session
+    await loadWithRetry(win, j.url); // a clean page load: nothing pressed in this session
     if (j.mode === 'allow') {
       r.box = await waitFor('(() => { ' + openCard + '; const b = document.querySelector(".kmw__save"); return b && /allowed me/.test(b.innerText) ? b.innerText : null; })()');
       r.page = await page();
       await scrollTo('document.querySelector(".kmw__save")'); await shot('1-boundary');
       r.route = !!(await js('!!(' + btn('Open what SAiM may do') + ')'));
-      if (r.route) await js('(' + btn('Open what SAiM may do') + ').click()');
+      if (r.route) await press(btn('Open what SAiM may do'));
       r.authority = await waitFor('(() => { const a = document.querySelector(".promise-save__authority .auth"); return a ? a.innerText : null; })()');
       await scrollTo('document.querySelector(".promise-save__authority")'); await shot('2-what-saim-may-do');
     } else if (j.mode === 'save') {
@@ -261,7 +264,7 @@ app.whenReady().then(async () => {
       r.page = await page(); r.box = await saveBox();
       if (!r.ready) throw new Error('no save button on a clean load; card shows: ' + JSON.stringify(r.box));
       await scrollTo(btn('Save it and protect the time')); await shot('3-save-it');
-      await js('(' + btn('Save it and protect the time') + ').click()');
+      await press(btn('Save it and protect the time'));
       r.confirmReady = await waitFor('!!(' + btn('Confirm') + ')');
       r.confirmBox = await saveBox();
       await scrollTo(btn('Confirm')); await shot('4-confirmation');
@@ -271,7 +274,7 @@ app.whenReady().then(async () => {
       await scrollTo('document.querySelector(".kmw__save")'); await shot('5-unfinished');
     } else if (j.mode === 'click') {
       await waitFor('(() => { ' + openCard + '; return !!(' + btn('Prepare a private working draft') + '); })()');
-      await js('(' + btn('Prepare a private working draft') + ').click()');
+      await press(btn('Prepare a private working draft'));
       await answer('What does ‘achievable’', cfg.a1);
       await park('What is the incentive');
       await answer('Who does it apply to', cfg.a3);

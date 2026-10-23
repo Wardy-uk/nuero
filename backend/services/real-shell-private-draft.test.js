@@ -203,8 +203,10 @@ test.before(async () => {
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.SHELL_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 function count(table) { try { return db.get(`SELECT COUNT(*) n FROM ${table}`).n; } catch { return 0; } }
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron');
+${LOAD_WITH_RETRY}
 const fs = require('fs'); const path = require('path');
 const cfg = JSON.parse(fs.readFileSync(process.env.J, 'utf8'));
 app.disableHardwareAcceleration();
@@ -220,22 +222,23 @@ app.whenReady().then(async () => {
     const r = { shell: j.shell, steps: [], logs };
     const js = (code) => win.webContents.executeJavaScript(code);
     const shot = async (name) => { const img = await win.webContents.capturePage(); const f = path.join(cfg.shots, j.shell + '-' + name + '.png'); fs.writeFileSync(f, img.toPNG()); r.steps.push({ shot: f }); };
-    const waitFor = async (code, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await js(code); if (v) return v; } catch {} await sleep(150); } return null; };
+    const waitFor = async (code, ms = 45000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await js(code); if (v) return v; } catch {} await sleep(150); } return null; };
     const body = () => js('document.body.innerText');
     const btn = (label) => '[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === ' + JSON.stringify(label) + ' && !b.disabled)';
+    const press = async (sel) => { await mustWait(js, '!!(' + sel + ')', sel); await js('(' + sel + ').click()'); };
     const scrollTo = (sel) => js('(() => { const el = ' + sel + '; if (el) el.scrollIntoView({ block: "center" }); return !!el; })()');
     const openCard = 'document.querySelectorAll("details").forEach((d) => { if (d.querySelector(".kmw__thread")) d.open = true; })';
     const setField = (prefix, value) => js('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes(' + JSON.stringify(prefix) + ')); const f = document.getElementById(l.htmlFor); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set; set.call(f, ' + JSON.stringify(value) + '); f.dispatchEvent(new Event("input", { bubbles: true })); return true; })()');
     const saveBox = () => js('(() => { const b = document.querySelector(".kmw__save"); return b ? { text: b.innerText, buttons: [...b.querySelectorAll("button")].map((x) => ({ t: x.textContent.trim(), disabled: x.disabled })) } : null; })()');
     const allButtons = () => js('[...document.querySelectorAll("button")].map((x) => x.textContent.trim())');
     try {
-      await win.loadURL(j.url);
+      await loadWithRetry(win, j.url);
       if (j.mode === 'allow') {
         r.allowBox = await waitFor('(() => { ' + openCard + '; const b = document.querySelector(".kmw__save"); return b && /allowed me/.test(b.innerText) ? b.innerText : null; })()', 25000);
         r.allowBody = await body(); r.allowButtons = await allButtons();
         await scrollTo('document.querySelector(".kmw__save")'); await shot('5-boundary-allowance');
         r.route = !!(await js('!!(' + btn('Open what SAiM may do') + ')'));
-        if (r.route) await js('(' + btn('Open what SAiM may do') + ').click()');
+        if (r.route) await press(btn('Open what SAiM may do'));
         r.authority = await waitFor('(() => { const a = document.querySelector(".promise-save__authority .auth"); return a ? a.innerText : null; })()');
         await scrollTo('document.querySelector(".promise-save__authority")'); await shot('6-what-saim-may-do');
       } else if (j.mode === 'save') {
@@ -243,20 +246,20 @@ app.whenReady().then(async () => {
         r.saveBody = await body(); r.saveBox = await saveBox();
         if (!r.saveReady) throw new Error('no save button; card shows: ' + JSON.stringify(r.saveBox));
         await scrollTo(btn('Save it and protect the time')); await shot('7-save-it');
-        await js('(' + btn('Save it and protect the time') + ').click()');
+        await press(btn('Save it and protect the time'));
         r.confirmReady = await waitFor('!!(' + btn('Confirm') + ')');
         r.confirmBody = await body(); r.confirmBox = await saveBox();
         await scrollTo(btn('Confirm')); await shot('8-confirmation');
       } else if (j.mode === 'unfinished') {
         r.offer = await waitFor('(() => { ' + openCard + '; return !!(' + btn('Prepare a private working draft') + '); })()', 25000);
-        await js('(' + btn('Prepare a private working draft') + ').click()');
+        await press(btn('Prepare a private working draft'));
         await waitFor('!!([...document.querySelectorAll("label")].find((x) => x.textContent.includes("What does ‘achievable’")))');
         await setField('What does ‘achievable’', cfg.answer);
-        await waitFor('!!(' + btn('Tell SAiM') + ')'); await js('(' + btn('Tell SAiM') + ').click()');
+        await waitFor('!!(' + btn('Tell SAiM') + ')'); await press(btn('Tell SAiM'));
         r.unfReady = await waitFor('!!(' + btn('Save this unfinished draft instead') + ')');
         r.unfBody = await body(); r.unfBox = await saveBox();
         await scrollTo(btn('Save this unfinished draft instead')); await shot('9-unfinished-offer');
-        await js('(' + btn('Save this unfinished draft instead') + ').click()');
+        await press(btn('Save this unfinished draft instead'));
         r.unfConfirmReady = await waitFor('!!(' + btn('Confirm') + ')');
         r.unfConfirm = await body(); r.unfConfirmBox = await saveBox();
         await scrollTo(btn('Confirm')); await shot('10-unfinished-confirmation');
@@ -265,7 +268,7 @@ app.whenReady().then(async () => {
       r.offer = await waitFor('(() => { document.querySelectorAll("details").forEach((d) => { if (d.querySelector(".kmw__thread")) d.open = true; }); return !!(' + btn('Prepare a private working draft') + '); })()', 25000);
       await scrollTo(btn('Prepare a private working draft')); await shot('1-offer');
       r.offerText = await body();
-      await js('(' + btn('Prepare a private working draft') + ').click()');
+      await press(btn('Prepare a private working draft'));
       r.q1 = await waitFor('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes("What does ‘achievable’ mean here")); const f = l && document.getElementById(l.htmlFor); return l && f && f.tagName === "TEXTAREA" ? l.textContent : null; })()');
       r.afterPrepare = await body();
       r.tell1 = !!(await js('!!([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Tell SAiM"))'));
@@ -274,12 +277,12 @@ app.whenReady().then(async () => {
       // Type the answer as a person would (React-controlled field), then Tell SAiM.
       await js('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes("What does ‘achievable’")); const f = document.getElementById(l.htmlFor); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set; set.call(f, ' + JSON.stringify(cfg.answer) + '); f.dispatchEvent(new Event("input", { bubbles: true })); return true; })()');
       await waitFor('!!(' + btn('Tell SAiM') + ')');
-      await js('(' + btn('Tell SAiM') + ').click()');
+      await press(btn('Tell SAiM'));
       r.q2 = await waitFor('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes("What is the incentive, and what earns it?")); return l ? l.textContent : null; })()');
       r.afterAnswer = await body();
       await scrollTo('[...document.querySelectorAll("label")].find((x) => x.textContent.includes("What is the incentive"))'); await shot('3-question-2');
       await waitFor('!!(' + btn('Park this for now') + ')');
-      await js('(' + btn('Park this for now') + ').click()');
+      await press(btn('Park this for now'));
       r.q3 = await waitFor('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes("Who does it apply to")); return l ? l.textContent : null; })()');
       r.afterPark = await body();
       r.width = await js('(() => { const vw = document.documentElement.clientWidth; const over = [...document.querySelectorAll("body *")].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).slice(0, 6).map((e) => (e.className && String(e.className)) || e.tagName); const kmw = [...document.querySelectorAll(".kmw__thread, .kmw__thread *")].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).map((e) => (e.className && String(e.className)) || e.tagName).slice(0, 6); return { vw, sw: document.documentElement.scrollWidth, over, kmw }; })()');
@@ -287,9 +290,9 @@ app.whenReady().then(async () => {
       if (j.full) {
         // The rest of the interview, as Nick would: answer the third, park the fourth.
         await setField('Who does it apply to', 'Everyone on the service desk; each team lead gathers views in their 1-2-1s before it is agreed');
-        await waitFor('!!(' + btn('Tell SAiM') + ')'); await js('(' + btn('Tell SAiM') + ').click()');
+        await waitFor('!!(' + btn('Tell SAiM') + ')'); await press(btn('Tell SAiM'));
         r.q4 = await waitFor('(() => { const l = [...document.querySelectorAll("label")].find((x) => x.textContent.includes("Who will you agree the plan with")); return l ? l.textContent : null; })()');
-        await waitFor('!!(' + btn('Park this for now') + ')'); await js('(' + btn('Park this for now') + ').click()');
+        await waitFor('!!(' + btn('Park this for now') + ')'); await press(btn('Park this for now'));
         r.done = await waitFor('(() => /Every decision is answered or parked/.test(document.body.innerText) && document.querySelector(".kmw__save") && /switched off/.test(document.querySelector(".kmw__save").innerText) ? document.body.innerText : null)()');
         r.doneBox = await saveBox(); r.doneButtons = await allButtons();
         await scrollTo('document.querySelector(".kmw__save")'); await shot('4b-all-decided-server-switch-off');

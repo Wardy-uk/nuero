@@ -180,8 +180,10 @@ const MEASURE = `(() => {
   return { vw, sw: document.documentElement.scrollWidth, over, secs, hist, rows: Object.fromEntries(JSON.parse(KEYS).map((k) => [k, row(k)])), links: Object.fromEntries(JSON.parse(KEYS).map((k) => [k, { draft: link(k, 'Open the draft'), block: link(k, 'View the calendar block') }])) };
 })()`;
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron'); const fs = require('fs'); const path = require('path');
+${LOAD_WITH_RETRY}
 const job = JSON.parse(fs.readFileSync(process.env.J, 'utf8'));
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -196,11 +198,11 @@ app.whenReady().then(async () => {
   const measure = () => js(job.measure.split('KEYS').join(JSON.stringify(JSON.stringify(job.keys))));
   const shot = async (n) => { const H = await js('document.documentElement.scrollHeight'); win.setContentSize(job.w, Math.min(H, 4000)); await sleep(400); fs.writeFileSync(path.join(job.shots, n + '.png'), (await win.webContents.capturePage()).toPNG()); win.setContentSize(job.w, job.h); await sleep(200); };
   const out = {};
-  await win.loadURL(job.url); await ready();
+  await loadWithRetry(win, job.url); await ready();
   out.first = await measure(); await shot(job.name);
   // A refresh: everything is read from NEURO again.
   // (The phone consumes ?tab= on launch, so its refresh is a fresh load of Drafts.)
-  if (job.freshLoad) await win.loadURL(job.url); else await win.webContents.reload();
+  if (job.freshLoad) await loadWithRetry(win, job.url); else await win.webContents.reload();
   await ready();
   out.reloaded = await measure();
   if (job.press) {

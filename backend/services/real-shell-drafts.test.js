@@ -272,8 +272,10 @@ test.before(async () => {
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } delete process.env.SAIM_PREPARED_MOVE_EXECUTION; if (!process.env.SHELL_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron');
+${LOAD_WITH_RETRY}
 const fs = require('fs'); const path = require('path');
 const cfg = JSON.parse(fs.readFileSync(process.env.J, 'utf8'));
 const j = cfg.job;
@@ -288,14 +290,15 @@ app.whenReady().then(async () => {
   const r = { name: j.name, shots: [], logs };
   const js = (code) => win.webContents.executeJavaScript(code);
   const shot = async (n) => { const img = await win.webContents.capturePage(); const f = path.join(cfg.shots, j.name + '-' + n + '.png'); fs.writeFileSync(f, img.toPNG()); r.shots.push(f); };
-  const waitFor = async (code, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await js(code); if (v) return v; } catch {} await sleep(150); } return null; };
+  const waitFor = async (code, ms = 45000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await js(code); if (v) return v; } catch {} await sleep(150); } return null; };
   const btn = (label, scope = 'document') => '[...((' + scope + ') || document.createElement("div")).querySelectorAll("button")].find((b) => b.textContent.trim() === ' + JSON.stringify(label) + ' && !b.disabled)';
+  const press = async (sel) => { await mustWait(js, '!!(' + sel + ')', sel); await js('(' + sel + ').click()'); };
   const row = (status) => '[...document.querySelectorAll(".drafts__row")].find((x) => x.querySelector(".drafts__status") && x.querySelector(".drafts__status").textContent.trim() === ' + JSON.stringify(status) + ')';
   const scrollTo = (sel) => js('(() => { const el = ' + sel + '; if (el) el.scrollIntoView({ block: "center" }); return !!el; })()');
   const text = () => js('document.body.innerText');
   const rows = () => js('[...document.querySelectorAll(".drafts__row")].map((x) => ({ status: x.querySelector(".drafts__status").textContent.trim(), kind: x.querySelector(".drafts__kind").textContent.trim(), say: x.querySelector(".drafts__say").textContent.trim(), buttons: [...x.querySelectorAll("button")].map((b) => b.textContent.trim()), recordId: x.dataset.recordId, open: x.classList.contains("drafts__row--open") }))');
   try {
-    await win.loadURL(j.url); // a clean page load every time
+    await loadWithRetry(win, j.url); // a clean page load every time
     if (j.mode === 'list') {
       if (j.shell === 'phone') {
         // Review's FIRST item is Drafts — reached without re-expanding the tab bar.
@@ -307,16 +310,16 @@ app.whenReady().then(async () => {
       r.rows = await rows();
       await shot('1-drafts-list');
       // Waiting for allowance → the boundary, and "What SAiM may do" IN place.
-      await js('(' + btn('Open what SAiM may do', row('Waiting for allowance')) + ').click()');
+      await press(btn('Open what SAiM may do', row('Waiting for allowance')));
       r.boundary = await waitFor('(() => { const b = document.querySelector(".drafts__row--open .pmo__boundary"); return b ? b.innerText : null; })()');
       r.route = !!(await waitFor('!!(' + btn('Open what SAiM may do', 'document.querySelector(".drafts__row--open")') + ')'));
-      await js('(' + btn('Open what SAiM may do', 'document.querySelector(".drafts__row--open")') + ').click()');
+      await press(btn('Open what SAiM may do', 'document.querySelector(".drafts__row--open")'));
       r.authority = await waitFor('(() => { const a = document.querySelector(".drafts__row--open .promise-save__authority .auth"); return a ? a.innerText.slice(0, 200) : null; })()');
       await scrollTo('document.querySelector(".drafts__row--open")'); await shot('2-allowance-in-place');
-      await js('(' + btn('Close') + ').click()');
+      await press(btn('Close'));
       // Needs your answer → the exact question.
       await waitFor('!!(' + btn('Answer the question', row('Needs your answer')) + ')');
-      await js('(' + btn('Answer the question', row('Needs your answer')) + ').click()');
+      await press(btn('Answer the question', row('Needs your answer')));
       r.question = await waitFor('(() => { const q = [...document.querySelectorAll(".drafts__row--open label, .drafts__row--open .pmo2__ivq, .drafts__row--open .pmo__ask")].map((x) => x.textContent).find((t) => /What is the incentive/.test(t)); return q || null; })()');
       await scrollTo('document.querySelector(".drafts__row--open")'); await shot('3-question');
       r.text = await text();
@@ -324,11 +327,11 @@ app.whenReady().then(async () => {
       r.loaded = await waitFor('!!(' + btn('Open the draft', row('Ready to save')) + ')', 25000);
       r.rows = await rows();
       await shot('4-ready-to-save');
-      await js('(' + btn('Open the draft', row('Ready to save')) + ').click()');
+      await press(btn('Open the draft', row('Ready to save')));
       r.saveBtn = !!(await waitFor('!!(' + btn('Save it and protect the time') + ')'));
       r.writes = await js('(() => [...document.querySelectorAll(".drafts__row--open .pmo__writes li")].map((x) => x.textContent))()');
       await scrollTo(btn('Save it and protect the time')); await shot('5-save-step');
-      await js('(' + btn('Save it and protect the time') + ').click()');
+      await press(btn('Save it and protect the time'));
       r.confirm = !!(await waitFor('!!(' + btn('Confirm') + ')'));
       r.confirmWrites = await js('(() => [...document.querySelectorAll(".drafts__row--open .pmo__writes li")].map((x) => x.textContent))()');
       await scrollTo(btn('Confirm')); await shot('6-confirmation');
@@ -337,16 +340,16 @@ app.whenReady().then(async () => {
       r.rowBtn = !!(await waitFor('!!(' + btn('Draft the reply') + ')', 25000));
       r.textBefore = await text();
       await scrollTo(btn('Draft the reply')); await shot('7-now-row');
-      await js('(' + btn('Draft the reply') + ').click()');
+      await press(btn('Draft the reply'));
       r.landed = await waitFor('(() => { const o = document.querySelector(".drafts__row--open"); return o ? o.dataset.recordId : null; })()', 30000);
       r.rows = await rows();
       r.navs = await js('window.__navs || null');
       await scrollTo('document.querySelector(".drafts__row--open")'); await shot('8-landed-in-drafts');
       r.text = await text();
       // "Ready to confirm" → "Open the confirmation": the press requests the REAL confirmation (and nothing on load did).
-      await js('(' + btn('Close') + ').click()');
+      await press(btn('Close'));
       await waitFor('!!(' + btn('Open the confirmation', '[...document.querySelectorAll(".drafts__row")].find((x) => x.dataset.recordId === ' + JSON.stringify(r.landed) + ')') + ')');
-      await js('(' + btn('Open the confirmation', '[...document.querySelectorAll(".drafts__row")].find((x) => x.dataset.recordId === ' + JSON.stringify(r.landed) + ')') + ').click()');
+      await press(btn('Open the confirmation', '[...document.querySelectorAll(".drafts__row")].find((x) => x.dataset.recordId === ' + JSON.stringify(r.landed) + ')'));
       r.confirm = !!(await waitFor('!!(' + btn('Confirm') + ')'));
       r.confirmWrites = await js('(() => [...document.querySelectorAll(".drafts__row--open .pmo__writes li")].map((x) => x.textContent))()');
       await scrollTo(btn('Confirm')); await shot('8b-reply-confirmation');
@@ -358,20 +361,22 @@ app.whenReady().then(async () => {
       await js('[...document.querySelectorAll("summary")].find((x) => x.textContent.trim() === "See what SAiM can make ready").click()');
       r.offer = !!(await waitFor('!!(' + btn('Draft the reply') + ')'));
       await scrollTo(btn('Draft the reply')); await shot('10-callout-open');
-      await js('(' + btn('Draft the reply') + ').click()');
+      await press(btn('Draft the reply'));
       r.landed = await waitFor('(() => { const o = document.querySelector(".drafts__row--open"); return o ? o.dataset.recordId : null; })()', 30000);
       r.rows = await rows();
       await shot('11-callout-landed');
     } else if (j.mode === 'skip-desktop') {
       r.ctl = await waitFor('(() => { const c = document.querySelector("[data-testid=meeting-controls]"); return c ? c.innerText : null; })()', 25000);
       await scrollTo('document.querySelector("[data-testid=meeting-controls]")'); await shot('12-desktop-meeting-controls');
-      await js('(' + btn('I’m not attending') + ').click()');
+      await press(btn('I’m not attending'));
       r.recorded = await waitFor('(() => { const c = document.querySelector("[data-testid=meeting-controls]"); return c && /Recorded/.test(c.innerText) ? c.innerText : null; })()');
       await shot('13-desktop-recorded');
-      await js('(' + btn('Undo') + ').click()');
+      await press(btn('Undo'));
       r.undone = await waitFor('(() => { const c = document.querySelector("[data-testid=meeting-controls]"); return c && /I’m not attending/.test(c.innerText) ? true : null; })()');
     } else if (j.mode === 'skip-phone') {
       r.before = await waitFor('(() => { const g = document.querySelector(".sit__step"); return g ? [...g.querySelectorAll("button")].map((b) => b.textContent.trim()) : null; })()', 25000);
+      // The REAL phone App on its Surface: the page never scrolls sideways.
+      r.width = await js('({ vw: document.documentElement.clientWidth, sw: document.documentElement.scrollWidth, surface: !!document.querySelector(".app__view .surface") })');
       await scrollTo('document.querySelector(".sit__step")'); await shot('14-phone-step');
       await js('document.querySelector(".sit__step-skip").click()');
       r.recorded = await waitFor('(() => { const c = document.querySelector(".surface__recorded"); return c ? c.innerText : null; })()');
@@ -457,6 +462,8 @@ test('"I’m not attending" posts the CURRENT meeting only, says what was record
   assert.match(String(d.recorded), /Recorded: you’re not attending “Weekly Ops”\. SAiM won’t treat it as a meeting you’re in\. Nothing was declined or sent, and no one’s calendar was changed\./);
   assert.ok(d.undone, 'Undo resumes it');
   assert.ok(p.before.includes('I’m not attending'));
+  assert.ok(p.width.surface, 'positive control: the real phone App drew its Surface inside .app__view');
+  assert.equal(p.width.sw, p.width.vw, 'the real phone App on its Surface does not scroll sideways at 390px');
   assert.match(String(p.recorded), /Recorded: you’re not attending “Weekly Ops”/);
   assert.equal(p.after, 'gone', 'the meeting no longer drives Join/Prep/Capture on this device');
   const posts = results.posts.map((x) => `${x.path} ${x.body && x.body.key}`);

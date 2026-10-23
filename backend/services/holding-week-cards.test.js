@@ -132,8 +132,12 @@ const SHELLS = {
   desktop: { page: 'desktop.html', w: 1440, h: 900 },
   'now-390': { page: 'desktop.html', w: 390, h: 844 },
   phone: { page: 'phone.html', w: 390, h: 844 },
-  kiosk: { page: 'phone.html?surface=kiosk', w: 1024, h: 552 },
+  // The kiosk shell's own stylesheets, at the bedroom Fire's viewport and the
+  // 1280-wide desk panel KioskShell.css is written for.
+  kiosk: { page: 'kiosk.html?surface=kiosk', w: 1024, h: 552 },
+  'kiosk-1280': { page: 'kiosk.html?surface=kiosk', w: 1280, h: 720 },
 };
+const KIOSKS = ['kiosk', 'kiosk-1280'];
 let current = { state: 'calm', shell: 'desktop' };
 const requests = [];
 let server; let base; let skipWhy = null; const results = {};
@@ -154,12 +158,21 @@ async function bundle(name, code, appDir) {
   fs.writeFileSync(path.join(out, `${name}.html`), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${css}<style>html,body{margin:0;background:#06080c;color:#e6edf3;font-family:system-ui}*{animation:none!important;transition:none!important}</style></head><body><div id="root"></div><script>try{localStorage.setItem('neuro_pin','pin-1234')}catch(e){}</script><script type="module" src="/${name}.js"></script></body></html>`);
 }
 
+// Surface mounted the way BOTH real shells mount it: inside `.app > main.app__view`.
+// Its `margin: -1rem` is the field bleeding over `.app__view`'s 1rem padding
+// (Surface.css, KioskShell.css); mounted bare, that margin has nothing to cancel
+// and the page measured 16px too wide, which no real screen does.
+const SURFACE_IN_SHELL = `window.open = (href) => { window.__opened = (window.__opened || []).concat([href]); return null; };\nconst view = React.createElement(Surface, { onNavigate: (tab, ctx) => { window.__navs = (window.__navs || []).concat([{ view: tab, context: ctx || null }]); }, onShowAll() {} });\ncreateRoot(document.getElementById('root')).render(React.createElement('div', { className: 'app' }, React.createElement('main', { className: 'app__view' }, view)));\n`;
+
 test.before(async () => {
   const bin = electronBinary();
   if (!bin || !reactFor(path.join(ROOT, 'frontend')) || !reactFor(path.join(ROOT, 'saim', 'app'))) { skipWhy = 'no Electron binary or react here (set ELECTRON_PATH) — the shells were NOT driven'; return; }
   const slash = (p) => p.replace(/\\/g, '/');
   await bundle('desktop', `import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport ${JSON.stringify(slash(path.join(ROOT, 'frontend/src/index.css')))};\nimport ${JSON.stringify(slash(path.join(ROOT, 'frontend/src/App.css')))};\nimport AdhdPanel from ${JSON.stringify(slash(path.join(ROOT, 'frontend/src/components/AdhdPanel.jsx')))};\nconst onNavigate = (view, context = null) => { window.__navs = (window.__navs || []).concat([{ view, context }]); };\nconst narrow = window.innerWidth < 768;\ncreateRoot(document.getElementById('root')).render(React.createElement('div', { className: 'app' + (narrow ? '' : ' app--with-sidebar') }, narrow ? null : React.createElement('aside', { className: 'sidebar' }, 'sidebar'), React.createElement('main', { className: 'main-panel' }, React.createElement('div', { className: 'main-view' }, React.createElement(AdhdPanel, { onNavigate })))));\n`, path.join(ROOT, 'frontend'));
-  await bundle('phone', `import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport Surface from ${JSON.stringify(slash(path.join(ROOT, 'saim/app/src/views/Surface.jsx')))};\nimport ${JSON.stringify(slash(path.join(ROOT, 'saim/app/src/App.css')))};\nwindow.open = (href) => { window.__opened = (window.__opened || []).concat([href]); return null; };\ncreateRoot(document.getElementById('root')).render(React.createElement(Surface, { onNavigate: (tab, ctx) => { window.__navs = (window.__navs || []).concat([{ view: tab, context: ctx || null }]); }, onShowAll() {} }));\n`, path.join(ROOT, 'saim/app'));
+  await bundle('phone', `import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport Surface from ${JSON.stringify(slash(path.join(ROOT, 'saim/app/src/views/Surface.jsx')))};\nimport ${JSON.stringify(slash(path.join(ROOT, 'saim/app/src/App.css')))};\n${SURFACE_IN_SHELL}`, path.join(ROOT, 'saim/app'));
+  // The kiosk shell's three sheets, in saim/frontend/src/App.jsx's order: its theme,
+  // the phone's shell (which must win), then KioskShell.css.
+  await bundle('kiosk', `import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport Surface from ${JSON.stringify(slash(path.join(ROOT, 'saim/app/src/views/Surface.jsx')))};\nimport ${JSON.stringify(slash(path.join(ROOT, 'saim/frontend/src/App.css')))};\nimport ${JSON.stringify(slash(path.join(ROOT, 'saim/app/src/App.css')))};\nimport ${JSON.stringify(slash(path.join(ROOT, 'saim/frontend/src/KioskShell.css')))};\n${SURFACE_IN_SHELL}`, path.join(ROOT, 'saim/app'));
 
   const www = path.join(tmp, 'www');
   server = http.createServer((req, res) => {
@@ -210,8 +223,10 @@ test.before(async () => {
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.HW_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron'); const fs = require('fs'); const path = require('path');
+${LOAD_WITH_RETRY}
 const job = JSON.parse(fs.readFileSync(process.env.HW_JOB, 'utf8'));
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -222,7 +237,7 @@ const IDS = ['kept', 'monday', 'next', 'judgement'];
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: job.w, height: job.h, useContentSize: true, show: false, webPreferences: { offscreen: true } });
   win.setContentSize(job.w, job.h);
-  await win.loadURL(job.url);
+  await loadWithRetry(win, job.url);
   const js = (c) => win.webContents.executeJavaScript(c);
   const t0 = Date.now(); while (Date.now() - t0 < 20000 && !(await js('!!document.querySelector(".kmw__week")'))) await sleep(150);
   await sleep(800);
@@ -265,8 +280,6 @@ app.whenReady().then(async () => {
 const R = (name) => { const r = results[name]; assert.ok(r && !r.error, `${name}: ${r && r.error}`); return r; };
 const posts = (state, shell) => requests.filter((q) => q.state === state && q.shell === shell && q.method !== 'GET');
 const WORKSPACE = ['desktop', 'now-390'];
-const pageOverflow = new Set();
-test.after(() => { if (pageOverflow.size) console.log(`[holding-week] page-level sideways overflow (not Holding the week): ${[...pageOverflow].join(' | ')}`); });
 
 test('every shell, every state: the week renders, nothing runs off the screen, every card is reachable', (t) => {
   if (skipWhy) return t.skip(skipWhy);
@@ -274,10 +287,10 @@ test('every shell, every state: the week renders, nothing runs off the screen, e
     for (const shell of Object.keys(SHELLS)) {
       const r = R(`${state}-${shell}`);
       assert.equal(r.page.week, true, `${state}-${shell}: Holding the week is on screen`);
-      // Nothing of Holding the week runs past the screen. (The page as a whole is
-      // measured too and its offenders reported by name, so a wider page cannot hide.)
+      // Nothing of Holding the week runs past the screen, and the page as a whole
+      // does not scroll sideways (offenders named if it ever does).
       assert.deepEqual(r.page.kmwPast, [], `${state}-${shell}: nothing of Holding the week past the edge`);
-      if (r.page.sw !== r.page.vw) pageOverflow.add(`${shell}: ${r.page.sw - r.page.vw}px from ${r.page.anyPast.join(', ') || '(no element — the scrollbar gutter)'}`);
+      assert.equal(r.page.sw, r.page.vw, `${state}-${shell}: no sideways scroll — ${r.page.anyPast.join(', ') || '(no element named)'}`);
       if (WORKSPACE.includes(shell)) {
         assert.deepEqual(r.cards.map((c) => c.id), ['kept', 'monday', 'next', 'judgement'], `${state}-${shell}: the four cards`);
         for (const c of r.cards) {
@@ -389,16 +402,18 @@ test('Needs your judgement: a bounded review, one promise at a time, with eviden
 
 test('the kiosk opens every record and performs nothing — no Start, no Draft, no request', (t) => {
   if (skipWhy) return t.skip(skipWhy);
-  for (const state of Object.keys(STATES)) {
-    const r = R(`${state}-kiosk`);
-    for (const sh of Object.values(r.sheets)) {
-      assert.ok(!sh.targets.some((x) => x.target === 'session-start' || x.target === 'prepare-delivery'), `${state}-kiosk: nothing that changes anything`);
-      assert.match(sh.text, /This screen can show these records; it can’t act on them\./);
+  for (const k of KIOSKS) {
+    for (const state of Object.keys(STATES)) {
+      const r = R(`${state}-${k}`);
+      for (const sh of Object.values(r.sheets)) {
+        assert.ok(!sh.targets.some((x) => x.target === 'session-start' || x.target === 'prepare-delivery'), `${state}-${k}: nothing that changes anything`);
+        assert.match(sh.text, /This screen can show these records; it can’t act on them\./);
+      }
+      assert.deepEqual(posts(state, k), [], `${state}-${k}: no request that writes`);
     }
-    assert.deepEqual(posts(state, 'kiosk'), [], `${state}-kiosk: no request that writes`);
+    assert.ok(R(`prepared-${k}`).sheets.next, `positive control: ${k} did open the startable block’s record`);
+    assert.match(R(`prepared-${k}`).sheets.next.text, /Start this block — not from this screen\./);
   }
-  assert.ok(R('prepared-kiosk').sheets.next, 'positive control: the kiosk did open the startable block’s record');
-  assert.match(R('prepared-kiosk').sheets.next.text, /Start this block — not from this screen\./);
 });
 
 test('phone, desktop and NEURO Now use the same contract and entity ids', (t) => {

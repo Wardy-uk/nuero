@@ -223,8 +223,10 @@ createRoot(document.getElementById('root')).render(React.createElement(Shell));
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.TC_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 
+const { LOAD_WITH_RETRY } = require('./electron-driver-support');
 const DRIVER = String.raw`
 const { app, BrowserWindow } = require('electron'); const fs = require('fs'); const path = require('path');
+${LOAD_WITH_RETRY}
 const job = JSON.parse(fs.readFileSync(process.env.NW_JOB, 'utf8'));
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -236,7 +238,7 @@ app.whenReady().then(async () => {
   for (const [w, h] of job.sizes) {
     const win = new BrowserWindow({ width: w, height: h, useContentSize: true, show: false, webPreferences: { offscreen: true } });
     win.setContentSize(w, h);
-    await win.loadURL(process.env.NW_URL + job.hash);
+    await loadWithRetry(win, process.env.NW_URL + job.hash);
     const js = (c) => win.webContents.executeJavaScript(c);
     const t0 = Date.now(); while (Date.now() - t0 < 20000 && !(await js('!!document.querySelector(' + JSON.stringify(job.wait) + ')'))) await sleep(150);
     await sleep(700);
