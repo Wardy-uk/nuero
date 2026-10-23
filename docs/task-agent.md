@@ -403,9 +403,14 @@ SDK's real error shape in `task-agent-next.test.js`.
 
 ## Decisions still Nick's
 
-1. **Paste the key, run the connection test, then turn Do this on** (Settings → AI & SAiM →
-   Anthropic). Deployment leaves it OFF with no key.
-2. **The limits.** Defaults $1.00 and 10 runs a day, enforced.
+1. **Key and connection — DONE (23 Oct 2026).** Nick saved a workspace-scoped Anthropic key and
+   the explicit connection test succeeded. He then turned Do this on and ran it (tasks #344, #334).
+2. **The limits.** Code defaults are $1.00 and 10 runs a day. Nick's intended limits are
+   **$1.50/day and 2 runs/day**. ⚠ The live saved values read **$15 / 20 runs** (saved once,
+   23 Oct 16:53 BST, in the same save that switched Do this on). Nothing shows they were chosen
+   deliberately, so Nick should re-save 1.50 and 2 in Settings. NEURO does not change them.
+   Note: that day's Do this spend was already $2.02 over 2 runs, so a $1.50 limit saved the same
+   day refuses new runs until midnight.
 3. **Gate enforcement** (`AI_GATE_MODE`, shared with VANTAGE): unchanged, shadow.
 4. **Stage 2 deployment**, after review (below).
 5. **Evening saves** stay held by the existing off-duty rule (unchanged, deliberately).
