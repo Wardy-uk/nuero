@@ -79,14 +79,16 @@ function EscalationRow({ t, onPick, watched, onWatch }) {
             touched {agoLabel(touched)}
           </span>
         )}
-        {onWatch && (
-          watched
-            ? <span className="esc-tag esc-tag-watching" title="In your watched tickets">watching</span>
-            : <button type="button" className="esc-row-action esc-row-action-watch" onClick={() => onWatch(t.key)}>Watch</button>
-        )}
-        <button type="button" className="esc-row-action esc-row-action-tight" onClick={() => onPick(t.key)}>
-          Escalate again
-        </button>
+        <span className="esc-row-actions">
+          {onWatch && (
+            watched
+              ? <span className="esc-pill" title="In your watched tickets">watching</span>
+              : <button type="button" className="esc-mini" onClick={() => onWatch(t.key)}>Watch</button>
+          )}
+          <button type="button" className="esc-mini" onClick={() => onPick(t.key)}>
+            Escalate again
+          </button>
+        </span>
       </div>
     </div>
   );

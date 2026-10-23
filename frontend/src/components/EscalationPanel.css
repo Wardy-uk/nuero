@@ -478,3 +478,12 @@
   padding: 4px 8px; background: var(--bg-primary); color: var(--text-primary);
   border: 1px solid var(--border); border-radius: var(--radius-sm); color-scheme: dark;
 }
+
+/* Opt out of App.css's 960px page cap (.main-view > *), the way About me does:
+   this page is a two-column grid and needs the whole screen. */
+.main-view > .escalation-panel,
+.main-panel > .escalation-panel { max-width: none; }
+
+/* The row's two buttons stay together, on the right, and never split across
+   lines among the meta text. */
+.esc-row-actions { display: inline-flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
