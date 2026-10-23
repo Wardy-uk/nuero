@@ -253,6 +253,14 @@ test('context: a note titled as employee cases makes every named person in it a 
   assert.equal(c.sensitive, true); assert.equal(c.rule, 'employee-title');
 });
 
+test('context: the line pre-filter still sees a subject named only by their alias', () => {
+  const roster = { ...ROSTER, aliases: new Map([['pip', 'Sam Patel']]) };
+  const note = '- **Pip:** second extended fit note after surgery; seeking HR guidance.\n- [ ] Send Sam the rota';
+  const c = contextSensitivity(note, 'Send Sam the rota', 'Ops', roster);
+  assert.equal(c.sensitive, true);
+  assert.deepEqual(c.about, ['Sam Patel']);
+});
+
 test('context: not swept up — nobody named, or the person is mentioned only in ordinary terms', () => {
   const note = '# Weekly ops\n- Team performance was strong this week.\n- Alex shared the rota.\n- [ ] Send Alex the rota';
   assert.equal(contextSensitivity(note, 'Send Alex the rota', 'Weekly ops', ROSTER).sensitive, false, 'performance about the team, not about Alex');

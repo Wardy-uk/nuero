@@ -97,8 +97,21 @@ function contextSensitivity(noteText, taskText, title, roster) {
     return { sensitive: true, rule: 'employee-title', matched: String(title).match(EMPLOYEE_TITLE)[0], where: 'source-context', about: subjects };
   }
   const want = norm(taskText);
+  // ⚠ A line can only name a subject if it CONTAINS one of that subject's words
+  // (first name — a full name contains it — or an alias they own). Checking that
+  // with `includes` first skips the regex matcher on almost every line; it is an
+  // exact pre-filter, not a heuristic, because every `word()` match implies the
+  // substring. Without it this ran the whole roster's regexes per line of every
+  // source note and blocked the event loop for ~4s a minute (23 Oct 2026).
+  const needles = new Set(subjects.map((s) => s.split(/\s+/)[0].toLowerCase()));
+  for (const [alias, owner] of roster.aliases || new Map()) if (subjects.includes(owner)) needles.add(String(alias).toLowerCase());
   for (const raw of String(noteText).replace(/\r\n/g, '\n').split('\n')) {
-    if (!raw.trim() || norm(raw).includes(want.slice(0, 50))) continue; // the promise's own line is judged by its wording
+    if (!raw.trim()) continue;
+    const lowerRaw = raw.toLowerCase();
+    let mentions = false;
+    for (const n of needles) if (lowerRaw.includes(n)) { mentions = true; break; }
+    if (!mentions) continue;
+    if (norm(raw).includes(want.slice(0, 50))) continue; // the promise's own line is judged by its wording
     const named = namesIn(raw, roster).people.map((p) => p.name).filter((n) => subjects.includes(n));
     if (!named.length) continue;
     const hit = CONTEXT_PATTERNS.map((re) => re.exec(raw)).find(Boolean);
@@ -111,12 +124,25 @@ function contextSensitivity(noteText, taskText, title, roster) {
 
 const SELF = new Set(['nick', 'nick ward']);
 
+// Compiled once per word: a Unicode-property RegExp is expensive to build, and
+// namesIn runs per line of every source note. Bounded — the roster is ~45 names.
+const WORD_RE = new Map();
+function wordRe(w) {
+  let re = WORD_RE.get(w);
+  if (!re) {
+    re = new RegExp(`(?:^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
+    if (WORD_RE.size > 2000) WORD_RE.clear();
+    WORD_RE.set(w, re);
+  }
+  return re;
+}
+
 /** PURE. People a piece of text names. A first name only counts when it is unique in the roster. */
 function namesIn(text, roster) {
   const lower = String(text || '').toLowerCase();
   const found = new Map();
   const ambiguous = new Map();
-  const word = (w) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
+  const word = wordRe;
   for (const full of roster.full || []) {
     if (SELF.has(full.toLowerCase())) continue;
     if (word(full.toLowerCase()).test(lower)) found.set(full, 'full-name');

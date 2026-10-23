@@ -538,7 +538,10 @@ async function build({ now = new Date(), context = null } = {}) {
 
   let signals = null;
   try {
-    signals = require('./health-signals').snapshot();
+    // This runs on every attention read (polled each minute by several
+    // surfaces), so the metric summary — a full GROUP BY over ~1.1M samples,
+    // ~2.5s blocking the event loop — may be up to 10 minutes old here.
+    signals = require('./health-signals').snapshot({ metricsMaxAgeMs: 10 * 60 * 1000 });
   } catch (e) {
     gaps.push({ source: 'health-signals', why: e.message });
   }
