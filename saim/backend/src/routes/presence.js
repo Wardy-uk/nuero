@@ -378,7 +378,9 @@ router.post('/sensor', express.json({ limit: '16kb' }), (req, res) => {
   // Feed any calibration in progress. Never allowed to fail the sensor's push:
   // a bookkeeping error must not cost a reading.
   try {
-    const arb = resolveRoom(store.all(), new Date());
+    // ⚠ HOUSE SENSORS ONLY (23 Oct 2026): the laptop is mobile and the live
+    // arbitration ignores it, so a profile that learned it can never match.
+    const arb = resolveRoom(houseOnly(store.all()), new Date());
     profiles.offer(liveVector(arb));
   } catch (e) {
     console.warn('[presence] calibration sample skipped: ' + e.message);
