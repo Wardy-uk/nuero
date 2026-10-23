@@ -68,6 +68,14 @@ test('order: needs you → promised updates → escalated → watching → resol
   assert.deepEqual(items[0].needs, ['1 new reply']);
 });
 
+test('collapsed, a row is ONE line: key, summary, what is due — the details wait for a click', () => {
+  const html = render({ escalations: [], watched: { active: [watched({ key: 'NT-35291', replies: [{ author: 'A', created: '2026-10-23T12:00:00Z', excerpt: 'hidden until opened', flagged: true }], commitments: [{ id: 9, state: 'open', dueAt: in90() }] })], listening: [] } });
+  assert.match(html, /Forms not working/);
+  assert.match(html, /esc-tail esc-tail-warn">update \d\d:\d\d · in 1h (30|29)m/);
+  assert.doesNotMatch(html, /hidden until opened/);
+  assert.match(html, /aria-expanded="false"/);
+});
+
 test('one list on screen: filter counts, needs-you pills, escalation route, the reply, the commitment strip', () => {
   const html = render({
     escalations: [esc({ key: 'NT-35210', replyState: 'awaiting-you' })],
@@ -76,6 +84,7 @@ test('one list on screen: filter counts, needs-you pills, escalation route, the 
         commitments: [{ id: 1, state: 'proposed', dueAt: in90(), phrase: 'I will get back to you by 5pm today' }, { id: 2, state: 'open', dueAt: ago20(), missed: true }] }),
       watched({ key: 'NT-35291', commitments: [{ id: 3, state: 'open', dueAt: in90() }] }),
     ], listening: [] },
+    initialExpanded: ['NT-35210', 'NT-35301', 'NT-35291'],
   });
   assert.match(html, /Needs you<span class="esc-filter-count esc-filter-count-alert">2</);
   assert.match(html, /no reply from you/);
@@ -94,7 +103,7 @@ test('one list on screen: filter counts, needs-you pills, escalation route, the 
 
 test('a resolved ticket says it is still listening; a reply judged a thank-you says so', () => {
   const html = render({ escalations: [], watched: { active: [], listening: [watched({ key: 'NT-9', phase: 'background', listeningUntil: '2026-11-05T23:59:59Z',
-    replies: [{ author: 'Sam', created: '2026-10-22T09:00:00Z', excerpt: 'Thanks!', flagged: false }] })] } });
+    replies: [{ author: 'Sam', created: '2026-10-22T09:00:00Z', excerpt: 'Thanks!', flagged: false }] })] }, initialExpanded: ['NT-9'] });
   assert.match(html, /resolved · listening until/);
   assert.match(html, /judged a thank-you/);
 });

@@ -566,19 +566,64 @@
   .esc-toolbar .esc-key-input { flex: 1 1 auto; max-width: none; }
 }
 
-/* One list, top to bottom in priority order (no zigzag). On a wide screen a
-   card splits: the ticket and the customer's reply left, your promises and
-   actions right. Escalating spans the whole card. */
-.esc-ticket-list { grid-template-columns: 1fr; }
-.esc-ticket-main, .esc-ticket-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-@media (min-width: 1100px) {
-  .esc-ticket-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
-    column-gap: 24px;
-    row-gap: 10px;
-    align-items: start;
+/* ============================================== compact rows (23 Oct 2026) */
+/* One line per ticket; click to expand. The end of the line carries the one
+   thing that is due, so a promise reads at a glance. */
+.esc-ticket-list { grid-template-columns: 1fr; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-secondary); overflow: hidden; }
+.esc-ticket-list > .esc-empty { padding: 14px 16px; }
+.esc-ticket-list > .esc-ticket-card { margin: 10px; }
+
+.esc-trow { border-top: 1px solid var(--border); border-left: 3px solid transparent; }
+.esc-trow:first-child { border-top: none; }
+.esc-trow-needs { border-left-color: var(--danger); }
+.esc-trow-highlight { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.esc-trow-quiet { opacity: 0.75; }
+.esc-trow-open { background: var(--bg-tertiary); }
+
+.esc-trow-line {
+  display: grid;
+  /* Fixed columns so status and what is due line up down the list, like a table. */
+  grid-template-columns: 14px 84px minmax(0, 1fr) 240px 160px 250px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.esc-trow-line:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.esc-trow-line:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.esc-trow-caret { color: var(--text-muted); font-size: 11px; }
+.esc-trow-key { color: var(--accent); font-weight: 600; font-size: 13px; text-decoration: none; }
+.esc-trow-key:hover { text-decoration: underline; }
+.esc-trow-summary { font-family: var(--font-sans); font-size: 14px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.esc-trow-pills { display: inline-flex; gap: 6px; justify-content: flex-end; overflow: hidden; }
+.esc-trow-status { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.esc-trow-tail { text-align: right; }
+
+.esc-tail { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.esc-tail-cold { color: var(--warning); }
+.esc-tail-warn, .esc-tail-alert, .esc-tail-ask {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 600;
+}
+.esc-tail-warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); }
+.esc-tail-alert { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent); }
+.esc-tail-ask { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent); }
+
+.esc-trow-body {
+  padding: 2px 16px 14px 42px;
+  display: flex; flex-direction: column; gap: 10px;
+  max-width: 1100px;
+}
+.esc-trow-quietnote { margin: 0; font-size: 12px; color: var(--text-muted); }
+.esc-trow-body .esc-ticket-actions { justify-content: flex-start; }
+.esc-trow-body .esc-escalate { border-top: 1px dashed var(--border); }
+
+@media (max-width: 900px) {
+  .esc-trow-line {
+    grid-template-columns: 14px max-content minmax(0, 1fr);
+    row-gap: 6px;
   }
-  .esc-ticket-side { border-left: 1px solid var(--border); padding-left: 20px; min-height: 100%; justify-content: space-between; }
-  .esc-ticket-full { grid-column: 1 / -1; }
+  .esc-trow-pills, .esc-trow-status, .esc-trow-tail { grid-column: 2 / -1; text-align: left; }
+  .esc-trow-pills { justify-content: flex-start; flex-wrap: wrap; }
+  .esc-trow-summary { white-space: normal; }
+  .esc-trow-body { padding-left: 16px; }
 }
