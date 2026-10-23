@@ -44,6 +44,7 @@ for (const d of ['People', 'Meetings/2026/09', 'Projects/Support Hub']) fs.mkdir
 for (const n of ['Stephen Kerr', 'Heidi Ford']) fs.writeFileSync(path.join(VAULT, 'People', `${n}.md`), `---\ntype: person\n---\n# ${n}\n`);
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const MAIN_CHECKOUT = require('./electron-driver-support').mainCheckout(ROOT); // read deps by path — never junction them in
 const SOURCE = 'Meetings/2026/09/2026-09-01 – Weekly Meeting Ticket Health, AI Integration, and Team Performance.md';
 const TEXT = 'Define achievable targets for hybrid/WFH incentive; agree plan on 2026-09-02';
 fs.writeFileSync(path.join(VAULT, SOURCE), `---\ntype: meeting\n---\n# Weekly Meeting\n\n### Return-to-Office Policy and Incentives\n- Consider hybrid model (e.g., two days WFH) as incentive tied to achievable targets, leveraging AI efficiency gains; stagger WFH to maintain coverage.\n\n## Actions\n- [ ] ${TEXT}.\n\n### Team Performance\n- Stephen Kerr’s performance on hybrid WFH targets has dipped this month.\n- Heidi Ford is on leave next week; her WFH incentive is on hold.\n`);
@@ -62,7 +63,7 @@ function electronBinary() {
 }
 /** The react the shell itself builds with: the desktop's from the repo root, the phone's from saim/app. */
 function reactFor(appDir) {
-  for (const base of [path.join(appDir, 'node_modules'), path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', path.relative(ROOT, appDir), 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules')]) {
+  for (const base of [path.join(appDir, 'node_modules'), path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, path.relative(ROOT, appDir), 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules')]) {
     if (fs.existsSync(path.join(base, 'react', 'package.json'))) return base;
   }
   return null;
@@ -78,7 +79,7 @@ async function bundleShell(name, entryCode, appDir) {
     loader: { '.png': 'dataurl', '.svg': 'dataurl', '.jpg': 'dataurl', '.woff2': 'dataurl', '.woff': 'dataurl' },
     define: { 'import.meta.env': JSON.stringify({ VITE_API_URL: '', VITE_VAULT_API_KEY: '', DEV: false, PROD: true, MODE: 'production', VITE_BUILD_LABEL: 'test' }) },
     alias: { react: path.join(nm, 'react'), 'react-dom': path.join(nm, 'react-dom'), 'react/jsx-runtime': path.join(nm, 'react', 'jsx-runtime.js') },
-    nodePaths: [nm, path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules')],
+    nodePaths: [nm, path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules')],
   });
   const css = fs.existsSync(path.join(out, `${name}.css`)) ? `<link rel="stylesheet" href="/${name}.css">` : '';
   fs.writeFileSync(path.join(out, `${name}.html`), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">${css}<style>html,body{margin:0;background:#06080c;color:#e6edf3;font-family:system-ui}*{animation:none!important;transition:none!important}</style></head><body><div id="root"></div><script>try{localStorage.setItem('neuro_pin','pin-1234')}catch(e){}</script><script type="module" src="/${name}.js"></script></body></html>`);

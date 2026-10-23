@@ -31,7 +31,12 @@ function getVaultPath() {
   return process.env.OBSIDIAN_VAULT_PATH || '';
 }
 
+// NEURO_TASK_EXPORT_PATH (absolute) moves the export OUT of the vault. Tests set it
+// so a vault snapshot can assert that NOTHING was written there without excluding
+// a file; unset (production) it is the vault path above. A relative value is ignored.
 function exportPath() {
+  const override = process.env.NEURO_TASK_EXPORT_PATH;
+  if (override && path.isAbsolute(override)) return override;
   return path.join(getVaultPath(), 'Tasks', 'NEURO Tasks (export).md');
 }
 

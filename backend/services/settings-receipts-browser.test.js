@@ -27,18 +27,19 @@ const http = require('http');
 const esbuild = require('esbuild');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const MAIN_CHECKOUT = require('./electron-driver-support').mainCheckout(ROOT); // read deps by path — never junction them in
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-receipts-'));
 const SHOTS = process.env.SR_SHOTS || path.join(tmp, 'shots');
 
 function electronBinary() {
   if (process.env.ELECTRON_PATH && fs.existsSync(process.env.ELECTRON_PATH)) return process.env.ELECTRON_PATH;
-  for (const base of [path.join(ROOT, 'saim', 'desktop-electron'), ROOT, path.join(ROOT, '..', 'nuero', 'saim', 'desktop-electron')]) {
+  for (const base of [path.join(ROOT, 'saim', 'desktop-electron'), ROOT, path.join(MAIN_CHECKOUT, 'saim', 'desktop-electron')]) {
     try { const p = require(require.resolve('electron', { paths: [base] })); if (typeof p === 'string' && fs.existsSync(p)) return p; } catch { /* not here */ }
   }
   return null;
 }
 function reactFor(appDir) {
-  for (const b of [path.join(appDir, 'node_modules'), path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', path.relative(ROOT, appDir), 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules')]) {
+  for (const b of [path.join(appDir, 'node_modules'), path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, path.relative(ROOT, appDir), 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules')]) {
     if (fs.existsSync(path.join(b, 'react', 'package.json'))) return b;
   }
   return null;
@@ -106,7 +107,7 @@ async function bundle(name, code, appDir) {
     loader: { '.png': 'dataurl', '.svg': 'dataurl', '.jpg': 'dataurl', '.woff2': 'dataurl', '.woff': 'dataurl' },
     define: { 'import.meta.env': JSON.stringify({ VITE_API_URL: '', VITE_VAULT_API_KEY: '', DEV: false, PROD: true, MODE: 'production', VITE_BUILD_LABEL: 'test' }) },
     alias: { react: path.join(nm, 'react'), 'react-dom': path.join(nm, 'react-dom'), 'react/jsx-runtime': path.join(nm, 'react', 'jsx-runtime.js') },
-    nodePaths: [nm, path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules')],
+    nodePaths: [nm, path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules')],
   });
   const css = fs.existsSync(path.join(out, `${name}.css`)) ? `<link rel="stylesheet" href="/${name}.css">` : '';
   fs.writeFileSync(path.join(out, `${name}.html`), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${css}<style>html,body{margin:0;background:#06080c;color:#e6edf3;font-family:system-ui}*{animation:none!important;transition:none!important}</style></head><body><div id="root"></div><script>try{localStorage.setItem('neuro_pin','pin-1234')}catch(e){}</script><script type="module" src="/${name}.js"></script></body></html>`);

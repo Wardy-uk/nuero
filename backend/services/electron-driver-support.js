@@ -44,4 +44,19 @@ async function mustWait(js, code, label, ms = 45000) {
 }
 `;
 
-module.exports = { LOAD_WITH_RETRY };
+/**
+ * Where the MAIN checkout is, so a worktree's tests can READ its installed
+ * node_modules (React for the bundles, Electron) without a node_modules junction.
+ * Junctions in worktrees deleted the main checkout three times (19/20/23 Oct 2026);
+ * reading by path is the replacement. git's common dir is <main>/.git for the main
+ * checkout, a nested .claude/worktrees/* worktree and a sibling worktree alike.
+ */
+function mainCheckout(root) {
+  try {
+    const common = require('child_process').execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (common) return require('path').dirname(common);
+  } catch { /* not a git checkout: fall back to the sibling layout */ }
+  return require('path').join(root, '..', 'nuero');
+}
+
+module.exports = { LOAD_WITH_RETRY, mainCheckout };

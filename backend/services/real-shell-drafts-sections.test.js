@@ -45,6 +45,10 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'drafts-sections-'));
 const VAULT = path.join(tmp, 'vault');
 process.env.NEURO_DB_PATH = path.join(tmp, 'agent.db');
 process.env.OBSIDIAN_VAULT_PATH = VAULT;
+// The generated task export goes OUTSIDE the vault, so the vault snapshot can cover
+// every file with nothing left out; the tick's export is then proven separately.
+const EXPORT = path.join(tmp, 'export', 'NEURO Tasks (export).md');
+process.env.NEURO_TASK_EXPORT_PATH = EXPORT;
 process.env.NEURO_TIMEZONE = 'Europe/London';
 process.env.NEURO_PIN = 'pin-1234';
 process.env.NEURO_API_TOKEN = 'tok-5678';
@@ -53,6 +57,7 @@ for (const d of ['People', 'Meetings/2026/09', 'Projects']) fs.mkdirSync(path.jo
 for (const n of ['Stephen Kerr', 'Heidi Ford']) fs.writeFileSync(path.join(VAULT, 'People', `${n}.md`), `---\ntype: person\n---\n# ${n}\n`);
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const MAIN_CHECKOUT = require('./electron-driver-support').mainCheckout(ROOT); // read deps by path — never junction them in
 const SOURCE = 'Meetings/2026/09/2026-09-01 – Weekly Meeting Ticket Health, AI Integration, and Team Performance.md';
 const BASE_TEXT = 'Define achievable targets for hybrid/WFH incentive';
 fs.writeFileSync(path.join(VAULT, SOURCE), `---\ntype: meeting\n---\n# Weekly Meeting\n\n### Return-to-Office Policy and Incentives\n- Consider hybrid model (e.g., two days WFH) as incentive tied to achievable targets.\n\n## Actions\n- [ ] ${BASE_TEXT}.\n\n### Team Performance\n- Stephen Kerr’s performance on hybrid WFH targets has dipped this month.\n- Heidi Ford is on leave next week; her WFH incentive is on hold.\n`);
@@ -126,13 +131,13 @@ async function confirmLive(rec, option) {
 
 function electronBinary() {
   if (process.env.ELECTRON_PATH && fs.existsSync(process.env.ELECTRON_PATH)) return process.env.ELECTRON_PATH;
-  for (const b of [path.join(ROOT, 'saim', 'desktop-electron'), ROOT, path.join(ROOT, '..', 'nuero', 'saim', 'desktop-electron')]) {
+  for (const b of [path.join(ROOT, 'saim', 'desktop-electron'), ROOT, path.join(MAIN_CHECKOUT, 'saim', 'desktop-electron')]) {
     try { const p = require(require.resolve('electron', { paths: [b] })); if (typeof p === 'string' && fs.existsSync(p)) return p; } catch { /* not here */ }
   }
   return null;
 }
 function reactFor(appDir) {
-  for (const b of [path.join(appDir, 'node_modules'), path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', path.relative(ROOT, appDir), 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules')]) {
+  for (const b of [path.join(appDir, 'node_modules'), path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, path.relative(ROOT, appDir), 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules')]) {
     if (fs.existsSync(path.join(b, 'react', 'package.json'))) return b;
   }
   return null;
@@ -148,7 +153,7 @@ async function bundleShell(name, entryCode, appDir, env = {}) {
     loader: { '.png': 'dataurl', '.svg': 'dataurl', '.jpg': 'dataurl', '.woff2': 'dataurl', '.woff': 'dataurl' },
     define: { 'import.meta.env': JSON.stringify({ VITE_API_URL: '', VITE_VAULT_API_KEY: '', DEV: false, PROD: true, MODE: 'production', VITE_BUILD_LABEL: 'test', ...env }) },
     alias: { react: path.join(nm, 'react'), 'react-dom': path.join(nm, 'react-dom'), 'react/jsx-runtime': path.join(nm, 'react', 'jsx-runtime.js') },
-    nodePaths: [nm, path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules'), ...String(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean)],
+    nodePaths: [nm, path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules'), ...String(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean)],
   });
   const css = fs.existsSync(path.join(out, `${name}.css`)) ? `<link rel="stylesheet" href="/${name}.css">` : '';
   fs.writeFileSync(path.join(out, `${name}.html`), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">${css}<style>html,body{margin:0;background:#06080c;color:#e6edf3;font-family:system-ui}*{animation:none!important;transition:none!important}</style></head><body><div id="root"></div><script>try{localStorage.setItem('neuro_pin','pin-1234')}catch(e){}</script><script type="module" src="/${name}.js"></script></body></html>`);
@@ -277,6 +282,8 @@ test.before(async () => {
   replyKey = rid ? store.get(rid).moveKey : null;
   assert.ok(replyKey, 'a reply draft was prepared');
 
+  require('./task-store').flushExport();
+  results.exportBefore = fs.existsSync(EXPORT) ? fs.readFileSync(EXPORT, 'utf8') : null;
   results.vaultBefore = vaultTree();
   fs.mkdirSync(SHOTS, { recursive: true });
   const appDir = path.join(tmp, 'driver'); fs.mkdirSync(appDir);
@@ -295,7 +302,9 @@ test.before(async () => {
   });
   results.phone = await run({ name: 'drafts-phone-390x844', url: `${base}/phone.html?tab=drafts`, w: 390, h: 844, freshLoad: true });
   results.desktop = await run({ name: 'drafts-desktop-1440x900', url: `${base}/desktop.html`, w: 1440, h: 900, press: true });
+  require('./task-store').flushExport();
   results.vaultAfter = vaultTree();
+  results.exportAfter = fs.existsSync(EXPORT) ? fs.readFileSync(EXPORT, 'utf8') : null;
 });
 test.after(() => { try { server && server.close(); } catch { /* */ } if (!process.env.SHELL_SHOTS) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } } });
 
@@ -376,9 +385,17 @@ test('"Work’s done — tick the task" moves the draft to History, still saying
 
 test('loading, reloading and opening wrote nothing to the vault', (t) => {
   if (skipWhy) return t.skip(skipWhy);
-  // Ticking a task regenerates NEURO's read-only task export (existing behaviour, not Drafts).
-  const NL = String.fromCharCode(10);
-  const strip = (s) => s.split(NL).filter((l) => !l.startsWith(`Tasks${path.sep}NEURO Tasks (export).md:`)).join(NL);
-  assert.equal(strip(results.vaultAfter), strip(results.vaultBefore));
+  // EVERY vault file is compared — nothing is stripped. The task export (which the tick
+  // legitimately regenerates) is written outside the vault in this test, and both
+  // snapshots are taken after task-store's debounced writer has been settled.
+  assert.equal(results.vaultAfter, results.vaultBefore);
   assert.ok(results.vaultAfter.includes('Projects'), 'positive control: the saved drafts are in the snapshot');
+  assert.ok(!results.vaultAfter.includes('NEURO Tasks (export)'), 'the export never landed in the vault');
+});
+
+test('the tick did reach the generated task export (written outside the vault, so it is checked here)', (t) => {
+  if (skipWhy) return t.skip(skipWhy);
+  assert.ok(results.exportBefore && results.exportBefore.includes(TEXT('ticked')), 'before: the ticked task is listed as open');
+  assert.ok(results.exportAfter && !results.exportAfter.includes(TEXT('ticked')), 'after: the export no longer lists it as open');
+  assert.ok(results.exportAfter.includes(TEXT('scheduled')), 'positive control: other open tasks are still listed');
 });

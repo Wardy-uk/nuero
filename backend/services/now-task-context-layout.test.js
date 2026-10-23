@@ -38,6 +38,7 @@ const { composePresentation } = require('./presentation-intent');
 const { FIXTURES } = require('../../shared/presentation-fixtures.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const MAIN_CHECKOUT = require('./electron-driver-support').mainCheckout(ROOT); // read deps by path — never junction them in
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'now-task-context-'));
 const SHOTS = process.env.TC_SHOTS || path.join(tmp, 'shots');
 const NOW = Date.parse('2026-10-21T09:00:00Z');
@@ -46,13 +47,13 @@ const nodePaths = [path.join(ROOT, 'node_modules'), ...String(process.env.NODE_P
 
 function electronBinary() {
   if (process.env.ELECTRON_PATH && fs.existsSync(process.env.ELECTRON_PATH)) return process.env.ELECTRON_PATH;
-  for (const base of [path.join(ROOT, 'saim', 'desktop-electron'), ROOT, path.join(ROOT, '..', 'nuero', 'saim', 'desktop-electron')]) {
+  for (const base of [path.join(ROOT, 'saim', 'desktop-electron'), ROOT, path.join(MAIN_CHECKOUT, 'saim', 'desktop-electron')]) {
     try { const p = require(require.resolve('electron', { paths: [base] })); if (typeof p === 'string' && fs.existsSync(p)) return p; } catch { /* not here */ }
   }
   return null;
 }
 function reactDir() {
-  for (const b of [path.join(ROOT, 'frontend', 'node_modules'), path.join(ROOT, 'node_modules'), path.join(ROOT, '..', 'nuero', 'node_modules')]) {
+  for (const b of [path.join(ROOT, 'frontend', 'node_modules'), path.join(ROOT, 'node_modules'), path.join(MAIN_CHECKOUT, 'node_modules')]) {
     if (fs.existsSync(path.join(b, 'react', 'package.json'))) return b;
   }
   return null;

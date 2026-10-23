@@ -223,6 +223,19 @@ function scheduleExport(delayMs = 3000) {
   if (exportTimer.unref) exportTimer.unref();
 }
 
+/**
+ * Run a pending debounced export NOW and cancel its timer. Returns true when an
+ * export was pending (and so was written). Lets a caller — a test taking a vault
+ * snapshot, a shutdown — settle the background writer instead of racing it.
+ */
+function flushExport() {
+  if (!exportTimer) return false;
+  clearTimeout(exportTimer);
+  exportTimer = null;
+  require('./task-export').writeExport();
+  return true;
+}
+
 // ── Reads ────────────────────────────────────────────────────────────────────
 
 function listTasks(filters = {}) {
@@ -1074,6 +1087,7 @@ module.exports = {
   normMoscow,
   normPriority,
   scheduleExport,
+  flushExport,
   setStatus,
   toTodoShape,
   updateTask,
