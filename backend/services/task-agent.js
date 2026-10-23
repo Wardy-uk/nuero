@@ -57,7 +57,19 @@ const STALE_MS = 10 * 60 * 1000;      // a 'running' run with no heartbeat this 
 const MAX_OUTPUTS = 8;
 const MAX_OUTPUT_CHARS = 20000;
 const MAX_READ_CHARS = 8000;
-const MAX_STEPS = 60;
+// The step log is the attempt's AUDIT: append-only (nothing edits or removes an entry),
+// hidden behind "Activity and evidence". The cap only stops a runaway attempt growing
+// without bound; past it the oldest entries go to the history copy, never silently.
+const MAX_STEPS = 500;
+// Exploration is bounded so a turn ends in work, not in reading (Nick, 23 Oct 2026):
+// at most this many search_vault + read_note calls in one turn, of which at most
+// SEARCH_LIMIT searches. Past the cap the tools say "you have enough — write it".
+const EXPLORE_LIMIT = 6;
+const SEARCH_LIMIT = 2;
+// Two questions are "the same" when this share of their content words overlaps.
+const SAME_QUESTION = 0.6;
+const PHASE_KEY = (id) => `task_agent_phase:${id}`;
+const PHASES = Object.freeze({ starting: 'Reading the task', evidence: 'Checking evidence', preparing: 'Preparing the brief', drafting: 'Preparing drafts', finishing: 'Finishing up' });
 
 const STATUS = Object.freeze(['running', 'needs-answer', 'needs-manual', 'needs-decision', 'ready', 'blocked', 'failed', 'interrupted', 'stopped']);
 const AWAITING = new Set(['needs-answer', 'needs-manual', 'needs-decision']);
@@ -122,6 +134,33 @@ function _archive(run) {
   db.setState(HISTORY_KEY(run.taskId), JSON.stringify(list.slice(0, 5)));
 }
 function _iso(ms) { return new Date(ms).toISOString(); }
+
+/**
+ * The live phase of a turn in flight, kept OUTSIDE the run: the turn works on a copy
+ * and commits only when it completes, so the phase is the one thing a poll can see
+ * mid-turn. Never fails the turn.
+ */
+function _phase(taskId, phase) {
+  try { if (phase) db.setState(PHASE_KEY(taskId), JSON.stringify({ phase, at: _iso(deps().now()) })); else db.run('DELETE FROM agent_state WHERE key = ?', [PHASE_KEY(taskId)]); } catch { /* cosmetic */ }
+}
+function _readPhase(taskId) {
+  try { const v = JSON.parse(db.getState(PHASE_KEY(taskId)) || 'null'); return v && PHASES[v.phase] ? v : null; } catch { return null; }
+}
+
+const STOP = new Set('a an and are as at be by can do does for from has have how i in is it its me my of on or should so that the their them this to was we what when which who will with you your neuro nick please'.split(' '));
+/** PURE. Content words of a question, for "have I already asked this?". */
+function questionWords(q) {
+  return new Set(String(q || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)));
+}
+/** PURE. Overlap of two questions' content words (share of the SMALLER set), 0..1. */
+function questionOverlap(a, b) {
+  const A = questionWords(a); const B = questionWords(b);
+  if (!A.size || !B.size) return 0;
+  let n = 0; for (const w of A) if (B.has(w)) n += 1;
+  return n / Math.min(A.size, B.size);
+}
+// A question that asks nothing specific — the decision itself must be named.
+const GENERIC_QUESTION = /\banything (further|else)\b|^what do you (want|decide)\??$|\bhow (should|would you like to) (i|neuro) proceed\b/i;
 function _step(run, kind, say) {
   run.steps = run.steps || [];
   run.steps.push({ at: _iso(deps().now()), kind, say: String(say).slice(0, 300) });
@@ -181,9 +220,9 @@ function systemPrompt(run) {
     'Nick is Head of Technical Support at Nurtur (proptech SaaS). Write in plain British English, briefly.',
     '',
     'HOW TO WORK',
-    '- Do the work, do not describe it. Use the sources given, search the vault if useful, then produce real outputs with save_output: a finished working draft, plan, checklist, agenda, brief, breakdown or answer.',
+    '- Do the work, do not describe it. Start from the sources linked to the task. Search the vault only if they do not give you what you need (at most twice), never read the same note twice, and stop exploring as soon as you have enough — then produce real outputs with save_output: a finished working draft, plan, checklist, agenda, brief, breakdown or answer.',
     '- Continue through several steps without pausing. Resolve ordinary ambiguity from the sources when the evidence is clear, and say which source settled it.',
-    '- Call ask_nick ONLY for: a task with more than one reasonable interpretation that the sources do not settle (ambiguity); a fact or preference you cannot safely infer (missing); a step only Nick can perform, like opening a system you cannot reach, attending a meeting or checking the real world (manual); or a decision, commitment, contact or change that needs his authority (authority). One focused question, with why it matters and, where possible, the options. Never ask because the task is hard.',
+    '- Call ask_nick ONLY for: a task with more than one reasonable interpretation that the sources do not settle (ambiguity); a fact or preference you cannot safely infer (missing); a step only Nick can perform, like opening a system you cannot reach, attending a meeting or checking the real world (manual); or a decision, commitment, contact or change that needs his authority (authority). One focused question that names the SPECIFIC thing to decide or supply (never "anything further?" or "what do you decide?"), why it matters in one sentence, what you will do once he answers (after), and, where possible, options drawn from the sources. Never ask because the task is hard. Never ask a question you have already asked unless new evidence changed it — then say what changed (changed).',
     '- After ask_nick, stop calling tools. The run resumes when he answers.',
     '- If the task really needs interactive desktop work (code changes, debugging, a repository, long-form document production, or tools you do not have), still do the preparation you can, then call recommend_claude_desktop with why. Nothing is sent; Nick decides.',
     '- End with finish: what you completed, what remains, and why.',
@@ -193,7 +232,7 @@ function systemPrompt(run) {
     '- prepare_email only PREPARES an email draft for Nick to approve on NEURO\'s Actions screen; it sends nothing. Use it only when the task clearly calls for an email and the recipient is named in the task or the sources.',
     '- Never invent a fact, a quote, a source, a name or an email address. If a source does not say it, it is unknown — say so.',
     run.sensitive && run.sensitive.sensitive
-      ? '- THIS TASK IS AN EMPLOYMENT / PEOPLE MATTER. Prepare a private decision brief (facts from the sources, options, risks, open questions) and then ask_nick with kind "authority" for the decision. Make no decision, promise, contact or change, and do not prepare any email. Do not speculate about the person beyond what the sources say.'
+      ? '- THIS TASK IS AN EMPLOYMENT / PEOPLE MATTER. Prepare a private decision brief (facts from the sources, options, risks, open questions) and then ask_nick with kind "authority" for the ONE specific decision, e.g. "What end date should the brief record?" with the dates the sources mention as options. NEVER choose, recommend as settled or assume the answer yourself — the brief shows the decision as Nick\'s, open, until he states it. When he has stated it, update the brief with his decision and finish; do not ask again. Make no promise, contact or change, and do not prepare any email. Do not speculate about the person beyond what the sources say.'
       : '',
   ].filter((l) => l !== '').join('\n');
 }
@@ -223,6 +262,14 @@ function userPrompt(run, task) {
     lines.push('', 'ALREADY PREPARED FOR NICK\'S APPROVAL (do not prepare again):');
     for (const h of run.handoffs) lines.push(`- ${h.say}`);
   }
+  if (run.readLog && run.readLog.length) {
+    lines.push('', 'NOTES YOU HAVE ALREADY READ IN THIS ATTEMPT (do not read them again unless you need a fact you did not keep):');
+    for (const r of run.readLog) lines.push(`- ${r.title}`);
+  }
+  if (run.searchLog && run.searchLog.length) {
+    lines.push('', 'SEARCHES ALREADY RUN IN THIS ATTEMPT (do not repeat them):');
+    for (const q of run.searchLog) lines.push(`- “${q.query}” → ${q.found} note${q.found === 1 ? '' : 's'}`);
+  }
   if (run.answers && run.answers.length) {
     lines.push('', 'NICK\'S ANSWERS SO FAR:');
     for (const a of run.answers) lines.push(`Q (${a.kind}): ${a.question}\nA: ${a.text}`);
@@ -240,7 +287,7 @@ const TOOLS = [
   { name: 'save_output', description: 'Save (or replace, by the same title) a private working output for Nick: a draft, plan, brief, checklist, agenda, breakdown, investigation, answer or notes. Markdown. Cite source keys for facts.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: OUTPUT_KINDS }, title: { type: 'string' }, markdown: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['kind', 'title', 'markdown'] } },
   { name: 'prepare_email', description: 'Prepare (NOT send) an email draft for Nick to approve on NEURO\'s Actions screen. `to` is a person\'s full name as written in the task or a source.', input_schema: { type: 'object', properties: { to: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, required: ['to', 'subject', 'body'] } },
   { name: 'recommend_claude_desktop', description: 'Recommend that Nick continues this task with Claude on his desktop — for code changes, debugging, repository inspection, long-form documents, or work needing tools NEURO does not have. Nothing is sent; Nick sees a preview and decides.', input_schema: { type: 'object', properties: { why: { type: 'string' }, done_when: { type: 'string', description: 'How Nick (and Claude) will know the work is complete.' } }, required: ['why'] } },
-  { name: 'ask_nick', description: 'Ask Nick ONE focused question. Only for ambiguity, missing information, a manual step only he can do, or a decision needing his authority.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: QUESTION_KINDS }, question: { type: 'string' }, why: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, understanding: { type: 'string', description: 'One sentence: what you understand the task to be so far.' } }, required: ['kind', 'question', 'why'] } },
+  { name: 'ask_nick', description: 'Ask Nick ONE focused question naming the specific thing to decide or supply. Only for ambiguity, missing information, a manual step only he can do, or a decision needing his authority.', input_schema: { type: 'object', properties: { kind: { type: 'string', enum: QUESTION_KINDS }, question: { type: 'string' }, why: { type: 'string', description: 'One sentence: why it matters.' }, after: { type: 'string', description: 'One sentence: what you will do once he answers.' }, options: { type: 'array', items: { type: 'string' } }, changed: { type: 'string', description: 'Only when re-asking an earlier question: what new evidence changed it.' }, understanding: { type: 'string', description: 'One sentence: what you understand the task to be so far.' } }, required: ['kind', 'question', 'why', 'after'] } },
   { name: 'finish', description: 'Report the outcome: what you completed, what remains and why.', input_schema: { type: 'object', properties: { understanding: { type: 'string' }, completed: { type: 'array', items: { type: 'string' } }, remaining: { type: 'array', items: { type: 'string' } } }, required: ['completed', 'remaining'] } },
 ];
 
@@ -260,6 +307,11 @@ function makeRunTool(work, task, turn) {
   const d = deps();
   const readable = new Map(work.sources.filter((s) => s.readable && s.path).map((s) => [s.path, s]));
   const seenText = [task.text, ...work.sources.map((s) => s.excerpt || '')];
+  work.readLog = work.readLog || [];
+  work.searchLog = work.searchLog || [];
+  const readThisTurn = new Set();
+  const explored = () => (turn.searches || 0) + (turn.reads || 0);
+  const enough = () => { turn.enough = true; return { ok: false, error: 'You have enough to work with. Stop exploring and write the output now with save_output, then finish or ask_nick.' }; };
   return async function runTool(name, input = {}) {
     if (turn.stopped && name !== 'finish') return { ok: false, error: 'Waiting for Nick — do not call more tools.' };
     try {
@@ -267,6 +319,13 @@ function makeRunTool(work, task, turn) {
         case 'search_vault': {
           const q = String(input.query || '').trim().slice(0, 200);
           if (q.length < 2) return { ok: false, error: 'query too short' };
+          // ⚠ Deduped across the whole attempt: the same query is not run twice.
+          const qk = q.toLowerCase().replace(/\s+/g, ' ');
+          const prior = work.searchLog.find((x) => x.key === qk);
+          if (prior) return { ok: true, results: prior.results, repeated: true, note: 'You already ran this search in this attempt — these are the same results.' };
+          if ((turn.searches || 0) >= SEARCH_LIMIT || explored() >= EXPLORE_LIMIT) return enough();
+          turn.searches = (turn.searches || 0) + 1;
+          _phase(work.taskId, 'evidence');
           const raw = await d.search(q);
           const results = [];
           for (const r of raw) {
@@ -284,17 +343,26 @@ function makeRunTool(work, task, turn) {
             if (results.length >= 6) break;
           }
           _step(work, 'search', `Searched the vault for “${q}” — ${results.length} usable note${results.length === 1 ? '' : 's'}.`);
+          work.searchLog.push({ key: qk, query: q, found: results.length, results });
           return { ok: true, results };
         }
         case 'read_note': {
           const rel = String(input.path || '').replace(/\\/g, '/');
           const src = readable.get(rel);
           if (!src) return { ok: false, error: 'That note was not offered to you. Use a linked source path or a search_vault result.' };
+          // ⚠ Deduped: never twice in one turn; across turns of the same attempt it is served
+          // again (the model keeps no text between turns) but is not a new step.
+          if (readThisTurn.has(rel)) return { ok: false, error: 'You already read this note in this step. Use what you read.' };
+          const again = work.readLog.some((r) => r.path === rel);
+          if (!again && explored() >= EXPLORE_LIMIT) return enough();
+          readThisTurn.add(rel);
+          if (!again) turn.reads = (turn.reads || 0) + 1;
+          _phase(work.taskId, 'evidence');
           const n = d.readNote(rel);
           if (!n.ok) return { ok: false, error: `Cannot read: ${n.why}` };
           src.used = true;
           seenText.push(n.body);
-          _step(work, 'read', `Read “${src.title}”.`);
+          if (!again) { work.readLog.push({ path: rel, key: src.key, title: src.title }); _step(work, 'read', `Read “${src.title}”.`); }
           return { ok: true, key: src.key, title: n.title, text: n.body.slice(0, MAX_READ_CHARS), truncated: n.body.length > MAX_READ_CHARS };
         }
         case 'save_output': {
@@ -302,6 +370,7 @@ function makeRunTool(work, task, turn) {
           const title = String(input.title || '').trim().slice(0, 140);
           const markdown = String(input.markdown || '').trim().slice(0, MAX_OUTPUT_CHARS);
           if (!title || !markdown) return { ok: false, error: 'title and markdown are required' };
+          _phase(work.taskId, kind === 'brief' ? 'preparing' : 'drafting');
           work.outputs = work.outputs || [];
           const cites = Array.isArray(input.sources) ? input.sources.map(String) : [];
           for (const k of cites) { const s = work.sources.find((x) => x.key === k); if (s) s.used = true; }
@@ -353,7 +422,12 @@ function makeRunTool(work, task, turn) {
           const question = String(input.question || '').trim().slice(0, 500);
           if (!question) return { ok: false, error: 'question required' };
           if (turn.question) return { ok: false, error: 'You have already asked one question this turn. Stop.' };
-          turn.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind, question, why: String(input.why || '').trim().slice(0, 400), options: (Array.isArray(input.options) ? input.options : []).map((o) => String(o).slice(0, 160)).slice(0, 5), askedAt: _iso(d.now()) };
+          if (GENERIC_QUESTION.test(question)) return { ok: false, error: 'Ask the specific thing to decide or supply (for example "What end date should the brief record?"), not a general question.' };
+          const changed = input.changed ? String(input.changed).trim().slice(0, 300) : null;
+          // ⚠ Never the same question twice unless new evidence changed it — and then it says what.
+          const earlier = (work.answers || []).find((a) => questionOverlap(a.question, question) >= SAME_QUESTION);
+          if (earlier && !changed) return { ok: false, error: `You already asked this and Nick answered: “${String(earlier.text).slice(0, 300)}”. Use his answer. Only re-ask if new evidence changed the question, and then say what changed.` };
+          turn.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind, question, why: String(input.why || '').trim().slice(0, 400), after: input.after ? String(input.after).trim().slice(0, 300) : null, changed: earlier ? changed : null, options: (Array.isArray(input.options) ? input.options : []).map((o) => String(o).slice(0, 160)).slice(0, 5), askedAt: _iso(d.now()) };
           if (input.understanding) turn.understanding = String(input.understanding).slice(0, 600);
           turn.stopped = true;
           return { ok: true, asked: true, instruction: 'Stop now. Nick will answer and the run will continue.' };
@@ -432,7 +506,8 @@ async function _turn(taskId) {
 
   // ⚠ The turn works on a COPY. Only a completed turn is committed.
   const work = JSON.parse(JSON.stringify(run));
-  const turn = { question: null, finish: null, stopped: false };
+  const turn = { question: null, finish: null, stopped: false, searches: 0, reads: 0, enough: false };
+  _phase(taskId, 'starting');
   let result;
   try {
     result = await d.provider.chatWithTools(systemPrompt(work), [{ role: 'user', content: userPrompt(work, task) }], TOOLS, makeRunTool(work, task, turn),
@@ -442,6 +517,7 @@ async function _turn(taskId) {
         beforeRequest: (spec) => s.guardRequest(spec, { othersInFlight: Math.max(0, RUNNING.size - 1) }) });
   } catch (e) {
     const c = classifyError(e);
+    _phase(taskId, null);
     const fresh = _load(taskId) || run; // the committed state, untouched by the failed turn
     fresh.status = 'failed'; fresh.error = c.say; fresh.errorKind = c.kind; fresh.heartbeatAt = null; fresh.updatedAt = _iso(d.now());
     _step(fresh, 'note', `A step failed (${c.kind}); nothing from it was kept.`);
@@ -449,6 +525,8 @@ async function _turn(taskId) {
     return _save(fresh);
   }
 
+  _phase(taskId, null);
+  if (turn.enough) work.enough = true;
   const usage = result.usage || {};
   const cost = d.resolveCost(usage, model);
   work.usage = work.usage || { provider: 'anthropic', model, calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, costUnknown: false };
@@ -471,9 +549,12 @@ async function _turn(taskId) {
     work.question = turn.question;
     work.status = turn.question.kind === 'manual' ? 'needs-manual' : (turn.question.kind === 'authority' ? 'needs-decision' : 'needs-answer');
     _step(work, 'question', `Asked you: ${turn.question.question}`);
-  } else if (sensitive) {
+  } else if (sensitive && !(work.answers || []).some((a) => a.kind === 'authority')) {
     // ⚠ Server-enforced, not left to the prompt: a people matter ends at Nick's decision.
-    work.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind: 'authority', question: 'This is an employment / people matter. What do you decide, and should NEURO prepare anything further?', why: 'NEURO can prepare the material, but the decision, and any contact, promise or change, are yours.', options: [], askedAt: _iso(d.now()), byRule: true };
+    // Specific to the task, never "anything further?"; asked once — after he has stated
+    // his decision the run finishes with the updated brief instead of asking again.
+    const what = String(task.text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    work.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind: 'authority', question: `What is your decision on “${what}”?`, why: 'This is an employment matter: NEURO has prepared the private material, but the decision is yours.', after: 'NEURO will record your decision in the private brief and stop. It will not contact anyone or change anything.', options: [], askedAt: _iso(d.now()), byRule: true };
     work.status = 'needs-decision';
     _step(work, 'question', 'Stopped at your decision (people matter).');
   } else {
@@ -503,6 +584,7 @@ function _kick(taskId) {
   if (RUNNING.has(taskId)) return RUNNING.get(taskId);
   const p = (async () => {
     try { await _turn(taskId); } catch (e) {
+      _phase(taskId, null);
       const run = _load(taskId);
       if (run && !run.unreadable) { run.status = 'failed'; run.error = `Unexpected error: ${e.message}`; run.heartbeatAt = null; _save(run); }
     } finally { RUNNING.delete(taskId); }
@@ -568,7 +650,73 @@ function view(taskId) {
       : run.status === 'running' ? { canSave: false, why: 'NEURO is still working.' } : { canSave: true, why: null };
     return { ...o, save, next };
   });
-  return { ok: true, contract: CONTRACT, taskId: id, budget, run: { ...run, outputs, handoffs, running: RUNNING.has(id) } };
+  const running = RUNNING.has(id);
+  const phase = run.status === 'running' ? _readPhase(id) : null;
+  const shaped = { ...run, outputs, handoffs, running, phase: phase ? phase.phase : null };
+  return { ok: true, contract: CONTRACT, taskId: id, budget, run: shaped, workspace: workspaceOf(shaped) };
+}
+
+/**
+ * PURE. The concise workspace Nick reads first (23 Oct 2026): exactly three parts —
+ * status, what NEURO has done (≤3 lines), what NEURO needs from him (one question or
+ * none) — plus a one-line summary for the collapsed "Activity and evidence". Every
+ * word is composed here, so the desktop, the NEURO phone and SAiM say the same thing.
+ */
+function workspaceOf(run) {
+  if (!run) return null;
+  const sensitive = Boolean(run.sensitive && run.sensitive.sensitive);
+  const outputs = run.outputs || [];
+  const handoffs = run.handoffs || [];
+  // Evidence the model actually had: a note it read or cited, or a linked excerpt that was
+  // in its prompt (a restricted note contributes its excerpt and nothing more).
+  const used = (run.sources || []).filter((s) => s.used || (s.excerpt && String(s.excerpt).trim())).length;
+  const q = run.question;
+  const savable = outputs.some((o) => o.next && o.next.canSave && !(o.save && o.save.status === 'saved'));
+
+  let state; let label;
+  if (run.status === 'running') { state = 'working'; label = 'Working on it'; }
+  else if (run.status === 'needs-decision') { state = 'waiting'; label = 'Waiting for your decision'; }
+  else if (run.status === 'needs-answer') { state = 'waiting'; label = 'Waiting for your answer'; }
+  else if (run.status === 'needs-manual') { state = 'waiting'; label = 'Waiting for you to do one thing'; }
+  else if (run.status === 'ready') { state = 'ready'; label = savable ? 'Ready to save' : (handoffs.length ? 'Ready for your approval' : 'Ready'); }
+  else if (run.status === 'stopped') { state = 'stopped'; label = 'Stopped by you'; }
+  else {
+    state = 'blocked';
+    const why = run.status === 'interrupted' ? 'interrupted; press Do this to continue'
+      : run.status === 'blocked' ? 'nothing NEURO could safely keep or prepare'
+        : (run.errorKind === 'limit' ? 'a daily Do this limit was reached' : run.errorKind === 'credit' ? 'the Anthropic account has no credit' : run.errorKind === 'timeout' ? 'the model did not answer in time' : 'the last step failed');
+    label = `Blocked — ${why}`;
+  }
+  const phase = state === 'working' ? (PHASES[run.phase] || PHASES.starting) : null;
+  const wont = sensitive
+    ? 'NEURO prepares private material only. It will not decide, contact anyone, promise anything or change anything.'
+    : 'NEURO drafts and prepares. It sends, books, saves and changes nothing without your confirmation.';
+
+  const done = [];
+  if (used) done.push({ say: `Checked the permitted evidence (${used} source${used === 1 ? '' : 's'}).` });
+  else if ((run.steps || []).some((s) => s.kind === 'output')) done.push({ say: 'Worked from the task itself — no linked evidence was needed.' });
+  const lead = outputs.find((o) => o.kind === 'brief') || outputs[0];
+  if (lead) {
+    const more = outputs.length - 1;
+    done.push({ say: `Prepared a private ${lead.kind}: “${lead.title}”${more > 0 ? ` (and ${more} more draft${more === 1 ? '' : 's'})` : ''}.`, open: { outputId: lead.id, label: lead.kind === 'brief' ? 'Open brief' : 'Open draft' } });
+  }
+  if (handoffs.some((h) => h.kind === 'prepared_action')) done.push({ say: 'Prepared an email for your approval on Actions — not sent.', open: { actions: true, label: 'Review on Actions' } });
+  else if (done.length) done.push({ say: 'No one has been contacted and nothing has been changed.' });
+
+  const need = q ? {
+    id: q.id, kind: q.kind, question: q.question, why: q.why || null,
+    after: q.after || (q.kind === 'manual' ? 'NEURO will carry on from there.' : 'NEURO will carry on with your answer.'),
+    options: q.options || [], changed: q.changed || null, allowOther: true,
+  } : null;
+
+  const steps = (run.steps || []).length;
+  const enough = run.enough && state === 'working' ? 'I have enough to prepare the brief.' : (run.enough ? 'NEURO stopped exploring once it had enough.' : null);
+  return {
+    status: { state, label, phase, wont, enough },
+    done: done.slice(0, 3),
+    need,
+    trace: { summary: `${used} permitted source${used === 1 ? '' : 's'} used · ${steps} internal step${steps === 1 ? '' : 's'}`, sources: used, steps },
+  };
 }
 
 /**
@@ -943,6 +1091,7 @@ function activeRuns() {
 }
 
 module.exports = {
+  workspaceOf, questionOverlap,
   CONTRACT, STATUS, QUESTION_KINDS, OUTPUT_KINDS, TOOLS,
   view, start, answer, stop, activeRuns, prepareSave, handoffPreview, handoff, budgetView,
   sensitivityOf, sourcesFrom, addressesIn, classifyError, policyEnvelope, defaultBrief, fixedContext, composeFinal, screenBrief, BRIEF_RULES, DEFAULT_MODEL,

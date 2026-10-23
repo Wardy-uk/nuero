@@ -25,6 +25,9 @@ const { renderToString } = require('react-dom/server');
 const esbuild = require('esbuild');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+process.env.NEURO_DB_PATH = process.env.NEURO_DB_PATH || path.join(require('os').tmpdir(), `ta-render-${process.pid}.db`);
+// The workspace words are composed by the SERVER (task-agent.workspaceOf); the view renders them.
+const { workspaceOf } = require('./task-agent');
 
 async function load(file) {
   const out = await esbuild.build({
@@ -42,7 +45,7 @@ async function load(file) {
 let TA;
 test.before(async () => { TA = await load('saim/shared-ui/TaskAgent.jsx'); });
 const noop = () => {};
-const view = (run, extra = {}) => renderToString(React.createElement(TA.TaskAgentView, { run, busy: false, error: null, onStart: noop, onAnswer: noop, onStop: noop, onOpenActions: noop, onOpenNote: noop, ...extra }));
+const view = (run, extra = {}) => renderToString(React.createElement(TA.TaskAgentView, { run, workspace: workspaceOf(run), busy: false, error: null, onStart: noop, onAnswer: noop, onStop: noop, onOpenActions: noop, onOpenNote: noop, ...extra }));
 const base = (over = {}) => ({ id: 'ta-1', taskId: 7, status: 'ready', understanding: 'Plan Q4 cover.', sensitive: { sensitive: false, why: [] }, sources: [], steps: [], outputs: [], handoffs: [], question: null, answers: [], summary: null, usage: null, ...over });
 
 test('no run: one Do this button, and what it will and will not do', () => {
@@ -52,50 +55,59 @@ test('no run: one Do this button, and what it will and will not do', () => {
   assert.match(h, /sends, books and changes nothing without your confirmation/);
 });
 
-test('a question: one focused question, why, options and an answer box', () => {
-  const h = view(base({ status: 'needs-answer', question: { id: 'q1', kind: 'ambiguity', question: 'Which report?', why: 'Different audiences.', options: ['Weekly risk', 'SOAP'] } }));
-  assert.match(h, /Needs your answer/);
+test('a question: Status, then ONE question with why, what happens next, its options and "Other — explain"', () => {
+  const h = view(base({ status: 'needs-answer', question: { id: 'q1', kind: 'ambiguity', question: 'Which report?', why: 'Different audiences.', after: 'NEURO will draft that report’s outline.', options: ['Weekly risk', 'SOAP'] } }));
+  assert.match(h, /Waiting for your answer/);
+  assert.match(h, /What I need from you/);
   assert.match(h, /Which report\?/);
-  assert.match(h, /Why it matters: (<!-- -->)?Different audiences\./);
+  assert.match(h, /Different audiences\./);
+  assert.match(h, /NEURO will draft that report’s outline\./);
   assert.match(h, />Weekly risk</);
-  assert.match(h, /Tell NEURO/);
+  assert.match(h, />Other — explain</);
   assert.equal((h.match(/tagent__qtext/g) || []).length, 1, 'exactly one question');
+  assert.ok(h.indexOf('Status') < h.indexOf('What I need from you'), 'status first');
 });
 
 test('a manual step offers "I’ve done it — carry on"', () => {
   const h = view(base({ status: 'needs-manual', question: { id: 'q2', kind: 'manual', question: 'Open the wallboard.', why: 'NEURO cannot reach it.' } }));
-  assert.match(h, /Only you can do this step/);
+  assert.match(h, /Waiting for you to do one thing/);
   assert.match(h, /I’ve done it — carry on/);
   assert.doesNotMatch(h, /Tell NEURO/);
 });
 
-test('a people matter says it stops at Nick’s decision', () => {
-  const h = view(base({ status: 'needs-decision', sensitive: { sensitive: true, why: ['hr-wording'] }, question: { id: 'q3', kind: 'authority', question: 'What do you decide?', why: 'The decision is yours.' } }));
-  assert.match(h, /Needs your decision/);
-  assert.match(h, /stops at your decision/);
-  assert.match(h, /will not contact anyone, promise anything or change anything/);
+test('a people matter: will/won’t line, the specific decision, never the generic question', () => {
+  const h = view(base({ status: 'needs-decision', sensitive: { sensitive: true, why: ['hr-wording'] }, sources: [{ key: 'ctx:1', title: 'Leaver catch up', provenance: 'x', used: true }], steps: [{ kind: 'read', say: 'Read' }], outputs: [{ id: 'o1', kind: 'brief', title: 'End date decision brief', markdown: '- x', next: { canSave: false } }], question: { id: 'q3', kind: 'authority', question: 'What end date should the brief record?', why: 'The decision is yours.', after: 'NEURO will record it in the private brief and stop.', options: ['31 Oct 2026', '31 Dec 2026'] } }));
+  assert.match(h, /Waiting for your decision/);
+  assert.match(h, /will not decide, contact anyone, promise anything or change anything/);
+  assert.match(h, /What end date should the brief record\?/);
+  assert.match(h, /Checked the permitted evidence \(1 source\)\./);
+  assert.match(h, /Prepared a private brief: “End date decision brief”/);
+  assert.match(h, /No one has been contacted and nothing has been changed\./);
+  assert.match(h, />Open brief</);
+  assert.doesNotMatch(h, /anything further/);
 });
 
-test('outputs, an Actions handoff, sources with provenance, and usage', () => {
+test('outputs folded, an Actions handoff, and the trace CLOSED by default with its one-line summary', () => {
   const h = view(base({
     outputs: [{ id: 'o1', kind: 'plan', title: 'Q4 plan', markdown: '- Week 47 swap' }],
     handoffs: [{ kind: 'prepared_action', actionId: 'pa_1', actionType: 'compose_email', status: 'prepared', say: 'Email to Jane Doe — prepared, not sent.' }],
     sources: [{ key: 'ctx:1', kind: 'note', title: 'Q4 rota notes', provenance: 'Linked by you.', path: 'P/x.md', used: true }, { key: 'ctx:2', kind: 'note', title: 'Leaver catch up', provenance: 'This task was raised in this note.', path: null, restricted: true, used: false }],
+    steps: [{ kind: 'read', say: 'Read “Q4 rota notes”.' }, { kind: 'output', say: 'Wrote plan' }],
     summary: { completed: ['Drafted the plan'], remaining: ['Publish it'] },
     usage: { model: 'claude-sonnet-5', promptTokens: 3600, completionTokens: 900, costUsd: 0.0162 },
   }));
-  assert.match(h, /Q4 plan/);
-  assert.match(h, /private drafts — only you see these/);
-  assert.match(h, /Ready for your confirmation/);
+  assert.match(h, /Ready for your approval/);
+  assert.match(h, /Prepared an email for your approval on Actions — not sent\./);
+  assert.match(h, /private — only you see these/);
+  assert.match(h, /<details class="tagent__out"(?![^>]*open)/, 'drafts start folded');
   assert.match(h, /Review on Actions/);
-  assert.match(h, /prepared, not sent/);
-  assert.match(h, /Q4 rota notes/);
-  assert.match(h, /Linked by you\./);
-  assert.match(h, /excerpt only/);
-  assert.match(h, /Drafted the plan/);
-  assert.match(h, /Publish it/);
+  assert.match(h, /<details class="tagent__fold tagent__trace"(?![^>]*open)[^>]*>/, 'trace closed by default');
+  assert.match(h, /Activity and evidence · (<!-- -->)?1 permitted source used · 2 internal steps/);
+  // the full record is still there for audit, inside the fold
+  assert.match(h, /Linked by you\./); assert.match(h, /excerpt only/); assert.match(h, /Drafted the plan/); assert.match(h, /Read “Q4 rota notes”\./);
   assert.match(h, /claude-sonnet-5 · 3,600 in · 900 out · about \$0\.0162/);
   assert.match(h, /Start a fresh attempt/);
+  assert.ok(!/<ol class="tagent__bul tagent__steps"/.test(h.slice(0, h.indexOf('tagent__trace'))), 'no numbered transcript above the fold');
 });
 
 test('the kiosk (readOnly) renders nothing at all', () => {
@@ -149,9 +161,9 @@ test('the Claude handoff preview shows why, what is included, the statement and 
   assert.match(h, /Also open Claude on my laptop/);
 });
 
-test('blocked says it could not take this further; the budget line is the server’s words', () => {
+test('blocked says why in the status line; the budget line is the server’s words', () => {
   const h = view(base({ status: 'blocked', summary: { completed: [], remaining: ['Nothing says what "the thing" is.'] } }), { budget: { say: 'Recorded by the AI gate in shadow mode. No Do this limit is set, so it is not budget-blocked by the gate.' } });
-  assert.match(h, /Could not take this further/);
-  assert.match(h, /the reason is the evidence/);
+  assert.match(h, /Blocked — nothing NEURO could safely keep or prepare/);
+  assert.match(h, /Nothing says what &quot;the thing&quot; is\./);
   assert.match(h, /not budget-blocked by the gate/);
 });

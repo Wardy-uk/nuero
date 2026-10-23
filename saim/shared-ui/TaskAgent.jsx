@@ -84,10 +84,42 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
   );
 }
 
-export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnswer, onStop, onOpenActions, onOpenNote, onSave = null, saving = null, renderSave = null, onCopy = null, claude = null, onClaudeOpen = null, onClaudeClose = null }) {
+/** The one question NEURO needs: choices, plus an "Other — explain" field. */
+function NeedBlock({ need, busy, onAnswer }) {
   const [text, setText] = useState('');
-  const q = run && run.question;
-  useEffect(() => { setText(''); }, [q && q.id]);
+  const [other, setOther] = useState(false);
+  useEffect(() => { setText(''); setOther(false); }, [need.id]);
+  const manual = need.kind === 'manual';
+  const hasOptions = need.options && need.options.length > 0;
+  const showText = manual || !hasOptions || other;
+  return (
+    <form className="tagent__q" data-tagent-question={need.kind} onSubmit={(e) => { e.preventDefault(); if (text.trim()) onAnswer({ questionId: need.id, text }); }}>
+      <p className="tagent__h">What I need from you</p>
+      <p className="tagent__qtext">{need.question}</p>
+      {need.changed && <p className="tagent__qwhy" data-tagent-changed>Asked again because: {need.changed}</p>}
+      {need.why && <p className="tagent__qwhy">{need.why}</p>}
+      {need.after && <p className="tagent__qafter">{need.after}</p>}
+      {hasOptions && (
+        <div className="tagent__opts">
+          {need.options.map((o) => <button type="button" key={o} disabled={busy} onClick={() => onAnswer({ questionId: need.id, text: o })}>{o}</button>)}
+          {!other && <button type="button" className="tagent__quiet" disabled={busy} onClick={() => setOther(true)}>Other — explain</button>}
+        </div>
+      )}
+      {showText && (
+        <textarea className="tagent__answer" rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={manual ? 'Anything NEURO should know (optional)' : hasOptions ? 'Explain your answer' : 'Your answer'} aria-label="Your answer" />
+      )}
+      <div className="tagent__row">
+        {manual
+          ? <button type="button" disabled={busy} onClick={() => onAnswer({ questionId: need.id, text, manualDone: true })}>I’ve done it — carry on</button>
+          : showText && <button type="submit" disabled={busy || !text.trim()}>Tell NEURO</button>}
+      </div>
+    </form>
+  );
+}
+
+export function TaskAgentView({ run, workspace = null, budget = null, busy, error, onStart, onAnswer, onStop, onOpenActions, onOpenNote, onSave = null, saving = null, renderSave = null, onCopy = null, claude = null, onClaudeOpen = null, onClaudeClose = null }) {
+  const [openOut, setOpenOut] = useState(null);
+  const outRefs = useRef({});
 
   if (!run) {
     return (
@@ -97,72 +129,60 @@ export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnsw
           <p className="tagent__meta" data-tagent-off>Do this is switched off. Nick turns it on in NEURO → Settings → AI &amp; SAiM → Anthropic.</p>
         )}
         <p className="tagent__hint">NEURO works on this as far as it safely can — drafts, plans, research — and asks you only when it must. It sends, books and changes nothing without your confirmation.</p>
-        {budget && <p className="tagent__meta tagent__budget">{budget.say}</p>}
         {error && <p className="tagent__err" role="alert">{error}</p>}
       </div>
     );
   }
 
+  const ws = workspace || { status: { state: run.status, label: STATUS_SAY[run.status] || run.status, phase: null, wont: '', enough: null }, done: [], need: run.question ? { ...run.question, allowOther: true } : null, trace: { summary: `${(run.steps || []).length} internal steps` } };
   const used = (run.sources || []).filter((s) => s.used);
   const available = (run.sources || []).filter((s) => !s.used);
   const settled = ['ready', 'blocked', 'stopped', 'failed', 'interrupted'].includes(run.status);
   const canHandOff = run.status !== 'running';
   const handoffs = run.claudeHandoffs || [];
+  const openDraft = (id) => {
+    setOpenOut(id);
+    setTimeout(() => { const el = outRefs.current[id]; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 0);
+  };
 
   return (
     <div className={`tagent tagent--${run.status}`} data-tagent={run.status}>
-      <div className="tagent__top">
-        <span className="tagent__label">Do this</span>
-        <span className="tagent__status" data-tagent-status={run.status}>{STATUS_SAY[run.status] || run.status}</span>
+      {/* 1. Status — one line, and what NEURO will and won't do. Fixed height: no jump as the phase changes. */}
+      <div className="tagent__statusblock" data-tagent-state={ws.status.state}>
+        <p className="tagent__h">Status</p>
+        <p className="tagent__statusline" data-tagent-status={run.status}>
+          {ws.status.label}{ws.status.phase && <span className="tagent__phase" data-tagent-phase> · {ws.status.phase}…</span>}
+        </p>
+        {ws.status.enough && <p className="tagent__meta" data-tagent-enough>{ws.status.enough}</p>}
+        <p className="tagent__wont">{ws.status.wont}</p>
+        {run.error && <p className="tagent__err" role="alert">{run.error}</p>}
       </div>
 
-      {run.understanding && <p className="tagent__understanding"><strong>Understood as:</strong> {run.understanding}</p>}
-      {run.sensitive && run.sensitive.sensitive && (
-        <p className="tagent__note">People / employment matter — NEURO prepares the material and stops at your decision. It will not contact anyone, promise anything or change anything.</p>
-      )}
-      {run.error && <p className="tagent__err" role="alert">{run.error}</p>}
-      {run.status === 'blocked' && <p className="tagent__note">NEURO finished without anything it could safely keep or prepare. What it found is below — the reason is the evidence.</p>}
-
-      {q && (
-        <form className="tagent__q" data-tagent-question={q.kind} onSubmit={(e) => { e.preventDefault(); onAnswer({ questionId: q.id, text }); }}>
-          <p className="tagent__qkind">{KIND_SAY[q.kind] || 'Question'}</p>
-          <p className="tagent__qtext">{q.question}</p>
-          {q.why && <p className="tagent__qwhy">Why it matters: {q.why}</p>}
-          {q.options && q.options.length > 0 && (
-            <div className="tagent__opts">
-              {q.options.map((o) => <button type="button" key={o} disabled={busy} onClick={() => onAnswer({ questionId: q.id, text: o })}>{o}</button>)}
-            </div>
-          )}
-          <textarea className="tagent__answer" rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={q.kind === 'manual' ? 'Anything NEURO should know (optional)' : 'Your answer'} aria-label="Your answer" />
-          <div className="tagent__row">
-            {q.kind === 'manual'
-              ? <button type="button" disabled={busy} onClick={() => onAnswer({ questionId: q.id, text, manualDone: true })}>I’ve done it — carry on</button>
-              : <button type="submit" disabled={busy || !text.trim()}>Tell NEURO</button>}
-          </div>
-        </form>
-      )}
-
-      {(run.handoffs || []).length > 0 && (
-        <div className="tagent__section">
-          <p className="tagent__h">Ready for your confirmation</p>
-          <ul className="tagent__list">
-            {run.handoffs.map((h) => (
-              <li key={h.actionId || h.say} data-tagent-handoff={h.actionType}>
-                <p>{h.say}</p>
-                <p className="tagent__meta">Status: {h.status}</p>
-                {onOpenActions && <button type="button" onClick={() => onOpenActions(h)}>Review on Actions</button>}
+      {/* 2. What NEURO has done — at most three lines. */}
+      {ws.done.length > 0 && (
+        <div className="tagent__section" data-tagent-done>
+          <p className="tagent__h">What NEURO has done</p>
+          <ul className="tagent__bul">
+            {ws.done.map((d) => (
+              <li key={d.say}>{d.say}{' '}
+                {d.open && d.open.outputId && <button type="button" className="tagent__link" onClick={() => openDraft(d.open.outputId)}>{d.open.label}</button>}
+                {d.open && d.open.actions && onOpenActions && <button type="button" className="tagent__link" onClick={() => onOpenActions((run.handoffs || [])[0])}>{d.open.label}</button>}
               </li>
             ))}
           </ul>
         </div>
       )}
 
+      {/* 3. What I need from you — one question, or nothing. */}
+      {ws.need && <NeedBlock need={ws.need} busy={busy} onAnswer={onAnswer} />}
+
       {(run.outputs || []).length > 0 && (
         <div className="tagent__section">
-          <p className="tagent__h">What NEURO produced <span className="tagent__meta">(private drafts — only you see these)</span></p>
+          <p className="tagent__h">Drafts <span className="tagent__meta">(private — only you see these)</span></p>
           {run.outputs.map((o) => (
-            // An output being saved stays OPEN, or the confirmation would sit inside a collapsed fold.
-            <details className="tagent__out" key={o.id} open={run.outputs.length === 1 || saving === o.id} data-tagent-output={o.kind}>
+            // Closed unless Nick opens it (or is saving it — a confirmation must not sit inside a closed fold).
+            <details className="tagent__out" key={o.id} ref={(el) => { outRefs.current[o.id] = el; }} open={openOut === o.id || saving === o.id}
+              onToggle={(e) => { if (e.currentTarget.open) setOpenOut(o.id); else if (openOut === o.id) setOpenOut(null); }} data-tagent-output={o.kind}>
               <summary><span className="tagent__badge">{o.kind}</span> {o.title}</summary>
               <pre className="tagent__md">{o.markdown}</pre>
               <div className="tagent__row" data-tagent-next={o.id}>
@@ -178,15 +198,21 @@ export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnsw
               )}
             </details>
           ))}
-          <p className="tagent__meta">The task stays open until you tick it — NEURO never closes it.</p>
         </div>
       )}
 
-      {run.summary && ((run.summary.completed || []).length > 0 || (run.summary.remaining || []).length > 0 || run.summary.said) && (
+      {(run.handoffs || []).length > 0 && (
         <div className="tagent__section">
-          {(run.summary.completed || []).length > 0 && (<><p className="tagent__h">Done</p><ul className="tagent__bul">{run.summary.completed.map((s) => <li key={s}>{s}</li>)}</ul></>)}
-          {(run.summary.remaining || []).length > 0 && (<><p className="tagent__h">Still to do</p><ul className="tagent__bul">{run.summary.remaining.map((s) => <li key={s}>{s}</li>)}</ul></>)}
-          {run.summary.said && !(run.summary.completed || []).length && <p>{run.summary.said}</p>}
+          <p className="tagent__h">Waiting for your approval</p>
+          <ul className="tagent__list">
+            {run.handoffs.map((h) => (
+              <li key={h.actionId || h.say} data-tagent-handoff={h.actionType}>
+                <p>{h.say}</p>
+                <p className="tagent__meta">Status: {h.status}</p>
+                {onOpenActions && <button type="button" onClick={() => onOpenActions(h)}>Review on Actions</button>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -208,8 +234,14 @@ export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnsw
         </div>
       )}
 
-      <details className="tagent__fold">
-        <summary>Context used ({used.length}) and available ({available.length})</summary>
+      {/* The trace — closed by default; the full record stays for audit. */}
+      <details className="tagent__fold tagent__trace" data-tagent-trace>
+        <summary>Activity and evidence · {ws.trace.summary}</summary>
+        {run.understanding && <p className="tagent__meta"><strong>Understood as:</strong> {run.understanding}</p>}
+        {run.summary && (run.summary.completed || []).length > 0 && <><p className="tagent__h">Reported done</p><ul className="tagent__bul">{run.summary.completed.map((x) => <li key={x}>{x}</li>)}</ul></>}
+        {run.summary && (run.summary.remaining || []).length > 0 && <><p className="tagent__h">Reported still to do</p><ul className="tagent__bul">{run.summary.remaining.map((x) => <li key={x}>{x}</li>)}</ul></>}
+        {run.summary && run.summary.said && !(run.summary.completed || []).length && <p className="tagent__meta">{run.summary.said}</p>}
+        <p className="tagent__h">Sources ({used.length} used, {available.length} available)</p>
         {(run.sources || []).length === 0 && <p className="tagent__meta">No linked context — NEURO worked from the task itself{run.contextGaps && run.contextGaps.length ? ` (${run.contextGaps.join('; ')})` : ''}.</p>}
         <ul className="tagent__list">
           {[...used, ...available].map((s) => (
@@ -223,17 +255,11 @@ export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnsw
             </li>
           ))}
         </ul>
+        {(run.steps || []).length > 0 && (<><p className="tagent__h">Steps</p><ol className="tagent__bul tagent__steps">{run.steps.map((x, i) => <li key={`${x.at}-${i}`}>{x.say}</li>)}</ol></>)}
+        {run.usage && <p className="tagent__meta tagent__usage">{money(run.usage)}</p>}
+        {budget && <p className="tagent__meta tagent__budget">{budget.say}</p>}
       </details>
 
-      {(run.steps || []).length > 0 && (
-        <details className="tagent__fold">
-          <summary>Steps ({run.steps.length})</summary>
-          <ol className="tagent__bul">{run.steps.map((s, i) => <li key={`${s.at}-${i}`}>{s.say}</li>)}</ol>
-        </details>
-      )}
-
-      {run.usage && <p className="tagent__meta tagent__usage">{money(run.usage)}</p>}
-      {budget && <p className="tagent__meta tagent__budget">{budget.say}</p>}
       {error && <p className="tagent__err" role="alert">{error}</p>}
 
       <div className="tagent__row">
@@ -241,12 +267,14 @@ export function TaskAgentView({ run, budget = null, busy, error, onStart, onAnsw
         {run.status !== 'running' && run.status !== 'stopped' && <button type="button" className="tagent__quiet" onClick={onStop} disabled={busy}>Stop</button>}
         {settled && <button type="button" className="tagent__quiet" onClick={() => onStart(true)} disabled={busy}>Start a fresh attempt</button>}
       </div>
+      <p className="tagent__meta">The task stays open until you tick it — NEURO never closes it.</p>
     </div>
   );
 }
 
 export default function TaskAgent({ taskId, call, readOnly = false, onOpenActions = null, onOpenNote = null, renderSave = null, copyText = defaultCopy }) {
   const [run, setRun] = useState(undefined); // undefined = not loaded; null = no run yet
+  const [workspace, setWorkspace] = useState(null);
   const [budget, setBudget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -255,7 +283,7 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
   const [claude, setClaude] = useState({ preview: null, busy: false, error: null, result: null });
   const timer = useRef(null);
 
-  const absorb = (body) => { if (body && 'run' in body) setRun(body.run); if (body && body.budget) setBudget(body.budget); };
+  const absorb = (body) => { if (body && 'run' in body) { setRun(body.run); setWorkspace(body.workspace || null); } if (body && body.budget) setBudget(body.budget); };
 
   const load = useCallback(async () => {
     const r = await call(`/api/task-agent/tasks/${enc(taskId)}`);
@@ -308,6 +336,7 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
   return (
     <TaskAgentView
       run={run}
+      workspace={workspace}
       budget={budget}
       busy={busy}
       error={error}

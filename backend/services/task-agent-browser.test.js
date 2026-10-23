@@ -380,7 +380,7 @@ test('a genuine ambiguity: one question, its options (desktop, NEURO phone, SAiM
   if (skipWhy) return t.skip(skipWhy);
   for (const s of [...sizes('desktop-question'), ...sizes('saim-phone-question'), ...sizes('saim-electron-desktop')]) {
     assert.equal(s.questions, 1);
-    assert.deepEqual(s.options, ['Weekly risk report', 'SOAP report']);
+    assert.deepEqual(s.options, ['Weekly risk report', 'SOAP report', 'Other — explain']);
     clean(s, 'question');
   }
 });

@@ -176,6 +176,55 @@ model call). A repeated answer costs nothing. A repeated **Save to vault…** re
 same prepared-move record. A repeated Claude handoff with the same prompt is the same
 handoff, with no second desk request. A run interrupted by a restart resumes once.
 
+## The workspace Nick reads (redesign, 23 Oct 2026 — branch `task-agent-workspace`, NOT deployed)
+
+`view()` now also returns `workspace` (`task-agent.workspaceOf`, PURE), composed by the server
+so the desktop card, the NEURO phone and SAiM say the same words. The card opens with exactly:
+
+1. **Status** — one line (`Working on it · Checking evidence…`, `Waiting for your decision`,
+   `Waiting for your answer`, `Ready to save`, `Ready`, `Blocked — <reason>`) and one line on
+   what NEURO will and won't do (a people matter: *"It will not decide, contact anyone, promise
+   anything or change anything."*). The block has a fixed minimum height, so phase changes do
+   not move the page.
+2. **What NEURO has done** — at most three lines: the evidence it had (a note read or cited,
+   or a linked excerpt in its prompt), the lead draft with **Open brief / Open draft**, and either
+   "Prepared an email for your approval on Actions — not sent." or "No one has been contacted
+   and nothing has been changed."
+3. **What I need from you** — one question, why (one sentence), what happens after the answer,
+   the choices, and **Other — explain**. Absent when nothing is needed.
+
+Drafts are folded until opened. Everything else — understanding, sources with provenance, the
+full step log, model/tokens/cost, the budget line — is inside **Activity and evidence**, closed
+by default, summarised as *"N permitted sources used · M internal steps"*. The step log is the
+attempt's audit: append-only, up to 500 entries.
+
+**Run controls (server-enforced, not prompt-only):**
+- One question per turn; once asked, every further tool call in that turn is refused; nothing
+  runs until Nick answers (a press while waiting returns the same run — no model call).
+- A question that names nothing specific ("anything further?", "what do you decide?") is
+  refused with the reason. A question overlapping ≥60% of an earlier answered one is refused
+  quoting Nick's answer, unless the model says what new evidence changed it — then the card
+  shows "Asked again because: …".
+- A people matter: if the model does not ask, the server asks the specific decision on the task
+  (never the generic sentence), and only until Nick has given an authority answer — after that
+  the run finishes with the updated brief. The prompt forbids choosing or presenting the
+  decision as settled.
+- Searches are deduped across the whole attempt (a repeat returns the earlier results without
+  searching); a note is never read twice in one turn, and a re-read in a later turn adds no step.
+- Exploration is capped per turn (6 search/read calls, at most 2 searches); past the cap the
+  tools answer "You have enough… write the output now", and the card says NEURO stopped
+  exploring once it had enough. The prompt starts from linked context first.
+- The live phase (`Reading the task`, `Checking evidence`, `Preparing the brief`,
+  `Preparing drafts`) is kept in `agent_state.task_agent_phase:<taskId>` during a turn (the turn
+  itself only commits when it completes) and cleared afterwards; the card polls every 2.5 s.
+
+Unchanged: the tools, authority, people/employment restrictions, owner-only routes, the kiosk /
+MCP / chat / API-token refusals. Proof: `services/task-agent-workspace.test.js` (8; repeat-question,
+exploration cap and ask-once guards mutation-checked) and `services/task-agent-workspace-browser.test.js`
+(8, Electron: the Heidi employment case on desktop, NEURO phone and SAiM phone, the answer,
+refresh, a genuine ambiguity, a normal task and a double press, the kiosk; screenshots with
+`TA_SHOTS`).
+
 ## Next steps for finished work (no parallel stores, confirmations or executors)
 
 - **Save private draft to vault.** `POST …/outputs/:id/save` → `planAgentOutput` stores the
