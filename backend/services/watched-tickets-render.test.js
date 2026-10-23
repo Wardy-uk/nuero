@@ -71,3 +71,29 @@ test('the Escalations page mounts it', () => {
   const src = fs.readFileSync(FILE, 'utf8');
   assert.match(src, /<WatchedTickets\b/);
 });
+
+test('commitments: a spotted promise asks to be confirmed; an open one counts down; a missed one says so', () => {
+  const soon = new Date(Date.now() + 90 * 60000).toISOString();
+  const past = new Date(Date.now() - 20 * 60000).toISOString();
+  const html = render({
+    onCommit: noop,
+    data: { active: [
+      ticket({ key: 'NT-35291', commitments: [{ id: 1, state: 'proposed', dueAt: soon, phrase: 'I will provide you with a further update before 5pm today' }] }),
+      ticket({ key: 'NT-2', commitments: [{ id: 2, state: 'open', dueAt: soon }] }),
+      ticket({ key: 'NT-3', commitments: [{ id: 3, state: 'open', dueAt: past, missed: true }] }),
+    ], listening: [] },
+  });
+  assert.match(html, /Spotted in your reply/);
+  assert.match(html, /before 5pm today/);
+  assert.match(html, /Confirm/);
+  assert.match(html, /Not a commitment/);
+  assert.match(html, /Update promised by .* in 1h 30m|Update promised by .* in 1h 29m/);
+  assert.match(html, /overdue by 20m|overdue by 19m/);
+  assert.match(html, /esc-commitment-missed/);
+  assert.match(html, /\+ Add update commitment/);
+});
+
+test('without onCommit (no handler) the commitment controls are not drawn', () => {
+  const html = render({ onCommit: undefined, data: { active: [ticket({ commitments: [] })], listening: [] } });
+  assert.doesNotMatch(html, /Add update commitment/);
+});

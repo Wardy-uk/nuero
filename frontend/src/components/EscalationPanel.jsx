@@ -203,7 +203,87 @@ function dayMonth(iso) {
  * NEURO judged a thank-you (in the post-resolve listen) is shown muted, so
  * "it went quiet" and "it was filtered" stay visibly different.
  */
-function WatchedRow({ t, onRead, onUnwatch, busy }) {
+function clockLabel(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  return d.toDateString() === today.toDateString() ? `${hm} today` : `${hm} ${dayMonth(iso)}`;
+}
+
+function untilLabel(iso) {
+  const ms = Date.parse(iso) - Date.now();
+  if (!Number.isFinite(ms)) return '';
+  const mins = Math.round(Math.abs(ms) / 60000);
+  const span = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+  return ms >= 0 ? `in ${span}` : `overdue by ${span}`;
+}
+
+/** 'YYYY-MM-DDTHH:MM' for a datetime-local input, an hour from now on the quarter. */
+function defaultWhen() {
+  const d = new Date(Date.now() + 60 * 60000);
+  d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Updates Nick promised the customer. A spotted one is only a proposal until he
+ * confirms it — no reminder or Now card before then. An open one counts down
+ * and is closed by his next public reply on the ticket.
+ */
+function Commitments({ t, busy, onCommit }) {
+  const [adding, setAdding] = useState(false);
+  const [when, setWhen] = useState(defaultWhen);
+  const list = t.commitments || [];
+  const save = async (e) => {
+    e.preventDefault();
+    const ok = await onCommit(t.key, '', { due: when });
+    if (ok) setAdding(false);
+  };
+  return (
+    <div className="esc-commitments">
+      {list.map((c) => (
+        <div key={c.id} className={`esc-commitment esc-commitment-${c.missed ? 'missed' : c.state}`}>
+          {c.state === 'proposed' && (
+            <>
+              <span><strong>Spotted in your reply:</strong> update by {clockLabel(c.dueAt)}</span>
+              {c.phrase && <span className="esc-commitment-phrase">“{c.phrase}”</span>}
+              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/confirm`)}>Confirm</button>
+              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Not a commitment</button>
+            </>
+          )}
+          {c.state === 'open' && (
+            <>
+              <span><strong>Update promised by {clockLabel(c.dueAt)}</strong> · {untilLabel(c.dueAt)}</span>
+              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/done`)}>Done</button>
+              <button type="button" className="esc-row-action esc-row-action-tight" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Remove</button>
+            </>
+          )}
+          {c.state === 'kept' && (
+            <span className="esc-watch-reply-muted">
+              Update kept {c.closedAt ? clockLabel(c.closedAt) : ''}{c.keptLate ? ` — after the ${clockLabel(c.dueAt)} you promised` : ''}
+              {c.closedBy === 'nick' ? ' (marked by you)' : ''}
+            </span>
+          )}
+        </div>
+      ))}
+      {adding ? (
+        <form className="esc-commitment-add" onSubmit={save}>
+          <label>Update the customer by
+            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          </label>
+          <button type="submit" className="esc-row-action esc-row-action-tight" disabled={busy || !when}>Add</button>
+          <button type="button" className="esc-row-action esc-row-action-tight" onClick={() => setAdding(false)}>Cancel</button>
+        </form>
+      ) : (
+        <button type="button" className="esc-link-btn" onClick={() => { setWhen(defaultWhen()); setAdding(true); }}>+ Add update commitment</button>
+      )}
+    </div>
+  );
+}
+
+function WatchedRow({ t, onRead, onUnwatch, onCommit, busy }) {
   const latest = t.replies[0];
   return (
     <div className="esc-row">
@@ -240,6 +320,7 @@ function WatchedRow({ t, onRead, onUnwatch, busy }) {
           {' '}{latest.excerpt}
         </p>
       )}
+      {onCommit && <Commitments t={t} busy={busy} onCommit={onCommit} />}
     </div>
   );
 }
@@ -249,7 +330,7 @@ function WatchedRow({ t, onRead, onUnwatch, busy }) {
  * agents' replies and internal notes never do. Resolved tickets drop to a
  * folded "listening" group for 10 working days, then end.
  */
-export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnwatch, onCheck }) {
+export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnwatch, onCheck, onCommit }) {
   const [key, setKey] = useState('');
   const add = (e) => {
     e.preventDefault();
@@ -289,7 +370,7 @@ export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnw
       {data && active.length === 0 && listening.length === 0 && (
         <p className="esc-empty">You’re not watching any tickets. Add one above, or press Watch on an escalation.</p>
       )}
-      {active.map(t => <WatchedRow key={t.key} t={t} busy={busy} onRead={onRead} onUnwatch={onUnwatch} />)}
+      {active.map(t => <WatchedRow key={t.key} t={t} busy={busy} onRead={onRead} onUnwatch={onUnwatch} onCommit={onCommit} />)}
 
       {listening.length > 0 && (
         <details className="esc-group">
@@ -297,7 +378,7 @@ export function WatchedTickets({ data, error, busy, note, onWatch, onRead, onUnw
             <span className="esc-group-title">Resolved — still listening</span>
             <span className="esc-count">{listening.length}</span>
           </summary>
-          {listening.map(t => <WatchedRow key={t.key} t={t} busy={busy} onRead={onRead} onUnwatch={onUnwatch} />)}
+          {listening.map(t => <WatchedRow key={t.key} t={t} busy={busy} onRead={onRead} onUnwatch={onUnwatch} onCommit={onCommit} />)}
         </details>
       )}
     </section>
@@ -389,6 +470,7 @@ export default function EscalationPanel() {
   const watchKey = async (k) => {
     const r = await watchAction('', { key: k });
     if (r?.already) setWatchedNote(`${r.ticket.key} is already being watched.`);
+    else if (r?.proposed) setWatchedNote(`Spotted a promise in your latest reply on ${r.ticket.key}: an update by ${clockLabel(r.proposed.dueAt)}. Confirm it below to get reminders.`);
     else if (r?.ticket?.phase === 'background') setWatchedNote(`${r.ticket.key} is already resolved — NEURO will listen for a follow-up until ${dayMonth(r.ticket.listeningUntil)}.`);
     return !!r;
   };
@@ -480,6 +562,7 @@ export default function EscalationPanel() {
         onRead={(k) => watchAction(`/${encodeURIComponent(k)}/read`)}
         onUnwatch={(k) => watchAction(`/${encodeURIComponent(k)}/unwatch`)}
         onCheck={() => watchAction('/check')}
+        onCommit={async (k, path, body) => !!(await watchAction(`/${encodeURIComponent(k)}/commitments${path}`, body))}
       />
 
       <form className="esc-lookup" onSubmit={lookup}>

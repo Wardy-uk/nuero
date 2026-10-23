@@ -250,3 +250,158 @@ test('routes answer over real HTTP', async () => {
     server.close();
   }
 });
+
+// ── Update commitments ───────────────────────────────────────────────────────
+
+const ME = { accountType: 'atlassian', displayName: 'Nick Ward' };
+const NT_35291 = 'Good afternoon, Anthony. What happens next: I will provide you with a further update before 5pm today, regardless of whether the issue has been fully resolved by that point.';
+
+test('the NT-35291 sentence is a commitment for 17:00 that day (BST)', () => {
+  const c = wt.detectCommitment(NT_35291, '2026-10-23T13:37:51.097+01:00');
+  assert.equal(c.dueAt, '2026-10-23T16:00:00.000Z');
+  assert.match(c.phrase, /before 5pm today/);
+});
+
+test('what is and is not a commitment', () => {
+  const made = '2026-11-02T10:00:00Z'; // GMT
+  assert.equal(wt.detectCommitment('I’ll get back to you by 3pm.', made).dueAt, '2026-11-02T15:00:00.000Z');
+  assert.equal(wt.detectCommitment("I'll get back to you by 3pm.", made).dueAt, '2026-11-02T15:00:00.000Z');
+  assert.equal(wt.detectCommitment('We will update you tomorrow.', made).dueAt, '2026-11-03T17:00:00.000Z');
+  assert.equal(wt.detectCommitment('I will update you by end of day.', made).dueAt, '2026-11-02T17:00:00.000Z');
+  // "by 9am" written in the afternoon with no day named means the next morning.
+  assert.equal(wt.detectCommitment('I will let you know by 9am.', '2026-11-02T16:00:00Z').dueAt, '2026-11-03T09:00:00.000Z');
+  for (const t of ['Could you update me by 5pm?', 'We are investigating today.', 'The release is at 5pm today.', 'Thanks for the update, speak tomorrow.']) {
+    assert.equal(wt.detectCommitment(t, made), null, t);
+  }
+});
+
+function w2(key) {
+  const w = world(key);
+  w.now = new Date('2026-10-23T12:40:00Z'); // 13:40 BST
+  return w;
+}
+const commitment = (key) => db.get('SELECT * FROM watched_ticket_commitments WHERE ticket_key = ? ORDER BY id DESC', [key]);
+const tcPushes = (w) => w.pushes.filter((p) => p.data.type === 'ticket_commitment');
+
+test('watching proposes the promise in my latest public reply; confirm, remind, miss, keep', async () => {
+  const w = w2('NT-2001');
+  w.add(ME, NT_35291);
+  const r = await wt.watch('NT-2001', w.deps);
+  assert.equal(r.proposed.dueAt, '2026-10-23T16:00:00.000Z');
+  let c = commitment('NT-2001');
+  assert.equal(c.state, 'proposed');
+  assert.equal(wt.nowCards(Date.parse('2026-10-23T15:45:00Z')).filter((x) => x.meta.ticket_key === 'NT-2001').length, 0, 'a proposal is not on Now until confirmed');
+
+  assert.equal(wt.actOnCommitment('NT-2001', c.id, 'confirm', w.now.getTime()).ok, true);
+  assert.equal(wt.actOnCommitment('NT-2001', c.id, 'confirm', w.now.getTime()).status, 409);
+
+  // A customer reply does not keep it.
+  w.add(CUSTOMER, 'Any news?');
+  w.now = new Date('2026-10-23T15:31:00Z'); // 16:31, inside the 30-minute window
+  await wt.check(w.deps);
+  assert.equal(tcPushes(w).length, 1);
+  assert.match(tcPushes(w)[0].title, /update due by 17:00/);
+  assert.equal(commitment('NT-2001').state, 'open');
+  assert.equal(wt.nowCards(w.now.getTime()).filter((x) => x.meta.ticket_key === 'NT-2001').length, 1);
+
+  await wt.check(w.deps); // no second reminder
+  assert.equal(tcPushes(w).length, 1);
+
+  w.now = new Date('2026-10-23T16:05:00Z'); // 17:05, missed
+  await wt.check(w.deps);
+  assert.equal(w.pushes.filter((p) => p.data.key === `tc:${c.id}:missed`).length, 1);
+  assert.equal(wt.nowCards(w.now.getTime()).find((x) => x.meta.ticket_key === 'NT-2001').urgency, 'critical');
+
+  // An internal note from me does not keep it; a public reply does.
+  w.add(ME, 'Internal: chased dev', false);
+  await wt.check(w.deps);
+  assert.equal(commitment('NT-2001').state, 'open');
+  w.now = new Date('2026-10-23T16:10:00Z');
+  w.add(ME, 'Hi Anthony, quick update: the fix is in testing.');
+  await wt.check(w.deps);
+  c = db.get('SELECT * FROM watched_ticket_commitments WHERE id = ?', [c.id]);
+  assert.equal(c.state, 'kept');
+  assert.equal(c.kept_late, 1);
+  assert.equal(wt.nowCards(w.now.getTime()).filter((x) => x.meta.ticket_key === 'NT-2001').length, 0);
+  assert.equal(tcPushes(w).length, 2, 'nothing more once kept');
+});
+
+test('a new promise in a later reply is proposed, and replaces an unconfirmed one', async () => {
+  const w = w2('NT-2002');
+  await wt.watch('NT-2002', w.deps);
+  w.add(ME, 'I will update you by 3pm today.');
+  await wt.check(w.deps);
+  const first = commitment('NT-2002');
+  assert.equal(first.state, 'proposed');
+  w.now = new Date('2026-10-23T13:00:00Z');
+  w.add(ME, 'Still investigating. I will update you again by 5pm today.');
+  await wt.check(w.deps);
+  assert.equal(db.get('SELECT state FROM watched_ticket_commitments WHERE id = ?', [first.id]).state, 'dismissed');
+  assert.equal(commitment('NT-2002').due_at, '2026-10-23T16:00:00.000Z');
+});
+
+test('confirmed inside the 30-minute window: no "due soon" push, still one if missed', async () => {
+  const w = w2('NT-2003');
+  await wt.watch('NT-2003', w.deps);
+  w.now = new Date('2026-10-23T15:45:00Z'); // 16:45
+  assert.equal(wt.addCommitment('NT-2003', '17:00', w.now.getTime()).ok, true);
+  await wt.check(w.deps);
+  assert.equal(tcPushes(w).length, 0);
+  w.now = new Date('2026-10-23T16:01:00Z');
+  await wt.check(w.deps);
+  assert.equal(tcPushes(w).length, 1);
+});
+
+test('adding by hand refuses junk and the past; dismiss, done and unwatch close it', async () => {
+  const w = w2('NT-2004');
+  await wt.watch('NT-2004', w.deps);
+  const now = w.now.getTime();
+  assert.equal(wt.addCommitment('NT-2004', '5pm', now).status, 400);
+  assert.equal(wt.addCommitment('NT-2004', '2026-02-31T10:00', now).status, 400);
+  assert.equal(wt.addCommitment('NT-2004', '09:00', now).status, 400, 'already passed today');
+  assert.equal(wt.addCommitment('NT-9998', '17:00', now).status, 404);
+  const a = wt.addCommitment('NT-2004', '2026-10-24T10:00', now).commitment;
+  assert.equal(a.dueAt, '2026-10-24T09:00:00.000Z');
+  assert.equal(wt.actOnCommitment('NT-2004', a.id, 'done', now).commitment.state, 'kept');
+  const b = wt.addCommitment('NT-2004', '17:00', now).commitment;
+  assert.equal(wt.actOnCommitment('NT-2004', b.id, 'dismiss', now).commitment.state, 'cancelled');
+  assert.equal(wt.actOnCommitment('NT-2004', b.id, 'explode', now).status, 400);
+  const c = wt.addCommitment('NT-2004', '18:00', now).commitment;
+  wt.unwatch('NT-2004');
+  assert.equal(db.get('SELECT state FROM watched_ticket_commitments WHERE id = ?', [c.id]).state, 'cancelled');
+});
+
+test('commitment routes answer over real HTTP', async () => {
+  const w = w2('NT-2005');
+  await wt.watch('NT-2005', w.deps);
+  const express = require('express');
+  const app = express();
+  app.use(express.json());
+  app.use('/api/escalation', require('../routes/escalation'));
+  const server = app.listen(0);
+  const root = `http://127.0.0.1:${server.address().port}/api/escalation/watched`;
+  const base = `${root}/NT-2005/commitments`;
+  const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  try {
+    assert.equal((await post(base, { due: 'soon' })).status, 400);
+    const ok = await post(base, { due: '2099-01-05T10:00' });
+    assert.equal(ok.status, 200);
+    const { commitment: c } = await ok.json();
+    assert.equal((await post(`${base}/${c.id}/confirm`)).status, 409, 'already open');
+    assert.equal((await post(`${base}/${c.id}/done`)).status, 200);
+    const listed = await (await fetch(root)).json();
+    assert.ok(listed.active.find((t) => t.key === 'NT-2005').commitments.some((x) => x.state === 'kept'));
+  } finally {
+    server.close();
+  }
+});
+
+test('a reply only keeps commitments made BEFORE it (one added by hand after the reply stays open)', async () => {
+  const w = w2('NT-2006');
+  await wt.watch('NT-2006', w.deps);
+  w.add(ME, 'Thanks, looking into it now.'); // posted 13:40, poll has not run yet
+  w.now = new Date('2026-10-23T12:45:00Z');
+  const c = wt.addCommitment('NT-2006', '17:00', w.now.getTime()).commitment;
+  await wt.check(w.deps);
+  assert.equal(db.get('SELECT state FROM watched_ticket_commitments WHERE id = ?', [c.id]).state, 'open');
+});

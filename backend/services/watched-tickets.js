@@ -141,6 +141,90 @@ function listenUntil(from, nextWorkingDay, n = LISTEN_WORKING_DAYS) {
   return end;
 }
 
+// ── Update commitments (PURE) ────────────────────────────────────────────────
+//
+// "I will provide you with a further update before 5pm today" — Nick's own
+// words on NT-35291, the fixture this was built against. A commitment needs
+// THREE things in one sentence: a first-person promise (I/we will…), an act of
+// telling the customer (update, get back, let you know…), and a time. Anything
+// less is not proposed; a proposal is only ever a proposal until he confirms.
+
+const { londonWall, londonInstant, addDays } = require('./promise-score');
+
+const PROMISE_RE = /\b(i|we)\s*(?:'ll|’ll|\s+will|\s+shall|'m going to|’m going to|\s+am going to|\s+are going to|\s+aim to|\s+will aim to|\s+will endeavour to|\s+expect to)\b/i;
+const TELL_RE = /\b(update|get back|come back|be in touch|follow up|follow-up|let you know|contact you|call you|ring you|respond|send you|provide you|confirm)\b/i;
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const NAMED_TIMES = [
+  [/\b(?:end of (?:the )?(?:working )?day|close of (?:business|play)|end of play|cob|eod|eop)\b/i, '17:00'],
+  [/\b(?:midday|noon|lunchtime|lunch time)\b/i, '12:00'],
+  [/\bthis afternoon\b/i, '17:00'],
+  [/\b(?:tomorrow|this) morning\b/i, '12:00'],
+  [/\btomorrow afternoon\b/i, '17:00'],
+];
+
+function _clock(sentence) {
+  const ampm = /\b(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)\b/i.exec(sentence);
+  if (ampm) {
+    let h = Number(ampm[1]) % 12; const m = Number(ampm[2] || 0);
+    if (ampm[3].toLowerCase() === 'pm') h += 12;
+    if (h > 23 || m > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  const h24 = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/.exec(sentence);
+  if (h24) return `${h24[1].padStart(2, '0')}:${h24[2]}`;
+  for (const [re, t] of NAMED_TIMES) if (re.test(sentence)) return t;
+  return null;
+}
+
+/** The London date a sentence names, relative to the day it was written. null = it names none. */
+function _day(sentence, madeDate) {
+  const s = sentence.toLowerCase();
+  if (/\btomorrow\b/.test(s)) return addDays(madeDate, 1);
+  if (/\b(today|tonight|this (?:afternoon|morning|evening))\b/.test(s)) return madeDate;
+  const wd = WEEKDAYS.findIndex((d) => new RegExp(`\\b(?:on|by|before|this|next)?\\s*${d}\\b`).test(s));
+  if (wd >= 0) {
+    const today = new Date(`${madeDate}T12:00:00Z`).getUTCDay();
+    let ahead = (wd - today + 7) % 7;
+    if (ahead === 0) ahead = 7;
+    return addDays(madeDate, ahead);
+  }
+  return null;
+}
+
+/**
+ * { dueAt (ISO), phrase } or null. PURE. `madeAt` is when the reply was posted;
+ * the date and time words are read on Europe/London's wall clock.
+ */
+function detectCommitment(text, madeAt) {
+  const madeMs = typeof madeAt === 'number' ? madeAt : Date.parse(madeAt);
+  if (!Number.isFinite(madeMs)) return null;
+  const madeDate = londonWall(madeMs).date;
+  const sentences = ownWords(text).replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/);
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s || !PROMISE_RE.test(s) || !TELL_RE.test(s)) continue;
+    const clock = _clock(s);
+    const day = _day(s, madeDate);
+    if (!clock && !day) continue;
+    let dateKey = day || madeDate;
+    let due = londonInstant(dateKey, clock || '17:00');
+    // "by 9am" written at 16:00 with no day named means tomorrow morning.
+    if (!day && due <= madeMs) { dateKey = addDays(dateKey, 1); due = londonInstant(dateKey, clock || '17:00'); }
+    if (!Number.isFinite(due) || due <= madeMs) continue;
+    return { dueAt: new Date(due).toISOString(), phrase: s.length > 240 ? `${s.slice(0, 239)}…` : s };
+  }
+  return null;
+}
+
+/** The commitment's state at an instant. PURE. */
+function commitmentTiming(c, nowMs, leadMs = REMIND_LEAD_MS) {
+  const due = Date.parse(c.due_at || c.dueAt);
+  if (!Number.isFinite(due)) return { due: null, dueSoon: false, missed: false };
+  return { due, dueSoon: nowMs >= due - leadMs && nowMs < due, missed: nowMs >= due };
+}
+
+const REMIND_LEAD_MS = 30 * 60000;
+
 function commentId(c) {
   const n = Number(c && c.id);
   return Number.isFinite(n) ? n : null;
@@ -160,22 +244,82 @@ function _defaultDeps() {
     judge: judgeByModel,
     push: (title, body, data) => require('./webpush').sendToAll(title, body, data),
     nextWorkingDay: (d) => wd.nextWorkingDay(d),
+    // Nick, as Jira knows him: the API token's own email, else his display name.
+    isMe: (author) => {
+      const email = String(process.env.JIRA_EMAIL || '').toLowerCase();
+      return !!author && ((email && String(author.emailAddress || '').toLowerCase() === email)
+        || /\bnick ward\b/i.test(author.displayName || ''));
+    },
     now: () => new Date(),
   };
 }
 
+/** A public reply by Nick — what the customer can see from him. */
+function _isMyPublicReply(c, deps) {
+  return !!c && c.jsdPublic !== false && c.author?.accountType !== 'customer' && deps.isMe(c.author);
+}
+
+const _commitments = (key, states) => db.all(
+  `SELECT * FROM watched_ticket_commitments WHERE ticket_key = ? AND state IN (${states.map(() => '?').join(',')}) ORDER BY due_at ASC`,
+  [key, ...states]);
+
+/** Propose what a reply of Nick's promised. Idempotent on the comment id. */
+function _proposeFrom(key, comment, deps, nowMs) {
+  if (!_isMyPublicReply(comment, deps)) return null;
+  const found = detectCommitment(adfText(comment.body), comment.created);
+  if (!found || Date.parse(found.dueAt) <= nowMs) return null;
+  const r = db.run(`INSERT OR IGNORE INTO watched_ticket_commitments
+      (ticket_key, due_at, source, state, phrase, comment_id, made_at) VALUES (?, ?, 'detected', 'proposed', ?, ?, ?)`,
+  [key, found.dueAt, found.phrase, String(comment.id), comment.created || new Date(nowMs).toISOString()]);
+  return r?.changes ? found : null;
+}
+
+/**
+ * A public reply from Nick keeps every open commitment made BEFORE it, and
+ * supersedes an unconfirmed proposal from an earlier reply. Returns how many.
+ */
+function _keepWith(key, reply) {
+  const at = reply.created;
+  const atMs = Date.parse(at);
+  let kept = 0;
+  for (const c of _commitments(key, ['open', 'proposed'])) {
+    if (!(Date.parse(c.made_at) < atMs)) continue;
+    if (c.state === 'proposed') {
+      db.run(`UPDATE watched_ticket_commitments SET state = 'dismissed', closed_at = ?, closed_by = 'superseded' WHERE id = ?`, [at, c.id]);
+      continue;
+    }
+    db.run(`UPDATE watched_ticket_commitments SET state = 'kept', closed_at = ?, closed_by = 'reply', kept_late = ? WHERE id = ?`,
+      [at, atMs > Date.parse(c.due_at) ? 1 : 0, c.id]);
+    kept += 1;
+  }
+  return kept;
+}
+
 function _deps(over) { return { ..._defaultDeps(), ...(over || {}) }; }
 
+/** The highest comment id now on the ticket, plus the comments (to read Nick's latest promise from). */
 async function _baseline(key, deps) {
   try {
     const r = await deps.comments(key);
-    if (!r) return null;
+    if (!r) return { seen: null, comments: [] };
     const ids = (r.comments || []).map(commentId).filter((n) => n != null);
-    return ids.length ? Math.max(...ids) : 0;
+    return { seen: ids.length ? Math.max(...ids) : 0, comments: r.comments || [] };
   } catch (e) {
     console.warn(`[Watched] baseline for ${key} failed: ${e.message} — taken on the next check`);
-    return null;
+    return { seen: null, comments: [] };
   }
+}
+
+/**
+ * At the baseline, Nick's LATEST public reply is not old news if it promised an
+ * update still to come — that is how NT-35291 arrives ("before 5pm today",
+ * written before he watched it). Only the latest: an earlier promise has been
+ * overtaken by the reply after it.
+ */
+function _proposeFromLatest(key, comments, deps, nowMs) {
+  const mine = comments.filter((c) => _isMyPublicReply(c, deps))
+    .sort((a, b) => (commentId(b) ?? 0) - (commentId(a) ?? 0));
+  return mine.length ? _proposeFrom(key, mine[0], deps, nowMs) : null;
 }
 
 /**
@@ -203,7 +347,8 @@ async function watch(rawKey, depsOver) {
 
   const now = deps.now();
   const done = issue.statusCategory === 'done';
-  const seen = await _baseline(key, deps);
+  const base = await _baseline(key, deps);
+  const seen = base.seen;
   db.run(`INSERT INTO watched_tickets (ticket_key, summary, status, status_category, url, phase, watched_at,
             resolved_at, background_until, ended_at, ended_reason, seen_comment_id, jira_updated, last_checked_at, last_error)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL)
@@ -218,7 +363,8 @@ async function watch(rawKey, depsOver) {
     done ? now.toISOString() : null,
     done ? listenUntil(now, deps.nextWorkingDay).toISOString() : null,
     seen, issue.updated || null, now.toISOString()]);
-  return { ok: true, already: false, ticket: _present(_row(key)) };
+  const proposed = _proposeFromLatest(key, base.comments, deps, now.getTime());
+  return { ok: true, already: false, proposed, ticket: _present(_row(key)) };
 }
 
 /** Stop watching. The row is kept (phase ended, reason unwatched) so history survives. */
@@ -227,8 +373,10 @@ function unwatch(rawKey) {
   if (!key) return { ok: false, status: 400, error: `"${rawKey}" is not a ticket key` };
   const row = _row(key);
   if (!row || row.phase === 'ended') return { ok: false, status: 404, error: `${key} is not being watched` };
-  db.run(`UPDATE watched_tickets SET phase = 'ended', ended_at = ?, ended_reason = 'unwatched' WHERE ticket_key = ?`,
-    [new Date().toISOString(), key]);
+  const at = new Date().toISOString();
+  db.run(`UPDATE watched_tickets SET phase = 'ended', ended_at = ?, ended_reason = 'unwatched' WHERE ticket_key = ?`, [at, key]);
+  db.run(`UPDATE watched_ticket_commitments SET state = 'cancelled', closed_at = ?, closed_by = 'unwatched'
+          WHERE ticket_key = ? AND state IN ('open', 'proposed')`, [at, key]);
   return { ok: true };
 }
 
@@ -261,11 +409,153 @@ function _present(row) {
     lastCheckedAt: row.last_checked_at,
     lastError: row.last_error,
     unread,
+    commitments: _commitmentsFor(row.ticket_key),
     replies: replies.map((r) => ({
       id: r.comment_id, author: r.author, created: r.created, excerpt: r.excerpt,
       verdict: r.verdict, judgedBy: r.judged_by, flagged: r.flagged === 1, read: !!r.read_at,
     })),
   };
+}
+
+function _shapeCommitment(c, nowMs = Date.now()) {
+  const t = commitmentTiming(c, nowMs);
+  return {
+    id: c.id, dueAt: c.due_at, source: c.source, state: c.state, phrase: c.phrase,
+    madeAt: c.made_at, confirmedAt: c.confirmed_at, closedAt: c.closed_at, closedBy: c.closed_by,
+    keptLate: c.kept_late === 1, dueSoon: c.state === 'open' && t.dueSoon, missed: c.state === 'open' && t.missed,
+  };
+}
+
+/** Open and proposed, plus anything kept in the last 24 hours (so "kept" is seen). */
+function _commitmentsFor(key) {
+  const since = new Date(Date.now() - 86400000).toISOString();
+  return db.all(`SELECT * FROM watched_ticket_commitments WHERE ticket_key = ?
+                   AND (state IN ('open', 'proposed') OR (state = 'kept' AND closed_at >= ?))
+                 ORDER BY due_at ASC`, [key, since]).map((c) => _shapeCommitment(c));
+}
+
+/** London wall clock 'YYYY-MM-DDTHH:MM' or 'HH:MM' (today) → ISO, or null. PURE. */
+function parseDue(raw, nowMs) {
+  const s = String(raw || '').trim();
+  let m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})$/.exec(s);
+  let dateKey; let hhmm;
+  if (m) { dateKey = m[1]; hhmm = `${m[2]}:${m[3]}`; }
+  else if ((m = /^(\d{1,2}):(\d{2})$/.exec(s))) { dateKey = londonWall(nowMs).date; hhmm = `${m[1].padStart(2, '0')}:${m[2]}`; }
+  else return null;
+  const [h, mi] = hhmm.split(':').map(Number);
+  if (h > 23 || mi > 59) return null;
+  const check = new Date(`${dateKey}T12:00:00Z`);
+  if (Number.isNaN(check.getTime()) || check.toISOString().slice(0, 10) !== dateKey) return null;
+  const ms = londonInstant(dateKey, hhmm);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/** Nick adds a commitment by hand. Refused, never repaired: junk or a time already past is 400. */
+function addCommitment(rawKey, due, nowMs = Date.now()) {
+  const key = normaliseKey(rawKey);
+  if (!key) return { ok: false, status: 400, error: `"${rawKey}" is not a ticket key` };
+  const row = _row(key);
+  if (!row || row.phase === 'ended') return { ok: false, status: 404, error: `${key} is not being watched` };
+  const dueAt = parseDue(due, nowMs);
+  if (!dueAt) return { ok: false, status: 400, error: 'due must be HH:MM (today) or YYYY-MM-DDTHH:MM, London time' };
+  if (Date.parse(dueAt) <= nowMs) return { ok: false, status: 400, error: 'That time has already passed' };
+  const at = new Date(nowMs).toISOString();
+  const r = db.run(`INSERT INTO watched_ticket_commitments (ticket_key, due_at, source, state, made_at, confirmed_at)
+                    VALUES (?, ?, 'manual', 'open', ?, ?)`, [key, dueAt, at, at]);
+  return { ok: true, commitment: _shapeCommitment(db.get('SELECT * FROM watched_ticket_commitments WHERE id = ?', [r.lastInsertRowid]), nowMs) };
+}
+
+/**
+ * confirm (proposed → open) | dismiss (proposed → dismissed, open → cancelled) | done (open → kept, by hand).
+ * The wrong state for the action is 409 and changes nothing.
+ */
+function actOnCommitment(rawKey, id, action, nowMs = Date.now()) {
+  const key = normaliseKey(rawKey);
+  const c = key && db.get('SELECT * FROM watched_ticket_commitments WHERE id = ? AND ticket_key = ?', [Number(id), key]);
+  if (!c) return { ok: false, status: 404, error: 'No such commitment on that ticket' };
+  const at = new Date(nowMs).toISOString();
+  if (action === 'confirm' && c.state === 'proposed') {
+    db.run(`UPDATE watched_ticket_commitments SET state = 'open', confirmed_at = ? WHERE id = ?`, [at, c.id]);
+  } else if (action === 'dismiss' && (c.state === 'proposed' || c.state === 'open')) {
+    db.run(`UPDATE watched_ticket_commitments SET state = ?, closed_at = ?, closed_by = 'nick' WHERE id = ?`,
+      [c.state === 'proposed' ? 'dismissed' : 'cancelled', at, c.id]);
+  } else if (action === 'done' && c.state === 'open') {
+    db.run(`UPDATE watched_ticket_commitments SET state = 'kept', closed_at = ?, closed_by = 'nick', kept_late = ? WHERE id = ?`,
+      [at, nowMs > Date.parse(c.due_at) ? 1 : 0, c.id]);
+  } else {
+    return { ok: false, status: ['confirm', 'dismiss', 'done'].includes(action) ? 409 : 400,
+      error: `Cannot ${action || '(nothing)'} a commitment that is ${c.state}` };
+  }
+  return { ok: true, commitment: _shapeCommitment(db.get('SELECT * FROM watched_ticket_commitments WHERE id = ?', [c.id]), nowMs) };
+}
+
+function _hhmm(iso) { return londonWall(Date.parse(iso)).time; }
+
+/**
+ * The two pushes: 30 minutes before (only if he confirmed it before that
+ * window opened — one confirmed at 16:45 for 17:00 is already in front of him),
+ * and once when the time passes. Always delivered (ALWAYS_DELIVER).
+ */
+async function _remind(deps, nowMs) {
+  const open = db.all(`SELECT c.*, t.summary FROM watched_ticket_commitments c
+                       JOIN watched_tickets t ON t.ticket_key = c.ticket_key WHERE c.state = 'open'`);
+  let sent = 0;
+  for (const c of open) {
+    const t = commitmentTiming(c, nowMs);
+    if (t.due == null) continue;
+    const at = new Date(nowMs).toISOString();
+    if (t.missed && !c.missed_at) {
+      db.run('UPDATE watched_ticket_commitments SET missed_at = ? WHERE id = ?', [at, c.id]);
+      try {
+        await deps.push(`${c.ticket_key}: the update you promised for ${_hhmm(c.due_at)} hasn't gone out`,
+          `${c.summary || c.ticket_key}: no public reply from you yet.`,
+          { type: 'ticket_commitment', key: `tc:${c.id}:missed`, url: '/?view=escalations' });
+        sent += 1;
+      } catch (e) { console.warn(`[Watched] commitment push failed: ${e.message}`); }
+    } else if (t.dueSoon && !c.reminded_at) {
+      db.run('UPDATE watched_ticket_commitments SET reminded_at = ? WHERE id = ?', [at, c.id]);
+      const confirmedMs = Date.parse(c.confirmed_at || c.made_at);
+      if (Number.isFinite(confirmedMs) && confirmedMs > t.due - REMIND_LEAD_MS) continue;
+      try {
+        await deps.push(`${c.ticket_key}: update due by ${_hhmm(c.due_at)}`,
+          `You told the customer you'd update them by ${_hhmm(c.due_at)}. ${c.summary || ''}`.trim(),
+          { type: 'ticket_commitment', key: `tc:${c.id}:soon`, url: '/?view=escalations' });
+        sent += 1;
+      } catch (e) { console.warn(`[Watched] commitment push failed: ${e.message}`); }
+    }
+  }
+  return sent;
+}
+
+/**
+ * Cards for NEURO's Now (decision-engine's collector): an open commitment from
+ * 30 minutes before its time until his reply; a missed one above a due one.
+ */
+function nowCards(nowMs = Date.now()) {
+  let rows;
+  try {
+    rows = db.all(`SELECT c.*, t.summary, t.url FROM watched_ticket_commitments c
+                   JOIN watched_tickets t ON t.ticket_key = c.ticket_key WHERE c.state = 'open'`);
+  } catch { return []; }
+  const out = [];
+  for (const c of rows) {
+    const t = commitmentTiming(c, nowMs);
+    if (!t.dueSoon && !t.missed) continue;
+    const time = _hhmm(c.due_at);
+    out.push({
+      type: 'ticket_commitment',
+      id: `ticket-commitment-${c.id}`,
+      dedupeKey: `ticket-commitment:${c.id}`,
+      title: t.missed ? `${c.ticket_key}: the update you promised for ${time} is overdue` : `${c.ticket_key}: update the customer by ${time}`,
+      reason: `${c.summary || c.ticket_key}${c.phrase ? ` — you wrote: “${c.phrase}”` : ''}`,
+      score: t.missed ? 97 : 90,
+      urgency: t.missed ? 'critical' : 'high',
+      source: 'jira',
+      actionHint: `Open ${c.ticket_key} in Jira`,
+      meta: { ticket_key: c.ticket_key, url: c.url || null, dueAt: c.due_at, commitmentId: c.id },
+    });
+  }
+  return out;
 }
 
 /** What the Escalations page renders. */
@@ -355,10 +645,20 @@ async function _process(row, issue, deps, now, sent) {
     const ids = comments.map(commentId).filter((n) => n != null);
     if (seen == null) {
       seen = ids.length ? Math.max(...ids) : 0;
+      _proposeFromLatest(row.ticket_key, comments, deps, now.getTime());
     } else {
+      const mine = [];
       for (const c of comments) {
         const id = commentId(c);
-        if (id != null && id > seen && isCustomerReply(c)) fresh.push(c);
+        if (id == null || id <= seen) continue;
+        if (isCustomerReply(c)) fresh.push(c);
+        else if (_isMyPublicReply(c, deps)) mine.push(c);
+      }
+      // Oldest first: a reply keeps what came before it, then may promise again.
+      mine.sort((a, b) => commentId(a) - commentId(b));
+      for (const c of mine) {
+        _keepWith(row.ticket_key, c);
+        _proposeFrom(row.ticket_key, c, deps, now.getTime());
       }
       if (r && r.complete === false && ids.length && Math.min(...ids) > seen) {
         console.warn(`[Watched] ${row.ticket_key}: more new comments than one page — the oldest may be missed`);
@@ -407,6 +707,8 @@ async function _process(row, issue, deps, now, sent) {
   let endedAt = null; let endedReason = null;
   if (phase === 'background' && until && now.getTime() > Date.parse(until)) {
     phase = 'ended'; endedAt = now.toISOString(); endedReason = 'quiet-after-resolve';
+    db.run(`UPDATE watched_ticket_commitments SET state = 'cancelled', closed_at = ?, closed_by = 'watch-ended'
+            WHERE ticket_key = ? AND state IN ('open', 'proposed')`, [endedAt, row.ticket_key]);
   }
 
   db.run(`UPDATE watched_tickets SET summary = ?, status = ?, status_category = ?, url = COALESCE(?, url), phase = ?,
@@ -452,7 +754,8 @@ async function check(depsOver) {
           [now.toISOString(), e.message.slice(0, 300), row.ticket_key]);
       }
     }
-    if (replies || failed) console.log(`[Watched] ${rows.length} checked — ${replies} customer repl${replies === 1 ? 'y' : 'ies'}, ${sent.length} pushed, ${failed} unreadable`);
+    const reminders = await _remind(deps, now.getTime());
+    if (replies || failed || reminders) console.log(`[Watched] ${rows.length} checked — ${replies} customer repl${replies === 1 ? 'y' : 'ies'}, ${sent.length} pushed, ${reminders} commitment reminder(s), ${failed} unreadable`);
     return (_lastRun = { ok: failed === 0, at: now.toISOString(), checked: rows.length, replies, pushed: sent.length, failed });
   } catch (e) {
     console.warn(`[Watched] check failed: ${e.message}`);
@@ -463,8 +766,8 @@ async function check(depsOver) {
 }
 
 module.exports = {
-  watch, unwatch, markRead, list, check,
+  watch, unwatch, markRead, list, check, addCommitment, actOnCommitment, nowCards,
   PUSH_TYPE, LISTEN_WORKING_DAYS,
   // pure, for the tests
-  normaliseKey, isCustomerReply, ownWords, judgeByRule, listenUntil, adfText, excerptOf,
+  normaliseKey, isCustomerReply, detectCommitment, commitmentTiming, parseDue, ownWords, judgeByRule, listenUntil, adfText, excerptOf,
 };

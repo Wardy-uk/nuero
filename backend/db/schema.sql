@@ -1033,6 +1033,28 @@ CREATE TABLE IF NOT EXISTS watched_ticket_replies (
 );
 CREATE INDEX IF NOT EXISTS idx_watched_replies_ticket ON watched_ticket_replies(ticket_key, created);
 
+-- An update Nick promised the customer on a watched ticket (23 Oct 2026).
+-- proposed (spotted in his public reply, awaiting his confirm) → open → kept
+-- (his next public reply) | dismissed (not a commitment) | cancelled.
+-- comment_id is UNIQUE so one reply can never propose twice.
+CREATE TABLE IF NOT EXISTS watched_ticket_commitments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_key TEXT NOT NULL,
+  due_at TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('detected', 'manual')),
+  state TEXT NOT NULL CHECK (state IN ('proposed', 'open', 'kept', 'dismissed', 'cancelled')),
+  phrase TEXT,
+  comment_id TEXT UNIQUE,
+  made_at TEXT NOT NULL,
+  confirmed_at TEXT,
+  reminded_at TEXT,
+  missed_at TEXT,
+  closed_at TEXT,
+  closed_by TEXT,
+  kept_late INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_watched_commitments_ticket ON watched_ticket_commitments(ticket_key, state);
+
 
 -- One row per day, derived from health_samples.
 --

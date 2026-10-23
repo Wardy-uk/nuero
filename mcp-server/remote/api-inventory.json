@@ -9591,6 +9591,46 @@
     "stream": false
   },
   {
+    "id": "post_escalation_watched_by_key_commitments",
+    "method": "POST",
+    "route": "/api/escalation/watched/:key/commitments",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 294,
+    "description": "POST /api/escalation/watched/:key/commitments. promise the customer an update by a time; body { due: \"HH:MM\" (today) or \"YYYY-MM-DDTHH:MM\", London }. Update commitment, deadline, reminder.",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [
+      "due"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_watched_by_key_commitments_by_id_by_action",
+    "method": "POST",
+    "route": "/api/escalation/watched/:key/commitments/:id/:action",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 301,
+    "description": "POST /api/escalation/watched/:key/commitments/:id/:action. confirm a spotted update commitment, dismiss it, or mark it done by hand (action = confirm | dismiss | done).",
+    "params": [
+      "key",
+      "id",
+      "action"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_escalation_watched_by_key_read",
     "method": "POST",
     "route": "/api/escalation/watched/:key/read",
@@ -9614,7 +9654,7 @@
     "route": "/api/escalation/watched/:key/unwatch",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 294,
+    "line": 307,
     "description": "POST /api/escalation/watched/:key/unwatch. stop watching a ticket (history kept).",
     "params": [
       "key"

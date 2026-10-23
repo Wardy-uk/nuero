@@ -20,7 +20,7 @@
 const INTERNAL = Object.freeze([
   // decision-engine item types
   // (machine-shaped tokens only: an English word like 'escalation' is fine on its own)
-  'nova_flag', 'weekly_risk', 'weekly-risk', 'source-blind', 'plan_closure', 'payroll_cutoff',
+  'nova_flag', 'weekly_risk', 'weekly-risk', 'source-blind', 'plan_closure', 'payroll_cutoff', 'ticket_commitment',
   // prepared-action types
   'chase_commitment', 'chase_agenda', 'reply_email', 'compose_email', 'send_weekly_risk_report',
   'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event',

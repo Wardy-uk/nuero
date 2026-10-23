@@ -91,13 +91,18 @@ function sentTypes() {
   const found = [];
   for (const file of sourceFiles()) {
     const src = fs.readFileSync(file, 'utf8');
-    let i = src.indexOf('sendToAll(');
-    while (i !== -1) {
-      // The type sits in the third argument, within a few lines of the call.
-      const window = src.slice(i, i + 500);
-      const m = window.match(/type:\s*'([a-z0-9_]+)'/i);
-      if (m) found.push({ file: path.basename(file), type: m[1] });
-      i = src.indexOf('sendToAll(', i + 1);
+    // `deps.push(` is the same call injected so a test can stub it
+    // (watched-tickets, 23 Oct 2026): its default IS sendToAll, and a scan that
+    // cannot see it would call those types unsent and unclassified.
+    for (const call of ['sendToAll(', 'deps.push(']) {
+      let i = src.indexOf(call);
+      while (i !== -1) {
+        // The type sits in the third argument, within a few lines of the call.
+        const window = src.slice(i, i + 500);
+        const m = window.match(/type:\s*'([a-z0-9_]+)'/i);
+        if (m) found.push({ file: path.basename(file), type: m[1] });
+        i = src.indexOf(call, i + 1);
+      }
     }
   }
   return found;

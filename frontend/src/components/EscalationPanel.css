@@ -341,3 +341,23 @@
      its own line rather than letting margin-left:auto push it somewhere odd. */
   .esc-row-action { margin-left: 0; }
 }
+
+/* Update commitments on a watched ticket. Missed is the only red. */
+.esc-commitments { display: flex; flex-direction: column; gap: 6px; }
+.esc-commitment {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  font-size: 12px; padding: 6px 8px; border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--border);
+}
+.esc-commitment-proposed { border-style: dashed; }
+.esc-commitment-open { border-color: color-mix(in srgb, var(--warning) 50%, var(--border)); }
+.esc-commitment-missed { border-color: var(--danger); color: var(--danger); }
+.esc-commitment-kept { border-color: transparent; padding-left: 0; }
+.esc-commitment-phrase { color: var(--text-muted); font-style: italic; flex-basis: 100%; }
+.esc-commitment-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+.esc-commitment-add input { margin-left: 6px; font: inherit; }
+.esc-link-btn {
+  align-self: flex-start; background: none; border: none; padding: 0;
+  color: var(--accent); font-size: 12px; cursor: pointer;
+}
+.esc-link-btn:hover { text-decoration: underline; }
