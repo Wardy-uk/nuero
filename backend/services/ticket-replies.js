@@ -81,8 +81,11 @@ function threadText(comments, isMe) {
 
 function buildPrompt({ ticket, comments, guidance, visibility, isMe }) {
   const name = firstName(ticket.reporter);
+  // Measured on NT-35291 (23 Oct 2026): with internal notes in the thread, the
+  // first public draft named a colleague and his deadline that appeared ONLY in
+  // an automation's internal note. Internal notes are background, not a source.
   const audience = visibility === 'public'
-    ? `A PUBLIC reply to the customer${name ? ` (${name})` : ''}, written as Nick Ward, Head of Technical Support at Nurtur. Plain, warm, professional British English. Open with a greeting by first name if known, end "Kind regards,\\nNick". Never mention internal notes, internal names of systems or blame.`
+    ? `A PUBLIC reply to the customer${name ? ` (${name})` : ''}, written as Nick Ward, Head of Technical Support at Nurtur. Plain, warm, professional British English. Open with a greeting by first name if known, end "Kind regards,\\nNick". Never mention internal notes, internal names of systems or blame. INTERNAL NOTES ARE BACKGROUND ONLY: you may describe the situation they show in general terms, but never name a colleague, and never state a time or date, that appears only in an internal note — unless Nick's note below says it. If the reply needs one, leave a gap.`
     : 'An INTERNAL NOTE for Nurtur colleagues (the customer never sees it). Blunt and concise, no greeting or sign-off.';
   return [
     `Draft ${audience}`,

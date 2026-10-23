@@ -64,7 +64,7 @@ test('the draft prompt carries the golden rules, the thread with who wrote what,
   const r = await tr.draft({ key: 'nt-35291', visibility: 'public', guidance: 'fix in testing, next update 5pm' }, j.deps);
   assert.equal(r.ok, true);
   const p = j.prompts[0];
-  for (const s of ['Ownership', "What's happening", 'Timeframes', 'Never invent', 'square brackets', 'fix in testing, next update 5pm', 'CUSTOMER (Anthony Smith)', 'INTERNAL NOTE — never repeat to the customer', 'Anthony', 'PLAIN TEXT ONLY', 'never nested']) {
+  for (const s of ['Ownership', "What's happening", 'Timeframes', 'Never invent', 'square brackets', 'fix in testing, next update 5pm', 'CUSTOMER (Anthony Smith)', 'INTERNAL NOTE — never repeat to the customer', 'Anthony', 'PLAIN TEXT ONLY', 'never nested', 'INTERNAL NOTES ARE BACKGROUND ONLY']) {
     assert.ok(p.includes(s), `prompt missing: ${s}`);
   }
   assert.equal(r.promise.dueAt, '2026-10-23T16:00:00.000Z', 'the preview shows the promise in the draft');
