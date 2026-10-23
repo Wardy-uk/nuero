@@ -607,6 +607,32 @@ function parseFrontmatter(content) {
   return result;
 }
 
+// A frontmatter value as YAML will read it. Values were written raw, so a router reason
+// like "Deterministic PLAUD routing: identified a project..." was a mapping inside a
+// mapping and Obsidian/Dataview dropped the WHOLE frontmatter (date, type, people) for
+// that note. Already-quoted strings, flow collections and block lists (`\n  - ...`) are
+// deliberate YAML and pass through untouched; anything else that would not survive as
+// a plain scalar is double-quoted. Applied to preserved values too, so re-routing a
+// note written before this heals it.
+function yamlValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'string') return String(value);
+  if (value === '' || value.startsWith('\n')) return value;
+  const v = value.trim();
+  if (/^["'[{]/.test(v) || /^[|>][-+0-9]*$/.test(v)) return value;
+  const unsafe = /:\s|:$|\s#/.test(v) || /^[@`%&*!?|>,]/.test(v) || /^-\s/.test(v);
+  return unsafe ? JSON.stringify(v) : value;
+}
+
+// The inverse, for a value parseFrontmatter returns that is shown to a person.
+function unquoteYaml(value) {
+  if (typeof value !== 'string') return value;
+  if (/^".*"$/.test(value)) {
+    try { return JSON.parse(value); } catch { return value.slice(1, -1); }
+  }
+  return value.replace(/^'(.*)'$/, '$1');
+}
+
 // Update or add frontmatter fields to a markdown file
 function updateFrontmatter(filePath, fields) {
   let content = fs.readFileSync(filePath, 'utf-8');
@@ -627,7 +653,7 @@ function updateFrontmatter(filePath, fields) {
   }
 
   Object.assign(fm, fields);
-  const fmStr = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
+  const fmStr = Object.entries(fm).map(([k, v]) => `${k}: ${yamlValue(v)}`).join('\n');
   const newContent = `---\n${fmStr}\n---\n${body}`;
   fs.writeFileSync(filePath, newContent, 'utf-8');
   return newContent;
@@ -668,7 +694,7 @@ function getPending() {
       fileName: path.basename(filePath),
       subdir: subdir === '.' ? '' : subdir,
       status: fm.status || null,
-      reviewReason: fm['review-reason'] || null,
+      reviewReason: unquoteYaml(fm['review-reason']) || null,
       size: stats.size,
       modified: stats.mtime.toISOString(),
       preview: content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 200),
@@ -1479,6 +1505,8 @@ module.exports = {
   routePlaudSummary,
   backfillPlaudNotes,
   updateFrontmatter,
+  yamlValue,
+  unquoteYaml,
   autoClassify,
   extractAttendeesForFrontmatter,
   restampMeetingPeople
