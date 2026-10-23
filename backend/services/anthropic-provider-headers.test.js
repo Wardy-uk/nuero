@@ -105,3 +105,21 @@ test('a real 400 from the API: Anthropic\'s type and message are reported, the k
     assert.equal(settings.read().enabled, false);
   } finally { answer = null; }
 });
+
+test('the live 23 Oct refusal (key not scoped to a workspace) is named plainly; the error is never the raw body', async () => {
+  answer = () => ({ status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.' } } });
+  try {
+    const r = await settings.testConnection({ confirm: true });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /not scoped to a workspace\. Create the key inside a workspace/);
+    assert.ok(!/[{}]/.test(r.error), 'no raw provider JSON in the error line');
+    assert.equal(r.anthropic.type, 'invalid_request_error');
+  } finally { answer = null; }
+  // Any other refused status: a NEURO sentence, the provider's words only in `anthropic`.
+  answer = () => ({ status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'something else' } } });
+  try {
+    const r = await settings.testConnection({ confirm: true });
+    assert.equal(r.error, 'Anthropic refused the request (400). Its reason is shown below.');
+    assert.equal(r.anthropic.message, 'something else');
+  } finally { answer = null; }
+});

@@ -365,15 +365,22 @@ async function testConnection({ confirm = false } = {}) {
     });
   } catch (e) {
     const status = e && (e.status || (e.response && e.response.status));
-    const reason = e && e.name === 'TaskAgentLimitError' ? e.say
+    let reason = e && e.name === 'TaskAgentLimitError' ? e.say
       : status === 401 ? 'Anthropic rejected the key (401). Check it and save it again.'
         : status === 403 ? 'Anthropic refused this key (403): it may lack permission for this model.'
           : status === 404 ? `Anthropic does not recognise the model “${m}” for this key (404).`
             : /credit balance|insufficient.*credit|billing/i.test(String(e && e.message)) ? 'The Anthropic account has no credit left.'
               : status === 429 || status === 529 ? 'Anthropic is busy or rate-limiting (try again in a minute).'
                 : /timed? ?out/i.test(String(e && e.message)) ? 'Anthropic did not answer within 30 seconds.'
-                  : `The request failed: ${redact(String((e && e.message) || e)).slice(0, 160)}`;
+                  : status ? `Anthropic refused the request (${status}). Its reason is shown below.`
+                    // No HTTP status: a transport failure. Never the raw body — cut at the first brace.
+                    : `The request failed: ${redact(String((e && e.message) || e)).replace(/\s*[{[][\s\S]*$/, '').slice(0, 160)}`;
     const said = anthropicSaid(e);
+    // A key made outside any workspace is refused until the header names one. NEURO
+    // does not guess a workspace id; the fix is a workspace-scoped key.
+    if (said && /not scoped to a workspace/i.test(String(said.message))) {
+      reason = 'Anthropic refused this key (400): it is not scoped to a workspace. Create the key inside a workspace in the Anthropic Console, then replace it here.';
+    }
     const ledger = _ledgerAfter(before);
     _log({ ok: false, model: m, status: status || null, errorType: said ? said.type : null, ledger: ledger.recorded });
     return { ok: false, status: 502, model: m, error: reason, anthropic: said, httpStatus: status || null, ledger, estimateUsd, ms: d.now() - started };
