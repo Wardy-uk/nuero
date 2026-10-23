@@ -29,6 +29,9 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import android.Manifest
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.Looper
 import android.speech.RecognitionListener
@@ -428,7 +431,9 @@ class SensorService : Service() {
                 return@post
             }
             if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-                lastHeard = "not listening - no speech recognition on this tablet"
+                // ⚠ Fire OS ships no speech recogniser (23 Oct 2026). Record the
+                //   answer ourselves and let pi5's whisper turn it into text.
+                Thread({ recordAndHear(greeting, pushUrl) }, "saim-hear").start()
                 return@post
             }
             val sr = try { SpeechRecognizer.createSpeechRecognizer(this) } catch (e: Exception) {
@@ -472,6 +477,65 @@ class SensorService : Service() {
                     end()
                 }
             }, LISTEN_MS)
+        }
+    }
+
+    /**
+     * No recogniser on this tablet: record RECORD_MS of 16 kHz mono PCM, have
+     * saim/backend transcribe it (whisper on pi5), then match it here with the same
+     * `Answer` rules. The audio is sent once and kept nowhere.
+     */
+    @SuppressLint("MissingPermission")
+    private fun recordAndHear(greeting: Greeting, pushUrl: String) {
+        val rate = 16_000
+        val bytes = (rate * 2 * RECORD_MS / 1000).toInt()
+        val pcm = ByteArray(bytes)
+        var got = 0
+        try {
+            val min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            val rec = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, rate,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, rate))
+            if (rec.state != AudioRecord.STATE_INITIALIZED) {
+                rec.release()
+                lastHeard = "not listening - the microphone would not open"
+                return
+            }
+            rec.startRecording()
+            while (got < bytes) {
+                val n = rec.read(pcm, got, minOf(3200, bytes - got))
+                if (n <= 0) break
+                got += n
+            }
+            rec.stop()
+            rec.release()
+        } catch (e: Exception) {
+            lastHeard = "not listening - ${e.javaClass.simpleName}"
+            return
+        }
+        if (got < 3200) { lastHeard = "heard nothing (no audio)"; return }
+        val base = Greeting.resolve(pushUrl, "/api/presence/greeting/hear") ?: return
+        val url = base + "?id=" + java.net.URLEncoder.encode(greeting.id, "UTF-8") +
+            "&room=" + java.net.URLEncoder.encode(settings.room, "UTF-8")
+        try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 25_000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/octet-stream")
+            if (settings.token.isNotEmpty()) conn.setRequestProperty("X-Saim-Sensor-Token", settings.token)
+            conn.outputStream.use { it.write(pcm, 0, got) }
+            val code = conn.responseCode
+            val full = (if (code >= 400) conn.errorStream else conn.inputStream)
+                ?.bufferedReader()?.use { it.readText() } ?: ""
+            conn.disconnect()
+            if (code >= 400) { lastHeard = "could not transcribe ($code)"; return }
+            val text = try { org.json.JSONObject(full).optString("text", "") } catch (_: Exception) { "" }
+            val answer = Answer.classify(listOf(text))
+            lastHeard = "heard '" + text + "' -> " + (answer ?: "no answer")
+            if (answer != null) sendAnswer(greeting, answer, pushUrl)
+        } catch (e: Exception) {
+            lastHeard = "could not transcribe - ${e.javaClass.simpleName}"
         }
     }
 
@@ -637,6 +701,8 @@ class SensorService : Service() {
         @Volatile var lastHeard: String? = null
         /** How long the mic stays open after a question. */
         const val LISTEN_MS = 8_000L
+        /** How long the tablet records when it has to send the answer to pi5. */
+        const val RECORD_MS = 5_000L
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SensorService::class.java))

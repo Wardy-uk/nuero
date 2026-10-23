@@ -271,6 +271,34 @@ router.post('/greeting/test', express.json({ limit: '1kb' }), (req, res) => {
   return res.json({ ok: true, room, id: g.id, words, note: 'collected by the room sensor with its next reading' });
 });
 
+// POST /api/presence/greeting/hear?id=&room= (body: 16 kHz mono PCM16) — the
+// few seconds a tablet with no speech recogniser of its own (the bedroom Fire)
+// recorded straight after a question, turned into text by pi5's whisper
+// (23 Oct 2026). The tablet then matches yes/no itself and calls /greeting/answer,
+// so ONE matcher decides (Answer.kt).
+//
+// ⚠ ONLY WHILE A QUESTION IS OPEN for that greeting and room — this is not a
+//   general transcriber for whatever a room's microphone picks up.
+// ⚠ Nothing is kept or logged: not the audio, not the words.
+const stt = require('../voice/wyoming-stt');
+router.post('/greeting/hear', express.raw({ type: 'application/octet-stream', limit: '512kb' }), async (req, res) => {
+  if (SENSOR_TOKEN && req.get('X-Saim-Sensor-Token') !== SENSOR_TOKEN) {
+    return res.status(401).json({ ok: false, reason: 'bad sensor token' });
+  }
+  const id = String(req.query.id || '');
+  const room = String(req.query.room || '').trim().toLowerCase();
+  if (!pendingGreetings.hasAsk(id, room)) return res.status(409).json({ ok: false, reason: 'no open question' });
+  const pcm = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  if (pcm.length < 3200) return res.status(400).json({ ok: false, reason: 'no audio' });
+  const [host, port] = String(process.env.SAIM_WHISPER || '127.0.0.1:10300').split(':');
+  const out = await stt.transcribe(pcm, { host, port: Number(port) || 10300 });
+  if (!out.ok) {
+    console.warn(`[presence] ${room}: could not transcribe — ${out.why}`);
+    return res.status(502).json({ ok: false, reason: out.why });
+  }
+  return res.json({ ok: true, text: out.text });
+});
+
 // POST /api/presence/greeting/answer {id, room, answer: 'yes'|'no'} — what the
 // room's tablet heard straight after a greeting that ASKED something (22 Oct
 // 2026: "It's 17 in here. Want it warmed to 20?"). The tablet only ever sends a

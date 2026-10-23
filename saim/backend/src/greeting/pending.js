@@ -76,6 +76,12 @@ function answer(id, room, now = Date.now()) {
   return { room: a.room, ask: a.ask };
 }
 
+/** Is there an unspent question for this greeting, from this room? Does not spend it. */
+function hasAsk(id, room, now = Date.now()) {
+  const a = asks.get(String(id));
+  return Boolean(a && a.room === room && now - a.at <= ASK_TTL_MS);
+}
+
 function reset() { pending.clear(); clips.clear(); asks.clear(); }
 
-module.exports = { put, take, clip, answer, setRenderer, reset, MAX_AGE_MS, ASK_TTL_MS };
+module.exports = { put, take, clip, answer, hasAsk, setRenderer, reset, MAX_AGE_MS, ASK_TTL_MS };

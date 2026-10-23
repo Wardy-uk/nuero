@@ -16,5 +16,5 @@
 }
 .nightdim__clock {
   font-size: clamp(64px, 22vh, 200px); font-weight: 200; letter-spacing: 0.04em;
-  color: rgba(255, 150, 70, 0.22); font-variant-numeric: tabular-nums;
+  color: rgba(255, 150, 70, 0.55); font-variant-numeric: tabular-nums;
 }
