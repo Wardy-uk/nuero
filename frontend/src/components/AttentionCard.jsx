@@ -125,9 +125,16 @@ export default function AttentionCard({
   showEvidence = true,
 }) {
   const [busy, setBusy] = useState(null);
-  const [outcome, setOutcome] = useState(null);
+  const [rawOutcome, setRawOutcome] = useState(null);
 
   if (!card) return null;
+
+  // A message belongs to the card it was about. React reuses this component when
+  // the next item takes the slot, so an unscoped message ("Put off — waiting on
+  // someone") carried over onto the new card until a refresh (23 Oct 2026).
+  const cardKey = card.recordId || card.id || card.title;
+  const outcome = rawOutcome && rawOutcome.cardKey === cardKey ? rawOutcome : null;
+  const setOutcome = (o) => setRawOutcome(o ? { ...o, cardKey } : null);
 
   const actions = Array.isArray(card.actions) ? card.actions : [];
   // A card with no record has no canonical action set. Rather than guessing one
