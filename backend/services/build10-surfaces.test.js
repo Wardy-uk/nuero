@@ -222,8 +222,10 @@ test('22+23. iOS reads the canonical screens, and its governed queue stays read-
     assert.doesNotMatch(src, /prepared-actions\/[^"]*\/approve\b/, `${rel} can approve a governed draft`);
     assert.doesNotMatch(src, /\/approval-challenge/, `${rel} asks for an approval challenge`);
   }
-  // The older queue: the phone never approves an outbound kind (Build 9).
-  assert.match(actions, /phoneMayApprove/, 'older-queue approval is gated on phoneMayApprove');
+  // The older queue: Brief 005 (D-012) supersedes Build 9 / D-010 — the phone
+  // approves NO queued item. Full rule: ios-governed-queue.test.js.
+  assert.doesNotMatch(actions, /phoneMayApprove/, 'older-queue approval is gone from the phone');
+  assert.match(actions, /static let deskHandoff/, 'positive control: the hand-off replaces it');
 });
 
 test('25 (iOS). no Swift code calls /api/focus; SAiM iOS has no Today/Focus and no task editor', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {

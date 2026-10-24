@@ -139,9 +139,16 @@ test('the Windows script stays Windows PowerShell 5.1 safe and reports back', ()
 test('both iOS apps reach the Set up screen (cross-repo guard)', (t) => {
   const IOS = path.resolve(__dirname, '..', '..', '..', 'nuero-ios');
   if (!fs.existsSync(IOS)) { t.skip('nuero-ios not beside this repo'); return; }
-  const neuro = fs.readFileSync(path.join(IOS, 'Neuro', 'Features', 'MenuViews.swift'), 'utf8');
+  // Brief 005 repair: NEURO's Set up moved from MenuViews into its own screen,
+  // reached by the menu id `setup` through the router. Pinned at all three
+  // links — the view, the route and the menu entry — so it is no weaker.
+  const neuro = fs.readFileSync(path.join(IOS, 'Neuro', 'Features', 'SetupScreen.swift'), 'utf8');
+  const router = fs.readFileSync(path.join(IOS, 'Neuro', 'App', 'NeuroRouter.swift'), 'utf8');
+  const menu = fs.readFileSync(path.join(IOS, 'NeuroKit', 'Sources', 'NeuroKit', 'Menu.swift'), 'utf8');
   const saim = fs.readFileSync(path.join(IOS, 'Saim', 'SaimControlsView.swift'), 'utf8');
   assert.match(neuro, /SetupView\(client: state\.client, app: "neuro"/);
+  assert.match(router, /case "setup": SetupScreen\(\)/, 'the router opens the Set up screen');
+  assert.match(menu, /\.init\(id: "setup", label: "Set up"/, 'the menu offers it');
   assert.match(saim, /SetupView\(client: state\.client, app: "saim"/);
   assert.match(saim, /\.sheet\(isPresented: \$showSetup\)/, 'SAiM Controls has no NavigationStack, so it must be a sheet');
 });

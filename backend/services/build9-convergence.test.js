@@ -218,12 +218,15 @@ test('no SAiM shell reaches the approval routes (statement-only, every shell)', 
 const IOS = path.resolve(ROOT, '..', 'nuero-ios');
 const iosRead = (rel) => fs.readFileSync(path.join(IOS, rel), 'utf8');
 
-test('iOS reads `pending` from /api/actions and never approves an outbound kind on the phone', (t) => {
+test('iOS reads `pending` from /api/actions and decides nothing on the phone (Brief 005, D-012)', (t) => {
   if (!fs.existsSync(path.join(IOS, 'NeuroKit'))) { t.skip('no nuero-ios checkout beside this repo'); return; }
   const model = iosRead('NeuroKit/Sources/NeuroKit/ActionPresentation.swift');
   assert.match(model, /public let pending: \[PendingAction\]\?/);
   const screen = iosRead('Neuro/Features/ActionScreens.swift');
-  assert.match(screen, /phoneMayApprove/);
+  // D-012 supersedes D-010: the phone approves NO queued item, internal or
+  // outbound. The full rule over every Swift source is ios-governed-queue.test.js.
+  assert.doesNotMatch(screen, /phoneMayApprove|resolve\(action|bulk-reject|\/snooze"/);
+  assert.match(screen, /NEURO on the desktop — Actions/, 'the hand-off is said instead');
   // The queue read moved into NeuroKit (`GovernedQueueSection` over
   // PreparedActions.swift) in the iOS PWA-mirror commit; the positive control
   // follows it rather than going green by absence (Brief 002).
@@ -236,8 +239,11 @@ test('iOS has no route to approve a governed action (read-only by construction)'
   const actions = iosRead('NeuroKit/Sources/NeuroKit/Actions.swift');
   const prepared = iosRead('NeuroKit/Sources/NeuroKit/PreparedActions.swift');
   assert.doesNotMatch(actions + prepared, /prepared-actions\/[^"]*\/(approve|approval-challenge|edit)/);
-  // Positive control: the legacy approve path is still where it was.
-  assert.ok(actions.includes('"/api/actions/\\(id)/approve"'), 'legacy approve path still present');
+  // Brief 005 (D-012): the legacy approve/reject verbs are gone too.
+  assert.ok(!actions.includes('/approve"'), 'no legacy approve path');
+  assert.ok(!/case approveAction|case rejectAction/.test(actions), 'no queue verbs in NeuroAction');
+  // Positive control: the file still declares actions (the session verbs).
+  assert.ok(actions.includes('"/api/session/start"'), 'positive control: Actions.swift read');
 });
 
 test('SAiM iOS renders the same approvals sentence the web shells do', (t) => {

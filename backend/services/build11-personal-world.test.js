@@ -726,10 +726,13 @@ test('40/41. iOS: the canonical Now model decodes the keys the backend composes,
   assert.match(src, /\/api\/canonical\/now/);
   // Call patterns, not words: the file's own comment says "no approve".
   assert.doesNotMatch(src, /\/approve\b|approval-challenge|\/api\/prepared-actions|postRaw\(/, 'the phone never approves, and this view posts nothing');
-  assert.match(src, /getRaw\("\/api\/canonical\/now"\)/, 'positive control: the scan reads the real call');
+  // Positive control on the REAL call. Since "Work only" (13 Oct 2026) the path
+  // is chosen by a ternary, so the control names both arms rather than a bare
+  // literal the code no longer contains (Brief 005 repair — same coverage).
+  assert.match(src, /getRaw\(workOnly \? "\/api\/canonical\/now\?workOnly=1" : "\/api\/canonical\/now"\)/, 'positive control: the scan reads the real call');
   const neuro = fs.readFileSync(path.join(ios, 'Neuro', 'Features', 'Views.swift'), 'utf8');
   const saim = fs.readFileSync(path.join(ios, 'Saim', 'SaimNowView.swift'), 'utf8');
-  assert.match(neuro, /canonicalNow\(\)/);
+  assert.match(neuro, /canonicalNow\((workOnly: \w+)?\)/);
   assert.match(saim, /canonicalNow\(\)/);
   // The calendar push carries calendar ids; reminders carry their ids, no notes.
   const sync = fs.readFileSync(path.join(ios, 'NeuroKit', 'Sources', 'NeuroKit', 'CalendarSync.swift'), 'utf8');
