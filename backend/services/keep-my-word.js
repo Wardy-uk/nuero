@@ -231,7 +231,7 @@ const DRAFT_SAY = 'SAiM can prepare a delivery note for your approval. Nothing w
 const DRAFT_CONTROL = 'Draft the delivery note';
 const SHOW_CONTROL = 'Show the delivery note';
 const SENDING_OFF = '“Send approved emails” is off, so the note can be reviewed but can’t be approved to send until that setting is on.';
-const REVIEW_SAY = 'Review it, write in what you promised, and approve it in Actions, in NEURO on the desktop. Nothing is sent until you do.';
+const REVIEW_SAY = 'Review it, write in what you promised, then send it from Actions with one press. Nothing is sent until you do.';
 const WAITING = {
   prepared: 'A delivery note is already drafted and waiting for your approval.',
   approved: 'Its delivery note is approved and about to be sent.',

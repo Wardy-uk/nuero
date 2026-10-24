@@ -251,7 +251,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     candidates.push({
       kind: 'approval', id: `approval:${a.actionId}`, title: a.title || a.type,
       time: { deadlineAt: a.expiresAt || null },
-      facts: { type: a.type, status: a.status, subject: a.subject || null, where: ap && ap.where ? ap.where : 'Actions, in NEURO on the desktop', summary: ap ? ap.say || null : null },
+      facts: { type: a.type, status: a.status, subject: a.subject || null, where: ap && ap.where ? ap.where : 'Actions — one press sends each', summary: ap ? ap.say || null : null },
       sphere: a.mailbox && a.mailbox !== 'work' ? sphere('personal', 'mailbox', `sends from your ${a.mailbox} mailbox`) : sphere('work', 'mailbox', 'sends from your work mailbox'),
       actions: [], provenance: { source: 'prepared_actions', readAt }, known: true,
     });

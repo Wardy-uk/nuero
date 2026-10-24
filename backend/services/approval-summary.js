@@ -36,7 +36,8 @@ const TYPE_NOUN = {
   send_soap_report: 'SOAP report',
 };
 
-const WHERE = 'Actions, in NEURO on the desktop';
+// 24 Oct 2026: approving is one press on any NEURO screen (phone or desk) — no code.
+const WHERE = 'Actions — one press sends each';
 
 /** Statuses that mean "Nick must look", matching the route's buckets. */
 function classify(row) {

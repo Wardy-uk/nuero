@@ -1107,7 +1107,7 @@ function intakeAction(id) {
   const action = db.getSaimAction(actionId);
   if (!action) return { ok: false, status: 404, error: 'No such suggestion' };
   if (action.type !== 'capture_todo') {
-    return { ok: false, status: 403, error: `Only a spotted task suggestion (capture_todo) can be added or dismissed here — #${actionId} is ${action.type}. Decide it in NEURO on the desktop → Actions.` };
+    return { ok: false, status: 403, error: `Only a spotted task suggestion (capture_todo) can be added or dismissed here — #${actionId} is ${action.type}. Decide it in Actions.` };
   }
   if (action.status !== 'pending') return { ok: false, status: 409, error: `Suggestion #${actionId} is already ${action.status}` };
   return { ok: true, actionId, action };

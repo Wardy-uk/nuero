@@ -32,14 +32,14 @@ test('nothing waiting is silence, not a sentence', () => {
   assert.equal(s.say, null);
 });
 
-test('a waiting draft names its kind and WHERE, and never offers to approve here', () => {
+test('a waiting draft names its kind and WHERE (one press, since 24 Oct 2026)', () => {
   const s = summary.summarise([
     { action_type: 'reply_email', status: 'prepared', created_at: '2026-10-03T08:00:00Z' },
     { action_type: 'send_weekly_risk_report', status: 'prepared', created_at: '2026-10-02T08:00:00Z' },
   ], { sendingEnabled: true });
   assert.equal(s.needsApproval, 2);
   assert.equal(s.oldestAt, '2026-10-02T08:00:00Z');
-  assert.match(s.say, /^2 drafted emails wait for your approval \(a reply and a weekly risk report\) — Actions, in NEURO on the desktop\.$/);
+  assert.match(s.say, /^2 drafted emails wait for your approval \(a reply and a weekly risk report\) — Actions — one press sends each\.$/);
   assert.doesNotMatch(s.say, /switched off/, 'sending is on — no false warning');
   assert.doesNotMatch(s.say, /\b(tap|press|approve here|approve now)\b/i);
 });
