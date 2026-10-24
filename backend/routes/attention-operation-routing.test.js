@@ -134,3 +134,17 @@ test('⚠ the payload is ADDITIVE — nothing a client read before has moved', a
     assert.ok(Object.prototype.hasOwnProperty.call(body, key), `still carries ${key}`);
   }
 });
+
+test('the feed carries the composed silence whenever nothing leads', async () => {
+  // saim-surface composed this and attention.build() dropped it, so every
+  // client wrote its own wording for the three silences (the watch first).
+  const body = await feed();
+  assert.ok(Object.prototype.hasOwnProperty.call(body, 'silence'), 'silence is on the payload');
+  if (body.primary) {
+    assert.equal(body.silence, null, 'no silence over a feed with a lead');
+  } else {
+    assert.ok(body.silence, 'a silence line when nothing leads');
+    assert.ok(['blind', 'quiet', 'held', 'clear'].includes(body.silence.kind));
+    assert.equal(typeof body.silence.lead, 'string');
+  }
+});

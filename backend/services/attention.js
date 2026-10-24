@@ -1744,6 +1744,10 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
     // whole pool. Hiding a card from the payload would be this layer re-ranking
     // the pool, which is `attention.gate()`'s job and not this module's.
     covered: framed ? framed.covered : null,
+    // What she says when nothing leads (blind / quiet / held / clear), composed
+    // once in saim-surface. It was composed and then dropped here, so every
+    // client (the watch first) wrote its own wording for the three silences.
+    silence: framed ? framed.silence : null,
     // ⚠ The meeting he is IN, by key, so "that's finished" names an OCCURRENCE
     // rather than meaning "whatever meeting you think I'm in". Null whenever he
     // is not in one, which is what stops the button existing where it would do
