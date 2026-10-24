@@ -2776,6 +2776,116 @@
     "stream": false
   },
   {
+    "id": "get_health_hume_calibrations",
+    "method": "GET",
+    "route": "/api/health/hume/calibrations",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 61,
+    "description": "GET /api/health/hume/calibrations. Hume BP calibration as read at capture time.",
+    "params": [],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_health_hume_captures_by_bundleId_packets",
+    "method": "GET",
+    "route": "/api/health/hume/captures/:bundleId/packets",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 66,
+    "description": "GET /api/health/hume/captures/:bundleId/packets. the raw evidence of one capture.",
+    "params": [
+      "bundleId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_health_hume_live",
+    "method": "GET",
+    "route": "/api/health/hume/live",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 56,
+    "description": "GET /api/health/hume/live. Hume live measurement sessions (?updates=1 for each update).",
+    "params": [],
+    "query": [
+      "limit",
+      "updates"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_health_hume_records",
+    "method": "GET",
+    "route": "/api/health/hume/records",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 46,
+    "description": "GET /api/health/hume/records. decoded Hume history records (experimental),",
+    "params": [],
+    "query": [
+      "deviceId",
+      "from",
+      "limit",
+      "to"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_health_hume_runs",
+    "method": "GET",
+    "route": "/api/health/hume/runs",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 51,
+    "description": "GET /api/health/hume/runs. Hume sync runs and how each transfer ended.",
+    "params": [],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_health_hume_status",
+    "method": "GET",
+    "route": "/api/health/hume/status",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 40,
+    "description": "GET /api/health/hume/status. what NEURO holds from the Hume band: devices,",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_health_metrics",
     "method": "GET",
     "route": "/api/health/metrics",
@@ -5627,7 +5737,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 284,
+    "line": 286,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -10221,6 +10331,37 @@
     "body": [
       "present",
       "written"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_health_hume_captures",
+    "method": "POST",
+    "route": "/api/health/hume/captures",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 24,
+    "description": "POST /api/health/hume/captures. one Hume band capture bundle (a foreground",
+    "params": [],
+    "query": [],
+    "body": [
+      "bundleId",
+      "clientDecoded",
+      "decoderVersion",
+      "device",
+      "error",
+      "finishedAt",
+      "kind",
+      "liveDurationSeconds",
+      "packets",
+      "pages",
+      "phone",
+      "startedAt",
+      "status",
+      "stopSent"
     ],
     "queryOpen": false,
     "bodyOpen": true,

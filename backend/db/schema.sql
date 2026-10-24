@@ -958,6 +958,173 @@ CREATE TABLE IF NOT EXISTS hilo_readings (
 );
 CREATE INDEX IF NOT EXISTS idx_hilo_readings_state ON hilo_readings(health_state, recorded_at);
 
+-- Hume Band V1 (J-Style 2208) captures from the NEURO iOS app (24 Oct 2026,
+-- services/hume-band.js — the ONLY writer and reader of these tables).
+-- ⚠ EXPERIMENTAL HUME ESTIMATES. None of this is ever copied into
+-- health_samples, health_daily, hilo_readings or any BP summary, alert or
+-- recommendation. Raw packets are the evidence; decoded rows are what
+-- services/hume-band-decode.js says about them (decoder_version on each row).
+CREATE TABLE IF NOT EXISTS hume_devices (
+  device_id TEXT PRIMARY KEY,            -- 'addr:<band BLE address>' when the band told us, else 'ios:<peripheral uuid>'
+  band_address TEXT,
+  ios_peripheral_id TEXT,
+  name TEXT,
+  firmware TEXT,
+  firmware_build TEXT,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+-- One row per distinct upload payload. A re-upload of the same payload folds;
+-- a DIFFERENT payload under the same bundle id is kept beside it and flagged.
+CREATE TABLE IF NOT EXISTS hume_capture_bundles (
+  bundle_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('sync', 'live')),
+  device_id TEXT NOT NULL,
+  client TEXT,
+  client_decoder_version TEXT,
+  received_at TEXT NOT NULL,
+  upload_count INTEGER NOT NULL DEFAULT 1,
+  conflict INTEGER NOT NULL DEFAULT 0,
+  meta_json TEXT,
+  PRIMARY KEY (bundle_id, payload_hash)
+);
+CREATE TABLE IF NOT EXISTS hume_packets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bundle_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('tx', 'rx')),
+  context TEXT,
+  at TEXT,
+  opcode INTEGER,
+  hex TEXT NOT NULL,
+  UNIQUE (bundle_id, seq, direction, hex)
+);
+CREATE TABLE IF NOT EXISTS hume_sync_runs (
+  bundle_id TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  transfer_status TEXT NOT NULL,        -- end-marker | no-end-marker | interrupted | error (never "complete history")
+  error TEXT,
+  pages INTEGER,
+  end_marker_seen INTEGER NOT NULL DEFAULT 0,
+  records_decoded INTEGER NOT NULL DEFAULT 0,
+  records_new INTEGER NOT NULL DEFAULT 0,
+  records_retransmitted INTEGER NOT NULL DEFAULT 0,
+  records_conflicting INTEGER NOT NULL DEFAULT 0,
+  records_malformed INTEGER NOT NULL DEFAULT 0,
+  unframed_bytes INTEGER NOT NULL DEFAULT 0,
+  first_local TEXT,
+  last_local TEXT,
+  first_utc TEXT,
+  last_utc TEXT,
+  phone_time_zone TEXT,
+  band_clock_local TEXT,
+  band_clock_phone_utc TEXT,
+  band_offset_min INTEGER,
+  band_drift_seconds INTEGER,
+  client_records INTEGER,
+  decode_mismatch INTEGER NOT NULL DEFAULT 0,
+  decoder_version TEXT NOT NULL,
+  received_at TEXT NOT NULL
+);
+-- Decoded 0x56 history records. Identity = device + band local time + the
+-- record's bytes AFTER the index (the index shifts as the band adds records).
+-- Same identity again = a retransmission (sightings++). Same device + local
+-- time with DIFFERENT bytes = a conflict: both rows kept, both flagged.
+CREATE TABLE IF NOT EXISTS hume_history_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  device_local TEXT NOT NULL,            -- '' when the timestamp could not be read (malformed)
+  payload_hex TEXT NOT NULL,
+  record_index INTEGER,
+  utc_at TEXT,
+  utc_method TEXT,
+  utc_offset_min INTEGER,
+  tz_name TEXT,
+  tz_rules_utc TEXT,
+  time_flags TEXT,
+  hrv_field INTEGER,
+  vascular_aging_field INTEGER,
+  heart_rate INTEGER,
+  stress_field INTEGER,
+  systolic INTEGER,                      -- NULL when the band sent 0 (no BP result)
+  diastolic INTEGER,
+  bp_available INTEGER NOT NULL DEFAULT 0,
+  raw_hex TEXT NOT NULL,
+  flags TEXT,
+  malformed INTEGER NOT NULL DEFAULT 0,
+  suspect INTEGER NOT NULL DEFAULT 0,
+  conflict INTEGER NOT NULL DEFAULT 0,
+  sightings INTEGER NOT NULL DEFAULT 1,
+  first_bundle_id TEXT NOT NULL,
+  first_packet_seq INTEGER,
+  first_packet_offset INTEGER,
+  last_bundle_id TEXT,
+  received_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  decoder_version TEXT NOT NULL,
+  origin TEXT NOT NULL DEFAULT 'historical',
+  provenance TEXT NOT NULL DEFAULT 'experimental-hume-estimate',
+  UNIQUE (device_id, device_local, payload_hex)
+);
+CREATE INDEX IF NOT EXISTS idx_hume_history_time ON hume_history_records(device_id, utc_at);
+CREATE TABLE IF NOT EXISTS hume_live_sessions (
+  session_id TEXT PRIMARY KEY,           -- the bundle id
+  device_id TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  status TEXT NOT NULL,                  -- result | no-result | cancelled | interrupted | error
+  error TEXT,
+  duration_requested INTEGER,
+  update_count INTEGER NOT NULL DEFAULT 0,
+  final_packet_seq INTEGER,
+  final_at TEXT,
+  final_systolic INTEGER,
+  final_diastolic INTEGER,
+  final_heart_rate INTEGER,
+  final_hrv_field INTEGER,
+  final_stress_field INTEGER,
+  final_flags TEXT,
+  stop_sent INTEGER,
+  status_mismatch INTEGER NOT NULL DEFAULT 0,
+  decoder_version TEXT NOT NULL,
+  origin TEXT NOT NULL DEFAULT 'live',
+  provenance TEXT NOT NULL DEFAULT 'experimental-hume-estimate',
+  received_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hume_live_updates (
+  session_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  at TEXT,
+  type INTEGER,
+  heart_rate INTEGER,
+  spo2 INTEGER,
+  hrv_field INTEGER,
+  stress_field INTEGER,
+  systolic INTEGER,
+  diastolic INTEGER,
+  temperature_c REAL,
+  uninterpreted_hex TEXT,
+  raw_hex TEXT NOT NULL,
+  flags TEXT,
+  PRIMARY KEY (session_id, seq)
+);
+CREATE TABLE IF NOT EXISTS hume_calibrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  observed_at TEXT NOT NULL,             -- when it was READ; never asserted to apply to earlier readings
+  bundle_id TEXT NOT NULL,
+  min_diastolic INTEGER,
+  max_diastolic INTEGER,
+  min_systolic INTEGER,
+  max_systolic INTEGER,
+  raw_hex TEXT NOT NULL,
+  checksum_ok INTEGER,
+  UNIQUE (device_id, observed_at, raw_hex)
+);
+
 -- Food entries, one row per HealthKit sample (12 Oct 2026).
 -- ⚠ health_samples' UNIQUE(metric, recorded_at) is right for a sensor and WRONG
 -- for a food log: MyFitnessPal stamps every entry logged in one sitting with the

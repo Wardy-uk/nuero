@@ -136,6 +136,8 @@ app.use('/api/apple', require('./routes/apple'));
 app.use('/api/features', featureRoutes);
 app.use('/api/journal', journalRoutes);
 // /api/strava retired (Build 10M): never authenticated; workouts arrive via Apple Health.
+// Hume Band V1 captures (24 Oct 2026) — EXPERIMENTAL data, its own tables.
+app.use('/api/health/hume', require('./routes/hume'));
 app.use('/api/health', healthRoutes);
 // Mounted at /api/v1 because the iOS app hard-codes that path — see
 // routes/apple-health.js. Exempt from the PIN middleware above, guarded by
