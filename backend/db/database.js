@@ -165,6 +165,23 @@ async function init() {
     }
   } catch (e) { console.warn('[DB] leisure_observations rebuild failed:', e.message); }
 
+  // Migration (24 Oct 2026): hume_capture_bundles gains the `calibration` kind
+  // (the HiLo calibration experiment run from the phone). Same rebuild as above:
+  // schema.sql's own definition, every row copied, in one transaction.
+  try {
+    const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='hume_capture_bundles'").get();
+    if (row && !row.sql.includes("'calibration'")) {
+      const def = schema.match(/CREATE TABLE IF NOT EXISTS hume_capture_bundles \([\s\S]*?\n\);/)[0];
+      db.transaction(() => {
+        db.exec('ALTER TABLE hume_capture_bundles RENAME TO hume_capture_bundles_v1');
+        db.exec(def);
+        db.exec('INSERT INTO hume_capture_bundles SELECT * FROM hume_capture_bundles_v1');
+        db.exec('DROP TABLE hume_capture_bundles_v1');
+      })();
+      console.log('[DB] hume_capture_bundles rebuilt to accept calibration bundles');
+    }
+  } catch (e) { console.warn('[DB] hume_capture_bundles rebuild failed:', e.message); }
+
   // Migration: vault_embeddings multi-chunk support
   // If the old table has UNIQUE on relative_path alone, recreate with (relative_path, chunk_index)
   try {

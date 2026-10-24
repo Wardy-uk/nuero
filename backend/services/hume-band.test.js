@@ -289,6 +289,64 @@ test('reads refuse junk rather than clamp', () => {
   assert.ok(hume.records({ limit: 10 }).records.every((r) => r.label === 'Experimental Hume estimate'));
 });
 
+// ── calibration experiment bundles (from the phone) ──────────────────────────
+
+function calBundle(id, status, { activatedAt = null, target = { minDiastolic: 72, maxDiastolic: 92, minSystolic: 119, maxSystolic: 139 } } = {}) {
+  return {
+    bundleId: `calibration-${id}`, kind: 'calibration', status,
+    device: { peripheralId: PERIPHERAL, name: 'Hume Band BFCB' }, phone: { timeZone: 'Europe/London' },
+    packets: [
+      pk(0, frame([0x22]), 'tx', 'address'), pk(1, frame(ADDR), 'rx', 'address', '2026-10-24T13:00:00Z'),
+      pk(2, frame([0x88]), 'tx', 'calibration'), pk(3, frame([0x88, 60, 80, 110, 130]), 'rx', 'calibration', '2026-10-24T13:00:01Z'),
+      pk(4, frame([0x87, 72, 92, 119, 139]), 'tx', 'set-calibration'),
+      pk(5, frame([0x88]), 'tx', 'calibration'), pk(6, frame([0x88, 72, 92, 119, 139]), 'rx', 'calibration', '2026-10-24T13:00:03Z'),
+    ],
+    calibration: {
+      id: `cal-${id}`, status, original: { minDiastolic: 60, maxDiastolic: 80, minSystolic: 110, maxSystolic: 130 }, target,
+      references: [{ systolic: 127, diastolic: 81, takenAt: '2026-10-24T12:55:00Z', source: 'typed' },
+        { systolic: 130, diastolic: 82, takenAt: '2026-10-24T12:41:00Z', source: 'neuro', importedAt: '2026-10-24T12:50:00Z' }],
+      proposal: { meanSystolic: 128.5, meanDiastolic: 81.5, centreSystolic: 129, centreDiastolic: 82 },
+      activatedAt, activatedLocal: activatedAt ? '2026-10-24T14:00:03+01:00' : null, phoneTimeZone: 'Europe/London',
+      history: [{ utc: '2026-10-24T13:00:01Z', status: 'original-saved', note: 'original saved before any write' }],
+    },
+  };
+}
+
+test('calibration bundles: the experiment record is kept; latest per experiment says active; readbacks become observations', () => {
+  const r = hume.ingest(calBundle('aaaaaaaa-0001', 'active', { activatedAt: '2026-10-24T13:00:03Z' }));
+  assert.equal(r.summary.status, 'active');
+  assert.equal(hume.ingest(calBundle('aaaaaaaa-0001', 'active', { activatedAt: '2026-10-24T13:00:03Z' })).duplicate, true);
+  let x = hume.calibrationExperiments();
+  assert.equal(x.active.experimentId, 'cal-aaaaaaaa-0001');
+  assert.equal(x.active.references.length, 2);
+  assert.equal(x.active.activatedAt, '2026-10-24T13:00:03.000Z');
+  const obs = db.all("SELECT min_systolic FROM hume_calibrations WHERE bundle_id = 'calibration-aaaaaaaa-0001' ORDER BY observed_at");
+  assert.deepEqual(obs.map((o) => o.min_systolic), [110, 119], 'the original and the readback are both observations');
+  // Ending it later: a second bundle for the SAME experiment.
+  const end = calBundle('aaaaaaaa-0002', 'restored-verified', { activatedAt: '2026-10-24T13:00:03Z' });
+  end.calibration.id = 'cal-aaaaaaaa-0001';
+  hume.ingest(end, { now: new Date(Date.now() + 60000) });
+  x = hume.calibrationExperiments();
+  assert.equal(x.active, null, 'the newer record of the same experiment ended it');
+  assert.equal(x.experiments[0].status, 'restored-verified');
+});
+
+test('calibration bundles refuse a bad record, never repair it', () => {
+  const bad = calBundle('aaaaaaaa-0003', 'active');
+  bad.calibration.target = { minDiastolic: 92, maxDiastolic: 72, minSystolic: 119, maxSystolic: 139 };
+  bad.calibration.references = [];
+  bad.calibration.status = 'not-applied';
+  assert.throws(() => hume.ingest(bad), (e) => {
+    assert.ok(e.problems.some((p) => /target bounds are not in order/.test(p)));
+    assert.ok(e.problems.some((p) => /references must hold/.test(p)));
+    assert.ok(e.problems.some((p) => /must equal the bundle status/.test(p)));
+    return true;
+  });
+  const recovery = hume.ingest(calBundle('aaaaaaaa-0004', 'restore-unconfirmed'));
+  assert.equal(recovery.ok, true);
+  assert.equal(hume.calibrationExperiments().needsRecovery[0].experimentId, 'cal-aaaaaaaa-0004');
+});
+
 // ── isolation: Hume data never reaches trusted BP ───────────────────────────
 
 test('only hume-band.js touches the hume_* tables, and it never writes trusted BP stores', () => {
@@ -301,8 +359,10 @@ test('only hume-band.js touches the hume_* tables, and it never writes trusted B
       if (e.isDirectory()) walk(p);
       else if (e.name.endsWith('.js') && !e.name.endsWith('.test.js')) {
         const src = fs.readFileSync(p, 'utf8');
-        if (/hume_(history_records|live_sessions|live_updates|calibrations|sync_runs|packets|devices|capture_bundles)/.test(src)
-            && path.basename(p) !== 'hume-band.js') offenders.push(path.relative(root, p));
+        if (/hume_(history_records|live_sessions|live_updates|calibrations|calibration_events|sync_runs|packets|devices|capture_bundles)/.test(src)
+            && path.basename(p) !== 'hume-band.js'
+            // db/database.js holds the one schema migration (the calibration-kind rebuild), nothing else.
+            && path.relative(root, p).replace(/\\/g, '/') !== 'db/database.js') offenders.push(path.relative(root, p));
       }
     }
   };

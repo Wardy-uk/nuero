@@ -100,6 +100,31 @@ built inside tests are labelled SYNTHETIC.
   `OutboxQueue`/`NeuroAPIClient.APIError`. The app-target files
   (`HumeBandService.swift`, `HumeDeviceScreen.swift`) need Xcode and are UNBUILT.
 
+## HiLo calibration experiment, on the phone (24 Oct 2026)
+
+Hume screen → **HiLo calibration experiment**. The phone version of
+`Downloads\hume_v1_bp_calibration.py --calibrate-from-hilo` (same rules). Don't run both at once.
+
+- **References:** typed now (SYS/DIA + time), or NEURO's HiLo readings from the last 30 minutes
+  (`GET /api/health/hilo/readings?minutes=30`). Each must be ≤30 minutes old by HiLo's own time,
+  checked when shown and again at APPLY.
+- **Mapping:** mean → centre (half up) → bounds = centre ± 10. Invalid bounds are refused, never clamped.
+- **Order (HumeBandService.applyCalibration):**
+  1. Fresh read must equal what was shown.
+  2. The original is written to its own file that can't be overwritten.
+  3. `write-pending` is saved.
+  4. `0x87`.
+  5. A fresh `0x88` must equal the target. Stale replies are drained first, so an old reply can't pass for the readback.
+- **After the write:**
+  - Verified → `active`, deliberately left on. Then two 120 s checks; cancel leaves it on.
+  - Mismatch or uncertain → restore the original (3 attempts, reconnecting) → `restored-verified`, or LOUD `restore-unconfirmed`.
+- **End experiment** restores the original, verified the same way.
+- **Blocking:** while active, needing recovery, or with an unreadable record, no new experiment starts.
+- **The one write:** `0x87` is the only write the app can make, valid bounds only. Sync and live never send it (pinned).
+- **NEURO's copy:** every step uploads a `calibration` bundle (record + packets).
+  - `GET /api/health/hume/experiments` gives the latest record per experiment, `active`, and `needsRecovery`. For the comparison: evaluate after `activatedAt` and exclude `references`.
+  - `hume_capture_bundles` was rebuilt (`database.js`) to accept the `calibration` kind, with every row copied.
+
 ## Deploy
 
 Backend: normal deploy (pull, build, `npm test`, restart). The tables are created by

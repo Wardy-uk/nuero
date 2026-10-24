@@ -37,6 +37,56 @@ const PROVENANCE = 'experimental-hume-estimate';
 const LABEL = 'Experimental Hume estimate';
 const SYNC_STATUSES = new Set(['end-marker', 'no-end-marker', 'interrupted', 'error']);
 const LIVE_STATUSES = new Set(['result', 'no-result', 'cancelled', 'interrupted', 'error']);
+// The HiLo calibration experiment run from the phone (24 Oct 2026). A
+// "calibration" bundle carries the experiment record as it stood after a change.
+const CAL_STATUSES = new Set(['original-saved', 'write-pending', 'restore-unconfirmed', 'active', 'restored-verified', 'not-applied']);
+
+function _bounds(c, label, p) {
+  const keys = ['minDiastolic', 'maxDiastolic', 'minSystolic', 'maxSystolic'];
+  if (!c || typeof c !== 'object' || !keys.every((k) => Number.isInteger(c[k]) && c[k] >= 1 && c[k] <= 254)) {
+    p.push(`calibration.${label} must have four whole-number bounds 1-254`);
+    return null;
+  }
+  if (!(c.minDiastolic < c.maxDiastolic && c.minSystolic < c.maxSystolic && c.maxDiastolic <= c.minSystolic)) {
+    p.push(`calibration.${label} bounds are not in order`);
+    return null;
+  }
+  return Object.fromEntries(keys.map((k) => [k, c[k]]));
+}
+
+/** The experiment record in a calibration bundle. Refused (every problem named), never repaired. */
+function _validateCalibration(c, status, p) {
+  if (!c || typeof c !== 'object') { p.push('calibration must be the experiment record'); return null; }
+  const id = typeof c.id === 'string' && /^cal-[a-z0-9-]{8,60}$/.test(c.id) ? c.id : null;
+  if (!id) p.push('calibration.id must look like cal-<uuid>');
+  if (c.status !== status) p.push('calibration.status must equal the bundle status');
+  const original = _bounds(c.original, 'original', p);
+  const target = _bounds(c.target, 'target', p);
+  const refs = Array.isArray(c.references) ? c.references : null;
+  if (!refs || !refs.length || refs.length > 20) p.push('calibration.references must hold 1-20 HiLo readings');
+  const references = (refs || []).slice(0, 20).map((r, i) => {
+    const ok = r && Number.isInteger(r.systolic) && Number.isInteger(r.diastolic) && iso(r.takenAt)
+      && (r.source === 'typed' || r.source === 'neuro');
+    if (!ok) { p.push(`calibration.references[${i}] needs systolic, diastolic, takenAt (ISO) and source typed|neuro`); return null; }
+    return { systolic: r.systolic, diastolic: r.diastolic, takenAt: iso(r.takenAt), source: r.source, importedAt: shortStr(r.importedAt, 40) };
+  });
+  for (const k of ['activatedAt', 'bandClockPhoneUtc']) {
+    if (c[k] !== undefined && c[k] !== null && !iso(c[k])) p.push(`calibration.${k} must be an ISO instant`);
+  }
+  const history = Array.isArray(c.history) ? c.history.slice(0, 50).map((h) => ({
+    utc: iso(h && h.utc), status: CAL_STATUSES.has(h && h.status) ? h.status : null, note: shortStr(h && h.note, 300),
+  })) : [];
+  return {
+    id, status: c.status, original, target, references,
+    proposal: c.proposal && typeof c.proposal === 'object' ? {
+      meanSystolic: Number(c.proposal.meanSystolic), meanDiastolic: Number(c.proposal.meanDiastolic),
+      centreSystolic: Number(c.proposal.centreSystolic), centreDiastolic: Number(c.proposal.centreDiastolic),
+    } : null,
+    activatedAt: iso(c.activatedAt), activatedLocal: shortStr(c.activatedLocal, 40),
+    bandAddress: shortStr(c.bandAddress, 20), bandClockLocal: shortStr(c.bandClockLocal, 20),
+    bandClockPhoneUtc: iso(c.bandClockPhoneUtc), phoneTimeZone: shortStr(c.phoneTimeZone, 64), history,
+  };
+}
 const MAX_PACKETS = 6000;
 
 function _db() { return require('../db/database'); }
@@ -59,14 +109,16 @@ function validate(body) {
   const b = body && typeof body === 'object' ? body : {};
   const bundleId = typeof b.bundleId === 'string' && /^[A-Za-z0-9._:-]{8,80}$/.test(b.bundleId) ? b.bundleId : null;
   if (!bundleId) p.push('bundleId must be 8-80 characters of A-Z a-z 0-9 . _ : -');
-  const kind = b.kind === 'sync' || b.kind === 'live' ? b.kind : null;
-  if (!kind) p.push('kind must be "sync" or "live"');
+  const kind = ['sync', 'live', 'calibration'].includes(b.kind) ? b.kind : null;
+  if (!kind) p.push('kind must be "sync", "live" or "calibration"');
   const device = b.device && typeof b.device === 'object' ? b.device : {};
   const peripheralId = typeof device.peripheralId === 'string' && /^[0-9A-Fa-f-]{32,36}$/.test(device.peripheralId) ? device.peripheralId.toUpperCase() : null;
   if (!peripheralId) p.push('device.peripheralId must be the iOS peripheral UUID');
   const status = typeof b.status === 'string' ? b.status : null;
   if (kind === 'sync' && !SYNC_STATUSES.has(status)) p.push(`status must be one of ${[...SYNC_STATUSES].join(', ')}`);
   if (kind === 'live' && !LIVE_STATUSES.has(status)) p.push(`status must be one of ${[...LIVE_STATUSES].join(', ')}`);
+  if (kind === 'calibration' && !CAL_STATUSES.has(status)) p.push(`status must be one of ${[...CAL_STATUSES].join(', ')}`);
+  const calibration = kind === 'calibration' ? _validateCalibration(b.calibration, status, p) : null;
   if (!Array.isArray(b.packets) || !b.packets.length) p.push('packets must be a non-empty array');
   else if (b.packets.length > MAX_PACKETS) p.push(`at most ${MAX_PACKETS} packets`);
   const packets = [];
@@ -100,6 +152,7 @@ function validate(body) {
     pages: Number.isInteger(b.pages) && b.pages >= 0 && b.pages < 1000 ? b.pages : null,
     stopSent: typeof b.stopSent === 'boolean' ? b.stopSent : null,
     liveDurationSeconds: kind === 'live' && Number.isInteger(dur) ? dur : null,
+    calibration,
     clientDecoderVersion: shortStr(b.decoderVersion, 64),
     clientDecoded: {
       records: Number.isInteger(client.records) ? client.records : null,
@@ -115,7 +168,7 @@ function payloadHash(n) {
   return crypto.createHash('sha256').update(JSON.stringify([
     n.bundleId, n.kind, n.status, n.device, n.phone, n.startedAt, n.finishedAt, n.error, n.pages,
     n.stopSent, n.liveDurationSeconds, n.clientDecoderVersion, n.clientDecoded,
-    n.packets.map((x) => [x.seq, x.dir, x.hex, x.at, x.context]),
+    n.packets.map((x) => [x.seq, x.dir, x.hex, x.at, x.context]), n.calibration,
   ])).digest('hex');
 }
 
@@ -253,6 +306,20 @@ function _storeLive(db, n, deviceId, now) {
 }
 
 /**
+ * A calibration experiment step from the phone. The record is kept per bundle
+ * (append-only history of the experiment); the 0x88 replies in its packets are
+ * already stored as calibration observations by `_calibration`.
+ */
+function _storeCalibrationEvent(db, n, deviceId, now) {
+  const c = n.calibration;
+  db.run(`INSERT OR IGNORE INTO hume_calibration_events (bundle_id, experiment_id, device_id, status, original_json, target_json,
+            references_json, activated_at, record_json, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [n.bundleId, c.id, deviceId, c.status, JSON.stringify(c.original), JSON.stringify(c.target),
+    JSON.stringify(c.references), c.activatedAt, JSON.stringify(c), now]);
+  return { experimentId: c.id, status: c.status, original: c.original, target: c.target, activatedAt: c.activatedAt };
+}
+
+/**
  * Store one capture bundle. Synchronous from the ledger read to the last
  * write (one transaction), so two deliveries of one bundle cannot interleave.
  */
@@ -277,7 +344,9 @@ function ingest(body, { client = null, now = new Date() } = {}) {
         [n.bundleId, x.seq, x.dir, x.context, x.at, parseInt(x.hex.slice(0, 2), 16), x.hex]);
     }
     const calibration = _calibration(db, n, dev.deviceId, stamp);
-    const summary = n.kind === 'sync' ? _storeHistory(db, n, dev.deviceId, stamp) : _storeLive(db, n, dev.deviceId, stamp);
+    const summary = n.kind === 'sync' ? _storeHistory(db, n, dev.deviceId, stamp)
+      : n.kind === 'live' ? _storeLive(db, n, dev.deviceId, stamp)
+        : _storeCalibrationEvent(db, n, dev.deviceId, stamp);
     summary.calibration = calibration.map(({ minDiastolic, maxDiastolic, minSystolic, maxSystolic, observedAt }) =>
       ({ minDiastolic, maxDiastolic, minSystolic, maxSystolic, observedAt }));
     summary.firmware = dev.firmware ? { version: dev.firmware.version, build: dev.firmware.build } : null;
@@ -343,6 +412,33 @@ function calibrations({ limit = 20 } = {}) {
   };
 }
 
+/**
+ * HiLo calibration experiments run from the phone: the latest record of each,
+ * newest first, and which (if any) is ACTIVE. For the later HiLo comparison:
+ * evaluate Hume readings after `activatedAt` and exclude `references`.
+ */
+function calibrationExperiments({ limit = 20 } = {}) {
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 200);
+  const rows = _db().all(`SELECT e.* FROM hume_calibration_events e
+    JOIN (SELECT experiment_id, MAX(received_at) AS at FROM hume_calibration_events GROUP BY experiment_id) l
+      ON l.experiment_id = e.experiment_id AND l.at = e.received_at
+    ORDER BY e.received_at DESC LIMIT ?`, [lim]);
+  const experiments = rows.map((r) => {
+    const rec = JSON.parse(r.record_json);
+    return { experimentId: r.experiment_id, deviceId: r.device_id, status: r.status, original: rec.original, target: rec.target,
+      references: rec.references, activatedAt: rec.activatedAt, activatedLocal: rec.activatedLocal,
+      bandClockLocal: rec.bandClockLocal, bandClockPhoneUtc: rec.bandClockPhoneUtc, history: rec.history,
+      lastBundleId: r.bundle_id, receivedAt: r.received_at };
+  });
+  return {
+    label: LABEL,
+    note: 'Calibration experiments test agreement with HiLo, not clinical accuracy. Exclude each experiment\'s reference readings; compare only Hume readings after activatedAt.',
+    active: experiments.find((e) => e.status === 'active') || null,
+    needsRecovery: experiments.filter((e) => e.status === 'write-pending' || e.status === 'restore-unconfirmed'),
+    experiments,
+  };
+}
+
 function bundlePackets(bundleId) {
   const rows = _db().all('SELECT seq, direction, context, at, hex FROM hume_packets WHERE bundle_id = ? ORDER BY seq, id', [bundleId]);
   return { bundleId, packets: rows };
@@ -376,4 +472,4 @@ function status() {
   };
 }
 
-module.exports = { PROVENANCE, LABEL, Refused, validate, payloadHash, ingest, records, runs, liveSessions, calibrations, bundlePackets, status };
+module.exports = { PROVENANCE, LABEL, Refused, validate, payloadHash, ingest, records, runs, liveSessions, calibrations, calibrationExperiments, bundlePackets, status };

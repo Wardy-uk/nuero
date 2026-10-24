@@ -24,13 +24,13 @@ function fail(res, e) {
 router.post('/captures', (req, res) => {
   const {
     bundleId, kind, status, device, phone, startedAt, finishedAt, error, pages, stopSent,
-    liveDurationSeconds, decoderVersion, clientDecoded, packets,
+    liveDurationSeconds, decoderVersion, clientDecoded, packets, calibration,
   } = req.body || {};
   try {
     const result = hume.ingest({
       bundleId, kind, status, device, phone, startedAt, finishedAt, error, pages, stopSent,
-      liveDurationSeconds, decoderVersion, clientDecoded, packets,
-    }, { client: req.get('X-Neuro-Client') || req.apiClient || null });
+      liveDurationSeconds, decoderVersion, clientDecoded, packets, calibration,
+    },{ client: req.get('X-Neuro-Client') || req.apiClient || null });
     res.json(result);
   } catch (e) { fail(res, e); }
 });
@@ -60,6 +60,13 @@ router.get('/live', (req, res) => {
 // GET /api/health/hume/calibrations — Hume BP calibration as read at capture time.
 router.get('/calibrations', (req, res) => {
   try { res.json(hume.calibrations({ limit: req.query.limit })); } catch (e) { fail(res, e); }
+});
+
+// GET /api/health/hume/experiments — HiLo calibration experiments run from the
+// phone: latest record of each, which is active, which need recovery.
+// Keywords: hume, calibration experiment, hilo comparison.
+router.get('/experiments', (req, res) => {
+  try { res.json(hume.calibrationExperiments({ limit: req.query.limit })); } catch (e) { fail(res, e); }
 });
 
 // GET /api/health/hume/captures/:bundleId/packets — the raw evidence of one capture.

@@ -979,7 +979,7 @@ CREATE TABLE IF NOT EXISTS hume_devices (
 CREATE TABLE IF NOT EXISTS hume_capture_bundles (
   bundle_id TEXT NOT NULL,
   payload_hash TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('sync', 'live')),
+  kind TEXT NOT NULL CHECK (kind IN ('sync', 'live', 'calibration')),
   device_id TEXT NOT NULL,
   client TEXT,
   client_decoder_version TEXT,
@@ -1124,6 +1124,22 @@ CREATE TABLE IF NOT EXISTS hume_calibrations (
   checksum_ok INTEGER,
   UNIQUE (device_id, observed_at, raw_hex)
 );
+-- The HiLo calibration experiment run from the phone (24 Oct 2026): one row per
+-- uploaded step, the experiment record as it stood then. Latest per experiment
+-- says whether it is active; the later HiLo comparison excludes its references.
+CREATE TABLE IF NOT EXISTS hume_calibration_events (
+  bundle_id TEXT PRIMARY KEY,
+  experiment_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  original_json TEXT NOT NULL,
+  target_json TEXT NOT NULL,
+  references_json TEXT NOT NULL,
+  activated_at TEXT,
+  record_json TEXT NOT NULL,
+  received_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_hume_calibration_events_exp ON hume_calibration_events(experiment_id, received_at);
 
 -- Food entries, one row per HealthKit sample (12 Oct 2026).
 -- ⚠ health_samples' UNIQUE(metric, recorded_at) is right for a sensor and WRONG

@@ -2817,12 +2817,30 @@
     "route": "/api/health/hume/captures/:bundleId/packets",
     "domain": "health",
     "source": "routes/hume.js",
-    "line": 66,
+    "line": 73,
     "description": "GET /api/health/hume/captures/:bundleId/packets. the raw evidence of one capture.",
     "params": [
       "bundleId"
     ],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_health_hume_experiments",
+    "method": "GET",
+    "route": "/api/health/hume/experiments",
+    "domain": "health",
+    "source": "routes/hume.js",
+    "line": 68,
+    "description": "GET /api/health/hume/experiments. HiLo calibration experiments run from the",
+    "params": [],
+    "query": [
+      "limit"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -10367,6 +10385,7 @@
     "query": [],
     "body": [
       "bundleId",
+      "calibration",
       "clientDecoded",
       "decoderVersion",
       "device",
