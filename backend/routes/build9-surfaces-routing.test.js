@@ -82,7 +82,7 @@ test('2. /api/attention says a draft waits, names where, and offers nothing to p
   assert.equal(a.needsApproval, 1);
   assert.match(a.say, /1 drafted email waits for your approval/);
   assert.match(a.say, /weekly risk report/);
-  assert.match(a.say, /NEURO on the desktop/);
+  assert.match(a.say, /one press sends each/);
   // The sending switch defaults OFF in a fresh DB, and approval is refused while
   // it is — so the sentence must say so rather than send him to a dead button.
   assert.match(a.say, /switched off/);
