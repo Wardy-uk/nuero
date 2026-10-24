@@ -41,7 +41,7 @@ test('a waiting draft names its kind and WHERE (one press, since 24 Oct 2026)', 
   assert.equal(s.oldestAt, '2026-10-02T08:00:00Z');
   assert.match(s.say, /^2 drafted emails wait for your approval \(a reply and a weekly risk report\) — Actions — one press sends each\.$/);
   assert.doesNotMatch(s.say, /switched off/, 'sending is on — no false warning');
-  assert.doesNotMatch(s.say, /\b(tap|press|approve here|approve now)\b/i);
+  assert.doesNotMatch(s.say, /approval code|on the desktop/i);
 });
 
 test('sending switched off is said, because approval is refused while it is', () => {
