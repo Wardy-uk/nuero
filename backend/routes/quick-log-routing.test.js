@@ -204,7 +204,9 @@ test('5. Ask and Capture are unchanged — same buttons, and their code is byte-
   let before;
   try { before = execFileSync('git', ['show', 'a0393526:saim/app/alt-v2/Dock.jsx'], { cwd: path.dirname(DOCK), encoding: 'utf8' }); } catch { before = null; }
   if (!before) return; // no history in this checkout (e.g. a shallow deploy copy)
-  const now = fs.readFileSync(DOCK, 'utf8');
+  // Line endings are not code: the Windows checkout is CRLF, `git show` is LF.
+  const now = fs.readFileSync(DOCK, 'utf8').replace(/\r\n/g, '\n');
+  before = before.replace(/\r\n/g, '\n');
   const block = (src, start) => { const i = src.indexOf(start); assert.ok(i !== -1, start); const j = src.indexOf('\n  }\n', i); return src.slice(i, j); };
   for (const start of ['  async function capture() {', '  async function ask() {', 'export async function runCapture(', 'export function captureNote(']) {
     assert.equal(block(now, start), block(before, start), `${start.trim()} changed`);

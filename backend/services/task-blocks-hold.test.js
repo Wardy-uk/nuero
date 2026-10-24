@@ -1695,10 +1695,10 @@ test('scheduleMoving asked again for the slot it already filled folds, rather th
 
 test('scheduleMoving with Outlook refusing still leaves ONE hold, not two', async () => {
   const old = blockedTasks(['Graph is down today'], { dateKey: '2026-10-09', startTime: '09:00' });
-  const res = await withoutGraph(() => taskBlocks.scheduleMoving([old.taskId], { date: futureWeekday(15), startTime: '14:30', minutes: 60 }));
+  const res = await withoutGraph(() => taskBlocks.scheduleMoving([old.taskId], { date: futureWeekday(15), startTime: '16:00', minutes: 60 }));
 
   assert.equal(res.ok, false, 'an Outlook refusal is still reported as one');
-  assert.ok(res.blockId);
+  assert.ok(res.blockId, JSON.stringify(res));
   assert.equal(db.listTaskBlockRows({ taskId: old.taskId, openOnly: true }).length, 1);
 });
 

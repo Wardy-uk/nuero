@@ -289,7 +289,7 @@ test('publish writes the note to the vault and records it', async () => {
 
 test('the executor records a governed send, so the page and Actions cannot disagree', () => {
   const ex = require('./action-executor');
-  assert.match(require('fs').readFileSync(require.resolve('./action-executor'), 'utf-8'), /send_soap_report'\) \{\n\s+d\.recordSoap\(a\)/);
+  assert.match(require('fs').readFileSync(require.resolve('./action-executor'), 'utf-8'), /send_soap_report'\) \{\r?\n\s+d\.recordSoap\(a\)/);
   assert.ok(ex);
 });
 

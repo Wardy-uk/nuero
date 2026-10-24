@@ -145,7 +145,7 @@ function _deps(over) {
     },
     watch: (k) => wt.watch(k),
     isWatched: (k) => wt.isWatched(k),
-    recordMyReply: (k, c) => wt.recordMyReply(k, c),
+    recordMyReply: (k, c, n) => wt.recordMyReply(k, c, n),
     isMe: _isMe,
     now: () => Date.now(),
     ...(over || {}),
@@ -233,7 +233,7 @@ async function post({ key: rawKey, text, visibility, initiatedBy = 'nick' }, dep
   if (isPublic) {
     try {
       if (!d.isWatched(key)) { await d.watch(key); watchedNow = true; }
-      if (found) commitment = d.recordMyReply(key, found).commitment;
+      if (found) commitment = d.recordMyReply(key, found, d.now()).commitment;
     } catch (e) { console.warn(`[TicketReplies] after-post bookkeeping for ${key} failed: ${e.message}`); }
   }
 
