@@ -164,6 +164,14 @@ router.get('/hilo/status', (req, res) => {
   try { res.json(hiloImport.status()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/health/hilo/readings — HiLo readings NEURO holds from the last
+// ?minutes= (1-1440), newest first, with when the store was last imported.
+// Keywords: hilo, recent blood pressure readings, calibration reference.
+router.get('/hilo/readings', (req, res) => {
+  try { res.json(hiloImport.recent({ minutes: req.query.minutes })); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
 // GET /api/health/hilo/to-health — HiLo readings Apple Health does not hold
 // yet, for the NEURO iOS app to write. Keywords: hilo, write back, healthkit.
 router.get('/hilo/to-health', (req, res) => {

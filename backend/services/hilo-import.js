@@ -331,7 +331,45 @@ function status() {
   };
 }
 
+const RECENT_MAX_MINUTES = 1440;
+
+/**
+ * HiLo readings NEURO holds from the last `minutes` (24 Oct 2026). Read by the
+ * Hume calibration script so a reading HiLo already took can be the reference
+ * instead of being retyped. Junk `minutes` is REFUSED, never clamped.
+ *
+ * ⚠ Only as fresh as the last report shared to NEURO: `lastImportAt` and
+ * `newestReading` say how stale the store is, so an empty window can be told
+ * apart from "nothing imported lately".
+ */
+function recent({ minutes, now = new Date() } = {}) {
+  const m = Number(minutes);
+  if (!Number.isInteger(m) || m < 1 || m > RECENT_MAX_MINUTES) {
+    const e = new Error(`minutes must be a whole number 1-${RECENT_MAX_MINUTES}`);
+    e.status = 400;
+    throw e;
+  }
+  // recorded_at is 'YYYY-MM-DD HH:MM:00' UTC, so a string compare in that form is exact.
+  const since = new Date(now.getTime() - m * 60000).toISOString().slice(0, 19).replace('T', ' ');
+  const rows = _db().all(
+    `SELECT recorded_at, systolic, diastolic, heart_rate, first_seen_at FROM hilo_readings
+     WHERE recorded_at >= ? ORDER BY recorded_at DESC`, [since]);
+  const s = status();
+  return {
+    source: SOURCE,
+    windowMinutes: m,
+    now: now.toISOString(),
+    readings: rows.map((r) => ({
+      at: r.recorded_at.replace(' ', 'T') + 'Z',
+      systolic: r.systolic, diastolic: r.diastolic, heartRate: r.heart_rate,
+      importedAt: r.first_seen_at,
+    })),
+    newestReading: s.newestReading ? s.newestReading.replace(' ', 'T') + 'Z' : null,
+    lastImportAt: s.lastImportAt,
+  };
+}
+
 module.exports = {
   SOURCE, parseItems, toUtc, toUtcCandidates, readPdf, importReport, storeReadings,
-  pendingForHealth, ackHealth, status, _isHiloReport,
+  pendingForHealth, ackHealth, status, recent, _isHiloReport,
 };
