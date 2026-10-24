@@ -1082,4 +1082,97 @@ router.post('/suggestions/:actionId/fields', (req, res) => {
   res.json({ ok: true, actionId, applied });
 });
 
+/**
+ * The "Spotted, waiting on you" INTAKE — add or dismiss a pending capture_todo
+ * suggestion, and nothing else (Brief 005 rework, D-012 clarification, 24 Oct 2026).
+ *
+ * ⚠ THE BOUNDARY IS THE STORED TYPE, READ ON THE SERVER. Every id is looked up
+ * and must be a `capture_todo` action that is still pending; anything else is
+ * refused BEFORE anything is written — a whole batch fails if one id is not a
+ * capture_todo, so a mixed batch cannot approve the half it was not meant to.
+ * Nothing the client sends (header, PIN, body field) widens it. Adding runs the
+ * SAME approve core as `/api/actions/:id/approve` (shared, so the two cannot
+ * drift): the capture_todo executor creates one internal NEURO task, which can
+ * be dropped again. Dismissing marks the suggestion rejected. No email, no
+ * calendar, no Microsoft write, no approval code — those are not reachable
+ * from a capture_todo.
+ *
+ * This is the path the phone uses; the generic `/api/actions` decide routes
+ * refuse a request that identifies as an iOS app (routes/actions.js).
+ */
+const INTAKE_VERBS = { add: 'add', dismiss: 'dismiss' };
+function intakeAction(id) {
+  const actionId = Number(id);
+  if (!Number.isInteger(actionId)) return { ok: false, status: 400, error: 'actionId must be a number' };
+  const action = db.getSaimAction(actionId);
+  if (!action) return { ok: false, status: 404, error: 'No such suggestion' };
+  if (action.type !== 'capture_todo') {
+    return { ok: false, status: 403, error: `Only a spotted task suggestion (capture_todo) can be added or dismissed here — #${actionId} is ${action.type}. Decide it in NEURO on the desktop → Actions.` };
+  }
+  if (action.status !== 'pending') return { ok: false, status: 409, error: `Suggestion #${actionId} is already ${action.status}` };
+  return { ok: true, actionId, action };
+}
+
+async function runIntake(actionId, verb) {
+  const actions = require('./actions');
+  return verb === 'add' ? actions.approveAction(actionId) : actions.rejectAction(actionId);
+}
+
+// POST /api/todos/suggestions/:actionId/add — add a spotted task suggestion
+// (capture_todo) to the task list. Refuses any other action type. Keywords:
+// spotted todo, suggestion, capture_todo, add todo, task intake.
+router.post('/suggestions/:actionId/add', async (req, res) => {
+  const v = intakeAction(req.params.actionId);
+  if (!v.ok) return res.status(v.status).json({ ok: false, error: v.error });
+  try {
+    const { status, body } = await runIntake(v.actionId, 'add');
+    require('../services/working-memory').invalidate('capture_todo added');
+    res.status(status).json(body);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/todos/suggestions/:actionId/dismiss — dismiss a spotted task
+// suggestion (capture_todo). Refuses any other action type. Keywords: spotted
+// todo, suggestion, capture_todo, dismiss, reject duplicate, task intake.
+router.post('/suggestions/:actionId/dismiss', async (req, res) => {
+  const v = intakeAction(req.params.actionId);
+  if (!v.ok) return res.status(v.status).json({ ok: false, error: v.error });
+  try {
+    const { status, body } = await runIntake(v.actionId, 'dismiss');
+    require('../services/working-memory').invalidate('capture_todo dismissed');
+    res.status(status).json(body);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/todos/suggestions/batch — add or dismiss several spotted task
+// suggestions (capture_todo) at once. Body: { ids, verb: "add" | "dismiss" }.
+// The whole batch is refused if any id is not a pending capture_todo.
+// Keywords: spotted todo, suggestions, capture_todo, add all, batch.
+router.post('/suggestions/batch', async (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'Expected a JSON body' });
+  const { ids, verb } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ ok: false, error: 'ids must be a non-empty array' });
+  if (!INTAKE_VERBS[verb]) return res.status(400).json({ ok: false, error: 'verb must be "add" or "dismiss"' });
+  // Validate EVERY id before writing ANY: a mixed batch is refused whole.
+  const checked = ids.map(intakeAction);
+  const bad = checked.map((c, i) => ({ c, id: ids[i] })).filter(({ c }) => !c.ok);
+  if (bad.some(({ c }) => c.status === 403 || c.status === 400)) {
+    return res.status(403).json({ ok: false, error: 'Refused: not every id is a spotted task suggestion (capture_todo). Nothing was changed.', refused: bad.map(({ c, id }) => ({ id, error: c.error })) });
+  }
+  const succeeded = [];
+  const failed = bad.map(({ c, id }) => ({ id: Number(id), error: c.error, status: c.status }));
+  for (const c of checked.filter((x) => x.ok)) {
+    let outcome;
+    try { outcome = await runIntake(c.actionId, verb); } catch (e) { outcome = { status: 500, body: { error: e.message } }; }
+    if (outcome.status === 200) succeeded.push(c.actionId);
+    else failed.push({ id: c.actionId, error: outcome.body.error || 'failed', status: outcome.status });
+  }
+  require('../services/working-memory').invalidate(`capture_todo batch ${verb}`);
+  res.json({ ok: failed.length === 0, verb, succeeded, failed, total: ids.length });
+});
+
 module.exports = router;

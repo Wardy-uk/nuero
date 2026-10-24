@@ -16,6 +16,32 @@ const workingMemory = require('../services/working-memory');
 const actionCandidates = require('../services/action-candidates');
 const actionPresenter = require('../services/action-presenter');
 const actionSnooze = require('../services/action-snooze');
+const nativeSources = require('../services/native-sources');
+
+// ⚠ BRIEF 005 REWORK (D-012, 24 Oct 2026): the phone apps decide NOTHING on this
+// queue. A request that IDENTIFIES ITSELF as an iOS app (X-Neuro-Client, else
+// its User-Agent token — `native-sources.resolveClient`) is refused on every
+// decide route: approve, reject, batch, bulk-reject, snooze / wake.
+//
+// This is DOWNGRADE-ONLY and is NOT the security boundary: a client can only
+// narrow itself by declaring, never widen — a request that hides its identity
+// is simply treated as the desktop PIN holder it already is. The boundary for
+// the one thing the phone IS allowed (the Tasks "Spotted" capture_todo intake)
+// is the server-proven, capture_todo-only path in routes/todos.js
+// (`/api/todos/suggestions/:actionId/{add,dismiss}` and `/suggestions/batch`).
+const PHONE_DECIDE = /^\/(\d+\/(approve|reject|snooze)|batch|bulk-reject)\/?$/;
+function isPhoneApp(req) {
+  const { client } = nativeSources.resolveClient(req.headers || {});
+  return typeof client === 'string' && client.endsWith('-ios');
+}
+const PHONE_REFUSAL = 'The phone does not decide queued actions — approve, reject or snooze it in NEURO on the desktop → Actions. Spotted task suggestions go through /api/todos/suggestions.';
+function refusePhoneDecisions(req, res, next) {
+  if ((req.method === 'POST' || req.method === 'DELETE') && PHONE_DECIDE.test(req.path) && isPhoneApp(req)) {
+    return res.status(403).json({ ok: false, error: PHONE_REFUSAL, phone: true });
+  }
+  next();
+}
+router.use(refusePhoneDecisions);
 
 // getPendingSaimActions defaults to 10 and orders by confidence DESC. On an
 // approval list that is a silent cliff, not a page — and it was actively
@@ -501,4 +527,8 @@ router.post('/bulk-reject', (req, res) => {
 module.exports = router;
 // The filter/facet logic is where the correctness is, so it is reachable from a
 // test without standing up Express.
-module.exports._internals = { monthOf, matchesFilter, readFilter, buildFacets };
+module.exports._internals = { monthOf, matchesFilter, readFilter, buildFacets, isPhoneApp, PHONE_DECIDE };
+// The approve/reject core, shared with the capture_todo-only intake path
+// (routes/todos.js) so the two cannot drift on what approving does.
+module.exports.approveAction = approveAction;
+module.exports.rejectAction = rejectAction;

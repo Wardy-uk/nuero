@@ -111,6 +111,9 @@ const CAPABILITIES = Object.freeze({
   'approval.internal': { authority: 'A1', effect: 'approve a queued INTERNAL suggestion (add a captured task, open a screen)', machine: 'execute-bounded', approval: 'none', registry: null, ledger: true, verification: null, idempotent: 'pending → executed once',
     bounds: ['the route refuses anything action-presenter calls outbound (403)', 'the route refuses a complete_task that reaches Microsoft (403) — that is complete-ms', 'retired outbound types answer 410'],
     preauthorisation: 'Build 7: the local MCP approve_action tool, internal kinds only. The remote gateway still does not offer it.' },
+  'task.intake': { authority: 'A1', effect: 'add or dismiss a pending capture_todo suggestion (the Tasks "Spotted" intake) — one internal NEURO task, nothing else', machine: 'execute-bounded', approval: 'none', registry: null, ledger: true, verification: null, idempotent: 'pending → executed or rejected once',
+    bounds: ['the route refuses any action whose STORED type is not capture_todo (403), before anything is written', 'a batch with any non-capture_todo id is refused whole', 'runs the same approve core as approval.internal, so no outbound, Microsoft or approval-code path is reachable'],
+    preauthorisation: 'Brief 005 rework (24 Oct 2026): the one older-queue decision the phone may make; the generic decide routes refuse a request identifying as an iOS app.' },
   'config.security': { authority: 'A4', effect: 'credentials, approval code, trusted devices, accounts, feature switches, push endpoints, integration tokens', machine: 'refuse', approval: 'click', registry: null, ledger: false, verification: null, idempotent: true },
 
   'microsoft.bridge.passthrough': { authority: 'A3', effect: 'RETIRED (Build 14B): forwarded an arbitrary JSON body to NOVA', retiredReason: 'Retired: NEURO no longer forwards arbitrary task updates to NOVA. Edit a Microsoft task through PATCH /api/todos/ms/:msId in NEURO.', machine: 'retired', approval: 'none', registry: null, ledger: false, verification: null, idempotent: false },
@@ -185,6 +188,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/prepared-actions/devices/:deviceId/revoke', 'config.security'),
   R('POST', '/api/actions/:id/approve', 'approval.internal'),
   R('POST', '/api/actions/batch', 'approval.decide'),
+  R('POST', '/api/todos/suggestions/:actionId/add', 'task.intake'),
+  R('POST', '/api/todos/suggestions/:actionId/dismiss', 'task.intake'),
+  R('POST', '/api/todos/suggestions/batch', 'task.intake'),
 
   // Email: preparing is allowed, sending is not reachable from a route.
   R('POST', '/api/email/triage/:emailId/reply', 'email.send'),

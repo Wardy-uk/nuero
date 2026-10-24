@@ -5,7 +5,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 374,
+    "line": 400,
     "description": "DELETE /api/actions/:id/snooze. wake it now. Every other decision in NEURO",
     "params": [
       "id"
@@ -602,7 +602,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 119,
+    "line": 145,
     "description": "GET /api/actions.",
     "params": [],
     "query": [
@@ -7655,7 +7655,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 300,
+    "line": 326,
     "description": "POST /api/actions.",
     "params": [],
     "query": [],
@@ -7680,7 +7680,7 @@
     "route": "/api/actions/batch",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 414,
+    "line": 440,
     "description": "POST /api/actions/batch. approve or reject many at once",
     "params": [],
     "query": [],
@@ -7699,7 +7699,7 @@
     "route": "/api/actions/bulk-reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 462,
+    "line": 488,
     "description": "POST /api/actions/bulk-reject.",
     "params": [],
     "query": [],
@@ -7717,7 +7717,7 @@
     "route": "/api/actions/:id/approve",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 387,
+    "line": 413,
     "description": "POST /api/actions/:id/approve.",
     "params": [
       "id"
@@ -7735,7 +7735,7 @@
     "route": "/api/actions/:id/reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 399,
+    "line": 425,
     "description": "POST /api/actions/:id/reject. reject and optionally suppress",
     "params": [
       "id"
@@ -7753,7 +7753,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 346,
+    "line": 372,
     "description": "POST /api/actions/:id/snooze.   { minutes }  — \"not now\".",
     "params": [
       "id"
@@ -15378,6 +15378,61 @@
     ],
     "queryOpen": false,
     "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_todos_suggestions_batch",
+    "method": "POST",
+    "route": "/api/todos/suggestions/batch",
+    "domain": "todos",
+    "source": "routes/todos.js",
+    "line": 1155,
+    "description": "POST /api/todos/suggestions/batch. add or dismiss several spotted task",
+    "params": [],
+    "query": [],
+    "body": [
+      "ids",
+      "verb"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_todos_suggestions_by_actionId_add",
+    "method": "POST",
+    "route": "/api/todos/suggestions/:actionId/add",
+    "domain": "todos",
+    "source": "routes/todos.js",
+    "line": 1124,
+    "description": "POST /api/todos/suggestions/:actionId/add. add a spotted task suggestion",
+    "params": [
+      "actionId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_todos_suggestions_by_actionId_dismiss",
+    "method": "POST",
+    "route": "/api/todos/suggestions/:actionId/dismiss",
+    "domain": "todos",
+    "source": "routes/todos.js",
+    "line": 1139,
+    "description": "POST /api/todos/suggestions/:actionId/dismiss. dismiss a spotted task",
+    "params": [
+      "actionId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
