@@ -58,6 +58,17 @@ param(
   #   unfired. Two different questions, two cadences. The claim call stores
   #   nothing and carries no sample, so asking often is cheap.
   [int]$ClaimSeconds = 5,
+  # Watch auto-lock (D-007, Brief 004): this agent owns it now. See watch-lock.ps1.
+  #   off     not read, not decided.
+  #   shadow  DEFAULT. Decides every tick and REPORTS what it would do; never
+  #           locks, wakes or notifies. The soak runs this beside Electron.
+  #   on      decides and acts.
+  [ValidateSet('off', 'shadow', 'on')]
+  [string]$WatchLock = 'shadow',
+  # The Watch reporter's file. Default: the repo's windows-watch-lock folder,
+  # the same file the Electron lock read.
+  [string]$PresenceFile = $env:WATCH_STATUS_FILE,
+  [int]$WatchLockSeconds = 2,
   [switch]$Once
 )
 
@@ -90,6 +101,61 @@ if (-not ('Neuro.Win32' -as [type])) {
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 '@
+}
+
+# --- Watch auto-lock (owned here since Brief 004) ----------------------------
+# The mode lives in desktop-agent.json ("watchLock"), so switching it is an
+# edit and a task restart: the installed runner never needs regenerating. An
+# explicit -WatchLock wins; anything unrecognised leaves the safe default.
+if (-not $PSBoundParameters.ContainsKey('WatchLock')) {
+  try {
+    $wlCfg = Get-Content -Raw (Join-Path $env:LOCALAPPDATA 'neuro\desktop-agent.json') | ConvertFrom-Json
+    if ($wlCfg.watchLock -in @('off', 'shadow', 'on')) { $WatchLock = $wlCfg.watchLock }
+  } catch { }
+}
+. (Join-Path $PSScriptRoot 'watch-lock.ps1')
+if (-not $PresenceFile) { $PresenceFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'windows-watch-lock\presence.json' }
+$script:WL = New-WatchLockState
+$script:WLAssessment = $null
+$script:WLWasLocked = $false
+$script:WLCounters = @{ locks = 0; wouldLock = 0; wakes = 0; failures = 0; lastAction = $null; lastActionAt = $null }
+$script:WLStarted = Get-Date
+$script:WLLastWhy = '(start)'
+
+function Invoke-WatchLockTick {
+  if ($WatchLock -eq 'off') { return }
+  $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  # Session lock transitions, as Electron's powerMonitor reported them.
+  $lockedNow = Test-SessionLocked
+  if ($lockedNow -and -not $script:WLWasLocked) { $script:WL = Set-WatchLockScreenLocked $script:WL }
+  if (-not $lockedNow -and $script:WLWasLocked) { $script:WL = Set-WatchLockOSUnlocked $script:WL }
+  $script:WLWasLocked = $lockedNow
+  $r = Step-WatchLock $script:WL (Read-WatchPresence $PresenceFile) $nowMs (Get-IdleSeconds)
+  $script:WL = $r.state
+  $script:WLAssessment = $r.assessment
+  # Say once when presence goes blind or comes back, so a dead reporter is
+  # findable in the log rather than being a lock that simply never happens.
+  $why = $(if ($r.assessment.known) { $null } else { $r.assessment.why })
+  if ($why -ne $script:WLLastWhy) { Write-Host "watch-lock: presence $(if ($why) { "blind: $why" } else { 'reading' })"; $script:WLLastWhy = $why }
+  if (-not $r.action -or $r.action -eq 'cancel-warn') { return }
+  $done = Invoke-WatchLockAction $WatchLock $r.action
+  $stamp = (Get-Date).ToUniversalTime().ToString('o')
+  if ($WatchLock -ne 'on') {
+    if ($r.action -eq 'lock') { $script:WLCounters.wouldLock++ }
+    $script:WLCounters.lastAction = "would-$($r.action)"; $script:WLCounters.lastActionAt = $stamp
+    Write-Host "watch-lock ($WatchLock): would $($r.action)"
+    return
+  }
+  if ($done.acted -eq 'lock') { $script:WLCounters.locks++ }
+  elseif ($done.acted -eq 'wake') { $script:WLCounters.wakes++ }
+  elseif ($done.acted -like '*-failed') { $script:WLCounters.failures++ }
+  $script:WLCounters.lastAction = $done.acted; $script:WLCounters.lastActionAt = $stamp
+  Write-Host "watch-lock: $($done.acted)"
+}
+
+function Get-WatchLockReport {
+  if ($WatchLock -eq 'off') { return [pscustomobject]@{ mode = 'off' } }
+  return Get-WatchLockStatus $WatchLock $script:WLAssessment $script:WLCounters $script:WL $script:WLStarted
 }
 
 function Get-IdleSeconds {
@@ -359,6 +425,9 @@ function Get-Sample {
     #   that predates a field: a reader older than its writer must announce
     #   itself rather than be assumed capable.
     canOpen     = @($AppCommands.Keys | Sort-Object)
+    # The Watch lock's own health (Brief 004): mode, presence verdict and
+    # counts only. Lets NEURO's Set up tell a running lock from a missing one.
+    watchLock   = Get-WatchLockReport
   }
 }
 
@@ -371,6 +440,11 @@ function Send-Sample($sample) {
 
 
 if ($Once) {
+  # One read of the Watch, never an action: -Once must not lock the machine.
+  if ($WatchLock -ne 'off') {
+    $script:WLAssessment = Get-PresenceAssessment (Read-WatchPresence $PresenceFile) ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+    Write-Host "Watch lock: mode $WatchLock, presence file $PresenceFile"
+  }
   $s = Get-Sample
   # Printed so the installer can show what would be sent BEFORE it is sent —
   # the privacy claim above should be checkable, not taken on trust.
@@ -386,10 +460,19 @@ if ($Once) {
   return
 }
 
-Write-Host "NEURO desktop agent -> $BaseUrl. Sampling every ${IntervalSeconds}s, checking for launches every ${ClaimSeconds}s. Ctrl+C to stop."
+Write-Host "NEURO desktop agent -> $BaseUrl. Sampling every ${IntervalSeconds}s, checking for launches every ${ClaimSeconds}s, Watch lock '$WatchLock' every ${WatchLockSeconds}s. Ctrl+C to stop."
 $nextSample = [datetime]::MinValue
 $nextMedia = [datetime]::MinValue
+$nextClaim = [datetime]::MinValue
+$nextLock = [datetime]::MinValue
 while ($true) {
+  # The WATCH LOCK, on the fastest clock (Electron ticked every 2 s). Never
+  # allowed to stop the loop: a broken lock is reported, the agent keeps going.
+  if ((Get-Date) -ge $nextLock) {
+    try { Invoke-WatchLockTick } catch { $script:WLCounters.failures++; Write-Warning "watch-lock tick failed: $($_.Exception.Message)" }
+    $nextLock = (Get-Date).AddSeconds($WatchLockSeconds)
+  }
+
   # What is PLAYING, on a third clock. Never allowed to stop the loop.
   if ((Get-Date) -ge $nextMedia) {
     Send-NowPlaying
@@ -412,7 +495,10 @@ while ($true) {
   }
 
   # The BUTTON, on its own fast one.
-  Invoke-DeskIntents (Get-DeskIntents)
+  if ((Get-Date) -ge $nextClaim) {
+    Invoke-DeskIntents (Get-DeskIntents)
+    $nextClaim = (Get-Date).AddSeconds($ClaimSeconds)
+  }
 
-  Start-Sleep -Seconds $ClaimSeconds
+  Start-Sleep -Seconds 1
 }

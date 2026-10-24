@@ -16,7 +16,10 @@ $sc.TargetPath = $psExe
 $sc.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
 $sc.WorkingDirectory = $root
 $sc.WindowStyle = 7   # minimized — no flashing console
-$sc.Description = 'Launch the SAiM desktop stack (backend + Watch presence reporter + Electron) at login'
+# Brief 004: this starts NEURO's Watch reporter (and the local backend only with
+# SAIM_LOCAL_BACKEND=1) — never the Electron window. Superseded by
+# windows-watch-lock\install-startup.ps1, which installs the NEURO-named shortcut.
+$sc.Description = 'Start the NEURO Watch presence reporter at login (via start-saim-windows.ps1)'
 $sc.Save()
 
 Write-Output "Installed: $lnkPath"

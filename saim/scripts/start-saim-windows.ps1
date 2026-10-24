@@ -1,18 +1,17 @@
-# start-saim-windows.ps1 — bring up the full SAiM desktop stack on Windows (ARM64).
+# start-saim-windows.ps1 — the login launcher behind Startup\SAiM.lnk (kept for that shortcut).
 #
-# Order matters: backend first (the UI + /api/presence live here), then wait for it to
-# listen, then the Watch presence reporter (feeds /api/presence). Every step is guarded,
-# so running this twice is harmless — it only starts what isn't already up. Registered to
-# run at login by install-autostart.ps1.
+# ⚠ Brief 004 (24 Oct 2026): what this starts is NEURO's, not SAiM's.
+#   1. The Watch presence reporter — now started by
+#      windows-watch-lock\start-watch-reporter.ps1 (NEURO-owned; it feeds the
+#      NEURO Desktop Agent's Watch lock and the Pi's shared presence). This file
+#      only calls it, so the existing Startup\SAiM.lnk keeps working until
+#      windows-watch-lock\install-startup.ps1 replaces it with
+#      Startup\NEURO Watch reporter.lnk.
+#   2. The local saim/backend on :3005 — only with SAIM_LOCAL_BACKEND=1
+#      (kiosk development). Off by default since the 21 Oct 2026 cutover.
 #
-# ⚠ It starts the STACK, not the WINDOW — see the note where the Electron launch used
-# to be. Opening SAiM is `saim/desktop-electron/SAiM.vbs`, from a shortcut.
-#
-# Tuned presence config (decided empirically 2026-06-12, see watch-irk-RESULTS / handoff):
-#   passive scan; "near" = >=2 of last 8 one-second samples stronger than -78 dBm; fused
-#   with system-wide keyboard/mouse idle (5s grace). Lock = Watch signal gone weak AND no
-#   input. These RSSI numbers are tuned to Nick's desk; a very different spot may need a
-#   re-tune (WATCH_RSSI_NEAR / WATCH_RSSI_NEEDED).
+# It never starts the Electron window (see the note at the end). Every step is
+# guarded, so running this twice is harmless.
 
 $ErrorActionPreference = 'SilentlyContinue'
 $root = 'C:\Users\NickW\Claude\nuero'
@@ -39,30 +38,9 @@ for ($i = 0; $i -lt 60 -and $env:SAIM_LOCAL_BACKEND -eq '1'; $i++) {
   Start-Sleep -Milliseconds 500
 }
 
-# 2. Watch presence reporter — skip if already running.
-$reporter = Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -match 'watch-presence-reporter' }
-if (-not $reporter) {
-  $env:WATCH_SCAN_MODE   = 'passive'
-  $env:WATCH_RSSI_NEAR   = '-78'
-  $env:WATCH_RSSI_WINDOW = '8'
-  $env:WATCH_RSSI_NEEDED = '2'
-  $env:WATCH_INPUT_GRACE_S = '5'
-  $env:WATCH_TICK_S      = '1'
-  # Report this laptop to SAiM as a MOBILE sensor (14 Sep 2026). With the fixed desk
-  # tablet it makes the one distinction a fixed sensor cannot: the tablet hearing the
-  # watch means he is AT his desk; only the laptop hearing it means he is about, with
-  # the laptop — in a meeting. Unset it and the local screen lock behaves exactly as
-  # before; this is additive and never allowed to affect the lock.
-  if (-not $env:SAIM_SENSOR_URL) { $env:SAIM_SENSOR_URL = 'http://100.100.28.58:3005/api/presence/sensor' }
-  if (-not $env:SAIM_SENSOR_ROOM) { $env:SAIM_SENSOR_ROOM = 'laptop' }
-  Start-Process -FilePath (Join-Path $root 'windows-watch-lock\venv\Scripts\python.exe') `
-    -ArgumentList 'watch-presence-reporter.py' `
-    -WorkingDirectory (Join-Path $root 'windows-watch-lock') `
-    -RedirectStandardOutput (Join-Path $logDir 'watch-reporter.out.log') `
-    -RedirectStandardError  (Join-Path $logDir 'watch-reporter.err.log') `
-    -WindowStyle Hidden
-}
+# 2. Watch presence reporter — NEURO's, started by its own script (idempotent;
+#    identical environment, Pi sensor URL and room as before).
+& (Join-Path $root 'windows-watch-lock\start-watch-reporter.ps1')
 
 # 3. The Electron window is deliberately NOT started here.
 #

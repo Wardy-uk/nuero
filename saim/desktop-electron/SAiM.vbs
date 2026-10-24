@@ -46,6 +46,23 @@ here = fso.GetParentFolderName(WScript.ScriptFullName)
 
 electron = fso.BuildPath(here, "node_modules\electron\dist\electron.exe")
 
+' ⚠ THE RETIREMENT SWITCH (Brief 004, 24 Oct 2026). When launch-switch.ps1
+' -Disable has run, this marker exists and the window does not open — from ANY
+' shortcut, including one somebody forgot about. It says so, rather than doing
+' nothing, for the same reason the missing-Electron check below does. Nothing is
+' deleted: launch-switch.ps1 -Enable removes the marker and restores the
+' shortcuts. The Watch lock is the NEURO desktop agent's, so nothing else
+' depends on this window opening.
+Dim retiredMarker
+retiredMarker = fso.BuildPath(shell.ExpandEnvironmentStrings("%LOCALAPPDATA%"), "neuro\saim-electron.disabled")
+If fso.FileExists(retiredMarker) Then
+  MsgBox "The SAiM desktop window is retired - SAiM lives in NEURO Desktop now." & vbCrLf & vbCrLf & _
+         "To bring the window back, run:" & vbCrLf & _
+         "powershell -ExecutionPolicy Bypass -File """ & fso.BuildPath(here, "launch-switch.ps1") & """ -Enable", _
+         vbInformation, "SAiM"
+  WScript.Quit 0
+End If
+
 ' ⚠ Fail LOUDLY rather than silently doing nothing. A hidden launcher that
 ' quietly exits when the dependency is missing is indistinguishable from one
 ' that worked, and the whole point of this file is that there is no console to

@@ -34,6 +34,10 @@ param(
   [string]$BaseUrl,
   [string]$Token,
   [int]$IntervalSeconds = 120,
+  # Watch auto-lock mode (Brief 004): shadow (default, decides but never acts),
+  # on (locks), off. Stored in desktop-agent.json; the agent reads it at start.
+  [ValidateSet('off', 'shadow', 'on')]
+  [string]$WatchLock = 'shadow',
   [switch]$Uninstall
 )
 
@@ -74,7 +78,7 @@ Write-Host "  count and a lock flag. No window title, no path, no URL." -Foregro
 Write-Host "`n[2/3] Writing config ..." -ForegroundColor Cyan
 if (-not (Test-Path $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
 
-@{ baseUrl = $BaseUrl; token = $Token; intervalSeconds = $IntervalSeconds } |
+@{ baseUrl = $BaseUrl; token = $Token; intervalSeconds = $IntervalSeconds; watchLock = $WatchLock } |
   ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
 
 # ⚠ The token lives here and nowhere else. Scheduled task arguments are visible

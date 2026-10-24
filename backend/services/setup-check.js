@@ -54,6 +54,34 @@ function fromSource(src) {
   return { status: 'attention', stale: true, evidence: `Set up, but ${String(src.verdictLabel || v).toLowerCase()} — last heard ${last.slice(0, 16).replace('T', ' ')}.` };
 }
 
+// The agent posts a sample every 2 minutes; two missed samples plus slack.
+const WATCH_LOCK_STALE_MS = 15 * 60000;
+
+/**
+ * The Watch lock from the agent's OWN report (Brief 004). PURE.
+ * done ONLY when the agent is locking ("on"), reporting recently, and can
+ * actually read the Watch. Shadow, off, blind, failing, silent or an agent
+ * that never said anything are all NOT done, each with its reason.
+ */
+function watchLockItem(winHost, now) {
+  if (!winHost) return { status: 'todo', evidence: 'No Windows machine has reported.' };
+  const wl = winHost.watchLock;
+  if (!wl) return { status: 'todo', evidence: `The agent on ${winHost.host} has not reported a Watch lock — it predates Brief 004, or has not restarted since. Restart the "NEURO Desktop Agent" task.` };
+  const at = Date.parse(winHost.watchLockAt || '');
+  if (!Number.isFinite(at) || now - at > WATCH_LOCK_STALE_MS) {
+    return { status: 'attention', stale: true, evidence: `Last reported ${String(winHost.watchLockAt || 'never').slice(0, 16).replace('T', ' ')} — the agent may have stopped, so nothing is locking.` };
+  }
+  if (wl.mode === 'off') return { status: 'attention', evidence: 'Switched off in desktop-agent.json — nothing locks when the Watch leaves.' };
+  if (wl.presence === 'blind') {
+    return { status: 'attention', evidence: `Can’t read the Watch (${wl.why || 'no reading'}${wl.presenceAgeS != null ? `, ${wl.presenceAgeS}s old` : ''}) — the Watch reporter may have stopped; nothing will lock.` };
+  }
+  if (wl.failures > 0) return { status: 'attention', evidence: `${wl.failures} lock/wake call(s) failed since ${String(wl.since || '').slice(0, 16).replace('T', ' ')}.` };
+  if (wl.mode === 'shadow') {
+    return { status: 'attention', evidence: `Shadow (soak): reading the Watch (${wl.presence}) and deciding, but NOT locking — ${wl.wouldLock} lock(s) it would have made. The SAiM window still locks while it is open.` };
+  }
+  return { status: 'done', evidence: `Locking on ${winHost.host}: Watch ${wl.presence}, ${wl.locks} lock(s) and ${wl.wakes} wake(s) since ${String(wl.since || '').slice(0, 16).replace('T', ' ')}.` };
+}
+
 function fromReport(report, checkId, now) {
   if (!report || !report.at) return null;
   if (now - Date.parse(report.at) > REPORT_STALE_MS) return null;
@@ -149,8 +177,18 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
     ...(winHost && winHost.canOpen && winHost.canOpen.length ? { status: 'done', evidence: `Can open: ${winHost.canOpen.join(', ')}.` }
       : local(winReport, 'apps', 'Checked on the laptop by setup.ps1.')),
     fix: { where: 'windows', command: 'powershell -ExecutionPolicy Bypass -File desktop-agent\\setup.ps1', steps: ['setup.ps1 writes %LOCALAPPDATA%\\neuro-agent\\apps.json from the browser, VS Code and music apps it finds.'] } });
+  // Brief 004 (D-007): the Watch lock is the AGENT's, judged from what the agent
+  // itself reports (`watchLock` on its samples) — never from a shortcut or a
+  // node_modules folder, which is what used to stand for "the Watch lock".
+  add({ id: 'windows.watch-lock', surface: 'windows', need: 'recommended', title: 'Watch auto-lock on the laptop',
+    why: 'Locks Windows when your Watch leaves, and wakes it for Hello when you come back. Run by the NEURO desktop agent.',
+    ...watchLockItem(winHost, now),
+    fix: { where: 'windows', steps: [
+      'Set "watchLock" in %LOCALAPPDATA%\\neuro\\desktop-agent.json to "shadow" (soak) or "on" (it locks), then restart the "NEURO Desktop Agent" task.',
+      'Presence comes from the Watch reporter (Startup → start-saim-windows.ps1 → windows-watch-lock\\watch-presence-reporter.py); if presence is blind, check that it is running.',
+    ] } });
   add({ id: 'windows.saim', surface: 'windows', need: 'recommended', title: 'SAiM desktop window',
-    why: 'Her presence on the laptop, and the Watch lock.',
+    why: 'Her presence on the laptop. (The Watch lock is the desktop agent’s since Brief 004.)',
     ...local(winReport, 'saim-electron', 'Only the laptop can see this — run setup.ps1 there.'),
     fix: { where: 'windows', command: 'powershell -ExecutionPolicy Bypass -File desktop-agent\\setup.ps1', steps: ['Installs saim/desktop-electron dependencies and puts a SAiM shortcut on the Desktop.'] } });
   add({ id: 'windows.mcp', surface: 'windows', need: 'optional', title: 'NEURO tools in Claude on the laptop',
@@ -439,4 +477,4 @@ function unskip(id) {
   return all;
 }
 
-module.exports = { SURFACES, NEEDS, REPORT_STALE_MS, assess, fromSource, snapshot, check, report, skip, unskip };
+module.exports = { SURFACES, NEEDS, REPORT_STALE_MS, WATCH_LOCK_STALE_MS, watchLockItem, assess, fromSource, snapshot, check, report, skip, unskip };

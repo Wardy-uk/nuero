@@ -363,7 +363,38 @@ function _hostKey(host) {
 }
 
 function _blankBucket() {
-  return { samples: [], mentioned: {}, canOpen: null, canOpenAt: null };
+  return { samples: [], mentioned: {}, canOpen: null, canOpenAt: null, watchLock: null, watchLockAt: null };
+}
+
+// ── The Watch auto-lock's health, as the agent reports it (Brief 004, D-007) ──
+//
+// A CLOSED shape: anything else the agent sends is dropped, and nothing from
+// the presence file but its verdict is ever kept (no RSSI, no Watch identity).
+// NULL means "this machine has not said" — an older agent, or none at all —
+// which Set up reports as the lock NOT being proven, never as healthy.
+const WATCH_LOCK_MODES = new Set(['off', 'shadow', 'on']);
+const WATCH_LOCK_PRESENCE = new Set(['present', 'away', 'blind']);
+const WATCH_LOCK_WHY = new Set(['unreadable', 'no-timestamp', 'stale', 'undecided']);
+const WATCH_LOCK_ACTIONS = new Set(['warn', 'lock', 'wake', 'lock-failed', 'wake-failed', 'warn-failed', 'would-warn', 'would-lock', 'would-wake']);
+
+/** PURE. The agent's `watchLock` field → the stored shape, or null if unusable. */
+function sanitiseWatchLock(raw) {
+  if (!raw || typeof raw !== 'object' || !WATCH_LOCK_MODES.has(raw.mode)) return null;
+  const int = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : 0);
+  const iso = (v) => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null);
+  if (raw.mode === 'off') return { mode: 'off' };
+  return {
+    mode: raw.mode,
+    presence: WATCH_LOCK_PRESENCE.has(raw.presence) ? raw.presence : 'blind',
+    why: WATCH_LOCK_WHY.has(raw.why) ? raw.why : null,
+    presenceAgeS: Number.isFinite(Number(raw.presenceAgeS)) && raw.presenceAgeS !== null ? Math.round(Number(raw.presenceAgeS)) : null,
+    armed: raw.armed === true,
+    lockedByUs: raw.lockedByUs === true,
+    locks: int(raw.locks), wouldLock: int(raw.wouldLock), wakes: int(raw.wakes), failures: int(raw.failures),
+    lastAction: WATCH_LOCK_ACTIONS.has(raw.lastAction) ? raw.lastAction : null,
+    lastActionAt: iso(raw.lastActionAt),
+    since: iso(raw.since),
+  };
 }
 
 function _load() {
@@ -383,6 +414,8 @@ function _load() {
           //   the second would be a claim about a machine that never spoke.
           canOpen: Array.isArray(b && b.canOpen) ? b.canOpen : null,
           canOpenAt: (b && typeof b.canOpenAt === 'string') ? b.canOpenAt : null,
+          watchLock: (b && b.watchLock && typeof b.watchLock === 'object') ? b.watchLock : null,
+          watchLockAt: (b && typeof b.watchLockAt === 'string') ? b.watchLockAt : null,
         };
       }
       return { hosts };
@@ -430,6 +463,8 @@ function _save(state) {
       mentioned: b.mentioned || {},
       canOpen: Array.isArray(b.canOpen) ? b.canOpen : null,
       canOpenAt: b.canOpenAt || null,
+      watchLock: b.watchLock || null,
+      watchLockAt: b.watchLockAt || null,
     };
   }
   db.setState(STATE_KEY, JSON.stringify({ hosts }));
@@ -458,7 +493,7 @@ function _buckets(state) {
  */
 const MAX_CAN_OPEN = 32;
 
-function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null, canOpen = null } = {}) {
+function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null, canOpen = null, watchLock = undefined } = {}) {
   const state = _load();
   const key = _hostKey(host);
 
@@ -502,6 +537,13 @@ function record({ app = null, idleSeconds = 0, locked = false, host = null, at =
       .slice(0, MAX_CAN_OPEN);
     bucket.canOpen = Array.from(new Set(clean)).sort();
     bucket.canOpenAt = stamp;
+  }
+  // The Watch lock's health (Brief 004). Like canOpen: a sample that OMITS it
+  // never wipes a known report, so an older agent cannot make a running lock
+  // look gone; an unusable value is ignored rather than stored.
+  if (watchLock !== undefined) {
+    const wl = sanitiseWatchLock(watchLock);
+    if (wl) { bucket.watchLock = wl; bucket.watchLockAt = stamp; }
   }
   // Newest first, and out-of-order arrivals are placed rather than assumed — a
   // reporter catching up after a sleep can post a batch.
@@ -552,6 +594,8 @@ function hosts() {
     host,
     sampleCount: (b.samples || []).length,
     lastAt: (b.samples || [])[0] ? b.samples[0].at : null,
+    watchLock: b.watchLock || null,
+    watchLockAt: b.watchLockAt || null,
   })).sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
 }
 
@@ -597,6 +641,7 @@ module.exports = {
   MAX_CAN_OPEN,
   // pure
   sanitiseApp,
+  sanitiseWatchLock,
   labelFor,
   isActive,
   currentRun,
