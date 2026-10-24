@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { executeDirect, directOutcome } from '../directAction';
 import './SoapReportPanel.css';
 
 // ── SOAP report — the Monday debrief for Chris, Ricky and Liam (15 Oct 2026) ─
@@ -11,7 +12,7 @@ import './SoapReportPanel.css';
 // empty section.
 
 const STATUS_WORDS = {
-  prepared: 'Queued — approve it in Actions',
+  prepared: 'Prepared — not sent yet',
   approved: 'Approved — waiting for Monday 08:00',
   executing: 'Sending',
   executed: 'Sent — checking Sent Items',
@@ -304,7 +305,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         {locked
           ? <span className="soap-btn soap-btn--sent">✓ Sent to {names}</span>
           : <button className="soap-btn" disabled={busy || dirty || v.blockers.length > 0 || data.recipientProblems.length > 0} onClick={onQueue}>
-              {r.kind === 'provisional' ? 'Queue send for Monday 08:00' : 'Queue send now'}
+              {r.kind === 'provisional' ? 'Send Monday 08:00' : 'Send now'}
             </button>}
         <button className="soap-btn" disabled={busy} onClick={onTest}>Test send to me</button>
         <button className="soap-btn" disabled={busy} onClick={onPreview}>{preview !== null ? 'Hide preview' : 'Preview note'}</button>
@@ -457,9 +458,18 @@ export default function SoapReportPanel() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }),
       }).then((r) => r.json());
       if (!j.ok) throw new Error((j.blockers && j.blockers.join('; ')) || j.error || 'not queued');
-      setNote(j.already ? 'Already queued — approve it in Actions.' : kind === 'provisional'
-        ? 'Queued. Approve it in Actions with your approval code; it goes at 08:00 Monday if the verdicts hold.'
-        : 'Queued. Approve it in Actions with your approval code; it goes as soon as you approve.');
+      // 24 Oct 2026 (Nick): the press is the decision — no trip to Actions, no
+      // code. A provisional is approved now and goes at 08:00 Monday.
+      if (j.action && j.action.status && j.action.status !== 'prepared') {
+        setNote(STATUS_WORDS[j.action.status] || `It is already ${j.action.status}.`);
+        await load(); setBusy(false); return;
+      }
+      const x = await executeDirect(j.action);
+      if (x.ok && x.status === 'approved') {
+        setNote(kind === 'provisional' ? 'Approved — it goes at 08:00 Monday if the verdicts hold.' : 'Approved — sending now.');
+      } else {
+        setNote(directOutcome(x).text);
+      }
       await load();
     } catch (e) { setNote(`Not queued — ${e.message}`); }
     setBusy(false);

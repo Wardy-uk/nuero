@@ -20,8 +20,8 @@
  * payload hash. A grant is:
  *   • refused to any machine caller (API token, MCP, a declared
  *     X-Neuro-Machine-Client) — the route never mints one for them;
- *   • only for an action a human button prepared (HUMAN_ORIGINS) — anything
- *     NEURO drafted keeps the approval-code path;
+ *   • for any prepared action (24 Oct 2026, Nick: the code was friction) —
+ *     NEURO's own drafts included; HUMAN_ORIGINS now only says who STARTED it;
  *   • 60 seconds, single use, burned atomically with the approval that spends
  *     it, and refused if the action changed in between (a new version, a new
  *     hash, an edit);
@@ -117,9 +117,12 @@ function mint({ actionId, version, payloadHash, surface, sessionId, caller = {},
   const pa = require('./prepared-actions');
   const a = pa.get(actionId);
   if (!a) return refuse(404, 'no such prepared action', 'missing');
-  if (!HUMAN_ORIGINS[a.origin]) return refuse(403, 'NEURO drafted this — it needs approving in Actions.', 'origin');
+  // 24 Oct 2026 (Nick: "approving still needs the challenge and your approval
+  // code — this is still friction"): Nick's press on an attended screen is the
+  // decision for EVERY origin, NEURO's own drafts included. Who started it is
+  // still recorded (initiatedByFor), and machines are still refused above.
   const policy = require('./action-registry').policyFor(a.actionType);
-  if (!policy || !policy.executable) return refuse(403, 'this kind of action does not execute, so there is nothing to confirm', 'type');
+  if (!policy) return refuse(403, `${a.actionType} is not a registered action type`, 'type');
   if (a.status !== 'prepared') return refuse(409, `it is already ${a.status}`, 'status');
   if (Number(version) !== Number(a.version || 1) || payloadHash !== a.payloadHash) {
     return refuse(409, 'This action needs confirming again — it changed since it was shown.', 'changed');
@@ -130,7 +133,7 @@ function mint({ actionId, version, payloadHash, surface, sessionId, caller = {},
   db.run(`INSERT INTO human_action_intents (id, user_id, action_capability, action_id, action_version, payload_hash, session_id, surface,
             initiated_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   [id, USER, a.actionType, a.actionId, Number(a.version || 1), a.payloadHash, sessionId, surface,
-    HUMAN_ORIGINS[a.origin], iso(nowMs), iso(nowMs + TTL_MS)]);
+    initiatedByFor(a.origin), iso(nowMs), iso(nowMs + TTL_MS)]);
   return { ok: true, grantId: id, expiresAt: iso(nowMs + TTL_MS), actionId: a.actionId, version: Number(a.version || 1), payloadHash: a.payloadHash };
 }
 

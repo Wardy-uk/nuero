@@ -1063,16 +1063,16 @@ test('G1. a reply Nick wrote sends on a one-use grant — no code — and keeps 
   assert.equal(row.approval_mechanism, 'intent-grant');
 });
 
-test('G2. a reply NEURO drafted (draft_reply) cannot take a grant — it needs the approval code', async () => {
+test('G2. a reply NEURO drafted (draft_reply) takes the press grant (24 Oct 2026); the code path still works', async () => {
   freshMailbox();
   const r = await pa.prepareReply({ emailId: message(), body: 'Model-drafted words', origin: 'draft_reply', now: NOW });
   assert.equal(r.ok, true, r.error);
   const g = grants.mint({ actionId: r.action.actionId, version: r.action.version, payloadHash: r.action.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: {} });
-  assert.equal(g.ok, false);
-  assert.equal(g.reason, 'origin');
-  const ok = approve(r.action);
+  assert.equal(g.ok, true, g.error);
+  const r2 = await pa.prepareReply({ emailId: message(), body: 'Model-drafted words, second', origin: 'draft_reply', now: NOW });
+  const ok = approve(r2.ok ? r2.action : r.action);
   assert.equal(ok.ok, true, ok.error);
-  assert.equal(db.get('SELECT initiated_by, authority_proof FROM prepared_actions WHERE action_id = ?', [r.action.actionId]).authority_proof, 'approval_code');
+  assert.equal(db.get('SELECT initiated_by, authority_proof FROM prepared_actions WHERE action_id = ?', [(r2.ok ? r2.action : r.action).actionId]).authority_proof, 'approval_code');
 });
 
 test('G3. the weekly report sends on a grant bound to its frozen version; a re-prepared version voids the old grant', async () => {

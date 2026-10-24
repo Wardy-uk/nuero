@@ -194,16 +194,24 @@ test('5. API token, declared machines, schedulers and a fake kiosk cannot mint a
 test('6. machine A4 calendar actions stay prepare-only', async () => {
   const viaToken = await bookViaRoute({ 'x-neuro-api-token': 'tok-5678' });
   assert.equal(viaToken.status, 403);
-  // Something NEURO drafted (chat) cannot be confirmed by a grant at all.
+  // Since 24 Oct 2026 Nick's press confirms NEURO's drafts too — but only Nick's:
+  // a machine is refused the grant, and a forged grant id runs nothing.
   const p = pa.prepareCalendarCreate({ title: 'Chat-proposed meeting', start: '2026-12-01T10:00', end: '2026-12-01T10:30',
     attendees: [{ email: 'hope.goodall@nurtur.tech', name: 'Hope Goodall' }], origin: 'chat' });
   assert.equal(p.ok, true, p.error);
-  const g = await mintFor(p.action);
-  assert.equal(g.status, 403);
-  assert.equal(row(p.action.actionId).status, 'prepared');
+  const viaMachine = await call('POST', `/prepared-actions/${p.action.actionId}/intent-grant`,
+    { version: p.action.version, payloadHash: p.action.payloadHash, surface: 'neuro-web', sessionId: 'sess-abcdefgh' },
+    { ...PIN, 'x-neuro-machine-client': 'mcp-local' });
+  assert.equal(viaMachine.status, 403);
   const viaExec = await call('POST', `/prepared-actions/${p.action.actionId}/execute-direct`, { grantId: 'ig_' + '0'.repeat(32), payloadHash: p.action.payloadHash });
-  assert.equal(viaExec.status, 403);
+  assert.notEqual(viaExec.status, 200);
   assert.equal(row(p.action.actionId).status, 'prepared');
+  // Nick's press: confirmed, recorded as NEURO's draft approved by his click.
+  const g = await mintFor(p.action);
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  assert.equal((await execWith(p.action, g.body.grantId)).body.status, 'verified');
+  assert.equal(row(p.action.actionId).initiated_by, 'neuro_autonomous');
+  assert.equal(row(p.action.actionId).authority_proof, 'intent_grant');
 });
 
 test('7. a forged initiated_by / authority claim from a client is ignored', async () => {
@@ -283,12 +291,10 @@ test('11. the UI confirms a direct booking inline, never through the Actions app
   assert.match(fs.readFileSync(path.join(ui, 'components', 'PreparedActions.jsx'), 'utf8'), /approval-challenge/);
 });
 
-test('grant origins agree between server and UI', () => {
+test('every prepared action confirms on the press in the UI (no origin list to drift)', () => {
   const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'src', 'components', 'PreparedActions.jsx'), 'utf8');
-  const m = /DIRECT_ORIGINS = new Set\(\[([^\]]*)\]\)/.exec(ui);
-  assert.ok(m, 'positive control: the UI list exists');
-  const uiList = m[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean).sort();
-  assert.deepEqual(uiList, Object.keys(grants.HUMAN_ORIGINS).sort());
+  assert.doesNotMatch(ui, /DIRECT_ORIGINS/, 'no client-side origin gate');
+  assert.match(ui, /const direct = !!onSendDirect;/);
 });
 
 // ═══ 9 Oct 2026 (second pass): cancel, chat, and the retired trusted device ═══
@@ -316,7 +322,7 @@ test('7b. a 1-2-1 cancellation runs the same direct grant path, and machines can
   assert.equal(viaToken.status, 403);
 });
 
-test('6b. a meeting proposed in the ATTENDED chat window executes only after Nick presses Book; elsewhere it needs the code', async () => {
+test('6b. a meeting proposed in the ATTENDED chat window executes only after Nick presses Book; an unattended one is NEURO-initiated', async () => {
   const chatTools = require('./chat-tools');
   const ctx = { attended: true, prepared: [] };
   const before = CAL.calls.create;
@@ -337,7 +343,8 @@ test('6b. a meeting proposed in the ATTENDED chat window executes only after Nic
   const auto = db.get(`SELECT * FROM prepared_actions WHERE reason LIKE '%Background sync%' OR draft_json LIKE '%Background sync%' ORDER BY created_at DESC LIMIT 1`);
   assert.equal(auto.origin, 'chat');
   assert.equal(bg.prepared.length, 1);
-  assert.equal((await mintFor(bg.prepared[0])).status, 403, 'a grant cannot confirm an unattended proposal');
+  // Since 24 Oct 2026 Nick's press confirms it too — recorded as NEURO's draft.
+  assert.equal((await mintFor(bg.prepared[0])).status, 200);
   // The ROUTE decides attended, from the caller — never the body or the model.
   const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'chat.js'), 'utf8');
   assert.match(route, /streamChat\(convId, message, res, location \|\| null, \{ attended: !req\.apiClient \}\)/);

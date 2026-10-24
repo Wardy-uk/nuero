@@ -87,10 +87,9 @@ const TYPE_WORDS = {
 };
 
 const CALENDAR_TYPES = new Set(['create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
-// 9 Oct 2026: anything Nick started himself (or NEURO proposed on the screen
-// he was using) sends on his click — a one-use intent grant, no code. Must
-// match services/intent-grants.js HUMAN_ORIGINS (pinned by a test).
-const DIRECT_ORIGINS = new Set(['1to1-book', '1to1-move', '1to1-cancel', 'leave-clash', 'event-composer', 'composer', 'chase-button', 'weekly-risk', 'chat-attended']);
+// 24 Oct 2026 (Nick: the approval code was friction): EVERY action sends on his
+// click — a one-use intent grant bound to the exact words, recipient and version
+// on screen. Who started it is still recorded and shown (INITIATOR_WORDS).
 const INITIATOR_WORDS = {
   human_direct: 'you',
   human_assisted: 'you, from something NEURO drafted',
@@ -120,16 +119,10 @@ const LEGACY_WORDS = {
 /** Why approval is not possible right now, or null. Shared with the Inbox and Weekly Risk screens. */
 export function gateFor(data, a) {
   if (!data) return 'Checking whether approval is possible…';
-  // What Nick started needs no code — only the switch for its kind.
-  if (DIRECT_ORIGINS.has(a.origin) && a.executes) {
-    if (CALENDAR_TYPES.has(a.actionType)) return data.sending?.calendar ? null : 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). Turn it on to send this.';
-    return data.sending?.enabled ? null : 'Sending is switched off (Settings → Switches → "Send approved emails"). Turn it on to send this.';
-  }
-  if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
-  if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. Set one in Settings → Approval code.';
-  if (a.executes && CALENDAR_TYPES.has(a.actionType) && !data.sending?.calendar) return 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). You can read or reject this; approving is off until that switch is on.';
-  if (a.executes && !CALENDAR_TYPES.has(a.actionType) && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send approved emails"). You can read, edit or reject this; approving is off until sending is on.';
-  return null;
+  // The press is the decision for every action; only the switch for its kind gates it.
+  if (!a.executes) return null;
+  if (CALENDAR_TYPES.has(a.actionType)) return data.sending?.calendar ? null : 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). Turn it on to send this.';
+  return data.sending?.enabled ? null : 'Sending is switched off (Settings → Switches → "Send approved emails"). Turn it on to send this.';
 }
 
 async function postVerb(a, verb, body) {
@@ -183,7 +176,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
   const editable = type !== 'send_weekly_risk_report' && type !== 'send_soap_report' && !calendar;
   const d = action.draft || {};
   const canEditFailed = editable && action.status === 'failed' && action.retrySafe === true;
-  const direct = !!onSendDirect && sends && DIRECT_ORIGINS.has(action.origin);
+  const direct = !!onSendDirect;
   const who = toAll.length + ccAll.length > 1 ? `${toAll.length + ccAll.length} people` : (to.email || 'them');
 
   const confirm = async () => {
@@ -315,9 +308,8 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
           ) : (
             <>
               {open && direct && (
-                // 9 Oct 2026: Nick started this himself (Book / Move / the
-                // composer), so the press is the decision — one-use grant, no code.
-                <button className="ap-btn ap-btn-send" disabled={busy || !!gate} onClick={onSendDirect}>Send</button>
+                // The press is the decision — one-use grant, no code (24 Oct 2026).
+                <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !!gate} onClick={onSendDirect}>{sends ? 'Send' : 'Approve'}</button>
               )}
               {open && !direct && (
                 <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !!gate} onClick={() => setConfirming(true)}>
@@ -438,7 +430,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
       {blurb && (
         <p className="ap-group-blurb">
           Every email NEURO can send as you: chases, replies you wrote in the Inbox, agenda requests and the weekly risk report.
-          What NEURO drafted is sent only when you approve its exact words and recipients with your approval code; what you started yourself sends on your click. Either way it is confirmed in Sent Items.
+          Each one sends on your click, exactly as shown — the words, the recipients and the version you see. It is then confirmed in Sent Items.
           Sending never marks anything done.
         </p>
       )}

@@ -181,7 +181,7 @@ router.post('/:id/approve', async (req, res) => {
   }
 });
 
-// POST /api/prepared-actions/:id/intent-grant — Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). Only for actions a human button prepared; refuses machine clients (API token, MCP, X-Neuro-Machine-Client). Body: { version, payloadHash, surface, sessionId }
+// POST /api/prepared-actions/:id/intent-grant — Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). For any prepared action — NEURO's drafts included since 24 Oct 2026; refuses machine clients (API token, MCP, X-Neuro-Machine-Client). Body: { version, payloadHash, surface, sessionId }
 router.post('/:id/intent-grant', (req, res) => {
   if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
   try {
@@ -206,6 +206,7 @@ router.post('/:id/execute-direct', async (req, res) => {
       approver: 'nick (pressed it, signed in to NEURO)',
     });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, needsConfirm: !!r.needsConfirm, executed: false });
+    if (!r.executable) return res.json({ ok: true, already: !!r.already, executed: false, notice: r.notice, action: r.action });
     // Same single-claim execution as an Actions approval: a double click or the
     // reconciler reaching it first all end at one attempt.
     const x = await executor().execute(req.params.id);

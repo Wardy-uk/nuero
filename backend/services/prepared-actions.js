@@ -439,7 +439,7 @@ function approve(actionId, {
     // (services/intent-grants.js). The grant is burned, checked and recorded
     // as proof INSIDE the approval transaction below — a refused grant stays
     // spent, and nothing half-lands.
-    if (!grants.HUMAN_ORIGINS[cur.origin]) return { ok: false, code: 403, error: 'NEURO drafted this — it needs approving in Actions.' };
+    // Since 24 Oct 2026 this is any origin: Nick's press is the approval.
   } else {
     // 9 Oct 2026: a trusted browser is no longer a proof — the code or a grant.
     // Burns the challenge whatever the outcome.

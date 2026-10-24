@@ -725,7 +725,7 @@ test('36/37/38. evaluators stay shadow; meeting-prep parity and the executor/rec
 
 // ═══ 9 Oct 2026: the Chase button's draft sends on Nick's click ═════════════
 
-test('G7. a Chase-button draft sends on a one-use grant (human_assisted); a risk-prepared chase still needs the code', async () => {
+test('G7. a Chase-button draft sends on a one-use grant (human_assisted); a risk-prepared chase takes a grant too and is recorded as NEURO-initiated', async () => {
   const grants = require('./intent-grants');
   const mint = (x) => grants.mint({ actionId: x.actionId, version: x.version, payloadHash: x.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: {} });
   const fx = owed({ text: 'Send the grant-flow figures' });
@@ -740,7 +740,7 @@ test('G7. a Chase-button draft sends on a one-use grant (human_assisted); a risk
   const row = db.get('SELECT initiated_by, authority_proof FROM prepared_actions WHERE action_id = ?', [a.actionId]);
   assert.equal(row.initiated_by, 'human_assisted');
   assert.equal(row.authority_proof, 'intent_grant');
-  // NEURO's own chase (origin risk) cannot take a grant.
+  // NEURO's own chase (origin risk): since 24 Oct 2026 Nick's press confirms it too.
   const fx2 = owed({ text: 'Risk-path grant check' });
   const finding = { findingId: `risk:${fx2.commitmentId}`, status: 'active', level: 'high', confidence: 0.9, commitmentId: fx2.commitmentId, episode: 1, why: 'due', summary: 's', triggers: [] };
   db.run(`INSERT INTO commitment_risk_findings (finding_id, commitment_id, episode, status, level, triggers_json, summary, why, evidence_json, unavailable_json, checked_json, confidence, novelty, first_created_at, updated_at)
@@ -749,6 +749,12 @@ test('G7. a Chase-button draft sends on a one-use grant (human_assisted); a risk
   const risk = pa.forCommitment(fx2.commitmentId)[0];
   assert.equal(risk.origin, 'risk', 'positive control: a risk-prepared chase exists');
   const rg = mint(risk);
-  assert.equal(rg.ok, false);
-  assert.equal(rg.reason, 'origin');
+  assert.equal(rg.ok, true, rg.error);
+  const rr = pa.approve(risk.actionId, { approver: 'nick', payloadHash: risk.payloadHash, intentGrantId: rg.grantId, sending: () => true });
+  assert.equal(rr.ok, true, rr.error);
+  const rrow = db.get('SELECT initiated_by, authority_proof FROM prepared_actions WHERE action_id = ?', [risk.actionId]);
+  assert.equal(rrow.initiated_by, 'neuro_autonomous');
+  assert.equal(rrow.authority_proof, 'intent_grant');
+  // A machine is still refused a grant.
+  assert.equal(grants.mint({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: { machine: 'mcp-local' } }).ok, false);
 });
