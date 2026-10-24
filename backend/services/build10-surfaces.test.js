@@ -192,40 +192,20 @@ const IOS = findIOSCheckout();
 const swift = (rel) => fs.readFileSync(path.join(IOS, rel), 'utf8');
 const swiftCode = (rel) => swift(rel).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
-test('22+23. iOS reads the canonical screens, and its governed queue stays read-only', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {
+test('22+23. iOS reads the canonical screens and renders its governed queue', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {
   const menu = swiftCode('NeuroKit/Sources/NeuroKit/Menu.swift');
   for (const p of ['/api/canonical/commitments', '/api/canonical/sources', '/api/canonical/findings', '/api/canonical/life']) {
     assert.ok(menu.includes(`"${p}"`), `iOS menu lacks ${p}`);
   }
   assert.doesNotMatch(menu, /"\/api\/focus/, 'iOS menu still reads /api/focus');
-  // The governed queue on iOS is read-only (Build 9 rule; D-010, 23 Oct 2026).
-  // STRENGTHENED (Brief 002): it used to look at ActionScreens.swift alone, so
-  // when the queue read moved into NeuroKit and an approve-with-code path was
-  // added in a different file, the guard could only fail on the positive match
-  // and could never see the approve call. Now: the governed queue IS read and
-  // rendered, and NO non-test Swift source anywhere calls the approve route or
-  // the approval challenge.
+  // The governed queue on iOS: since 24 Oct 2026 the phone DECIDES (Nick: "do
+  // it there and then"), carrying the desktop's proofs. The full rule over every
+  // Swift source is ios-governed-queue.test.js; here, the queue is read and
+  // rendered on the phone.
   const kitQueue = swiftCode('NeuroKit/Sources/NeuroKit/PreparedActions.swift');
   assert.match(kitQueue, /"\/api\/prepared-actions/, 'iOS reads the governed queue');
   const actions = swiftCode('Neuro/Features/ActionScreens.swift');
   assert.match(actions, /GovernedQueueSection\(/, 'Actions renders the governed queue');
-  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) return ['.git', 'Tests', 'build', 'DerivedData'].includes(e.name) ? [] : walk(p);
-    return e.name.endsWith('.swift') ? [p] : [];
-  });
-  const sources = walk(IOS);
-  assert.ok(sources.length > 50, 'positive control: the walk found the app sources');
-  for (const f of sources) {
-    const src = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-    const rel = path.relative(IOS, f);
-    assert.doesNotMatch(src, /prepared-actions\/[^"]*\/approve\b/, `${rel} can approve a governed draft`);
-    assert.doesNotMatch(src, /\/approval-challenge/, `${rel} asks for an approval challenge`);
-  }
-  // The older queue: Brief 005 (D-012) supersedes Build 9 / D-010 — the phone
-  // approves NO queued item. Full rule: ios-governed-queue.test.js.
-  assert.doesNotMatch(actions, /phoneMayApprove/, 'older-queue approval is gone from the phone');
-  assert.match(actions, /static let deskHandoff/, 'positive control: the hand-off replaces it');
 });
 
 test('25 (iOS). no Swift code calls /api/focus; SAiM iOS has no Today/Focus and no task editor', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {

@@ -3,15 +3,15 @@
 /**
  * Brief 005 rework — the Tasks "Spotted" exception, enforced on the SERVER.
  *
- * The phone may add or dismiss a capture_todo suggestion and decide nothing
- * else on the older queue (D-012 clarification). Two server pieces:
+ * The suggestions intake stays capture_todo-only. Since 24 Oct 2026 (Nick:
+ * "do it there and then") the phone ALSO decides on the generic queue, so the
+ * old D-012 refusal is gone and pinned as gone. Two server pieces:
  *   1. THE BOUNDARY — `/api/todos/suggestions/:actionId/{add,dismiss}` and
  *      `/suggestions/batch` look up each action's STORED type and refuse anything
  *      that is not a pending capture_todo, before writing. No header, PIN or body
  *      field widens it.
- *   2. DEFENCE IN DEPTH — the generic `/api/actions` decide routes refuse a
- *      request that identifies as an iOS app. Downgrade-only: a client that
- *      hides its identity is the desktop PIN holder it already was.
+ *   2. The generic `/api/actions` decide routes answer an iOS app exactly as
+ *      they answer the desktop (the executors' own proofs still apply).
  *
  * Real HTTP through real SQLite, with `executeAction` SPIED so a refusal can be
  * proven to have reached no executor at all (no email, calendar, Microsoft).
@@ -152,27 +152,20 @@ test('NEGATIVE: no approval-code or switch state is touched by the intake', asyn
   assert.equal(db.getState('approval_code'), 'scrypt$sentinel');
 });
 
-// ── 3. the generic queue refuses a phone; the desktop still works ───────────
+// ── 3. the generic queue answers a phone like the desktop (Nick, 24 Oct 2026) ─
 
-test('NEGATIVE: the generic decide routes refuse a request identifying as an iOS app', async () => {
-  const id = other('schedule_focus_block');
-  const cap = capture('Nick phone generic');
-  const before = executed.length;
-  for (const headers of [PHONE, { 'X-Neuro-Client': 'saim-ios' }, { 'User-Agent': 'Saim/1 CFNetwork/1' }, { 'User-Agent': 'Neuro/1 CFNetwork/1' }]) {
-    for (const [method, url, body] of [
-      ['POST', `/api/actions/${id}/approve`], ['POST', `/api/actions/${cap}/approve`],
-      ['POST', `/api/actions/${id}/reject`], ['POST', '/api/actions/batch', { ids: [id], verb: 'approve' }],
-      ['POST', '/api/actions/bulk-reject', { type: 'schedule_focus_block' }],
-      ['POST', `/api/actions/${id}/snooze`, { minutes: 60 }], ['DELETE', `/api/actions/${id}/snooze`],
-    ]) {
-      const r = await req(method, url, body, headers);
-      assert.equal(r.status, 403, `${method} ${url} ${JSON.stringify(headers)} → ${r.status}`);
-      assert.equal(r.json.phone, true);
-    }
+test('POSITIVE: a request identifying as an iOS app decides on the generic queue', async () => {
+  for (const headers of [PHONE, { 'X-Neuro-Client': 'saim-ios' }, { 'User-Agent': 'Neuro/1 CFNetwork/1' }]) {
+    const o = other('schedule_focus_block');
+    const r = await req('POST', `/api/actions/${o}/reject`, undefined, headers);
+    assert.equal(r.status, 200, `${JSON.stringify(headers)} → ${r.status} ${JSON.stringify(r.json)}`);
+    assert.equal(db.getSaimAction(o).status, 'rejected');
   }
-  assert.equal(db.getSaimAction(id).status, 'pending');
-  assert.equal(db.getSaimAction(cap).status, 'pending');
-  assert.equal(executed.length, before);
+  const cap = capture('Nick phone generic approve');
+  const a = await req('POST', `/api/actions/${cap}/approve`, undefined, PHONE);
+  assert.equal(a.status, 200, JSON.stringify(a.json));
+  const s = other('schedule_focus_block');
+  assert.equal((await req('POST', `/api/actions/${s}/snooze`, { minutes: 60 }, PHONE)).status, 200);
 });
 
 test('POSITIVE: the authorised desktop paths still work (no phone identity)', async () => {

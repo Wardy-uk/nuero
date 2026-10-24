@@ -218,31 +218,28 @@ test('no SAiM shell reaches the approval routes (statement-only, every shell)', 
 const IOS = path.resolve(ROOT, '..', 'nuero-ios');
 const iosRead = (rel) => fs.readFileSync(path.join(IOS, rel), 'utf8');
 
-test('iOS reads `pending` from /api/actions and decides nothing on the phone (Brief 005, D-012)', (t) => {
+test('iOS reads `pending` from /api/actions and decides on the phone (Nick, 24 Oct 2026)', (t) => {
   if (!fs.existsSync(path.join(IOS, 'NeuroKit'))) { t.skip('no nuero-ios checkout beside this repo'); return; }
   const model = iosRead('NeuroKit/Sources/NeuroKit/ActionPresentation.swift');
   assert.match(model, /public let pending: \[PendingAction\]\?/);
   const screen = iosRead('Neuro/Features/ActionScreens.swift');
-  // D-012 supersedes D-010: the phone approves NO queued item, internal or
-  // outbound. The full rule over every Swift source is ios-governed-queue.test.js.
-  assert.doesNotMatch(screen, /phoneMayApprove|resolve\(action|bulk-reject|\/snooze"/);
-  assert.match(screen, /NEURO on the desktop — Actions/, 'the hand-off is said instead');
-  // The queue read moved into NeuroKit (`GovernedQueueSection` over
-  // PreparedActions.swift) in the iOS PWA-mirror commit; the positive control
-  // follows it rather than going green by absence (Brief 002).
+  // Brief 005 (D-012) is reversed: a press on the phone does it there and then,
+  // with the same proofs as the desktop (ios-governed-queue.test.js).
+  assert.doesNotMatch(screen, /NEURO on the desktop — Actions/, 'no desktop hand-off');
+  assert.match(screen, /\/api\/actions\//, 'the older queue is answered from the phone');
   assert.match(screen, /GovernedQueueSection\(/, 'the governed queue is rendered on the phone');
   assert.match(iosRead('NeuroKit/Sources/NeuroKit/PreparedActions.swift'), /"\/api\/prepared-actions\?limit=/, 'the governed queue is read on the phone');
 });
 
-test('iOS has no route to approve a governed action (read-only by construction)', (t) => {
+test('iOS approves a governed action only through IntentGrant (challenge + code)', (t) => {
   if (!fs.existsSync(path.join(IOS, 'NeuroKit'))) { t.skip('no nuero-ios checkout beside this repo'); return; }
+  // Since 24 Oct 2026 the phone decides (Nick). The queue readers themselves
+  // still carry no approve path: approval goes through IntentGrant, which
+  // ios-governed-queue.test.js pins to a fresh challenge + the approval code.
   const actions = iosRead('NeuroKit/Sources/NeuroKit/Actions.swift');
   const prepared = iosRead('NeuroKit/Sources/NeuroKit/PreparedActions.swift');
-  assert.doesNotMatch(actions + prepared, /prepared-actions\/[^"]*\/(approve|approval-challenge|edit)/);
-  // Brief 005 (D-012): the legacy approve/reject verbs are gone too.
-  assert.ok(!actions.includes('/approve"'), 'no legacy approve path');
-  assert.ok(!/case approveAction|case rejectAction/.test(actions), 'no queue verbs in NeuroAction');
-  // Positive control: the file still declares actions (the session verbs).
+  assert.doesNotMatch(actions + prepared, /prepared-actions\/[^"]*\/(approve|approval-challenge)/);
+  assert.match(iosRead('NeuroKit/Sources/NeuroKit/IntentGrant.swift'), /func approveWithCode/);
   assert.ok(actions.includes('"/api/session/start"'), 'positive control: Actions.swift read');
 });
 
