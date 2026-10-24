@@ -424,11 +424,11 @@ function Latest({ latest, staleAfterMs }) {
   );
 }
 
-function Extreme({ label, x, dayFmt }) {
+function Extreme({ label, x, dayFmt, field = 'c', unit = '°C' }) {
   return (
     <div className="wx-ext-cell">
       <span className="wx-tile-label">{label}</span>
-      <span className="wx-tile-value">{x ? `${num(x.c, 1)}°C` : '—'}</span>
+      <span className="wx-tile-value">{x ? `${num(x[field], 1)}${unit}` : '—'}</span>
       <span className="wx-tile-sub">{x ? (dayFmt
         ? fmt({ day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(x.at))
         : fmt({ hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(x.at))) : 'no reading'}</span>
@@ -436,7 +436,7 @@ function Extreme({ label, x, dayFmt }) {
   );
 }
 
-/** Today's and all-time temperature range. Reset starts the all-time record again; nothing is deleted. */
+/** Today’s and all-time temperature and pressure range. Reset starts the all-time record again; nothing is deleted. */
 export function Extremes({ extremes, onReset }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -449,14 +449,16 @@ export function Extremes({ extremes, onReset }) {
     try { await onReset?.(undo); setConfirm(false); } catch (e) { setErr(e.message || 'failed'); } finally { setBusy(false); }
   };
   return (
-    <section className="wx-extremes" aria-label="Temperature range" data-testid="weather-extremes">
+    <section className="wx-extremes" aria-label="Temperature and pressure range" data-testid="weather-extremes">
       <div className="wx-ext-group">
         <h2>Today</h2>
-        <div className="wx-ext-row"><Extreme label="Min" x={today.min} /><Extreme label="Max" x={today.max} /></div>
+        <div className="wx-ext-row"><Extreme label="Min temp" x={today.min} /><Extreme label="Max temp" x={today.max} /></div>
+        {today.pressure && <div className="wx-ext-row"><Extreme label="Min pressure" x={today.pressure.min} field="hpa" unit=" hPa" /><Extreme label="Max pressure" x={today.pressure.max} field="hpa" unit=" hPa" /></div>}
       </div>
       <div className="wx-ext-group">
         <h2>All time{since ? <span className="wx-ext-since"> · since {fmt({ day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(since))}{allTime.sinceMs ? ' (reset)' : ''}</span> : null}</h2>
-        <div className="wx-ext-row"><Extreme label="Min" x={allTime.min} dayFmt /><Extreme label="Max" x={allTime.max} dayFmt /></div>
+        <div className="wx-ext-row"><Extreme label="Min temp" x={allTime.min} dayFmt /><Extreme label="Max temp" x={allTime.max} dayFmt /></div>
+        {allTime.pressure && <div className="wx-ext-row"><Extreme label="Min pressure" x={allTime.pressure.min} field="hpa" unit=" hPa" dayFmt /><Extreme label="Max pressure" x={allTime.pressure.max} field="hpa" unit=" hPa" dayFmt /></div>}
         {onReset && (
           <div className="wx-ext-actions">
             {confirm ? (

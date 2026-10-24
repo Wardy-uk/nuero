@@ -233,6 +233,7 @@
 .wx-ext-group h2 { font-size: 0.85rem; margin: 0 0 6px; color: var(--text-secondary); font-weight: 600; }
 .wx-ext-since { font-weight: 400; color: var(--text-muted); }
 .wx-ext-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wx-ext-row + .wx-ext-row { margin-top: 8px; }
 .wx-ext-cell { display: flex; flex-direction: column; gap: 2px; }
 .wx-ext-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; font-size: 0.8rem; color: var(--text-secondary); }
 .wx-ext-err { color: var(--danger, #e5534b); }

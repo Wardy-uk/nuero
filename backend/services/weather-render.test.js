@@ -197,12 +197,12 @@ test('⚠ pressure forecast is drawn on the station’s level, labelled as shift
 test('today and all-time min/max render with their times; all-time names where it starts and offers Reset (and Undo after one)', async () => {
   const m = await load();
   const extremes = {
-    today: { fromMs: NOW - 19 * 3600000, min: { c: 6.1, at: NOW - 12 * 3600000 }, max: { c: 14.3, at: NOW - 3 * 3600000 } },
-    allTime: { sinceMs: null, firstReadingAt: Date.parse('2026-10-06T00:00:00Z'), min: { c: -4.2, at: Date.parse('2026-10-06T05:00:00Z') }, max: { c: 27.9, at: Date.parse('2026-10-06T14:00:00Z') }, canUndo: false },
+    today: { fromMs: NOW - 19 * 3600000, min: { c: 6.1, at: NOW - 12 * 3600000 }, max: { c: 14.3, at: NOW - 3 * 3600000 }, pressure: { min: { hpa: 1002.2, at: NOW - 10 * 3600000 }, max: { hpa: 1019.8, at: NOW - 2 * 3600000 } } },
+    allTime: { sinceMs: null, firstReadingAt: Date.parse('2026-10-06T00:00:00Z'), min: { c: -4.2, at: Date.parse('2026-10-06T05:00:00Z') }, max: { c: 27.9, at: Date.parse('2026-10-06T14:00:00Z') }, pressure: { min: { hpa: 978.6, at: Date.parse('2026-10-08T05:00:00Z') }, max: { hpa: 1031.4, at: Date.parse('2026-10-07T05:00:00Z') } }, canUndo: false },
   };
   const html = render(m, { data: payload({ extremes }), onResetExtremes: async () => {} });
   assert.match(html, /data-testid="weather-extremes"/);
-  for (const v of ['6.1°C', '14.3°C', '-4.2°C', '27.9°C']) assert.ok(html.includes(v), v);
+  for (const v of ['6.1°C', '14.3°C', '-4.2°C', '27.9°C', '1002.2 hPa', '1019.8 hPa', '978.6 hPa', '1031.4 hPa']) assert.ok(html.replace(/<!-- -->/g, '').includes(v), v);
   assert.match(html.replace(/<!-- -->/g, ''), /since 6 Oct 2026/);
   assert.match(html, /Reset all-time/);
   assert.doesNotMatch(html, /Undo reset/);

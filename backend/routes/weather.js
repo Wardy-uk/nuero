@@ -132,7 +132,7 @@ router.get('/overview', (req, res) => {
   }
 });
 
-// POST /api/weather/extremes/reset — start the station's all-time minimum/maximum temperature record again from now, or undo the last reset. No reading is deleted. Keywords: weather min max temperature record reset. Body: { node, undo }
+// POST /api/weather/extremes/reset — start the station's all-time minimum/maximum temperature and pressure record again from now, or undo the last reset. No reading is deleted. Keywords: weather min max temperature pressure record reset. Body: { node, undo }
 router.post('/extremes/reset', (req, res) => {
   try {
     const { node, undo } = req.body || {};

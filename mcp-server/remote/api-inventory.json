@@ -16651,7 +16651,7 @@
     "domain": "weather",
     "source": "routes/weather.js",
     "line": 136,
-    "description": "POST /api/weather/extremes/reset. start the station's all-time minimum/maximum temperature record again from now, or undo the last reset. No reading is deleted. Keywords: weather min max temperature record reset. Body: { node, undo }",
+    "description": "POST /api/weather/extremes/reset. start the station's all-time minimum/maximum temperature and pressure record again from now, or undo the last reset. No reading is deleted. Keywords: weather min max temperature pressure record reset. Body: { node, undo }",
     "params": [],
     "query": [],
     "body": [

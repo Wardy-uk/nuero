@@ -343,20 +343,25 @@ function _sinceMap() {
   try { return JSON.parse(_db().getState(EXTREMES_KEY) || '{}') || {}; } catch { return {}; }
 }
 
-/** The coldest and warmest reading in a window, each with when it happened. */
-function _minMax(db, nodeId, fromMs, toMs) {
+// Column → the key its value is returned under. A closed list: the column name
+// is interpolated into SQL, so nothing outside it may reach the query.
+const EXTREME_COLUMNS = { temperature_c: ['c', 1], pressure_hpa: ['hpa', 1] };
+
+/** The lowest and highest reading of one column in a window, each with when it happened. */
+function _minMax(db, nodeId, fromMs, toMs, col = 'temperature_c') {
+  const [key, dp] = EXTREME_COLUMNS[col];
   const q = (dir) => db.get(
-    `SELECT temperature_c AS c, observed_at AS t FROM weather_observations
-      WHERE node_id = ? AND observed_at >= ? AND observed_at <= ?
-      ORDER BY temperature_c ${dir}, observed_at DESC LIMIT 1`, [nodeId, fromMs, toMs]);
+    `SELECT ${col} AS v, observed_at AS t FROM weather_observations
+      WHERE node_id = ? AND observed_at >= ? AND observed_at <= ? AND ${col} IS NOT NULL
+      ORDER BY ${col} ${dir}, observed_at DESC LIMIT 1`, [nodeId, fromMs, toMs]);
   const lo = q('ASC'); const hi = q('DESC');
-  return { min: lo ? { c: round(lo.c, 1), at: lo.t } : null, max: hi ? { c: round(hi.c, 1), at: hi.t } : null };
+  return { min: lo ? { [key]: round(lo.v, dp), at: lo.t } : null, max: hi ? { [key]: round(hi.v, dp), at: hi.t } : null };
 }
 
-function _pick(a, b, lower) {
+function _pick(a, b, lower, key = 'c') {
   if (!a) return b; if (!b) return a;
-  if (a.c === b.c) return a.at >= b.at ? a : b; // a tie names the most recent
-  return (lower ? a.c < b.c : a.c > b.c) ? a : b;
+  if (a[key] === b[key]) return a.at >= b.at ? a : b; // a tie names the most recent
+  return (lower ? a[key] < b[key] : a[key] > b[key]) ? a : b;
 }
 
 /**
@@ -373,23 +378,32 @@ function extremes(nodeId, nowMs = Date.now()) {
   const entry = _sinceMap()[nodeId] || null;
   const sinceMs = entry && Number.isFinite(entry.sinceMs) ? entry.sinceMs : null;
   const dayStart = londonDayStart(nowMs);
-  const today = _minMax(db, nodeId, Math.max(dayStart, sinceMs ?? 0), nowMs);
+  const todayFrom = Math.max(dayStart, sinceMs ?? 0);
+  const today = _minMax(db, nodeId, todayFrom, nowMs);
+  const todayP = _minMax(db, nodeId, todayFrom, nowMs, 'pressure_hpa');
 
   const key = `${nodeId}|${sinceMs ?? 0}`;
   let c = _allTimeCache.get(key);
   if (!c || nowMs - c.at > EXTREMES_CACHE_MS) {
-    c = { at: nowMs, ..._minMax(db, nodeId, sinceMs ?? 0, nowMs) };
+    c = { at: nowMs, ..._minMax(db, nodeId, sinceMs ?? 0, nowMs), pressure: _minMax(db, nodeId, sinceMs ?? 0, nowMs, 'pressure_hpa') };
     _allTimeCache.set(key, c);
   }
   const fresh = _minMax(db, nodeId, c.at, nowMs);
+  const freshP = _minMax(db, nodeId, c.at, nowMs, 'pressure_hpa');
   const first = db.get('SELECT MIN(observed_at) AS t FROM weather_observations WHERE node_id = ? AND observed_at >= ?', [nodeId, sinceMs ?? 0]);
+  // Temperature keeps its original top-level min/max (older clients read
+  // them); pressure rides beside it under the same window and the same reset.
   return {
-    today: { fromMs: dayStart, ...today },
+    today: { fromMs: dayStart, ...today, pressure: todayP },
     allTime: {
       sinceMs,
       firstReadingAt: first?.t ?? null,
       min: _pick(c.min, fresh.min, true),
       max: _pick(c.max, fresh.max, false),
+      pressure: {
+        min: _pick(c.pressure.min, freshP.min, true, 'hpa'),
+        max: _pick(c.pressure.max, freshP.max, false, 'hpa'),
+      },
       canUndo: !!entry && entry.previousSinceMs !== undefined,
     },
   };
