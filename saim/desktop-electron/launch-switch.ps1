@@ -59,6 +59,20 @@ function Get-SaimShortcuts {
   }
 }
 
+# Windows PowerShell 5 wraps a piped array as {"value":[...],"Count":n} when it is
+# serialised, and @(ConvertFrom-Json ...) of an array is ONE element (the array).
+# Read either shape, and always write a plain array, or a second -Disable makes
+# the manifest unreadable to -Enable and the shortcuts cannot be put back.
+function Read-Manifest {
+  if (-not (Test-Path $manifest)) { return @() }
+  $raw = Get-Content -Raw $manifest | ConvertFrom-Json
+  if ($null -ne $raw.value -and $null -eq $raw.from) { $raw = $raw.value }
+  return @($raw | ForEach-Object { $_ } | Where-Object { $_.from -and $_.stored })
+}
+function Write-Manifest($items) {
+  ConvertTo-Json -InputObject @($items) -Depth 3 | Set-Content -Path $manifest -Encoding UTF8
+}
+
 function Get-RunningWindow {
   Get-CimInstance Win32_Process -Filter "Name='electron.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -and $_.CommandLine -like "*$here*" }
@@ -67,7 +81,7 @@ function Get-RunningWindow {
 if ($Enable) {
   if (Test-Path $marker) { Remove-Item $marker -Force; Write-Host "Removed $marker" }
   if (Test-Path $manifest) {
-    $items = @(Get-Content -Raw $manifest | ConvertFrom-Json)
+    $items = Read-Manifest
     foreach ($i in $items) {
       if (Test-Path $i.stored) {
         $dir = Split-Path $i.from -Parent
@@ -90,15 +104,14 @@ if ($Disable) {
   New-Item -ItemType Directory -Force -Path $retiredDir | Out-Null
   Set-Content -Path $marker -Value "Retired $(Get-Date -Format o) by launch-switch.ps1. Restore: launch-switch.ps1 -Enable" -Encoding UTF8
   Write-Host "Wrote $marker"
-  $moved = @()
-  if (Test-Path $manifest) { $moved = @(Get-Content -Raw $manifest | ConvertFrom-Json) }
+  $moved = @(Read-Manifest)
   foreach ($f in @(Get-SaimShortcuts)) {
     $stored = Join-Path $retiredDir ("{0}-{1}" -f ([guid]::NewGuid().ToString('N').Substring(0, 8)), (Split-Path $f -Leaf))
     Move-Item -Path $f -Destination $stored
     $moved += [pscustomobject]@{ from = $f; stored = $stored }
     Write-Host "Moved $f -> $stored"
   }
-  $moved | ConvertTo-Json -Depth 3 | Set-Content -Path $manifest -Encoding UTF8
+  Write-Manifest $moved
   if ($StopRunning) {
     foreach ($p in @(Get-RunningWindow)) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host "Closed SAiM window process $($p.ProcessId)" }
   }
@@ -110,7 +123,7 @@ if ($Disable) {
 [pscustomobject]@{
   retiredMarker      = (Test-Path $marker)
   shortcutsInPlace   = @(Get-SaimShortcuts)
-  shortcutsRetired   = $(if (Test-Path $manifest) { @(Get-Content -Raw $manifest | ConvertFrom-Json).from } else { @() })
+  shortcutsRetired   = @(Read-Manifest | ForEach-Object { $_.from })
   windowRunning      = [bool](Get-RunningWindow)
   agentWatchLockMode = Get-AgentWatchLockMode
 } | Format-List
