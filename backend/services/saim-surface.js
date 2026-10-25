@@ -1395,7 +1395,11 @@ function silenceFor(payload) {
     };
   }
   // ⚠ Held work is COUNTED, never read as an all-clear (Brief 002, D-008).
-  const held = heldWork(p.dropped, { onDuty: !!(p.context && p.context.duty && p.context.duty.onDuty === true) });
+  //   The canonical count (`situation.workHeld`) when the payload carries it, so this
+  //   line and the scene beside it say ONE number (25 Oct 2026); else the gate's own.
+  const sw = p.situation && p.situation.workHeld;
+  const held = sw && sw.count && sw.say ? { count: sw.count, urgent: sw.urgent || 0, say: sw.say }
+    : heldWork(p.dropped, { onDuty: !!(p.context && p.context.duty && p.context.duty.onDuty === true) });
   if (p.quiet === true) {
     const summary = typeof p.context?.summary === 'string' && p.context.summary.trim()
       ? p.context.summary.trim()

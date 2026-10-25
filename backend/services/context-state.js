@@ -550,7 +550,11 @@ function resolveContext(inputs = {}, now = new Date()) {
     const reason = (known(src.workingDay) && src.workingDay.reason) || null;
     summary = reason === 'holiday' ? "It's a bank holiday." : reason === 'weekend' ? "It's the weekend." : "It's not a working day.";
     quiet = true;
-    reasons.push(`Today is not a working day${reason ? ` (${reason})` : ''}, and nothing urgent is live.`);
+    // ⚠ This branch runs BEFORE the attention gate and cannot see held work, so it
+    //   states only what it checked (25 Oct 2026): no breach and no unseen escalation
+    //   (the firefighting test above). "Nothing urgent is live" sat beside "3 of them
+    //   urgent" held back — both true, and read as a contradiction.
+    reasons.push(`Today is not a working day${reason ? ` (${reason})` : ''}. Nothing is breaching and no escalation is waiting, so work waits for the next working day.`);
     derivedFrom.push('workingDay');
   } else if (away) {
     activity = ACTIVITY.AWAY;

@@ -33,6 +33,7 @@ const CONTRACT = require('../../shared/attention-contracts.cjs').NEURO_CANDIDATE
 const MF_KEY = (ev) => require('./meeting-finish').keyFor(ev);
 const NH = require('./neuro-handoff');
 const JK = require('../../shared/jira-key.cjs');
+const { itemTypeLabel } = require('../../shared/item-labels.cjs');
 const ND = require('./neuro-display');
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -335,7 +336,8 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
 
   // What the gate held back, with its reason.
   for (const d of p.dropped || []) {
-    candidates.push({ kind: 'held', id: `held:${d.id || d.type}`, title: d.title || d.type || 'Item', facts: { type: d.type || null, why: d.why || null, urgency: d.urgency || null, heldFor: d.heldFor || null },
+    // The gate's drop carries no title; the label names the KIND, never the raw type (25 Oct 2026).
+    candidates.push({ kind: 'held', id: `held:${d.id || d.type}`, title: d.title || itemTypeLabel(d.type, d.id), facts: { type: d.type || null, why: d.why || null, urgency: d.urgency || null, heldFor: d.heldFor || null },
       sphere: d.domain ? sphere(sphereOfDomain(d.domain), 'stated', 'the item states its domain') : WORK_TYPES.has(d.type) ? sphere('work', 'item-type', `a ${d.type} item is work by source`) : sphere(null),
       actions: [], provenance: { source: 'attention.gate', readAt }, known: true });
   }
@@ -403,6 +405,11 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
       commitmentsReadable: Boolean(p.situation && (p.situation.sections || p.situation)),
       activity: (p.context && p.context.activity) || null,
       duty: p.context && p.context.duty ? { onDuty: p.context.duty.onDuty ?? null } : null,
+      // The ONE user-facing held-work count (canonical-read `situation.workHeld`: the gate's holds
+      // plus held diary events, commitments and reminders). SAiM's lead says this number, so one
+      // screen never shows two (25 Oct 2026). Absent = a payload that never went through composeNow.
+      workHeld: p.situation && p.situation.workHeld && Number.isFinite(p.situation.workHeld.count)
+        ? { count: p.situation.workHeld.count, urgent: p.situation.workHeld.urgent || 0, say: p.situation.workHeld.say || null } : null,
       desk: p.work && typeof p.work.atDesk === 'boolean' && p.work.deskKnown !== false ? { atDesk: p.work.atDesk } : null,
       place: (p.life && p.life.place) || null,
       workingWindow: facts.workingWindow || null,

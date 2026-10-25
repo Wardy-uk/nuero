@@ -31,7 +31,7 @@ const D = require('../../shared/display-text.cjs');
 const { heldWork } = require('../../shared/held-work.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-23.1';
+const POLICY_VERSION = '2026-10-25.1';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -389,8 +389,12 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   //   Work the duty or life read held back (gate `heldFor: 'off'`) is counted on
   //   the lead itself, in the same words every NEURO surface uses. The rule and
   //   its id are unchanged; only the sentence carries the count.
+  //   ⚠ THE COUNT IS NEURO'S CANONICAL ONE when it is supplied (`constraints.workHeld`
+  //   = situation.workHeld, 25 Oct 2026): the gate's own holds are a SUBSET of it, and
+  //   saying the subset beside the whole put "5" and "7" on one screen.
   if (lead.rule === 'S11 nothing') {
-    const hw = heldWork(of('held').map((c) => ({ heldFor: c.facts.heldFor, urgency: c.facts.urgency })),
+    const canon = k.workHeld && Number.isFinite(k.workHeld.count) && k.workHeld.say ? k.workHeld : null;
+    const hw = canon || heldWork(of('held').map((c) => ({ heldFor: c.facts.heldFor, urgency: c.facts.urgency })),
       { onDuty: !!(k.duty && k.duty.onDuty === true) });
     if (hw.count) lead.why = `Nothing needs you right now — ${hw.say.charAt(0).toLowerCase()}${hw.say.slice(1)}`;
   }

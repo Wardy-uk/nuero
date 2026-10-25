@@ -295,6 +295,41 @@ function counterpartLine(c) {
   return `${c.direction === 'owed-to-me' ? 'From' : 'For'} ${String(name).trim()}`;
 }
 
+/**
+ * PURE. Four separate facts, never collapsed (SAiM quality pass, 25 Oct 2026):
+ *   - `unread`   — a read FAILED (or the pool was blind): some of the picture is missing;
+ *   - `blind`    — every read answered, but a source NEURO relies on has stopped, or its
+ *                  state is unknown;
+ *   - `stale`    — every read answered, but a source's data is out of date;
+ *   - `current`  — every read answered and no source it relies on is out of date.
+ * `sources` are canonical-read's `sections.blindness` (SourceHealth verdicts, already
+ * filtered to sources that matter). The worst fact wins the state; every source is named.
+ */
+function freshnessOf({ partial = false, blind = false, cannotSee = [], sources = [] } = {}) {
+  const name = (s) => (s && (s.label || s.sourceId)) || 'a source';
+  const stale = sources.filter((s) => s && s.verdict === 'stale').map(name);
+  const stopped = sources.filter((s) => s && s.verdict === 'failing').map(name);
+  const unknown = sources.filter((s) => s && s.verdict !== 'stale' && s.verdict !== 'failing').map(name);
+  const notSeeing = [...stopped, ...unknown];
+  const list = (xs) => xs.join(', ');
+  if (blind) {
+    return { state: 'unread', stale, blind: notSeeing, say: 'NEURO couldn’t read your work for this. This is not an all-clear.' };
+  }
+  const parts = [];
+  if (partial) parts.push(`Couldn’t read: ${list(cannotSee)}.`);
+  const lead = () => (parts.length ? '' : 'Every read answered, but ');
+  if (stopped.length) parts.push(`${lead()}${stopped.length === 1 ? 'this source has' : 'these sources have'} stopped answering: ${list(stopped)}.`);
+  if (unknown.length) parts.push(`${lead()}NEURO can’t tell whether ${unknown.length === 1 ? 'this source is' : 'these sources are'} working: ${list(unknown)}.`);
+  if (stale.length) parts.push(`${lead() ? 'Every read answered, but some data is out of date' : 'Out of date'}: ${list(stale)}.`);
+  const state = partial ? 'unread' : notSeeing.length ? 'blind' : stale.length ? 'stale' : 'current';
+  return {
+    state,
+    stale,
+    blind: notSeeing,
+    say: parts.length ? parts.join(' ') : 'Every read answered, and the sources behind it are up to date.',
+  };
+}
+
 function composePresentation(p, { now = Date.now() } = {}) {
   p = p || {};
   const clock = localParts(now);
@@ -472,8 +507,13 @@ function composePresentation(p, { now = Date.now() } = {}) {
   if (later && later.count) details.push({ id: 'later-unknown', kind: 'held', priority: 'P4', label: later.say });
   const held = p.situation && p.situation.workHeld;
   if (held && held.count) details.push({ id: 'work-held', kind: 'held', priority: 'P4', label: held.say });
+  // ⚠ ONE held-work count per screen (25 Oct 2026). Off-duty holds (`heldFor: 'off'`) are
+  //   already INSIDE workHeld above, so repeating them here put "7" and "5" side by side.
+  //   This line now names only what workHeld does not count (meeting / focus holds), with
+  //   its own reason; with no workHeld at all it is the gate's whole count, as before.
   if (Array.isArray(p.dropped) && p.dropped.length) {
-    details.push({ id: 'dropped', kind: 'held', priority: 'P4', label: `${p.dropped.length} held back — ${p.dropped[0].why}` });
+    const other = held && held.count ? p.dropped.filter((d) => d && d.heldFor !== 'off') : p.dropped;
+    if (other.length) details.push({ id: 'dropped', kind: 'held', priority: 'P4', label: `${other.length} held back — ${other[0].why}` });
   }
   for (const b of sections.blindness || []) {
     details.push({ id: b.id || `source:${b.sourceId}`, kind: 'source', priority: 'P4', label: `${b.label || b.sourceId}: ${b.verdictLabel || b.verdict || 'not seeing'}` });
@@ -632,6 +672,7 @@ function composePresentation(p, { now = Date.now() } = {}) {
   };
 
   const cannotSee = gaps.map((g) => g.input);
+  const freshness = freshnessOf({ partial, blind, cannotSee, sources: sections.blindness || [] });
   const out = {
     contract: CONTRACT,
     generatedAt: new Date(now).toISOString(),
@@ -644,7 +685,10 @@ function composePresentation(p, { now = Date.now() } = {}) {
       // The id of the item the summary is ABOUT, so a renderer that shows that
       // item as an object can drop the sentence rather than say it twice.
       about,
-      honesty: { complete: !partial && !blind, cannotSee, say: partial && !blind ? `Couldn’t read: ${cannotSee.join(', ')}.` : null },
+      // `complete` / `say` keep their meaning (read FAILURES only — every surface renders
+      // `say` as a warning). `freshness` is additive: it also weighs whether what WAS
+      // read is current, so "everything answered" never sits beside stale sources.
+      honesty: { complete: !partial && !blind, cannotSee, say: partial && !blind ? `Couldn’t read: ${cannotSee.join(', ')}.` : null, freshness },
     },
     primary,
     needsYou,
@@ -702,5 +746,5 @@ function composePresentation(p, { now = Date.now() } = {}) {
 module.exports = {
   counterpartLine,
   CONTRACT, MODES, UPCOMING_MINUTES, ROOM_PROMOTE_BELOW, ROOM_PROMOTE_ABOVE, RAIN_PROMOTE_MINUTES,
-  composePresentation, sameEvent, dedupeEvents, titleTokens, whenLabel, localParts, dayPart,
+  composePresentation, freshnessOf, sameEvent, dedupeEvents, titleTokens, whenLabel, localParts, dayPart,
 };

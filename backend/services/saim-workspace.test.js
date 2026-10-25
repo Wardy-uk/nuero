@@ -200,7 +200,9 @@ test('4a. working + urgent capacity: the shared scene renders and the Why strip 
   const why = whyOf(html);
   assert.match(why, /Why this · what I can’t see/);
   assert.match(why, /S7 top item/);
-  assert.match(why, /Every source NEURO read for this answered\./);
+  // 25 Oct 2026: the server's freshness sentence, verbatim (no longer the overclaiming
+  // "every source answered" whatever the sources' state).
+  assert.match(why, /data-freshness="current">Every read answered, and the sources behind it are up to date\./);
   assert.match(why, /Read 10 seconds ago\./);
   assert.doesNotMatch(html, FALSE_CLEAR);
 });
@@ -210,7 +212,9 @@ test('4b. off duty with urgent work held: the lead and the held list both carry 
   const html = renderView(fixture(ctx, offLife, [capacity, email]));
   const why = whyOf(html);
   assert.match(why, /Nothing needs you right now — 2 work items held back while you(?:&#x27;|')re off duty, 1 of them urgent\./);
-  assert.match(why, /capacity(<!-- -->)? — not a working day/);
+  // 25 Oct 2026: a human label for the kind, never the raw type id.
+  assert.match(why, /Capacity warning(<!-- -->)? — not a working day/);
+  assert.doesNotMatch(why, />capacity(<!-- -->)? —/);
   assert.doesNotMatch(why, /Nothing held back/);
   assert.doesNotMatch(html, FALSE_CLEAR);
 });

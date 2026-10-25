@@ -69,6 +69,10 @@ export function SaimWhy({ data, error = null, now = Date.now() }) {
         {held.length || workHeld ? (
           <div>
             {workHeld && <p className="saim-why__line">{workHeld}</p>}
+            {/* A DIFFERENT population from the count above (SAiM's own list, which can
+                include waiting items that are not held work), so it is labelled, never
+                given a competing number (25 Oct 2026). */}
+            {held.length > 0 && workHeld && <p className="saim-why__meta" data-why="held-list">In SAiM’s list:</p>}
             {held.length > 0 && (
               <ul className="saim-why__list">
                 {held.slice(0, 6).map((h) => (
@@ -82,11 +86,16 @@ export function SaimWhy({ data, error = null, now = Date.now() }) {
       </div>
 
       <div className="saim-why__row" data-why="honesty">
-        <span className="saim-why__label">Can’t see</span>
-        {honesty && honesty.complete === false ? (
+        <span className="saim-why__label">What I can see</span>
+        {/* The server's freshness sentence, verbatim: read failures, sources that have
+            stopped or can't be judged, stale data, or fully current — never collapsed. */}
+        {honesty && honesty.freshness && honesty.freshness.say ? (
+          <span className={honesty.freshness.state === 'current' ? undefined : 'saim-why__warn'} data-freshness={honesty.freshness.state}>{honesty.freshness.say}</span>
+        ) : honesty && honesty.complete === false ? (
           <span className="saim-why__warn">{honesty.say || `Couldn’t read: ${gaps.map((g) => g.input).join(', ')}.`}</span>
         ) : honesty && honesty.complete === true ? (
-          <span>Every source NEURO read for this answered.</span>
+          // An older read with no freshness: say only what is known — no read failed.
+          <span>No read failed. Whether the sources are up to date isn’t in this read.</span>
         ) : <span className="saim-why__warn">Whether everything answered isn’t in this read.</span>}
       </div>
 
