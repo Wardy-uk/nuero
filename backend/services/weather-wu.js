@@ -290,11 +290,56 @@ const msToMph = (v) => Math.round(v * 2.2369363 * 10) / 10;
 const hpaToInHg = (v) => Math.round(v * 0.0295299830714 * 1000) / 1000;
 const mmToIn = (v) => Math.round((v / 25.4) * 1000) / 1000;
 
+// The station key and the on/off switch follow the API key's contract: pasted
+// in Settings and stored in agent_state, read at CALL time, and an .env value
+// still wins where set. The station key is a credential — no route returns it.
+const STATION_KEY_STATE = 'wu_station_key';
+const PUBLISH_STATE = 'wu_publish_enabled';
+
+function _state(key) {
+  try { return require('../db/database').getState(key) || ''; } catch { return ''; }
+}
+
+function stationKey(env = process.env) {
+  return env.WU_STATION_KEY || _state(STATION_KEY_STATE);
+}
+
+/** Shape-checked only; a wrong-but-well-formed key is caught by WU's own answer. */
+function setStationKey(value) {
+  const k = String(value || '').trim();
+  if (!k) return { ok: false, error: 'No station key given.' };
+  if (!/^[A-Za-z0-9]{6,64}$/.test(k)) return { ok: false, error: 'That does not look like a Weather Underground station key (letters and digits, from the station’s page on wunderground.com).' };
+  require('../db/database').setState(STATION_KEY_STATE, k);
+  return { ok: true };
+}
+
+/** Forgetting the key also switches publishing off — a switch with no key behind it is a light that lies. */
+function clearStationKey(env = process.env) {
+  const db = require('../db/database');
+  db.setState(STATION_KEY_STATE, '');
+  db.setState(PUBLISH_STATE, 'false');
+  return { ok: true, stillInEnv: Boolean(env.WU_STATION_KEY) };
+}
+
+/** Refused while there is no key: "on" must mean "will upload". */
+function setPublishEnabled(enabled, env = process.env) {
+  if (typeof enabled !== 'boolean') return { ok: false, error: 'enabled must be true or false.' };
+  if (env.WU_PUBLISH_ENABLED != null && env.WU_PUBLISH_ENABLED !== '') {
+    return { ok: false, error: 'WU_PUBLISH_ENABLED is set in the Pi’s .env, which wins — change it there.' };
+  }
+  if (enabled && !stationKey(env)) return { ok: false, error: 'Add the station key first.' };
+  require('../db/database').setState(PUBLISH_STATE, enabled ? 'true' : 'false');
+  return { ok: true };
+}
+
 function publishConfig(env = process.env) {
+  const envSwitch = env.WU_PUBLISH_ENABLED != null && env.WU_PUBLISH_ENABLED !== '';
   return {
     stationId: env.WU_STATION_ID || 'ICOALV59',
-    keySet: !!env.WU_STATION_KEY,
-    enabled: env.WU_PUBLISH_ENABLED === 'true',
+    keySet: !!stationKey(env),
+    keySource: env.WU_STATION_KEY ? 'env' : (_state(STATION_KEY_STATE) ? 'stored' : null),
+    enabled: envSwitch ? env.WU_PUBLISH_ENABLED === 'true' : _state(PUBLISH_STATE) === 'true',
+    enabledSource: envSwitch ? 'env' : 'stored',
   };
 }
 
@@ -339,7 +384,8 @@ async function publish(obs, extra = {}, { env = process.env, fetchImpl = fetch }
   if (!cfg.keySet) return { ok: false, blocked: 'WU_STATION_KEY is not set' };
   const params = toWuParams(obs, extra);
   if (!params) return { ok: false, reason: 'no observation to publish' };
-  const q = new URLSearchParams({ ID: cfg.stationId, PASSWORD: env.WU_STATION_KEY, ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])) });
+  const key = stationKey(env);
+  const q = new URLSearchParams({ ID: cfg.stationId, PASSWORD: key, ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])) });
   let res;
   try {
     res = await fetchImpl(`${UPLOAD}?${q}`, { signal: AbortSignal.timeout(15000) });
@@ -348,7 +394,7 @@ async function publish(obs, extra = {}, { env = process.env, fetchImpl = fetch }
   }
   const body = String(await res.text()).trim().slice(0, 200);
   const accepted = res.ok && /^success/i.test(body);
-  return { ok: accepted, status: res.status, body: accepted ? 'success' : body.replace(env.WU_STATION_KEY, '<redacted>') };
+  return { ok: accepted, status: res.status, body: accepted ? 'success' : body.split(key).join('<redacted>') };
 }
 
 /**
@@ -380,4 +426,5 @@ module.exports = {
   NEARBY_STALE_MS, ELEVATION_MISMATCH_M, nearby, refreshGroundElevation,
   importStations, importBlocked, mapQc, shapeCurrent, shapeSummary, syncImport,
   publishConfig, toWuParams, previewUpload, publish, publishLatest,
+  stationKey, setStationKey, clearStationKey, setPublishEnabled,
 };

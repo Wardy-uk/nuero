@@ -5,7 +5,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 400,
+    "line": 380,
     "description": "DELETE /api/actions/:id/snooze. wake it now. Every other decision in NEURO",
     "params": [
       "id"
@@ -459,6 +459,22 @@
     "stream": false
   },
   {
+    "id": "delete_weather_wu_station_key",
+    "method": "DELETE",
+    "route": "/api/weather/wu/station-key",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 279,
+    "description": "DELETE /api/weather/wu/station-key. forget the stored station key and switch publishing off (an .env WU_STATION_KEY still wins). Keywords: Weather Underground station key remove.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "delete_weekly_risk_log_by_id",
     "method": "DELETE",
     "route": "/api/weekly-risk/log/:id",
@@ -602,7 +618,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 145,
+    "line": 125,
     "description": "GET /api/actions.",
     "params": [],
     "query": [
@@ -7068,7 +7084,7 @@
     "route": "/api/weather/wu/publish/preview",
     "domain": "weather",
     "source": "routes/weather.js",
-    "line": 269,
+    "line": 305,
     "description": "GET /api/weather/wu/publish/preview. the Weather Underground upload that WOULD be sent for the home station's newest reading, imperial units, station key redacted. Sends nothing. Keywords: Weather Underground publish, ICOALV59, upload preview. Query: node",
     "params": [],
     "query": [
@@ -7801,7 +7817,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 326,
+    "line": 306,
     "description": "POST /api/actions.",
     "params": [],
     "query": [],
@@ -7826,7 +7842,7 @@
     "route": "/api/actions/batch",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 440,
+    "line": 420,
     "description": "POST /api/actions/batch. approve or reject many at once",
     "params": [],
     "query": [],
@@ -7845,7 +7861,7 @@
     "route": "/api/actions/bulk-reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 488,
+    "line": 468,
     "description": "POST /api/actions/bulk-reject.",
     "params": [],
     "query": [],
@@ -7863,7 +7879,7 @@
     "route": "/api/actions/:id/approve",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 413,
+    "line": 393,
     "description": "POST /api/actions/:id/approve.",
     "params": [
       "id"
@@ -7881,7 +7897,7 @@
     "route": "/api/actions/:id/reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 425,
+    "line": 405,
     "description": "POST /api/actions/:id/reject. reject and optionally suppress",
     "params": [
       "id"
@@ -7899,7 +7915,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 372,
+    "line": 352,
     "description": "POST /api/actions/:id/snooze.   { minutes }  — \"not now\".",
     "params": [
       "id"
@@ -12867,7 +12883,7 @@
     "route": "/api/prepared-actions/:id/edit",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 240,
+    "line": 241,
     "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
     "params": [
       "id"
@@ -12911,7 +12927,7 @@
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
     "line": 185,
-    "description": "POST /api/prepared-actions/:id/intent-grant. Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). Only for actions a human button prepared; refuses ma",
+    "description": "POST /api/prepared-actions/:id/intent-grant. Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). For any prepared action — NEURO's drafts included si",
     "params": [
       "id"
     ],
@@ -12933,7 +12949,7 @@
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 227,
+    "line": 228,
     "description": "POST /api/prepared-actions/:id/reject. Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }",
     "params": [
       "id"
@@ -16745,6 +16761,58 @@
     "source": "routes/weather.js",
     "line": 253,
     "description": "POST /api/weather/wu/key. store the Weather Underground API key used to import neighbouring PWS stations. Answers only whether it was accepted and where the key now comes from; the value is never returned. Keywords: Weather Underground key, WU API key, settings. Body: { key }",
+    "params": [],
+    "query": [],
+    "body": [
+      "key"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_wu_publish",
+    "method": "POST",
+    "route": "/api/weather/wu/publish",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 285,
+    "description": "POST /api/weather/wu/publish. switch uploading our own station to Weather Underground on or off. Refused with no station key, and when .env WU_PUBLISH_ENABLED owns the switch. Keywords: Weather Underground publish switch, ICOALV59. Body: { enabled }",
+    "params": [],
+    "query": [],
+    "body": [
+      "enabled"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_wu_publish_now",
+    "method": "POST",
+    "route": "/api/weather/wu/publish/now",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 295,
+    "description": "POST /api/weather/wu/publish/now. upload the home station's newest reading to Weather Underground now, and say what WU answered. Same rules as the timer: off, no key, a stale reading or one already sent upload nothing. Keywords: Weather Underground publish now, ICOALV59 test upload. Body: {}",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_wu_station_key",
+    "method": "POST",
+    "route": "/api/weather/wu/station-key",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 269,
+    "description": "POST /api/weather/wu/station-key. store the Weather Underground STATION key (the upload password for our own station, ICOALV59). Answers only whether it was accepted; the value is never returned. Keywords: Weather Underground station key, publish ICOALV59, settings. Body: { key }",
     "params": [],
     "query": [],
     "body": [

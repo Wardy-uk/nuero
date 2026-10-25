@@ -265,6 +265,42 @@ router.delete('/wu/key', (req, res) => {
   res.json({ ...wu.clearStoredKey(), credentialSource: wu.credentialSource() });
 });
 
+// POST /api/weather/wu/station-key — store the Weather Underground STATION key (the upload password for our own station, ICOALV59). Answers only whether it was accepted; the value is never returned. Keywords: Weather Underground station key, publish ICOALV59, settings. Body: { key }
+router.post('/wu/station-key', (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { key } = req.body;
+  const wu = require('../services/weather-wu');
+  const r = wu.setStationKey(key);
+  if (!r.ok) return res.status(400).json(r);
+  res.json({ ok: true, publish: wu.publishConfig() });
+});
+
+// DELETE /api/weather/wu/station-key — forget the stored station key and switch publishing off (an .env WU_STATION_KEY still wins). Keywords: Weather Underground station key remove.
+router.delete('/wu/station-key', (req, res) => {
+  const wu = require('../services/weather-wu');
+  res.json({ ...wu.clearStationKey(), publish: wu.publishConfig() });
+});
+
+// POST /api/weather/wu/publish — switch uploading our own station to Weather Underground on or off. Refused with no station key, and when .env WU_PUBLISH_ENABLED owns the switch. Keywords: Weather Underground publish switch, ICOALV59. Body: { enabled }
+router.post('/wu/publish', (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { enabled } = req.body;
+  const wu = require('../services/weather-wu');
+  const r = wu.setPublishEnabled(enabled);
+  if (!r.ok) return res.status(400).json(r);
+  res.json({ ok: true, publish: wu.publishConfig() });
+});
+
+// POST /api/weather/wu/publish/now — upload the home station's newest reading to Weather Underground now, and say what WU answered. Same rules as the timer: off, no key, a stale reading or one already sent upload nothing. Keywords: Weather Underground publish now, ICOALV59 test upload. Body: {}
+router.post('/wu/publish/now', async (req, res) => {
+  try {
+    const r = await require('../services/weather-wu').publishLatest();
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/weather/wu/publish/preview — the Weather Underground upload that WOULD be sent for the home station's newest reading, imperial units, station key redacted. Sends nothing. Keywords: Weather Underground publish, ICOALV59, upload preview. Query: node
 router.get('/wu/publish/preview', (req, res) => {
   try {

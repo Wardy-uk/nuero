@@ -353,3 +353,32 @@ test('ground elevation: looked up once per station, cached, and a wrong owner fi
   assert.ok(r.error);
   assert.equal(wu.nearby(NOW, { WU_IMPORT_STATIONS: 'ICOALV53' })[0].elevation.groundM, 131);
 });
+
+test('the station key and publish switch live in Settings; .env still wins, and the key is never echoed', async () => {
+  const SK = 'Stat10nKey';
+  assert.equal(wu.publishConfig({}).keySet, false);
+  assert.equal(wu.setPublishEnabled(true, {}).ok, false, 'publishing cannot be switched on with no station key');
+  assert.equal(wu.setStationKey('bad key!').ok, false, 'a malformed key is refused, not stored');
+  assert.equal(wu.setStationKey(SK).ok, true);
+  assert.deepEqual(
+    (({ keySet, keySource, enabled, enabledSource }) => ({ keySet, keySource, enabled, enabledSource }))(wu.publishConfig({})),
+    { keySet: true, keySource: 'stored', enabled: false, enabledSource: 'stored' });
+  assert.equal(wu.setPublishEnabled('yes', {}).ok, false, 'only a real boolean switches it');
+  assert.equal(wu.setPublishEnabled(true, {}).ok, true);
+  assert.equal(wu.publishConfig({}).enabled, true);
+  assert.equal(wu.setPublishEnabled(false, { WU_PUBLISH_ENABLED: 'true' }).ok, false, 'an .env switch owns it');
+  assert.equal(wu.publishConfig({ WU_PUBLISH_ENABLED: 'false' }).enabled, false, '.env wins over the stored switch');
+
+  const f = fakeFetch(() => ({ text: 'success' }));
+  const ok = await wu.publish({ observedAt: NOW, temperatureC: 10 }, {}, { env: {}, fetchImpl: f });
+  assert.equal(ok.ok, true);
+  assert.ok(f.calls[0].includes(`PASSWORD=${SK}`), 'the stored station key is the one sent');
+  const no = await wu.publish({ observedAt: NOW, temperatureC: 10 }, {}, { env: {}, fetchImpl: fakeFetch(() => ({ text: `INVALIDPASSWORDID ${SK}` })) });
+  assert.equal(no.ok, false);
+  assert.ok(!no.body.includes(SK), 'a refusal never echoes the key');
+  assert.equal(wu.stationKey({ WU_STATION_KEY: 'envkey99' }), 'envkey99');
+
+  wu.clearStationKey({});
+  assert.equal(wu.publishConfig({}).keySet, false);
+  assert.equal(wu.publishConfig({}).enabled, false, 'forgetting the key switches publishing off');
+});

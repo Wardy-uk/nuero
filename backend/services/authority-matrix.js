@@ -267,6 +267,9 @@ const ROUTE_RULES = Object.freeze([
   R('DELETE', '/api/push/subscriptions', 'config.security'),
   R('*', '/api/rescuetime/key', 'config.security'),
   R('*', '/api/weather/wu/key', 'config.security'),
+  R('*', '/api/weather/wu/station-key', 'config.security'),
+  R('POST', '/api/weather/wu/publish', 'config.security'),
+  R('POST', '/api/weather/wu/publish/now', 'weather.wu-publish'),
   // The family Google calendar (18 Oct 2026): the OAuth client and the sign-in
   // are credentials; a sync only reads.
   R('*', '/api/google-calendar/client', 'config.security'),

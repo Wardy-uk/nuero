@@ -505,6 +505,73 @@ export function WeatherUndergroundCard() {
         {result?.blocked && <div className="admin-error">{result.blocked}</div>}
         {error && <div className="admin-error">{error}</div>}
       </div>
+      <WuPublishSection publish={wu?.publish} call={call} busy={busy} reload={load} />
+    </div>
+  );
+}
+
+/**
+ * Publishing our own station (ICOALV59) to Weather Underground. The station key
+ * is the upload password from the station's page on wunderground.com — not the
+ * API key above. Weather Underground only issues an owner an API key while that
+ * owner's station is reporting, so this is also what keeps the import working.
+ * The switch is refused while there is no key; "Publish now" shows WU's answer.
+ */
+function WuPublishSection({ publish, call, busy, reload }) {
+  const [key, setKey] = useState('');
+  const [answer, setAnswer] = useState(null);
+  if (!publish) return null;
+  const save = async () => {
+    const d = await call('/api/weather/wu/station-key', 'POST', { key });
+    if (d && d.ok) { setKey(''); await reload(); }
+  };
+  const toggle = async () => {
+    const d = await call('/api/weather/wu/publish', 'POST', { enabled: !publish.enabled });
+    if (d && d.ok) await reload();
+  };
+  const now = async () => { setAnswer(await call('/api/weather/wu/publish/now', 'POST', {})); await reload(); };
+  const forget = async () => { await call('/api/weather/wu/station-key', 'DELETE'); setAnswer(null); await reload(); };
+  const says = (a) => {
+    if (!a) return null;
+    if (a.ok && a.skipped) return 'Nothing new to send — the newest reading has already gone.';
+    if (a.ok) return `Weather Underground accepted the reading from ${new Date(a.observedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`;
+    if (a.blocked) return `Not sent — ${a.blocked}.`;
+    if (a.uncertain) return 'Not confirmed — Weather Underground did not answer.';
+    return `Refused — ${a.body || a.reason || a.error || `HTTP ${a.status}`}`;
+  };
+  return (
+    <div className="admin-ms-section">
+      <p className="admin-hint"><strong>Publish {publish.stationId}</strong></p>
+      {!publish.keySet ? (
+        <>
+          <p className="admin-hint">
+            Paste the station key for {publish.stationId} (the upload password shown on the station’s page on
+            wunderground.com — not the API key above). NEURO will then send the home station’s readings every
+            few minutes. It is stored on the Pi and never shown again.
+          </p>
+          <div className="admin-inline-form">
+            <input type="password" value={key} placeholder="Station key" autoComplete="off" spellCheck="false"
+              onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && key && save()} />
+            <button className="admin-btn" disabled={!key || busy} onClick={save}>{busy ? 'Saving…' : 'Save station key'}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="admin-hint">
+            Station key {publish.keySource === 'env' ? 'set in the Pi’s .env (change it there)' : 'saved'}.{' '}
+            Publishing is <strong>{publish.enabled ? 'on' : 'off'}</strong>
+            {publish.enabledSource === 'env' ? ' (set in the Pi’s .env)' : ''}.
+          </p>
+          <div className="admin-inline-form">
+            {publish.enabledSource !== 'env' && (
+              <button className="admin-btn" disabled={busy} onClick={toggle}>{publish.enabled ? 'Turn publishing off' : 'Turn publishing on'}</button>
+            )}
+            {publish.enabled && <button className="admin-btn" disabled={busy} onClick={now}>{busy ? 'Sending…' : 'Publish now'}</button>}
+            {publish.keySource === 'stored' && <button className="admin-btn" disabled={busy} onClick={forget}>Remove station key</button>}
+          </div>
+        </>
+      )}
+      {answer && <p className={answer.ok ? 'admin-hint' : 'admin-error'}>{says(answer)}</p>}
     </div>
   );
 }
