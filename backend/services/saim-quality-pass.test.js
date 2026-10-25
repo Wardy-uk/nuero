@@ -179,7 +179,15 @@ test('4a. every known pool type has a human label; no label is a raw id', () => 
   }
   assert.equal(itemTypeLabel('todo', 'todo-overdue-top'), 'An overdue task');
   assert.equal(itemTypeLabel('todo', 'todo-overdue-summary'), 'Overdue tasks');
+  assert.equal(itemTypeLabel('todo', 'todo-today-top'), 'A task due today');
+  assert.equal(itemTypeLabel('todo', 'todo-today-summary'), 'Tasks due today');
+  assert.equal(itemTypeLabel('todo', 'todo-undated-high'), 'High-priority tasks with no date');
   assert.equal(itemTypeLabel('todo', 'x'), 'A task');
+  // Every todo card id decision-engine can emit has a specific label (read from the source).
+  const de = fs.readFileSync(path.join(__dirname, 'decision-engine.js'), 'utf8');
+  const ids = [...de.matchAll(/'(todo-[a-z-]+)'/g)].map((m) => m[1]);
+  assert.ok(ids.length >= 5, `positive control: found the engine's todo ids (${ids})`);
+  for (const id of ids) assert.notEqual(itemTypeLabel('todo', id), 'A task', `${id} has no specific label`);
   assert.equal(itemTypeLabel('ticket_commitment'), 'Promised ticket update');
   assert.equal(itemTypeLabel('capacity'), 'Capacity warning');
   // An unmapped type is humanised, never shown raw.

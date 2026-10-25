@@ -37,8 +37,12 @@ function itemTypeLabel(type, id = null) {
   const t = String(type || '').trim();
   if (t === 'todo') {
     const i = String(id || '');
+    // decision-engine's todo cards, by id (collectOverdueTodos).
     if (/^todo-overdue-summary/.test(i)) return 'Overdue tasks';
     if (/^todo-overdue/.test(i)) return 'An overdue task';
+    if (/^todo-today-summary/.test(i)) return 'Tasks due today';
+    if (/^todo-today/.test(i)) return 'A task due today';
+    if (/^todo-undated-high/.test(i)) return 'High-priority tasks with no date';
     return 'A task';
   }
   if (TYPE_LABELS[t]) return TYPE_LABELS[t];
