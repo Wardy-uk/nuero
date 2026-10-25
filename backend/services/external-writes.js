@@ -78,6 +78,16 @@ const WRITERS = Object.freeze({
     effect: 'lights on / radiator target, only via an accepted room offer re-derived from a fresh read',
     why: 'Nick\'s own house, undoable, one attended caller.', readback: 'next house read',
   },
+  // 25 Oct 2026: the family wall's Home sheet. Logged per press in
+  // personal_ops_events (wall-home-control: who, entity, action, outcome) rather
+  // than this ledger — a light switched twice is harmless, and an unknown
+  // outcome here would sit in "unresolved writes" for ever.
+  'homeassistant.control': {
+    target: 'Home Assistant', authority: 'A2', initiation: 'human-only', ledger: false,
+    effect: 'light / household socket on-off, or hive.boost_heating_on 1 h at 21°C (and off), for entities in a fixed room map only',
+    why: "Nick, 25 Oct 2026: the household switches the house from the wall; a tap is the approval, the entity allow-list is a code constant re-derived every request, and every change is undoable.",
+    readback: 'the entity re-read until it matches (≤5 s); verified true/false in the answer',
+  },
   'notion.sync': {
     target: 'Notion workspace', authority: 'A3', initiation: 'timer', ledger: false,
     effect: 'publish mapped vault notes; never deletes pages', why: 'standing toggle; per-note sync state and a lock.', readback: 'next reconcile pass',

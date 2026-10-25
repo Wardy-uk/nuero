@@ -54,6 +54,28 @@ test('the doors are exactly the wall, photos, household jobs and the family cale
   }
 });
 
+test('the wall additions (25 Oct 2026) are open by name, and only by name', () => {
+  for (const [m, p] of [['GET', '/home-control'], ['POST', '/home-control'], ['POST', '/tea'], ['POST', '/notes'],
+    ['POST', '/notes/a1b2c3d4e5f6/clear'], ['POST', '/countdowns'], ['POST', '/shopping/add'], ['POST', '/shopping/bought']]) {
+    assert.ok(isDoor(m, p), `${m} ${p} opens`);
+  }
+  for (const [m, p] of [['DELETE', '/home-control'], ['GET', '/tea'], ['POST', '/notes/x/y/clear'], ['POST', '/notes/../clear'],
+    ['POST', '/shopping/remove'], ['POST', '/catalogue/shopping/add'], ['POST', '/catalogue/kitchen/used'], ['GET', '/shopping']]) {
+    assert.equal(isDoor(m, p), false, `${m} ${p} stays shut`);
+  }
+});
+
+test('a home-control press goes through as the household with its body', async () => {
+  const neuro = fakeNeuro();
+  const { server, call } = await serve(createRouter({ fetchImpl: neuro.fetchImpl, env: ENV }));
+  try {
+    const r = await call('/api/v/home-control', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ entity: 'light.hall', action: 'on' }) });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.auth, 'Bearer sess-1');
+    assert.deepEqual(JSON.parse(r.json.body), { entity: 'light.hall', action: 'on' });
+  } finally { server.close(); }
+});
+
 test('a read goes through as the household, with the kiosk asking for the session', async () => {
   const neuro = fakeNeuro();
   const { server, call } = await serve(createRouter({ fetchImpl: neuro.fetchImpl, env: ENV }));

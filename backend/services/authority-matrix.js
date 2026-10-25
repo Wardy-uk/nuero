@@ -80,6 +80,7 @@ const CAPABILITIES = Object.freeze({
   'plaud.pull': { authority: 'A2', effect: 'pull recordings from PLAUD into the vault', machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'sync ledger', idempotent: 'canonical plaud_id' },
   'push.synthetic-p0': { authority: 'A2', effect: 'a synthetic P0 interrupt on the phone', machine: 'refuse', approval: 'click', registry: null, ledger: true, verification: 'attention_notifications', idempotent: true },
   'homeassistant.room': { authority: 'A2', effect: 'lights / radiator in the house, from an accepted room offer', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.room', ledger: false, verification: 'next house read', idempotent: true },
+  'home.control': { authority: 'A2', effect: 'switch a mapped light / household socket, or boost a radiator 1 h to 21°C, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.control', ledger: false, verification: 'entity read back (≤5 s)', idempotent: true },
   'calendar.family': { authority: 'A2', effect: 'add / edit / delete an event in the shared family Google calendar, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:google.calendar.family', ledger: true, verification: 'Google read-back', idempotent: 'event id chosen before the call' },
   'tally.categorise': { authority: 'A2', effect: "a transaction's category in Tally (and Tally's merchant rule on 'Always')", machine: 'refuse', approval: 'click', registry: 'external-writes:tally.transaction.categorise', ledger: true, verification: 'Tally read-back', idempotent: true },
 
@@ -281,6 +282,16 @@ const ROUTE_RULES = Object.freeze([
   // The wall's own writes to it (account session, never a machine).
   R('*', '/api/v/family-calendar/events', 'calendar.family'),
   R('*', '/api/v/family-calendar/events/:id', 'calendar.family'),
+  // The wall's household board (25 Oct 2026): tea, notes and countdowns are
+  // NEURO's own small stores; the shopping list is a shared vault catalogue;
+  // the Home sheet switches the house — a person's tap, never a machine's.
+  R('POST', '/api/v/tea', 'internal.state'),
+  R('POST', '/api/v/notes', 'internal.state'),
+  R('POST', '/api/v/notes/:id/clear', 'internal.state'),
+  R('POST', '/api/v/countdowns', 'internal.state'),
+  R('POST', '/api/v/shopping/add', 'vault.write'),
+  R('POST', '/api/v/shopping/bought', 'vault.write'),
+  R('POST', '/api/v/home-control', 'home.control'),
   // Home energy: the Bright login is a credential; tariffs and the gas
   // calorific value decide what every cost says, so they are Nick's too.
   R('*', '/api/energy/credentials', 'config.security'),

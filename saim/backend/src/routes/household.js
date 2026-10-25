@@ -31,6 +31,17 @@ const DOORS = [
   { method: 'POST', re: /^\/family-calendar\/events$/ },
   { method: 'PATCH', re: /^\/family-calendar\/events\/[A-Za-z0-9_-]{1,200}$/ },
   { method: 'DELETE', re: /^\/family-calendar\/events\/[A-Za-z0-9_-]{1,200}$/ },
+  // The wall additions (25 Oct 2026): the Home sheet, tea, notes, countdowns
+  // and the shopping list — named routes, never the kitchen catalogue itself.
+  // Each is still gated on the household account's own scopes in NEURO.
+  { method: 'GET', re: /^\/home-control$/ },
+  { method: 'POST', re: /^\/home-control$/ },
+  { method: 'POST', re: /^\/tea$/ },
+  { method: 'POST', re: /^\/notes$/ },
+  { method: 'POST', re: /^\/notes\/[A-Za-z0-9_-]{1,80}\/clear$/ },
+  { method: 'POST', re: /^\/countdowns$/ },
+  { method: 'POST', re: /^\/shopping\/add$/ },
+  { method: 'POST', re: /^\/shopping\/bought$/ },
 ];
 
 function isDoor(method, path) {

@@ -82,7 +82,11 @@ const STATE_KEY = 'capture_links';
 // in the shared family Google calendar (and only that calendar). It is a write
 // to a calendar other people read, so it is its own scope, not a default, and
 // `calendar` alone (reading the diary) never brings it.
-const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy', 'family-calendar'];
+// `home-control` (25 Oct 2026) lets the account switch the house's lights and
+// household sockets and boost a radiator, from the family wall's Home sheet. A
+// write to the house from a public mount, so its own scope and not a default;
+// `house` (seeing who is in) never brings it.
+const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy', 'family-calendar', 'home-control'];
 const DEFAULT_SCOPES = ['tasks'];
 
 /** Normalise a requested scope list. Unknown scopes are DROPPED, never passed

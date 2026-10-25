@@ -594,6 +594,18 @@ function fromPersonalOps(rows) {
         summary: `Someone changed it after NEURO did (${d.why || 'changed since'}), so it was not put back.`, status: 'skipped' });
       case 'room-heat-restore-failed': return entry({ ...base, category: 'blocked', type: 'home.heating', severity: 'warning',
         headline: `Could not put the ${_room(d.area)} radiator back yet`, summary: `${d.reason || 'Home Assistant refused it'}. NEURO tries again every minute.`, status: 'failed' });
+      // 25 Oct 2026 — a press on the family wall's Home sheet.
+      case 'wall-home-control': {
+        const who = d.by ? `${d.by} (family wall)` : 'The family wall';
+        const n = Array.isArray(d.entities) ? d.entities.length : null;
+        const what = d.action === 'all-lights-off' ? (n == null ? 'turned the lights off' : `turned off ${n} light${n === 1 ? '' : 's'}`)
+          : d.action === 'boost' ? `boosted ${d.name || d.entity} to 21° for an hour`
+          : d.action === 'boost-off' ? `cancelled the boost on ${d.name || d.entity}`
+          : `turned ${d.name || d.entity} ${d.action}`;
+        return entry({ ...base, category: d.ok ? 'acted' : 'blocked', type: 'home.control', actor: r.actor,
+          headline: `${who} ${what}`, summary: d.ok ? (d.verified ? null : 'Home Assistant took it but the device had not confirmed within 5 seconds.') : (d.reason || 'Home Assistant refused it.'),
+          status: !d.ok ? 'failed' : d.verified ? 'verified' : 'unverified', severity: d.ok ? undefined : 'warning' });
+      }
       // Build 29AB — outdoor: plans and Nick's corrections only. Never a GPS
       // point, a walk, a weather update or a source refresh.
       case 'outdoor-route-planned': return entry({ ...base, category: 'configured', type: 'outdoor.route', headline: `You planned ${d.kind === 'walk' ? 'a walk' : 'a hike'}: "${d.name}"`, summary: [d.plannedDate ? `For ${d.plannedDate}.` : 'No date yet.', d.source === 'gpx' ? 'From a GPX file.' : null, 'A plan, not an activity.'].filter(Boolean).join(' '), status: 'planned' });

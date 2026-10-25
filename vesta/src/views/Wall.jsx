@@ -818,6 +818,23 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
       update: async (id, body) => { lastTouch.current = Date.now(); const res = await api.updateFamilyEvent(api.getToken(), id, body); await refresh(); return res; },
       remove: async (id) => { lastTouch.current = Date.now(); const res = await api.deleteFamilyEvent(api.getToken(), id); await refresh(); return res; },
     },
+    // Family wall additions (25 Oct 2026): the same rule — NEURO answers, then
+    // the wall is re-read; nothing is changed here first.
+    tea: async (date, text) => { lastTouch.current = Date.now(); const res = await api.setTea(api.getToken(), date, text); await refresh(); return res; },
+    note: {
+      add: async (text) => { lastTouch.current = Date.now(); const res = await api.addNote(api.getToken(), text); await refresh(); return res; },
+      clear: async (id) => { lastTouch.current = Date.now(); const res = await api.clearNote(api.getToken(), id); await refresh(); return res; },
+    },
+    countdown: async (body) => { lastTouch.current = Date.now(); const res = await api.setCountdown(api.getToken(), body); await refresh(); return res; },
+    shopping: {
+      add: async (name) => { lastTouch.current = Date.now(); const res = await api.shoppingAdd(api.getToken(), name); await refresh(); return res; },
+      bought: async (name, undo) => { lastTouch.current = Date.now(); const res = await api.shoppingBought(api.getToken(), name, undo); await refresh(); return res; },
+    },
+    // Home control is not in the wall payload: the Home sheet reads it itself.
+    home: {
+      get: async () => api.getHomeControl(api.getToken()),
+      control: async (entity, action) => { lastTouch.current = Date.now(); return api.homeControl(api.getToken(), entity, action); },
+    },
   };
   return (
     <div className={`wall-shell${dim ? ' wall-shell--dim' : ''}`}

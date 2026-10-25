@@ -45,7 +45,7 @@ export class ApiError extends Error {
   }
 }
 
-async function call(path, { method = 'GET', body, token, timeoutMs = 0 } = {}) {
+async function call(path, { method = 'GET', body, token, timeoutMs = 0, answerOnRefusal = false } = {}) {
   let res;
   // An optional deadline (family-calendar writes): a request that never answers
   // must end in a message, not a "Saving…" that never stops.
@@ -79,6 +79,9 @@ async function call(path, { method = 'GET', body, token, timeoutMs = 0 } = {}) {
   if (fresh && token && getToken() === token) setToken(fresh);
 
   const json = await res.json().catch(() => ({}));
+  // A house control answers a refusal as a 200 carrying ok:false and its own
+  // words (`say`) — that is an ANSWER to show, not a transport failure.
+  if (answerOnRefusal && res.ok && json.ok === false) return json;
   if (!res.ok || json.ok === false) {
     // A gateway that cannot reach the Pi (502–504) is the same fact as no network.
     const unreachable = res.status >= 502 && res.status <= 504 && !json.error;
@@ -262,6 +265,40 @@ export const scanPhoto = (token, slug, image, mediaType) =>
   call(`/catalogue/${encodeURIComponent(slug)}/scan`, {
     method: 'POST', body: { image, mediaType }, token,
   });
+
+// ── Family wall additions (25 Oct 2026) ─────────────────────────────────────
+// Same `call` helper and the same /api/v paths. On a room screen the token is
+// absent and saim/backend's household door signs in for the wall.
+
+/** The house's lights, radiators and household sockets (scope `home-control`). Read fresh. */
+export const getHomeControl = (token) => call('/home-control', { token, timeoutMs: 20000 });
+
+/**
+ * Switch one thing, boost or cancel a boost, or `all-lights-off` (no entity).
+ * Returns `{ ok, verified, state, say }` — a 200 with ok:false is a refusal to
+ * SHOW in its own words, so it is returned rather than thrown.
+ */
+export const homeControl = (token, entity, action) =>
+  call('/home-control', { method: 'POST', body: entity ? { entity, action } : { action }, token, timeoutMs: 20000, answerOnRefusal: true });
+
+/** Tonight's tea (or a day up to six ahead). `text` null/'' clears that day. */
+export const setTea = (token, date, text) =>
+  call('/tea', { method: 'POST', body: { date, text }, token, timeoutMs: 20000 });
+
+export const addNote = (token, text) =>
+  call('/notes', { method: 'POST', body: { text }, token, timeoutMs: 20000 });
+export const clearNote = (token, id) =>
+  call(`/notes/${encodeURIComponent(id)}/clear`, { method: 'POST', token, timeoutMs: 20000 });
+
+/** Mark (or unmark) an event to count down to on the wall. */
+export const setCountdown = (token, { key, title, date, on }) =>
+  call('/countdowns', { method: 'POST', body: { key, title, date, on }, token, timeoutMs: 20000 });
+
+export const shoppingAdd = (token, name) =>
+  call('/shopping/add', { method: 'POST', body: { name }, token, timeoutMs: 20000 });
+/** undo:false moves To buy → Bought; undo:true moves it back. */
+export const shoppingBought = (token, name, undo = false) =>
+  call('/shopping/bought', { method: 'POST', body: { name, undo }, token, timeoutMs: 20000 });
 
 export const useItem = (token, slug, section, name) =>
   call(`/catalogue/${encodeURIComponent(slug)}/used`, {

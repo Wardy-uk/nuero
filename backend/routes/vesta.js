@@ -438,7 +438,124 @@ router.get('/wall', requireAccount, (req, res) => {
     }
   }
 
+  // ── The wall additions (25 Oct 2026) ─────────────────────────────────────
+  // Each block is ABSENT without its scope, and null with a named gap when it
+  // could not be read — never an empty all-clear. None of these reads writes.
+  const board = require('../services/household-board');
+  const block = (name, scope, why, fn) => {
+    if (!capture.hasScope(req.account, scope)) return;
+    try { out[name] = fn(); } catch (e) {
+      out[name] = null;
+      out.gaps.push({ block: name, why });
+      console.error(`[Vesta] Wall ${name} failed:`, e.message);
+    }
+  };
+  block('outlook', 'house', 'could not read the forecast', () => board.readOutlook());
+  block('care', 'house', "could not read Ember's care", () => board.readCare());
+  block('tea', 'tasks', 'could not read tea', () => board.readTea());
+  block('notes', 'tasks', 'could not read the notes', () => board.readNotes());
+  block('countdowns', 'calendar', 'could not read the countdowns', () => board.readCountdowns());
+  if (capture.hasScope(req.account, 'calendar') && Array.isArray(out.week)) {
+    let marked = null;
+    try { marked = board.markedKeys(); } catch (e) { console.error('[Vesta] Wall countdown keys failed:', e.message); }
+    out.week = board.stampWeek(out.week, marked);
+  }
+  block('walk', 'hike', 'could not read the walk', () => require('../services/hike-safety').householdView());
+  if (capture.hasScope(req.account, 'kitchen')) {
+    try {
+      const s = board.readShopping();
+      if (s.ok) out.shopping = s.shopping;
+      else { out.shopping = null; out.gaps.push({ block: 'shopping', why: s.why }); }
+    } catch (e) {
+      out.shopping = null;
+      out.gaps.push({ block: 'shopping', why: 'could not read the shopping list' });
+      console.error('[Vesta] Wall shopping failed:', e.message);
+    }
+  }
+
   res.json(out);
+});
+
+// ── Wall writes (25 Oct 2026): tea, notes, countdowns, shopping ─────────────
+// Each is gated on the same scope as the block it changes, re-checked here.
+function scopeGate(scope) {
+  return (req, res, next) => {
+    if (!capture.hasScope(req.account, scope)) return res.status(403).json({ ok: false, error: 'Not enabled for this account.' });
+    next();
+  };
+}
+function boardReply(res, fn, what) {
+  try {
+    const r = fn();
+    if (!r.ok) return res.status(r.status || 400).json({ ok: false, error: r.error });
+    return res.json(r);
+  } catch (e) {
+    console.error(`[Vesta] ${what} failed:`, e.message);
+    return res.status(500).json({ ok: false, error: 'Something went wrong — it may not have saved.' });
+  }
+}
+
+// POST /api/v/tea — set or clear one day's tea (today..+6). Body: { date, text } — text null or '' clears.
+router.post('/tea', requireAccount, scopeGate('tasks'), (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { date, text } = req.body;
+  boardReply(res, () => require('../services/household-board').setTea({ date, text }, { by: req.account.label }), 'Tea');
+});
+
+// POST /api/v/notes — leave a note on the family wall (≤140 chars, cleared after 2 days). Body: { text }
+router.post('/notes', requireAccount, scopeGate('tasks'), (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { text } = req.body;
+  boardReply(res, () => require('../services/household-board').addNote({ text }, { by: req.account.label }), 'Note');
+});
+
+// POST /api/v/notes/:id/clear — take a note off the wall.
+router.post('/notes/:id/clear', requireAccount, scopeGate('tasks'), (req, res) => {
+  boardReply(res, () => require('../services/household-board').clearNote(req.params.id), 'Note clear');
+});
+
+// POST /api/v/countdowns — mark or unmark an event to count down to. Body: { key, title, date, on }
+router.post('/countdowns', requireAccount, scopeGate('calendar'), (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { key, title, date, on } = req.body;
+  boardReply(res, () => require('../services/household-board').setCountdown({ key, title, date, on }, { by: req.account.label }), 'Countdown');
+});
+
+// POST /api/v/shopping/add — add to the shared shopping list (created, shared, if missing). Body: { name }
+router.post('/shopping/add', requireAccount, scopeGate('kitchen'), (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { name } = req.body;
+  boardReply(res, () => require('../services/household-board').shoppingAdd({ name }), 'Shopping add');
+});
+
+// POST /api/v/shopping/bought — tick an item bought, or undo it. Body: { name, undo }
+router.post('/shopping/bought', requireAccount, scopeGate('kitchen'), (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { name, undo } = req.body;
+  boardReply(res, () => require('../services/household-board').shoppingBought({ name, undo }), 'Shopping bought');
+});
+
+// GET /api/v/home-control — the house's lights, household sockets and radiators for the wall's Home sheet. Needs the home-control scope.
+router.get('/home-control', requireAccount, scopeGate('home-control'), async (req, res) => {
+  try {
+    res.json(await require('../services/home-control').read());
+  } catch (e) {
+    console.error('[Vesta] Home control read failed:', e.message);
+    res.json({ ok: true, known: false, rooms: null, lightsOn: null, why: "can't see the house right now" });
+  }
+});
+
+// POST /api/v/home-control — switch a mapped light/socket, boost or un-boost a radiator, or turn every light off. Body: { entity, action }
+router.post('/home-control', requireAccount, scopeGate('home-control'), async (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { entity, action } = req.body;
+  try {
+    const r = await require('../services/home-control').control({ entity, action }, { by: req.account.username, label: req.account.label });
+    res.status(r.status).json(r.body);
+  } catch (e) {
+    console.error('[Vesta] Home control failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong — check the house before trying again.' });
+  }
 });
 
 /**

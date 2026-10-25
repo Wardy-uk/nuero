@@ -266,12 +266,13 @@ export function AddJobSheet({ people, today, act, onSaved, onCancel, setDirty, p
 }
 
 /** Every outstanding job, each with its own tick, and Add. */
-export function AllJobsSheet({ tasks, done = [], today, act, onOpenJob, onAdd }) {
+export function AllJobsSheet({ tasks, done = [], today, act, onOpenJob, onAdd, care = undefined }) {
   const s = useSaver();
   const [ok, setOk] = useState(null);
   const list = (tasks && tasks.tasks) || [];
   return (
     <div className="cine__form">
+      {care !== undefined && <CareRows care={care} />}
       {list.length === 0 && <p className="cine__sub">Nothing to do.</p>}
       <ul className="cine__alljobs">
         {list.map((t) => (
@@ -478,7 +479,7 @@ export function eventProblem(f, { isNew = true, changed = true } = {}) {
   return null;
 }
 
-export function EventSheet({ event = null, date, today, act, canEdit = false, why = null, onDone, setDirty }) {
+export function EventSheet({ event = null, date, today, act, canEdit = false, why = null, onDone, setDirty, live = null }) {
   const s = useSaver();
   const idRef = useRef(null);
   const [start] = useState(() => eventForm(event, date || today));
@@ -512,6 +513,7 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
         <p className="cine__big">{event.title}</p>
         <p className="cine__sub">{whenWords(event)}</p>
         {event.location && <p className="cine__sub">{event.location}</p>}
+        <CountdownToggle event={event} live={live} act={act} />
         <p className="cine__note">{!editable
           ? 'This is in a phone calendar, not the shared family one. Change it on that phone.'
           : (why || 'This wall can’t change the family calendar.')}</p>
@@ -564,6 +566,7 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
       </div>
       <input className="cine__textin cine__textin--small" value={f.location} maxLength={200} placeholder="Where (optional)" disabled={s.busy}
              onChange={(e) => set('location')(e.target.value)} />
+      {event && <CountdownToggle event={event} live={live} act={act} disabled={s.busy} />}
       {event && event.recurring && <p className="cine__note">This repeats. Changes apply to this one only.</p>}
       {askDelete ? (
         <div className="cine__confirm" role="alertdialog" aria-label="Delete this event?">
@@ -580,6 +583,396 @@ export function EventSheet({ event = null, date, today, act, canEdit = false, wh
       {problem && <p className="cine__savestate cine__savestate--err" role="alert">{problem.message}</p>}
       <SaveState busy={s.busy} error={s.error} ok={saved} />
       {isNew && <p className="cine__note">Goes into the shared family calendar.</p>}
+    </div>
+  );
+}
+
+// ── Family wall additions (25 Oct 2026) ──────────────────────────────────────
+//
+// Countdowns, Ember's care, the house controls, the shopping list, notes, tea
+// and Nick's walk. The same rules as above: every write goes through `act`,
+// shows "Saving…" until NEURO answers, and "Not saved — <why>" if it refused.
+// Nothing changes on screen until NEURO's answer (or the re-read) says so.
+
+/**
+ * "Count down to this" on an event. Its state is the event's own `countdown`
+ * flag — the LIVE copy from the latest wall read when there is one — and,
+ * between a press and the re-read, what NEURO just answered.
+ */
+export function CountdownToggle({ event, live = null, act, disabled = false }) {
+  const s = useSaver();
+  const [answered, setAnswered] = useState(null);
+  if (!event || !event.countdownKey || !act || !act.countdown) return null;
+  const fromLive = live && typeof live.countdown === 'boolean' ? live.countdown : null;
+  const on = answered != null ? answered : fromLive != null ? fromLive : !!event.countdown;
+  const press = () => {
+    const want = !on;
+    s.run(() => act.countdown({ key: event.countdownKey, title: event.title, date: String(event.start || '').slice(0, 10), on: want }))
+      .then((r) => { if (r) setAnswered(want); });
+  };
+  return (
+    <div className="cine__countdown">
+      <button className={`cine__chip2${on ? ' cine__chip2--on' : ''}`} aria-pressed={on} disabled={disabled || s.busy} onClick={press}>
+        {on ? '✓ Counting down to this' : 'Count down to this'}
+      </button>
+      <SaveState busy={s.busy} error={s.error} />
+    </div>
+  );
+}
+
+/** Ember's care (read-only): due within a week, or overdue. `care` null = could not read. */
+export function CareRows({ care, compact = false }) {
+  if (care === undefined) return null;
+  if (care === null) return <p className="cine__gap">I couldn’t read Ember’s care list.</p>;
+  if (!care.length) return compact ? null : <p className="cine__sub">No care due this week.</p>;
+  return (
+    <ul className={`cine__care${compact ? ' cine__care--compact' : ''}`} aria-label="Care due">
+      {care.map((c) => (
+        <li key={c.id || c.title} className={`cine__careitem${c.overdue ? ' cine__careitem--late' : ''}`}>
+          <span className="cine__paw" aria-hidden="true">🐾</span>
+          <span className="cine__caretext">{c.say || c.title}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ── Home: lights, radiators, sockets ───────────────────────────────────── */
+
+const HOME_POLL_MS = 10 * 1000;
+const degrees = (c) => (typeof c === 'number' ? `${Math.round(c * 10) / 10}°` : '—');
+
+/**
+ * What to say after a house press, from NEURO's answer. PURE.
+ * ok:false (a 200 refusal) or a thrown error is "Not saved — <why>"; a write
+ * NEURO could not read back (verified:false) is said as such, never as done.
+ */
+export function homeAnswer(r, err = null) {
+  if (err) return { ok: false, text: `Not saved — ${(err && err.message) || 'the house didn’t take it.'}` };
+  if (!r || r.ok === false) return { ok: false, text: `Not saved — ${(r && (r.say || r.error)) || 'the house didn’t take it.'}` };
+  if (r.verified === false) return { ok: false, text: r.say || 'Sent — the house hasn’t confirmed it yet.' };
+  return { ok: true, text: r.say || 'Done.' };
+}
+
+/**
+ * The house controls. Read on open and every 10 s while open. A press shows
+ * "Saving…" then the server's own `say`; the switch on screen only changes when
+ * a re-read says it did. One press at a time.
+ */
+export function HomeSheet({ act }) {
+  const [home, setHome] = useState(undefined);  // undefined = first read pending
+  const [readErr, setReadErr] = useState(null);
+  const [busy, setBusy] = useState(null);       // the key being pressed
+  const [msg, setMsg] = useState(null);         // { ok, text }
+  const inFlight = useRef(false);
+  const reading = useRef(false);
+  const read = async () => {
+    if (reading.current || !act || !act.home) return;
+    reading.current = true;
+    try { const r = await act.home.get(); setHome(r); setReadErr(null); } catch (e) { setReadErr((e && e.message) || 'I couldn’t read the house.'); } finally { reading.current = false; }
+  };
+  useEffect(() => {
+    read();
+    const t = setInterval(read, HOME_POLL_MS);
+    return () => clearInterval(t);
+  }, []);
+  const press = async (key, entity, action) => {
+    if (inFlight.current) return;            // a second tap while saving does nothing
+    inFlight.current = true; setBusy(key); setMsg(null);
+    try {
+      setMsg(homeAnswer(await act.home.control(entity, action)));
+    } catch (e) {
+      setMsg(homeAnswer(null, e));
+    } finally {
+      inFlight.current = false; setBusy(null);
+      read();
+    }
+  };
+  return <HomeView home={home} readErr={readErr} busy={busy} msg={msg} onPress={press} />;
+}
+
+function HomeDevice({ d, busy, onPress }) {
+  if (!d || d.state === 'unavailable') {
+    return (
+      <div className="cine__hdev cine__hdev--dead" aria-label={`${d && d.name}: off at the wall`}>
+        <span className="cine__hname">{d && d.name}</span>
+        <span className="cine__hstate">off at the wall</span>
+      </div>
+    );
+  }
+  const on = d.state === 'on';
+  return (
+    <button className={`cine__hdev${on ? ' cine__hdev--on' : ''}`} aria-pressed={on} disabled={busy != null}
+            aria-label={`${d.name} is ${on ? 'on' : 'off'} — turn it ${on ? 'off' : 'on'}`}
+            onClick={() => onPress(d.entity, d.entity, on ? 'off' : 'on')}>
+      <span className="cine__hname">{d.name}</span>
+      <span className="cine__hstate">{busy === d.entity ? 'Saving…' : on ? 'On' : 'Off'}</span>
+    </button>
+  );
+}
+
+/** PURE view of the house controls. Exported for the render test. */
+export function HomeView({ home, readErr = null, busy = null, msg = null, onPress = () => {} }) {
+  if (home === undefined && !readErr) return <p className="cine__sub" role="status">Reading the house…</p>;
+  if (!home) return <p className="cine__gap">{`I couldn’t read the house — ${readErr || 'no answer'}. Nothing has been changed.`}</p>;
+  if (home.known === false) return <p className="cine__gap">{home.why || 'I can’t see the house controls just now.'}</p>;
+  const usable = (d) => d && d.state !== 'unavailable';
+  const rooms = (home.rooms || []).filter((r) => r.climate || (r.lights || []).some(usable) || (r.sockets || []).some(usable));
+  const anyBusy = busy != null;
+  return (
+    <div className="cine__form cine__home">
+      {msg && <p className={`cine__savestate${msg.ok ? ' cine__savestate--ok' : ' cine__savestate--err'}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
+      {home.lightsOn > 0 && (
+        <button className="cine__sheetbtn cine__sheetbtn--primary cine__alloff" disabled={anyBusy} onClick={() => onPress('all-lights-off', null, 'all-lights-off')}>
+          {busy === 'all-lights-off' ? 'Saving…' : `Turn all lights off (${home.lightsOn} on)`}
+        </button>
+      )}
+      {rooms.length === 0 && <p className="cine__sub">Nothing in the house can be controlled from here just now.</p>}
+      <div className="cine__hrooms">
+        {rooms.map((r) => (
+          <section key={r.id || r.name} className="cine__hroom" aria-label={r.name}>
+            <p className="cine__formlabel">{r.name}</p>
+            {r.climate && (
+              <div className="cine__hrad">
+                <span className="cine__htemp">{degrees(r.tempC)}</span>
+                <span className="cine__hset">{r.targetC != null ? `set to ${degrees(r.targetC)}` : ''}{r.boost && r.boost.on ? ' · boosting' : ''}</span>
+                {r.boost && r.boost.on ? (
+                  <button className="cine__sheetbtn" disabled={anyBusy} onClick={() => onPress(r.climate, r.climate, 'boost-off')}>
+                    {busy === r.climate ? 'Saving…' : `Cancel boost${r.boost.untilHHMM ? ` (until ${r.boost.untilHHMM})` : ''}`}
+                  </button>
+                ) : (
+                  <button className="cine__sheetbtn cine__sheetbtn--warm" disabled={anyBusy} onClick={() => onPress(r.climate, r.climate, 'boost')}>
+                    {busy === r.climate ? 'Saving…' : 'Boost 1 hr'}
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="cine__hdevs">
+              {(r.lights || []).map((d) => <HomeDevice key={d.entity} d={d} busy={busy} onPress={onPress} />)}
+              {(r.sockets || []).map((d) => <HomeDevice key={d.entity} d={d} busy={busy} onPress={onPress} />)}
+            </div>
+          </section>
+        ))}
+      </div>
+      <p className="cine__note">Boost warms that room to 21° for an hour; the heating goes back to its own schedule after.</p>
+    </div>
+  );
+}
+
+/* ── Shopping ───────────────────────────────────────────────────────────── */
+
+export function ShoppingSheet({ shopping, act, setDirty }) {
+  const s = useSaver();
+  const [text, setText] = useState('');
+  const [ok, setOk] = useState(null);
+  const box = useRef(null);
+  useEffect(() => { if (setDirty) setDirty(Boolean(text.trim())); }, [text]);
+  useEffect(() => () => { if (setDirty) setDirty(false); }, []);
+  if (shopping === null) return <p className="cine__gap">I couldn’t read the shopping list. That isn’t the same as it being empty.</p>;
+  const sh = shopping || { exists: false, toBuy: [], bought: [] };
+  const add = () => {
+    const name = text.trim();
+    if (s.busy) return;
+    if (!name) { s.setError('type what to add first.'); return; }
+    setOk(null);
+    s.run(() => act.shopping.add(name)).then((r) => {
+      if (!r) return;
+      setText(''); if (setDirty) setDirty(false);
+      setOk(r.already ? `${name} was already on the list.` : `Added ${name}.`);
+      if (box.current) box.current.focus();
+    });
+  };
+  const tick = (name, undo) => { setOk(null); s.run(() => act.shopping.bought(name, undo)).then((r) => { if (r) setOk(undo ? `${name} is back on the list.` : `Got ${name}.`); }); };
+  return (
+    <div className="cine__form">
+      <div className="cine__addrow">
+        <input ref={box} className="cine__textin" value={text} maxLength={80} placeholder="Add to the list…" disabled={s.busy}
+               onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} aria-label="Add to the shopping list" />
+        <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy} onClick={add}>{s.busy ? 'Saving…' : 'Add'}</button>
+      </div>
+      <SaveState busy={s.busy} error={s.error} ok={ok} />
+      {!sh.exists && <p className="cine__sub">No shopping list yet — add the first thing and it starts.</p>}
+      {sh.exists && (sh.toBuy || []).length === 0 && <p className="cine__sub">Nothing to buy.</p>}
+      <ul className="cine__alljobs">
+        {(sh.toBuy || []).map((i) => (
+          <li key={i.name} className="cine__alljob">
+            <button className="cine__tick" disabled={s.busy} aria-label={`Got ${i.name}`} onClick={() => tick(i.name, false)}><span aria-hidden="true">✓</span></button>
+            <span className="cine__alljobbody cine__alljobbody--static"><span className="cine__jtext cine__jtext--full">{i.name}</span></span>
+          </li>
+        ))}
+      </ul>
+      {(sh.bought || []).length > 0 && (
+        <>
+          <p className="cine__formlabel">Bought today</p>
+          <ul className="cine__alljobs">
+            {sh.bought.map((i) => (
+              <li key={i.name} className="cine__alljob cine__alljob--done">
+                <span className="cine__tick cine__tick--done" aria-hidden="true">✓</span>
+                <span className="cine__alljobbody cine__alljobbody--static"><span className="cine__jtext cine__jtext--full cine__bought">{i.name}</span></span>
+                <button className="cine__sheetbtn" disabled={s.busy} onClick={() => tick(i.name, true)} aria-label={`Undo — ${i.name} not bought`}>Undo</button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Notes ──────────────────────────────────────────────────────────────── */
+
+/** "14:05", "yesterday 18:20" or "Thu 18:20" for when a note was left. PURE. */
+export function noteWhen(at, now = new Date()) {
+  const d = new Date(at);
+  if (!at || Number.isNaN(d.getTime())) return '';
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const day = (x) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  if (day(d) === day(now)) return hhmm;
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (day(d) === day(y)) return `yesterday ${hhmm}`;
+  return `${DAYS[d.getDay()]} ${hhmm}`;
+}
+
+export function NotesSheet({ notes, act, setDirty, now = new Date() }) {
+  const s = useSaver();
+  const [text, setText] = useState('');
+  const [ok, setOk] = useState(null);
+  useEffect(() => { if (setDirty) setDirty(Boolean(text.trim())); }, [text]);
+  useEffect(() => () => { if (setDirty) setDirty(false); }, []);
+  if (notes === null) return <p className="cine__gap">I couldn’t read the notes. That isn’t the same as there being none.</p>;
+  const list = notes || [];
+  const add = () => {
+    if (s.busy) return;
+    const t = text.trim();
+    if (!t) { s.setError('write the note first.'); return; }
+    setOk(null);
+    s.run(() => act.note.add(t)).then((r) => { if (r) { setText(''); if (setDirty) setDirty(false); setOk('Left on the wall.'); } });
+  };
+  return (
+    <div className="cine__form">
+      <div className="cine__addrow">
+        <input className="cine__textin" value={text} maxLength={140} placeholder="Leave a note…" disabled={s.busy} aria-label="Leave a note"
+               onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
+        <button className="cine__sheetbtn cine__sheetbtn--primary" disabled={s.busy} onClick={add}>{s.busy ? 'Saving…' : 'Leave it'}</button>
+      </div>
+      <SaveState busy={s.busy} error={s.error} ok={ok} />
+      {list.length === 0 && <p className="cine__sub">No notes.</p>}
+      <ul className="cine__notes">
+        {list.map((n) => (
+          <li key={n.id} className="cine__noteitem">
+            <div className="cine__notebody">
+              <p className="cine__notetext">{n.text}</p>
+              <p className="cine__notemeta">{[n.by, noteWhen(n.at, now)].filter(Boolean).join(' · ')}</p>
+            </div>
+            <button className="cine__sheetbtn" disabled={s.busy} aria-label={`Clear the note “${n.text}”`}
+                    onClick={() => { setOk(null); s.run(() => act.note.clear(n.id)).then((r) => { if (r) setOk('Cleared.'); }); }}>Clear</button>
+          </li>
+        ))}
+      </ul>
+      <p className="cine__note">Notes clear themselves after two days.</p>
+    </div>
+  );
+}
+
+/* ── Tea ────────────────────────────────────────────────────────────────── */
+
+/** Today and the next six days, with what is set for each. PURE. */
+export function teaDays(tea, todayKey) {
+  const byDate = new Map(((tea && tea.days) || []).map((d) => [d.date, d.text]));
+  if (tea && tea.today && !byDate.has(todayKey)) byDate.set(todayKey, tea.today);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = addDays(todayKey, i);
+    const { dow, day } = dayOfKey(date);
+    return { date, label: i === 0 ? 'Tonight' : i === 1 ? 'Tomorrow' : `${DAYS[dow]} ${day}`, text: byDate.get(date) || '' };
+  });
+}
+
+export function TeaSheet({ tea, today, act, setDirty }) {
+  const s = useSaver();
+  const days = teaDays(tea, today);
+  const [drafts, setDrafts] = useState(() => Object.fromEntries(days.map((d) => [d.date, d.text])));
+  const [saving, setSaving] = useState(null);
+  const [ok, setOk] = useState(null);
+  const changed = days.filter((d) => (drafts[d.date] || '').trim() !== d.text).length;
+  useEffect(() => { if (setDirty) setDirty(changed > 0); }, [changed]);
+  useEffect(() => () => { if (setDirty) setDirty(false); }, []);
+  if (tea === null) return <p className="cine__gap">I couldn’t read the tea plan.</p>;
+  const save = (d) => {
+    if (s.busy) return;
+    const text = (drafts[d.date] || '').trim();
+    setSaving(d.date); setOk(null);
+    s.run(() => act.tea(d.date, text || null)).then((r) => {
+      setSaving(null);
+      if (r) setOk(text ? `${d.label}: ${text}.` : `${d.label} cleared.`);
+    });
+  };
+  const recent = ((tea && tea.recent) || []).slice(0, 6);
+  return (
+    <div className="cine__form">
+      {recent.length > 0 && (
+        <>
+          <p className="cine__formlabel">Recent — tap to use for tonight</p>
+          <div className="cine__chips">
+            {recent.map((r) => <button key={r} className="cine__chip2" disabled={s.busy} onClick={() => setDrafts((x) => ({ ...x, [today]: r }))}>{r}</button>)}
+          </div>
+        </>
+      )}
+      <ul className="cine__teadays">
+        {days.map((d) => {
+          const draft = drafts[d.date] || '';
+          const dirty = draft.trim() !== d.text;
+          return (
+            <li key={d.date} className="cine__teaday">
+              <span className="cine__tealabel">{d.label}</span>
+              <input className="cine__textin cine__textin--small" value={draft} maxLength={80} placeholder="—" disabled={s.busy} aria-label={`Tea ${d.label}`}
+                     onChange={(e) => setDrafts((x) => ({ ...x, [d.date]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save(d); }} />
+              <button className={`cine__sheetbtn${dirty ? ' cine__sheetbtn--primary' : ''}`} disabled={s.busy || !dirty} onClick={() => save(d)}>
+                {saving === d.date ? 'Saving…' : dirty && !draft.trim() ? 'Clear' : 'Save'}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <SaveState busy={s.busy} error={s.error} ok={ok} />
+    </div>
+  );
+}
+
+/* ── Nick's walk ────────────────────────────────────────────────────────── */
+
+const localHM = (local) => (local ? String(local).slice(11, 16) : '?');
+
+/** The walk sheet. `MapView` is the shared WalkMap (passed in so tests need no Leaflet). */
+export function WalkSheet({ walk, MapView = null }) {
+  if (walk === null) return <p className="cine__gap">I couldn’t see Nick’s walk just now. That isn’t the same as something being wrong.</p>;
+  if (!walk || !walk.active) {
+    return <p className="cine__sub">{walk && walk.back ? `Nick’s back from ${walk.back.name} — checked in at ${localHM(walk.back.checkedInAt)}.` : 'Nick isn’t out on a walk.'}</p>;
+  }
+  const overdue = walk.state === 'overdue';
+  const positions = walk.positions || [];
+  return (
+    <div className="cine__form cine__walk">
+      <p className={`cine__walkhead${overdue ? ' cine__walkhead--late' : ''}`}>
+        <strong>{walk.name}</strong>{walk.ember ? ` with ${walk.companion || 'Ember'}` : ''}
+        {' · '}{overdue ? 'overdue' : walk.state === 'out' ? 'out walking' : 'not started yet'}
+      </p>
+      {overdue ? (
+        <p className="cine__walkalert" role="alert">
+          {`Nick planned to be back by ${localHM(walk.due)} and hasn’t checked in${walk.minutesLate != null ? ` — ${walk.minutesLate} min late` : ''}.`}
+          {walk.alerted && walk.alerted.sent ? ' NEURO has emailed the route card.' : ''}
+          {' Try calling Nick. If you can’t reach Nick and you’re worried, call 999 and ask for the Police.'}
+        </p>
+      ) : (
+        <p className="cine__sub">{`Started ${localHM(walk.start)} · back by ~${localHM(walk.due)}${walk.extended ? ' (extended)' : ''} · an alert goes out at ${localHM(walk.alertAt)} if Nick hasn’t checked in.`}</p>
+      )}
+      {MapView && <div className="cine__walkmap"><MapView route={walk.route || []} trail={walk.trail || []} emberTrail={walk.emberTrail || []} positions={positions} height="100%" /></div>}
+      {positions.length ? (
+        <ul className="cine__walkpos">
+          {positions.map((p, i) => (
+            <li key={i}><strong>{p.label}</strong>{` — last seen ${localHM(p.at)} `}<span className={p.minutesAgo > 30 ? 'cine__late' : ''}>{`(${p.ago})`}</span></li>
+          ))}
+        </ul>
+      ) : <p className="cine__note">No position has reached NEURO yet — out of signal the trackers just stop. That isn’t the same as something being wrong.</p>}
     </div>
   );
 }

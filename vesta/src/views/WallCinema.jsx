@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel, gbp, splitDay } from './Wall';
 import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot, decodeImage, FALLBACK_SRC, backgroundReport, logBackground, imageBySrc } from '../backgrounds';
-import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary, EventSheet } from './WallSheets';
+import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary, EventSheet, CareRows, HomeSheet, ShoppingSheet, NotesSheet, TeaSheet, WalkSheet } from './WallSheets';
+import WalkMap from '../components/WalkMap.jsx';
 import './WallCinema.css';
 
 /**
@@ -323,10 +324,54 @@ function Presence({ who, onPerson }) {
 
 const trendWord = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : null);
 
-function Outside({ station, onOpen }) {
-  if (!station) return null;
-  if (!station.known) {
-    return <div className="cine__outside"><p className="cine__gap">{station.why || 'the weather station could not be read'}.</p></div>;
+/**
+ * The day's outlook (the `outlook` block): the rain line and today's high/low.
+ * Absent = not drawn; null = a named gap; known:false = its own why. PURE.
+ */
+export function outlookLines(outlook) {
+  if (outlook === undefined) return null;
+  if (outlook === null) return { gap: 'Can’t read the forecast just now' };
+  if (outlook.known === false) return { gap: outlook.why || 'No forecast just now' };
+  const t = outlook.today || {};
+  const temps = t.highC != null || t.lowC != null
+    ? [t.highC != null ? `High ${t.highC}°` : null, t.lowC != null ? `Low ${t.lowC}°` : null].filter(Boolean).join(' · ')
+    : null;
+  const rain = outlook.rain && outlook.rain.say ? outlook.rain.say : null;
+  return { rain, rainState: outlook.rain ? outlook.rain.state : null, temps };
+}
+
+/** "13°/7° · 40% rain" for the Tomorrow card. PURE; null when there is nothing to say. */
+export function tomorrowLine(outlook) {
+  if (!outlook || outlook.known === false || !outlook.tomorrow) return null;
+  const t = outlook.tomorrow;
+  const temps = t.highC != null && t.lowC != null ? `${t.highC}°/${t.lowC}°` : t.highC != null ? `High ${t.highC}°` : t.lowC != null ? `Low ${t.lowC}°` : null;
+  const rain = typeof t.rainChance === 'number' ? `${t.rainChance}% rain` : null;
+  return [temps, rain].filter(Boolean).join(' · ') || null;
+}
+
+function OutlookRows({ outlook }) {
+  const o = outlookLines(outlook);
+  if (!o) return null;
+  if (o.gap) return <p className="cine__gap cine__olook">{o.gap}</p>;
+  return (
+    <div className="cine__olook">
+      {o.rain && <p className={`cine__orain${o.rainState === 'raining' || o.rainState === 'arriving' ? ' cine__orain--wet' : ''}`}><Icon name="rain" /> {o.rain}</p>}
+      {o.temps && <p className="cine__ohilo">{o.temps}</p>}
+    </div>
+  );
+}
+
+function Outside({ station, outlook, onOpen }) {
+  if (!station && outlook === undefined) return null;
+  if (!station || !station.known) {
+    return (
+      <div className="cine__outside">
+        <div className="cine__odetail">
+          {station && <p className="cine__gap">{station.why || 'the weather station could not be read'}.</p>}
+          <OutlookRows outlook={outlook} />
+        </div>
+      </div>
+    );
   }
   return (
     <div className="cine__outside cine__tap" aria-label="Outside — tap for details" role="button" tabIndex={0} onClick={onOpen}>
@@ -337,6 +382,7 @@ function Outside({ station, onOpen }) {
       )}
       <div className="cine__temp">{station.tempC != null ? `${station.tempC.toFixed(1)}°` : '—'}</div>
       <div className="cine__odetail">
+        <OutlookRows outlook={outlook} />
         <p className="cine__otrend">{station.tendency ? `Pressure ${station.tendency}` : 'Outside'}</p>
         <ul className="cine__orows">
           {station.humidityPct != null && <li><Icon name="drop" /> {`${station.humidityPct}% humidity`}</li>}
@@ -349,7 +395,7 @@ function Outside({ station, onOpen }) {
   );
 }
 
-function DayCard({ day, title, now, onOpen, emptyLine, onEvent }) {
+function DayCard({ day, title, now, onOpen, emptyLine, onEvent, extra = null }) {
   const head = (
     <button className="cine__phead" onClick={onOpen} aria-label={`Open the calendar from ${title}`}>
       <Icon name="cal" className={title === 'Today' ? 'cine__icon--amber' : 'cine__icon--rose'} />
@@ -357,12 +403,14 @@ function DayCard({ day, title, now, onOpen, emptyLine, onEvent }) {
       <Icon name="chevron" className="cine__chev" />
     </button>
   );
-  if (!day) return <section className="cine__panel">{head}<p className="cine__gap">I couldn’t read the diary.</p></section>;
+  const ex = extra ? <p className="cine__pextra">{extra}</p> : null;
+  if (!day) return <section className="cine__panel">{head}{ex}<p className="cine__gap">I couldn’t read the diary.</p></section>;
   const { allDay, rows, nextId } = splitDay(day, now ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` : null);
   const empty = !allDay.length && !rows.length && !day.work && !day.off;
   return (
     <section className="cine__panel" aria-label={title}>
       {head}
+      {ex}
       <div className="cine__pbody cine__scroll">
         {empty ? (
           <>
@@ -414,11 +462,35 @@ function JobItem({ t, today, full = false, onTap = null }) {
 // Two jobs and a count (Nick, iteration 3); a job opens its full wording, the
 // header and the count open them all.
 const JOBS_SHOWN = 2;
-function Jobs({ tasks, gap, today, onOpen, onJob }) {
-  const list = tasks ? tasks.tasks : [];
-  const clickable = list.length > 0;
-  const total = tasks ? Math.max(tasks.total || 0, list.length) : 0;
-  const more = total - Math.min(list.length, JOBS_SHOWN);
+/**
+ * What the jobs tile shows, in order, within its two slots (25 Oct 2026):
+ * Ember's OVERDUE care first, then household jobs, then care due this week.
+ * Care is read-only. PURE. Returns { shown: [{kind, item}], more }.
+ */
+export function jobsTile(tasks, care, slots = JOBS_SHOWN) {
+  const list = (tasks && tasks.tasks) || [];
+  const c = Array.isArray(care) ? care : [];
+  const all = [
+    ...c.filter((x) => x.overdue).map((item) => ({ kind: 'care', item })),
+    ...list.map((item) => ({ kind: 'job', item })),
+    ...c.filter((x) => !x.overdue).map((item) => ({ kind: 'care', item })),
+  ];
+  const total = Math.max((tasks && tasks.total) || 0, list.length) + c.length;
+  const shown = all.slice(0, slots);
+  return { shown, more: Math.max(0, total - shown.length) };
+}
+
+function CareRow({ c }) {
+  return (
+    <li className={`cine__job cine__job--care${c.overdue ? ' cine__job--late' : ''}`}>
+      <span className="cine__jtext"><span className="cine__paw" aria-hidden="true">🐾 </span>{c.say || c.title}</span>
+    </li>
+  );
+}
+
+function Jobs({ tasks, gap, today, onOpen, onJob, care = undefined, careGap = null }) {
+  const { shown, more } = jobsTile(tasks, care);
+  const clickable = shown.length > 0;
   return (
     <section className="cine__panel cine__panel--jobs" aria-label="Household jobs">
       <button className="cine__phead" onClick={onOpen} aria-label="Open all household jobs">
@@ -428,15 +500,15 @@ function Jobs({ tasks, gap, today, onOpen, onJob }) {
         {clickable && more <= 0 && <Icon name="chevron" className="cine__chev" />}
       </button>
       {gap || !tasks ? <p className="cine__gap">I couldn’t read the jobs list.</p>
-        : list.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
+        : shown.length === 0 ? <div className="cine__pbody"><p className="cine__big">Nothing to do</p></div>
         : (
-          <>
-            <ul className="cine__jobs">
-              {list.slice(0, JOBS_SHOWN).map((t) => <JobItem key={t.id} t={t} today={today} onTap={() => onJob && onJob(t)} />)}
-            </ul>
-
-          </>
+          <ul className="cine__jobs">
+            {shown.map((x) => (x.kind === 'care'
+              ? <CareRow key={`care-${x.item.id || x.item.title}`} c={x.item} />
+              : <JobItem key={x.item.id} t={x.item} today={today} onTap={() => onJob && onJob(x.item)} />))}
+          </ul>
         )}
+      {care === null && !gap && <p className="cine__gap cine__gap--small">{careGap || 'I couldn’t read Ember’s care.'}</p>}
     </section>
   );
 }
@@ -537,6 +609,110 @@ function NextDays({ week, today, onOpen, onDay }) {
   );
 }
 
+/* ── Under the clock: tea, countdowns, Nick's walk (25 Oct 2026) ──────────── */
+
+const hmOf = (local) => (local ? String(local).slice(11, 16) : '?');
+
+/** The walk banner's words and tone, or null when there is nothing to say. PURE. */
+export function walkBanner(walk) {
+  if (walk === undefined) return null;
+  if (walk === null) return { tone: 'gap', text: 'Can’t see Nick’s walk' };
+  if (walk.active) {
+    if (walk.state === 'overdue') return { tone: 'late', text: `Nick’s walk · overdue since ${hmOf(walk.due)}` };
+    if (walk.state === 'not-started') return { tone: 'walk', text: `Nick’s walking at ${hmOf(walk.start)} · back by ~${hmOf(walk.due)}` };
+    return { tone: 'walk', text: `Nick’s on a walk · back by ~${hmOf(walk.due)}` };
+  }
+  if (walk.back) return { tone: 'back', text: `Nick’s back from the walk · ${hmOf(walk.back.checkedInAt)}` };
+  return null;
+}
+
+/** Whether anything will be drawn under the clock (the clock column tightens to make room). PURE. */
+export function hasBits(data, can) {
+  return Boolean(can('hike') && walkBanner(data.walk));
+}
+
+/**
+ * Two places, so 1024×748 still fits with no scrolling (25 Oct 2026): the WALK
+ * banner sits under the clock (it matters most, and keeps its full width);
+ * tea and the countdowns wrap under the dock, in the space the Outside reading
+ * leaves above the panels. `part`: 'walk' | 'chips'.
+ */
+function DayBits({ data, can, onTea, onWalk, part }) {
+  const bits = [];
+  // Tea (scope tasks): absent = not drawn; null = a named gap.
+  if (can('tasks') && data.tea !== undefined) {
+    bits.push(data.tea === null
+      ? <span key="tea" className="cine__bit cine__bit--gap">Tea: can’t read</span>
+      : <button key="tea" className="cine__bit cine__bit--tea" onClick={onTea} aria-label="Tea tonight — tap to set">
+          <span className="cine__bitlabel">Tea</span>{` ${data.tea.today || '—'}`}
+        </button>);
+  }
+  // Countdowns (scope calendar): the nearest two someone marked.
+  if (can('calendar') && data.countdowns !== undefined) {
+    if (data.countdowns === null) bits.push(<span key="cd" className="cine__bit cine__bit--gap">Countdowns: can’t read</span>);
+    else for (const c of data.countdowns.slice(0, 2)) {
+      bits.push(<span key={`cd-${c.key}`} className={`cine__bit cine__bit--cd${c.days === 0 ? ' cine__bit--today' : ''}`}>
+        <span className="cine__bitlabel">{c.title}</span>{` ${c.say}`}
+      </span>);
+    }
+  }
+  const walk = can('hike') ? walkBanner(data.walk) : null;
+  if (part === 'chips') return bits.length ? <div className="cine__chipsr">{bits}</div> : null;
+  if (!walk) return null;
+  return (
+    <div className="cine__bits">
+      {walk && (walk.tone === 'walk' || walk.tone === 'late'
+        ? <button className={`cine__walkbanner${walk.tone === 'late' ? ' cine__walkbanner--late' : ''}`} onClick={onWalk} role={walk.tone === 'late' ? 'alert' : undefined}>{walk.text}</button>
+        : <span className={`cine__bit${walk.tone === 'gap' ? ' cine__bit--gap' : ''}`}>{walk.text}</span>)}
+    </div>
+  );
+}
+
+/* ── The dock: Home / Shopping / Notes (25 Oct 2026) ───────────────────────── */
+
+const DOCK_ICONS = {
+  home: <svg viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5" /><path d="M10 20v-5h4v5" /></svg>,
+  shop: <svg viewBox="0 0 24 24"><path d="M3 4h2.5l2.2 11h10.6l2-8H6.3" /><circle cx="9.5" cy="19" r="1.4" /><circle cx="17" cy="19" r="1.4" /></svg>,
+  notes: <svg viewBox="0 0 24 24"><path d="M5 4h14v12l-5 4H5z" /><path d="M14 20v-4h5M8 9h8M8 12.5h6" /></svg>,
+};
+
+/** Which dock buttons show, with their badges. PURE. Exported for tests. */
+export function dockItems(data, can) {
+  const out = [];
+  if (!data) return out;
+  if (can('home-control')) out.push({ id: 'home', label: 'Home', badge: null });
+  if (can('kitchen') && data.shopping !== undefined) {
+    const n = data.shopping && Array.isArray(data.shopping.toBuy) ? data.shopping.toBuy.length : null;
+    out.push({ id: 'shop', label: 'Shopping', badge: data.shopping === null ? '!' : n || null });
+  }
+  if (can('tasks') && data.notes !== undefined) {
+    out.push({ id: 'notes', label: 'Notes', badge: data.notes === null ? '!' : (data.notes.length || null) });
+  }
+  return out;
+}
+
+function Dock({ items, onOpen }) {
+  if (!items.length) return null;
+  return (
+    <nav className="cine__dock" aria-label="House">
+      {items.map((d) => (
+        <button key={d.id} className="cine__dockbtn" onClick={() => onOpen(d.id)} aria-label={d.badge != null ? `${d.label} (${d.badge})` : d.label}>
+          <span className="cine__dockicon" aria-hidden="true">{DOCK_ICONS[d.id]}</span>
+          <span className="cine__docklabel">{d.label}</span>
+          {d.badge != null && <span className={`cine__badge${d.badge === '!' ? ' cine__badge--gap' : ''}`}>{d.badge}</span>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** The live copy of an event from the latest read, matched by its countdown key. */
+function liveEvent(data, event) {
+  if (!event || !event.countdownKey || !data || !Array.isArray(data.week)) return null;
+  for (const d of data.week) for (const e of d.events || []) if (e.countdownKey === event.countdownKey) return e;
+  return null;
+}
+
 /** A sheet over the wall: every job, or one day in full. Tap outside or Done to close. */
 function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirty }) {
   const [confirm, setConfirm] = useState(false);
@@ -549,11 +725,11 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
   const list = (data && data.tasks && data.tasks.tasks) || [];
   const people = (data && data.people) || [];
   const fam = (data && data.familyCalendar) || { canEdit: false, why: null };
-  let title = ''; let body = null; let top = false;
+  let title = ''; let body = null; let top = false; let wide = false;
   if (sheet.kind === 'jobs') {
     title = `Household jobs \u00b7 ${list.length}`;
     body = act
-      ? <AllJobsSheet tasks={data.tasks} done={data.doneTasks || []} today={data.today} act={act} onOpenJob={(t) => setSheet({ kind: 'job', task: t })} onAdd={() => setSheet({ kind: 'add' })} />
+      ? <AllJobsSheet tasks={data.tasks} done={data.doneTasks || []} care={data.care} today={data.today} act={act} onOpenJob={(t) => setSheet({ kind: 'job', task: t })} onAdd={() => setSheet({ kind: 'add' })} />
       : <ul className="cine__jobs cine__jobs--all">{list.map((t) => <JobItem key={t.id} t={t} today={data.today} full />)}</ul>;
   } else if (sheet.kind === 'job') {
     title = 'Household job';
@@ -582,7 +758,23 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
     title = sheet.kind === 'addEvent' ? 'New family event' : 'Event';
     top = true;
     body = <EventSheet event={sheet.kind === 'event' ? sheet.event : null} date={sheet.date} today={data.today} act={act}
+                       live={sheet.kind === 'event' ? liveEvent(data, sheet.event) : null}
                        canEdit={fam.canEdit} why={fam.why} setDirty={setDirty} onDone={() => { setDirty(false); onClose(); }} />;
+  } else if (sheet.kind === 'home' && act && act.home) {
+    title = 'Home'; wide = true;
+    body = <HomeSheet act={act} />;
+  } else if (sheet.kind === 'shop' && act && act.shopping) {
+    title = 'Shopping'; top = true;
+    body = <ShoppingSheet shopping={data.shopping} act={act} setDirty={setDirty} />;
+  } else if (sheet.kind === 'notes' && act && act.note) {
+    title = 'Notes'; top = true;
+    body = <NotesSheet notes={data.notes} act={act} setDirty={setDirty} />;
+  } else if (sheet.kind === 'tea' && act && act.tea) {
+    title = 'Tea'; top = true;
+    body = <TeaSheet tea={data.tea} today={data.today} act={act} setDirty={setDirty} />;
+  } else if (sheet.kind === 'walk') {
+    title = 'Nick’s walk'; wide = true;
+    body = <WalkSheet walk={data.walk} MapView={WalkMap} />;
   } else if (sheet.kind === 'day') {
     const d = sheet.day; const { dow, day, month } = dayOfKey(d.date);
     title = `${DAYS_LONG[dow]} ${day} ${MONTHS_LONG[month]}`;
@@ -609,14 +801,14 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
   }
   return (
     <div className={`cine__sheetwrap${top ? ' cine__sheetwrap--top' : ''}`} onClick={close}>
-      <section className="cine__sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <section className={`cine__sheet${wide ? ' cine__sheet--wide' : ''}`} role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <header className="cine__sheethead">
           <span className="cine__ptitle">{title}</span>
           <button className="cine__sheetbtn" onClick={close} aria-label="Close">Close</button>
         </header>
         {confirm && (
           <div className="cine__confirm" role="alertdialog" aria-label="Discard changes?">
-            <span>{sheet.kind === 'add' ? 'Discard this new job?' : 'Discard your changes?'}</span>
+            <span>{sheet.kind === 'add' ? 'Discard this new job?' : sheet.kind === 'notes' ? 'Discard this note?' : sheet.kind === 'shop' ? 'Discard what you typed?' : 'Discard your changes?'}</span>
             <button className="cine__sheetbtn" onClick={() => setConfirm(false)}>Keep editing</button>
             <button className="cine__sheetbtn cine__sheetbtn--danger" onClick={() => { setDirty(false); onClose(); }}>Discard</button>
           </div>
@@ -661,16 +853,21 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
       ) : (
         <div className="cine__layout">
           <header className="cine__top">
-            <div className="cine__left">
+            <div className={`cine__left${data && hasBits(data, can) ? ' cine__left--busy' : ''}`}>
               <div className="cine__clock">{`${hh}:${mm}`}</div>
               <div className="cine__date">{`${DAYS_LONG[now.getDay()]} ${now.getDate()} ${MONTHS_LONG[now.getMonth()]}`}</div>
               <span className="cine__rule" />
               {fusion && fusion.line ? <p className="cine__saimline">{fusion.line}</p> : null}
               {data && can('house') && <h1 className="cine__headline">{presenceLine(data.who)}</h1>}
               {week && <p className="cine__subline">{nextLine(week[0], now)}</p>}
+              {data && <DayBits part="walk" data={data} can={can} onWalk={() => setSheet({ kind: 'walk' })} />}
               {data && can('house') && <Presence who={data.who} onPerson={(p) => setSheet({ kind: 'member', person: p })} />}
             </div>
-            {data && can('house') && <Outside station={data.station} onOpen={() => setSheet({ kind: 'weather' })} />}
+            <div className="cine__right">
+              {data && can('house') && <Outside station={data.station} outlook={data.outlook} onOpen={() => setSheet({ kind: 'weather' })} />}
+              {act && <Dock items={dockItems(data, can)} onOpen={(id) => setSheet({ kind: id })} />}
+              {data && <DayBits part="chips" data={data} can={can} onTea={() => setSheet({ kind: 'tea' })} />}
+            </div>
           </header>
           {fusion && fusion.card ? <div className="cine__saimcard">{fusion.card}</div> : null}
           {error && <p className="cine__stale" role="status">Can’t reach home — showing what I last had.</p>}
@@ -678,8 +875,9 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
             <>
               <div className={`cine__panels${can('energy') ? '' : ' cine__panels--three'}`}>
                 {can('calendar') && <DayCard day={week && week[0]} title="Today" now={now} onOpen={open} emptyLine="Nothing planned today" onEvent={(e, date) => setSheet({ kind: 'event', event: e, date })} />}
-                {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" onEvent={(e, date) => setSheet({ kind: 'event', event: e, date })} />}
-                <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} onOpen={() => setSheet({ kind: 'jobs' })} onJob={(t) => setSheet({ kind: 'job', task: t })} />
+                {can('calendar') && <DayCard day={week && week[1]} title="Tomorrow" onOpen={open} emptyLine="A quiet day" extra={can('house') ? tomorrowLine(data.outlook) : null} onEvent={(e, date) => setSheet({ kind: 'event', event: e, date })} />}
+                <Jobs tasks={data.tasks} gap={gapFor('tasks')} today={data.today} care={can('house') ? data.care : undefined} careGap={gapFor('care')}
+                      onOpen={() => setSheet({ kind: 'jobs' })} onJob={(t) => setSheet({ kind: 'job', task: t })} />
                 {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} onOpen={() => setSheet({ kind: 'energy' })} />}
               </div>
               {can('calendar') && <NextDays week={week} today={data.today} onOpen={open} onDay={(d) => setSheet({ kind: 'day', day: d })} />}

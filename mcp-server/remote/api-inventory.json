@@ -412,7 +412,7 @@
     "route": "/api/v/family-calendar/events/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 540,
+    "line": 671,
     "description": "DELETE /api/v/family-calendar/events/:id.",
     "params": [
       "id"
@@ -6420,7 +6420,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 456,
+    "line": 587,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -6447,12 +6447,28 @@
     "stream": false
   },
   {
+    "id": "get_v_home_control",
+    "method": "GET",
+    "route": "/api/v/home-control",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 539,
+    "description": "GET /api/v/home-control. the house's lights, household sockets and radiators for the wall's Home sheet. Needs the home-control scope.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_v_photo_by_id",
     "method": "GET",
     "route": "/api/v/photo/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 435,
+    "line": 566,
     "description": "GET /api/v/photo/:id.",
     "params": [
       "id"
@@ -7429,7 +7445,7 @@
     "route": "/api/v/family-calendar/events/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 530,
+    "line": 661,
     "description": "PATCH /api/v/family-calendar/events/:id.",
     "params": [
       "id"
@@ -7447,7 +7463,7 @@
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 497,
+    "line": 628,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -15720,7 +15736,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 578,
+    "line": 709,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -15741,7 +15757,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 612,
+    "line": 743,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -15762,7 +15778,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 588,
+    "line": 719,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -15778,16 +15794,56 @@
     "stream": false
   },
   {
+    "id": "post_v_countdowns",
+    "method": "POST",
+    "route": "/api/v/countdowns",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 518,
+    "description": "POST /api/v/countdowns. mark or unmark an event to count down to. Body: { key, title, date, on }",
+    "params": [],
+    "query": [],
+    "body": [
+      "date",
+      "key",
+      "on",
+      "title"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_v_family_calendar_events",
     "method": "POST",
     "route": "/api/v/family-calendar/events",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 520,
+    "line": 651,
     "description": "POST /api/v/family-calendar/events.",
     "params": [],
     "query": [],
     "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_v_home_control",
+    "method": "POST",
+    "route": "/api/v/home-control",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 549,
+    "description": "POST /api/v/home-control. switch a mapped light/socket, boost or un-boost a radiator, or turn every light off. Body: { entity, action }",
+    "params": [],
+    "query": [],
+    "body": [
+      "action",
+      "entity"
+    ],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,
@@ -15813,16 +15869,108 @@
     "stream": false
   },
   {
+    "id": "post_v_notes",
+    "method": "POST",
+    "route": "/api/v/notes",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 506,
+    "description": "POST /api/v/notes. leave a note on the family wall (≤140 chars, cleared after 2 days). Body: { text }",
+    "params": [],
+    "query": [],
+    "body": [
+      "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_v_notes_by_id_clear",
+    "method": "POST",
+    "route": "/api/v/notes/:id/clear",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 513,
+    "description": "POST /api/v/notes/:id/clear. take a note off the wall.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_v_shopping_add",
+    "method": "POST",
+    "route": "/api/v/shopping/add",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 525,
+    "description": "POST /api/v/shopping/add. add to the shared shopping list (created, shared, if missing). Body: { name }",
+    "params": [],
+    "query": [],
+    "body": [
+      "name"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_v_shopping_bought",
+    "method": "POST",
+    "route": "/api/v/shopping/bought",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 532,
+    "description": "POST /api/v/shopping/bought. tick an item bought, or undo it. Body: { name, undo }",
+    "params": [],
+    "query": [],
+    "body": [
+      "name",
+      "undo"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_v_tasks",
     "method": "POST",
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 470,
+    "line": 601,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],
     "body": [
+      "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_v_tea",
+    "method": "POST",
+    "route": "/api/v/tea",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 499,
+    "description": "POST /api/v/tea. set or clear one day's tea (today..+6). Body: { date, text } — text null or '' clears.",
+    "params": [],
+    "query": [],
+    "body": [
+      "date",
       "text"
     ],
     "queryOpen": false,
