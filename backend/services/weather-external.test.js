@@ -382,3 +382,10 @@ test('the station key and publish switch live in Settings; .env still wins, and 
   assert.equal(wu.publishConfig({}).keySet, false);
   assert.equal(wu.publishConfig({}).enabled, false, 'forgetting the key switches publishing off');
 });
+
+test('saving a new API key ends the back-off the old key earned', () => {
+  ext.recordFailure('wu:ICOALV53', wu.FEED, 'HTTP 401', { nowMs: NOW });
+  assert.ok(ext.backingOff(ext.syncState('wu:ICOALV53', wu.FEED), NOW + 1000));
+  assert.equal(wu.setStoredKey('b1b2c3d4e5f60718293a4b5c6d7e8f90').ok, true);
+  assert.equal(ext.backingOff(ext.syncState('wu:ICOALV53', wu.FEED), NOW + 1000), false);
+});

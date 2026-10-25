@@ -88,7 +88,12 @@ function setStoredKey(value) {
   const k = String(value || '').trim();
   if (!k) return { ok: false, error: 'No key given.' };
   if (!/^[A-Za-z0-9]{20,64}$/.test(k)) return { ok: false, error: 'That does not look like a Weather Underground API key (a run of 32 letters and digits).' };
-  require('../db/database').setState(KEY_STATE, k);
+  const db = require('../db/database');
+  db.setState(KEY_STATE, k);
+  // A new key answers the failures the old one earned: without this, stations
+  // backed off after a rejected key stay silent for up to six hours after a
+  // working key is pasted, and "Import now" skips every one of them.
+  try { db.run('UPDATE external_weather_sync SET retry_after = NULL WHERE source_id LIKE ? AND feed = ?', ['wu:%', FEED]); } catch { /* no rows yet */ }
   return { ok: true };
 }
 
