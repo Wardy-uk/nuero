@@ -92,7 +92,7 @@ export default function ScreenWall({ say = null, nickHere = false, area = null, 
   };
   return (
     <div className="screenwall">
-      <Wall screen fusion={fusion} onSignedOut={NOOP} />
+      <Wall screen fusion={fusion} onSignedOut={NOOP} place={area} />
       {/* His work, on the room screen, only while he is in the room and only
           when he asks — it folds back on its own (App.jsx). */}
       {nickHere && onWork && (

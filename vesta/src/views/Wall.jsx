@@ -653,13 +653,28 @@ function useNewVersion() {
   return fresh;
 }
 
-/** A short, device-free line describing what holds the screen on. */
-function keepAwakeReport(how) {
+// Which screen this is, so three walls on one household login stop overwriting
+// each other's check-in (25 Oct 2026). A random id kept on the device — it says
+// nothing about the device itself.
+function deviceId() {
   try {
+    let id = localStorage.getItem('vesta_device_id');
+    if (!id || !/^[a-z0-9]{6,16}$/.test(id)) {
+      id = Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('vesta_device_id', id);
+    }
+    return id;
+  } catch { return 'unknown'; }
+}
+
+/** A short, device-free line describing what holds the screen on. */
+function keepAwakeReport(how, place = null) {
+  try {
+    const who = `dev=${deviceId()}${place ? `;room=${String(place).replace(/[^\w-]/g, '').slice(0, 30)}` : ''};`;
     const ios = (/OS (\d+)_(\d+)/.exec(navigator.userAgent || '') || []).slice(1, 3).join('.') || 'other';
     const where = navigator.standalone ? 'home-screen' : 'browser';
     const bg = backgroundReport.id ? `;bg=${backgroundReport.id};bgstate=${backgroundReport.state}` : `;bgstate=${backgroundReport.state}`;
-    return `${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios};vw=${window.innerWidth}x${window.innerHeight}${bg}`;
+    return `${who}${how || 'none'};${where};wakelock-api=${navigator.wakeLock ? 'yes' : 'no'};os=${ios};vw=${window.innerWidth}x${window.innerHeight}${bg}`;
   } catch { return how || 'none'; }
 }
 
@@ -689,7 +704,7 @@ const rangeKey = (r) => `${r.from}:${r.days}`;
  * (the browser holds no token), and `fusion` carries SAiM into the scene. The
  * cinema look is the only look, and the footer is the kiosk's job.
  */
-export default function Wall({ onExit, onSignedOut, screen = false, fusion = null }) {
+export default function Wall({ onExit, onSignedOut, screen = false, fusion = null, place = null }) {
   const [data, setData] = useState(() => {
     // Draw at once from what this device last had; the network refreshes it.
     try {
@@ -708,7 +723,7 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
   const updateReady = useNewVersion();
   // What is keeping the screen on, sent with each poll (see /api/v/wall `held`).
   const heldRef = useRef('');
-  heldRef.current = keepAwakeReport(how);
+  heldRef.current = keepAwakeReport(screen ? 'room screen' : how, place);
   // Today-first: the wall always starts on Today and returns there when left alone.
   const [view, setView] = useState('today');
   const [offset, setOffset] = useState(0);

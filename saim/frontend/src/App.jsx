@@ -331,17 +331,24 @@ function AppShell() {
       {/* ⚠ A WALL screen (the living room, the bedroom — `SAIM_WALL_SCREENS`)
           shows the family wall instead of the board: VESTA's cinema view, as
           the household, with SAiM in the scene (22 Oct 2026). */}
-      {showClock && (place === 'home'
-        ? (wall
-          ? <ScreenWall say={displayDetail?.say} area={homeArea} />
-          : <HomeBoard now={now} area={homeArea} say={displayDetail?.say} />)
+      {/* ⚠ ONE wall, mounted in ONE place whether he is in the room or not
+          (25 Oct 2026). It used to be two elements, one per verdict, so every
+          clock↔full flip — his watch moving between the kitchen and the living
+          room — tore the wall down and built it again: a fresh read and every
+          face refetched each time (one screen logged 4,294 photo fetches). Only
+          `nickHere` changes now. The work button is offered ONLY while he is in
+          the room (the verdict is `full`). */}
+      {wall && ((showClock && place === 'home') || homeView) && (
+        <ScreenWall say={displayDetail?.say} area={homeArea} nickHere={homeView}
+          onWork={homeView ? () => setWorkUntil(Date.now() + WORK_SHOWN_MS) : null} />
+      )}
+      {showClock && !(wall && place === 'home') && (place === 'home'
+        ? <HomeBoard now={now} area={homeArea} say={displayDetail?.say} />
         : <ClockScreen now={now} say={displayDetail?.say} area={homeArea} />)}
-      {/* The work button is offered ONLY while he is in the room (the verdict
-          is `full`); the board shown while he is elsewhere still swallows every
-          tap, so it cannot be opened by whoever is passing. */}
-      {homeView && (wall
-        ? <ScreenWall say={displayDetail?.say} area={homeArea} nickHere onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />
-        : <HomeBoard now={now} area={homeArea} onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />)}
+      {/* The board shown while he is elsewhere still swallows every tap, so it
+          cannot be opened by whoever is passing. */}
+      {homeView && !wall && (
+        <HomeBoard now={now} area={homeArea} onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />)}
       {workShown && !overlayOwnsScreen && (
         <button type="button" className="app__home" onClick={() => setWorkUntil(0)}>Home</button>
       )}

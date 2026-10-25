@@ -117,15 +117,25 @@ export const wall = (token, { from = null, days = 7, held = '', perf = '', timeo
 // route; nothing about access changes. (18 Oct 2026)
 const PHOTO_CACHE = 'vesta-photos-v1';
 export const photoStats = { hit: 0, miss: 0, ms: [] };
+// ⚠ Cache Storage exists only in a SECURE context, and the room screens load
+// the wall over plain http on the LAN — so there `caches` is undefined and every
+// face was fetched again on every mount (25 Oct 2026). The bytes are therefore
+// also kept in memory for the life of the page, keyed the same way.
+const memPhotos = new Map();
 export async function photoUrl(token, id, version) {
   const key = `${API_BASE}/api/v/photo/${encodeURIComponent(id)}?v=${encodeURIComponent(version || '')}`;
+  const mem = memPhotos.get(key);
+  if (mem) { photoStats.hit++; return URL.createObjectURL(mem); }
+  return photoUrlUncached(token, id, key);
+}
+async function photoUrlUncached(token, id, key) {
   const started = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let store = null;
   try { if (typeof caches !== 'undefined') store = await caches.open(PHOTO_CACHE); } catch { store = null; }
   try {
     if (store) {
       const hit = await store.match(key);
-      if (hit) { photoStats.hit++; return URL.createObjectURL(await hit.blob()); }
+      if (hit) { photoStats.hit++; const b = await hit.blob(); memPhotos.set(key, b); return URL.createObjectURL(b); }
     }
   } catch { /* a broken cache is a miss */ }
   try {
@@ -133,6 +143,8 @@ export async function photoUrl(token, id, version) {
     if (!res.ok) return null;
     const blob = await res.blob();
     photoStats.miss++;
+    for (const k of memPhotos.keys()) if (k.includes(`/api/v/photo/${encodeURIComponent(id)}?`)) memPhotos.delete(k);
+    memPhotos.set(key, blob);
     photoStats.ms.push(Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started));
     if (store) {
       try {
@@ -149,6 +161,7 @@ export async function photoUrl(token, id, version) {
 
 /** Forget every cached photo (sign-out). */
 export async function clearPhotoCache() {
+  memPhotos.clear();
   try { if (typeof caches !== 'undefined') await caches.delete(PHOTO_CACHE); } catch { /* nothing kept */ }
 }
 

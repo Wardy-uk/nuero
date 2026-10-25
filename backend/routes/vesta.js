@@ -331,7 +331,21 @@ router.get('/wall', requireAccount, (req, res) => {
       // The last 40 timing reports, so before/after can be read from the Pi.
       const perfLog = Array.isArray(prev.perfLog) ? prev.perfLog.slice(-39) : [];
       if (perfIn) perfLog.push({ at: out.at, perf: perfIn });
-      seen[req.account.username] = { at: out.at, held, ...(perfIn ? { perf: perfIn } : {}), perfLog };
+      // ⚠ PER DEVICE as well (25 Oct 2026): the iPad and both room screens all
+      // sign in as `family`, so one entry per account meant each check-in wrote
+      // over the others and a sleeping screen could not be told from a live one.
+      // The device's own random id (`dev=` in `held`) keys it; at most 8 kept.
+      const dev = (/(?:^|;)dev=([a-z0-9]{1,16})/.exec(held) || [])[1] || null;
+      const devices = prev.devices && typeof prev.devices === 'object' ? { ...prev.devices } : {};
+      if (dev) {
+        const d0 = devices[dev] || {};
+        const dLog = Array.isArray(d0.perfLog) ? d0.perfLog.slice(-19) : [];
+        if (perfIn) dLog.push({ at: out.at, perf: perfIn });
+        devices[dev] = { at: out.at, held, ...(perfIn ? { perf: perfIn } : {}), perfLog: dLog };
+        const keep = Object.entries(devices).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, 8);
+        for (const k of Object.keys(devices)) if (!keep.some(([kk]) => kk === k)) delete devices[k];
+      }
+      seen[req.account.username] = { at: out.at, held, ...(perfIn ? { perf: perfIn } : {}), perfLog, devices };
       db.setState('vesta_wall_seen', JSON.stringify(seen));
     } catch (e) { console.warn('[Vesta] Could not record the wall keep-awake report:', e.message); }
   }
