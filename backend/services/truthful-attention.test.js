@@ -193,7 +193,7 @@ test('D1. SAiM S11 carries the held count on the lead itself; the rule id is unc
   const d = POL.decide(cands, { surface: 'work-desktop', now: NOW });
   assert.equal(d.lead.rule, 'S11 nothing');
   assert.equal(d.lead.why, "Nothing needs you right now — 2 work items held back while you're off duty, 1 of them urgent.");
-  assert.equal(d.policyVersion, '2026-10-25.1');
+  assert.equal(d.policyVersion, '2026-10-25.2');
 });
 
 // ── D-009: late-stage gaps reach the presentation ───────────────────────────

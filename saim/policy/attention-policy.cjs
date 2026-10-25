@@ -31,7 +31,7 @@ const D = require('../../shared/display-text.cjs');
 const { heldWork } = require('../../shared/held-work.cjs');
 
 const CONTRACT = CONTRACTS.SAIM_ATTENTION;
-const POLICY_VERSION = '2026-10-25.1';
+const POLICY_VERSION = '2026-10-25.2';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -316,6 +316,8 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
 
   // Held: everything displaced, returning when the guard ends.
   const returns = protectedCtx ? (protectedCtx.until ? `at ${protectedCtx.until}` : 'when you finish this') : 'after this';
+  // What is being guarded, by TYPE (a focus guard's own kind is the focused item's, e.g. 'commitment').
+  const guardType = !guard ? null : guard === runningMeeting ? 'meeting' : guard === focusCand ? 'focus' : 'block';
   // The tasks the screen is already ABOUT (the running block's, or the lead block's) are never also held.
   const leadBlock = cands.find((c) => c.id === lead.ref && c.kind === 'block') || null;
   const blockTaskIds = new Set([runningBlock, leadBlock].filter(Boolean).flatMap((b) => (b.facts.tasks || []).map((t) => Number(t.taskId))));
@@ -343,7 +345,9 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     else if ((c.kind === 'home' || c.kind === 'personal-date') && c.facts.needsNow) why = c.facts.why || 'needs you';
     if (!why) continue;
     const basis = basisFor(c);
-    held.push({ ref: c.id, kind: c.kind, title: leadTitle(c), why, returns, wordingConflict: c.facts.wordingConflict || null, ...(basis ? { basis: basis.id } : {}) });
+    // `returns` is kept as it was for existing readers (the Alt rail's "back at 15:00");
+    // `returnsSay` is the plain, per-reason line every held ROW renders (D-023).
+    held.push({ ref: c.id, kind: c.kind, title: leadTitle(c), why, returns, returnsSay: heldReturnsSay(c, { guard: guardType, until: protectedCtx ? protectedCtx.until : null, ww }), wordingConflict: c.facts.wordingConflict || null, ...(basis ? { basis: basis.id } : {}) });
   }
 
   // What Nick can do with each waiting item (16 Oct 2026). Nothing protected or imminent:
@@ -602,7 +606,7 @@ function displayFor({ lead, leadCand, guard, protectedCtx, held, judgement, appr
       // The task a capacity warning is about, shown as its basis rather than a second waiting row.
       basis: lead.basis && byId.get(lead.basis.ref) ? { title: titleOf(byId.get(lead.basis.ref)) || 'The task', why: ok(commitmentWhy(byId.get(lead.basis.ref), now)), actions: lead.basis.actions || [] } : null },
     protected: protectedCtx ? { what: guardTitle || 'Protected time', until: protectedCtx.until || null } : null,
-    held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns })),
+    held: countOnly ? { count: Array.isArray(held) ? held.length : 0 } : held.map((h) => ({ title: titleOf(byId.get(h.ref)) || 'Held item', why: ok(h.why) || ok(expl(byId.get(h.ref))) || null, returns: h.returns, returnsSay: h.returnsSay || null })),
     judgement: judgement.map((j) => {
       const c = byId.get(j.ref);
       const a = approvals.find((x) => x.c.id === j.ref);
@@ -693,6 +697,27 @@ function blockClock(c, now) {
 }
 
 /** The words SAiM uses for a candidate: a task as she would say it, never a stale clause. */
+/**
+ * PURE. When a held row comes back, in plain words (D-023, 25 Oct 2026). It replaces
+ * the bare `returns` ("after this") the desktop rendered as "back after this".
+ * Category-only: it says WHEN, never what the item is.
+ *   - held because it is not a working day   → "shown on your next working day"
+ *   - held because he is not working today   → "shown when you’re working again"
+ *   - held for a meeting                     → "shown when this meeting ends[ at HH:MM]"
+ *   - held for a focus session               → "shown when your focus session ends[ at HH:MM]"
+ *   - waiting while SAiM guards a block/time → "shown when this block ends[ at HH:MM]"
+ *   - simply waiting behind what leads       → "waiting its turn"
+ */
+function heldReturnsSay(c, { guard = null, until = null, ww = null } = {}) {
+  const at = (u) => (u ? ` at ${u}` : '');
+  const heldFor = c && c.facts ? c.facts.heldFor : null;
+  if (heldFor === 'off') return ww && ww.todayIsWorking === false ? 'shown on your next working day' : 'shown when you’re working again';
+  if (heldFor === 'meeting' || (!heldFor && guard === 'meeting')) return `shown when this meeting ends${at(guard === 'meeting' ? until : null)}`;
+  if (heldFor === 'focus' || (!heldFor && guard === 'focus')) return `shown when your focus session ends${at(guard === 'focus' ? until : null)}`;
+  if (guard) return `shown when this block ends${at(until)}`;
+  return 'waiting its turn';
+}
+
 function leadTitle(c) {
   if (!c) return null;
   if (c.kind === 'block') {
@@ -771,4 +796,4 @@ function isRoute(a) {
   return Boolean(i && i.kind === 'navigate' && (i.action === 'open' || i.recordId != null || i.view || i.href));
 }
 
-module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, MEETING_TRANSITION_MINUTES, SHORT_RITUAL_MINUTES, decide, inScope, effectiveDeadline, sayTitle };
+module.exports = { CONTRACT, POLICY_VERSION, SURFACES, BLOCK_END_MARGIN_MINUTES, MEETING_TRANSITION_MINUTES, SHORT_RITUAL_MINUTES, decide, inScope, effectiveDeadline, sayTitle, heldReturnsSay };

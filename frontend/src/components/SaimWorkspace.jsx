@@ -76,7 +76,8 @@ export function SaimWhy({ data, error = null, now = Date.now() }) {
             {held.length > 0 && (
               <ul className="saim-why__list">
                 {held.slice(0, 6).map((h) => (
-                  <li key={h.ref}>{h.title}{h.why ? ` — ${h.why}` : ''}{h.returns ? <span className="saim-why__meta"> · back {h.returns}</span> : null}</li>
+                  // When it comes back, in the server's words (D-023); nothing if the read predates them.
+                  <li key={h.ref}>{h.title}{h.why ? ` — ${h.why}` : ''}{h.returnsSay ? <span className="saim-why__meta" data-why="returns"> · {h.returnsSay}</span> : null}</li>
                 ))}
                 {held.length > 6 && <li className="saim-why__meta">and {held.length - 6} more</li>}
               </ul>

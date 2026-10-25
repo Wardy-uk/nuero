@@ -142,7 +142,7 @@ test('3a. mixed held populations: SAiM’s lead says the CANONICAL count (7), no
   assert.equal(p.candidates.constraints.workHeld.count, 7, 'the canonical count is handed to SAiM');
   assert.equal(p.saim.lead.rule, 'S11 nothing');
   assert.match(p.saim.lead.why, /^Nothing needs you right now — 7 work items held back while you're off duty, 3 of them urgent\.$/);
-  assert.equal(p.saim.policyVersion, '2026-10-25.1');
+  assert.equal(p.saim.policyVersion, '2026-10-25.2');
 });
 
 test('3b. the details list says ONE held count; only a population workHeld does not cover gets its own labelled line', () => {
