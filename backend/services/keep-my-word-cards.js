@@ -45,9 +45,9 @@ const whenFull = (date, start, end) => `${score.dayLabel(date)}, ${start}${end ?
 const isoSay = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? score.londonLabel(t) : null; };
 
 const OUTCOME_SAY = {
-  'kept-on-time': 'Kept — delivery read back before it was due',
+  'kept-on-time': 'Kept on time',
   late: 'Late',
-  unverified: 'Ticked, with no proof it was delivered',
+  unverified: 'Delivered — can’t tell if it was on time',
   pending: 'Not due yet',
   dropped: 'Dropped by you',
 };
@@ -119,14 +119,8 @@ function keptCard({ sc, bench, delivery }) {
   promises.sort((a, b) => (Number(b.atRisk) - Number(a.atRisk)) || String((a.due || {}).date || '9999').localeCompare(String((b.due || {}).date || '9999')));
 
   const measured = Boolean(sc.ratio);
-  const ps = sc.proofSource || {};
   const missing = [];
   if (!measured) {
-    if (ps.status === 'unreadable') missing.push('NEURO couldn’t read its delivery records.');
-    else if (ps.status !== 'connected') {
-      if (ps.linkedActions) missing.push(`${num(ps.linkedActions)} promise deliver${ps.linkedActions === 1 ? 'y has' : 'ies have'} been prepared, but “Send approved emails” is off — so no delivery can be read back in Sent Items.`);
-      else missing.push('No promise delivery has been prepared yet. A promise counts as kept only when its delivery note goes through NEURO and is read back in Sent Items — a tick is not delivery.');
-    }
     if ((sc.gaps || []).some((g) => g.input === 'tasks')) missing.push('NEURO couldn’t read the task list.');
   }
   const affected = promises.filter((p) => p.outcome !== 'kept-on-time' && p.outcome !== 'dropped').map((p) => p.key);
@@ -135,7 +129,6 @@ function keptCard({ sc, bench, delivery }) {
     undated: c.undated || 0, beforeProofSource: c.beforeProofSource || 0, reDated: c.reDated || 0,
     say: [
       c.undated ? `${num(c.undated)} promise${c.undated === 1 ? ' has' : 's have'} no date — only the 10-day placeholder — so ${c.undated === 1 ? 'it is' : 'they are'} not scored.` : null,
-      c.beforeProofSource ? `${num(c.beforeProofSource)} fell due before deliveries could be read back, so ${c.beforeProofSource === 1 ? 'it is' : 'they are'} left out, not counted as late.` : null,
       c.reDated ? `${num(c.reDated)} re-dated this week.` : null,
     ].filter(Boolean),
   };
@@ -272,7 +265,7 @@ function judgementCard({ sc, bench, delivery }) {
     const taskId = (e.taskIds && e.taskIds[0]) || null;
     items.push({
       key: e.key, taskId, sensitive: Boolean(e.sensitive), title: e.sensitive ? null : (e.text || null),
-      why: 'Ticked, with no proof it was delivered.',
+      why: 'Delivered, but NEURO can’t tell if it was on time.',
       evidence: e.sensitive ? [] : [e.rule ? `Rule: ${e.rule}.` : null, e.due && e.due.date ? `Due ${score.dayLabel(e.due.date)}.` : null, ...(e.evidence || []).map(evidenceLine)].filter(Boolean),
       choices: [nextActionFor({ key: e.key, taskId, sensitive: e.sensitive }, bench, delivery)].filter(Boolean),
     });

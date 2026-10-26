@@ -40,13 +40,14 @@ for (const [name, input] of Object.entries(STATES)) {
 }
 
 test('not measured: names the missing evidence and lists the affected promises', () => {
-  const k = cards.cardsFrom({ score: score(), now: NOW }).kept;
+  // Since 26 Oct 2026 a tick is delivery, so the only unmeasured case is an unreadable task list.
+  const k = cards.cardsFrom({ score: score({ gaps: [{ input: 'tasks', why: 'locked' }] }), now: NOW }).kept;
   assert.equal(k.state, 'not-measured');
-  assert.match(k.detail.missing[0], /No promise delivery has been prepared yet/);
+  assert.match(k.detail.missing[0], /couldn’t read the task list/);
   assert.deepEqual(k.detail.affected, ['p1']);
   assert.match(k.detail.notCounted.say[0], /Two promises have no date/);
   const off = cards.cardsFrom({ score: score({ proofSource: { status: 'not-connected', linkedActions: 2 } }), now: NOW }).kept;
-  assert.match(off.detail.missing[0], /“Send approved emails” is off/);
+  assert.equal(off.detail.missing.length, 0, 'no delivery email is not missing evidence any more');
 });
 
 test('Monday: sent and read back opens the receipt and report — no send label anywhere', () => {

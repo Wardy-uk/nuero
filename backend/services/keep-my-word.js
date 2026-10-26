@@ -174,13 +174,13 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
     out.line = 'NEURO couldn’t read your promises, so nothing is counted.';
   } else if (!sc.ratio) {
     out.figureNote = 'Not measured yet';
-    out.line = sc.why || 'Nothing records a delivery yet, so nothing is counted as kept.';
+    out.line = sc.why || 'NEURO couldn’t read your promises, so nothing is counted.';
   } else if (sc.ratio.of === 0) {
     out.figureNote = 'Nothing due yet';
     out.line = sc.counts.pending ? `${num(sc.counts.pending)} still to come this week.` : 'Nothing was due this week.';
   } else {
     out.figure = `${sc.ratio.kept} / ${sc.ratio.of}`;
-    out.line = 'Promises kept on time — each one read back as delivered.';
+    out.line = 'Promises kept on time — ticked or delivered by their due day.';
     out.trend = sc.previous && sc.previous.ratio ? trendLine(sc.ratio, sc.previous.ratio) : null;
   }
   if (sc && sc.counts && sc.counts.reDated) out.reDated = `${num(sc.counts.reDated)} re-dated this week.`;
@@ -213,14 +213,14 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
   for (const e of (sc && sc.entries) || []) {
     if (e.outcome !== 'unverified' || keys.has(e.key)) continue;
     keys.add(e.key);
-    items.push({ key: e.key, taskId: (e.taskIds && e.taskIds[0]) || null, title: e.sensitive ? null : (e.text || null), sensitive: Boolean(e.sensitive), why: 'Ticked, with no proof it was delivered.' });
+    items.push({ key: e.key, taskId: (e.taskIds && e.taskIds[0]) || null, title: e.sensitive ? null : (e.text || null), sensitive: Boolean(e.sensitive), why: 'Delivered, but NEURO can’t tell if it was on time.' });
   }
   for (const it of (workbench && workbench.items) || []) {
     if (!(it.preparation && it.preparation.state === 'waiting-for-Nick') || keys.has(it.key)) continue;
     keys.add(it.key);
     items.push({ key: it.key, taskId: it.leadTaskId || (it.taskIds && it.taskIds[0]) || null, title: it.title || null, sensitive: false, why: 'Waiting for your answer.' });
   }
-  if (keys.size) out.judgement = { label: 'Needs your judgement', strong: `${num(keys.size)} promise${keys.size === 1 ? '' : 's'}`, line: 'Only you can say whether they were delivered.', items: items.slice(0, 5), more: Math.max(0, items.length - 5) };
+  if (keys.size) out.judgement = { label: 'Needs your judgement', strong: `${num(keys.size)} promise${keys.size === 1 ? '' : 's'}`, line: 'Only you can say whether they were on time.', items: items.slice(0, 5), more: Math.max(0, items.length - 5) };
   return out;
 }
 

@@ -79,13 +79,16 @@ test('kept on time ONLY with a verified delivery before the due point', () => {
   assert.deepEqual(r.ratio, { kept: 1, of: 1 });
 });
 
-test('a ticked task WITHOUT delivery evidence is unverified, never kept — and the tick is the evidence shown', () => {
-  const r = run([promise({ open: false, records: [{ taskId: 1, status: 'done', completedAt: '2026-10-20' }], tickedWithoutEvidence: [1] })]);
-  assert.equal(r.counts.keptOnTime, 0);
-  assert.equal(r.counts.unverified, 1);
-  assert.equal(r.entries[0].outcome, 'unverified');
-  assert.match(r.entries[0].rule, /a tick is not delivery/);
-  assert.deepEqual(r.entries[0].evidence, [{ kind: 'ticked', taskId: 1, at: '2026-10-20' }]);
+test('a tick IS delivery (Nick, 26 Oct 2026): ticked by the due day is kept, after it is late', () => {
+  const onTime = run([promise({ open: false, due: '2026-10-21', records: [{ taskId: 1, status: 'done', completedAt: '2026-10-21' }], tickedWithoutEvidence: [1] })]);
+  assert.equal(onTime.counts.keptOnTime, 1);
+  assert.equal(onTime.entries[0].outcome, 'kept-on-time');
+  assert.match(onTime.entries[0].rule, /ticked on or before its due day/);
+  assert.deepEqual(onTime.entries[0].evidence, [{ kind: 'ticked', taskId: 1, at: '2026-10-21' }]);
+  assert.deepEqual(onTime.ratio, { kept: 1, of: 1 });
+  const late = run([promise({ open: false, due: '2026-10-20', records: [{ taskId: 1, status: 'done', completedAt: '2026-10-21' }], tickedWithoutEvidence: [1] })]);
+  assert.equal(late.entries[0].outcome, 'late');
+  assert.match(late.entries[0].rule, /ticked after its due day/);
 });
 
 test('delivery proven but straddling the due point is unverified for timing, and says so', () => {
@@ -164,12 +167,12 @@ test('a re-commit alone is described as Nick’s choice, not a slip', () => {
 
 // ── Honesty ──────────────────────────────────────────────────────────────────
 
-test('with no delivery-proof source connected the ratio is NULL — never a score built from ticks', () => {
+test('the score is measured without any delivery-email source — ticks are enough', () => {
   const r = s.scoreWeek({ promises: [promise({ due: '2026-10-20' })], proofSource: { status: 'not-connected', why: 'x' }, now: NOW });
-  assert.equal(r.ratio, null);
-  assert.equal(r.measured, false);
-  assert.match(r.why, /ticks are not delivery/);
-  assert.equal(r.counts.late, 1); // the counts still say what is known
+  assert.deepEqual(r.ratio, { kept: 0, of: 1 });
+  assert.equal(r.measured, true);
+  assert.equal(r.why, null);
+  assert.equal(r.counts.late, 1);
 });
 
 test('an unreadable task list measures nothing', () => {
@@ -273,13 +276,12 @@ test('readProofs: with “Send approved emails” off nothing is connected and N
   assert.match(r.source.why, /Send approved emails/);
 });
 
-test('a due point that ended before the proof source existed is excluded and counted, never late', () => {
+test('a promise due before any delivery email existed is still judged — ticks need no proof source', () => {
   const src = { status: 'connected', connectedSince: '2026-10-21T09:00:00Z' };
   const r = run([promise({ key: 'promise:1', due: '2026-10-20' }), promise({ key: 'promise:2', taskIds: [2], due: '2026-10-21' })], { proofSource: src });
-  assert.equal(r.counts.beforeProofSource, 1);
-  assert.equal(r.counts.late, 0);
+  assert.equal(r.counts.beforeProofSource, 0);
+  assert.equal(r.counts.late, 1);
   assert.equal(r.counts.pending, 1);
-  assert.deepEqual(r.entries.map((e) => e.key), ['promise:2']);
 });
 
 test('readProofs: no action has ever named a promise → not-connected, and an unreadable table → unreadable', () => {

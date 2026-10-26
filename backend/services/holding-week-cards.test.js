@@ -76,8 +76,8 @@ const scoreMeasured = (over = {}) => ({
 });
 const scoreUnmeasured = () => ({
   week: { label: 'Week of Monday 19 October' }, ratio: null, measured: false, proofSource: { status: 'not-connected', why: 'no promise delivery has been prepared yet, so the score starts with the first one' },
-  why: 'No promise delivery has been prepared yet — ticks are not delivery, so none is counted as kept.',
-  counts: { due: 3, keptOnTime: 0, late: 0, unverified: 2, pending: 1, dropped: 0, reDated: 0, undated: 1, beforeProofSource: 0 }, previous: null, gaps: [],
+  why: 'NEURO couldn’t read the task list, so nothing is counted as kept.',
+  counts: { due: 3, keptOnTime: 0, late: 0, unverified: 2, pending: 1, dropped: 0, reDated: 0, undated: 1, beforeProofSource: 0 }, previous: null, gaps: [{ input: 'tasks', why: 'locked' }],
   entries: [
     { key: `promise:${T.pack}`, taskIds: [T.pack], outcome: 'unverified', sensitive: false, text: 'Send Kit the onboarding pack', due: { date: '2026-10-20' }, rule: 'ticked, with no delivery evidence', evidence: [{ kind: 'ticked' }] },
     { key: `promise:${T.hr}`, taskIds: [T.hr], outcome: 'unverified', sensitive: true, text: null },
@@ -325,11 +325,11 @@ test('Keeping my word: measured shows the promises; "Not measured yet" says exac
   const calm = R('calm-desktop').sheets.kept;
   assert.match(calm.text, /3 \/ 4/);
   assert.match(calm.text, /Share the rota with the team.*At risk · Late/);
-  assert.match(calm.text, /Send Chris the call metrics.*Kept — delivery read back/);
+  assert.match(calm.text, /Send Chris the call metrics.*Kept on time/);
   assert.match(calm.text, /Two promises have no date — only the 10-day placeholder/);
   const held = R('held-desktop').sheets.kept;
   assert.match(held.text, /Not measured yet/);
-  assert.match(held.text, /What evidence is missing.*No promise delivery has been prepared yet\. A promise counts as kept only when its delivery note goes through NEURO and is read back in Sent Items — a tick is not delivery\./);
+  assert.match(held.text, /What evidence is missing.*NEURO couldn’t read the task list\./);
   assert.match(held.text, /This affects \d promises below/);
   assert.match(held.text, /Send Kit the onboarding pack/);
   assert.match(held.text, /An employment matter — not named here/);
@@ -395,7 +395,7 @@ test('Needs your judgement: a bounded review, one promise at a time, with eviden
   if (skipWhy) return t.skip(skipWhy);
   const s = R('held-desktop').sheets.judgement;
   assert.match(s.review, /^1 of 3/);
-  assert.match(s.review, /Send Kit the onboarding pack.*Ticked, with no proof it was delivered\..*Rule: ticked, with no delivery evidence\./);
+  assert.match(s.review, /Send Kit the onboarding pack.*Delivered, but NEURO can’t tell if it was on time\..*Rule: ticked, with no delivery evidence\./);
   assert.match(s.review2, /^2 of 3.*An employment matter — not named here/);
   assert.ok(R('held-desktop').presses.judgement.sheet);
   assert.match(R('calm-desktop').sheets.judgement.text, /Nothing is waiting on your judgement\. A promise lands here when/);

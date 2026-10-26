@@ -133,11 +133,11 @@ test.before(async () => {
   task('early', '2026-10-20');
 });
 
-test('before any promise delivery exists the score is NOT measured — never a number from ticks', () => {
+test('before any promise delivery exists the score is still measured — from ticks (Nick, 26 Oct 2026)', () => {
   const r = score.read({ now: SCORE_AT });
   assert.equal(r.proofSource.status, 'not-connected');
-  assert.equal(r.ratio, null);
-  assert.match(r.why, /no promise delivery has been prepared yet/i);
+  assert.notEqual(r.ratio, null);
+  assert.equal(r.why, null);
 });
 
 test('refusals: an employment matter gets the routing note; an unknown promise 404s; nothing is prepared', () => {
@@ -365,12 +365,12 @@ test('a ticked task is never proof', () => {
   assert.equal(score.readProofs(undefined, { executionOn: true }).proofs.has(keyOf('ticked')), false);
 });
 
-test('“Send approved emails” OFF: the score stays unmeasured even with verified deliveries (fail closed)', () => {
+test('“Send approved emails” OFF: Sent Items proof is not read, but the score is still measured from ticks', () => {
   flags.setEnabled('governed_execution', false);
   const r = score.read({ now: SCORE_AT });
   assert.equal(r.proofSource.status, 'not-connected');
-  assert.equal(r.ratio, null);
-  assert.match(r.why, /Send approved emails/);
+  assert.match(r.proofSource.why, /Send approved emails/);
+  assert.notEqual(r.ratio, null);
 });
 
 test('END TO END: with the real proof source connected, the score moves from unmeasured to measured — truthfully', () => {
@@ -384,10 +384,10 @@ test('END TO END: with the real proof source connected, the score moves from unm
   assert.equal(out[keyOf('late')], 'late');
   assert.equal(out[keyOf('chase')], 'late', 'a verified chase leaves it open and late');
   assert.equal(out[keyOf('executed')], 'late', 'an unread-back send leaves it open and late');
-  assert.equal(out[keyOf('ticked')], 'unverified', 'a tick is not delivery');
+  assert.equal(out[keyOf('ticked')], 'late', 'a tick is delivery — ticked after its due day');
   assert.equal(out[keyOf('retry')], 'late');
-  assert.equal(out[keyOf('early')], undefined, 'due before the proof source existed: not judged');
-  assert.equal(r.counts.beforeProofSource, 1);
+  assert.equal(out[keyOf('early')], 'late', 'due before the proof source existed: still judged');
+  assert.equal(r.counts.beforeProofSource, 0);
   const straddle = r.entries.find((e) => e.key === keyOf('straddle'));
   assert.match(straddle.rule, /cannot place it before the due point/);
   const hr = r.entries.find((e) => e.key === keyOf('hr'));
@@ -401,9 +401,9 @@ test('missing or unreadable evidence still fails closed', () => {
   const broken = { all: () => { throw new Error('database is locked'); }, get: () => null };
   const p = score.readProofs(broken, { executionOn: true });
   assert.equal(p.source.status, 'unreadable');
-  const r = score.scoreWeek({ promises: [], proofs: p.proofs, proofSource: p.source, now: SCORE_AT });
+  const r = score.scoreWeek({ promises: [], proofs: p.proofs, proofSource: p.source, now: SCORE_AT, gaps: [{ input: 'tasks', why: 'locked' }] });
   assert.equal(r.ratio, null);
-  assert.match(r.why, /couldn’t read its delivery records/);
+  assert.match(r.why, /couldn’t read the task list/);
 });
 
 test('no real outbound door was reached', () => {

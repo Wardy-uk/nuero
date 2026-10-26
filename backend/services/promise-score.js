@@ -5,23 +5,31 @@
  * READ-ONLY: nothing here writes, anywhere.
  *
  * For every promise whose due point falls in the week it says ONE thing:
- *   kept-on-time  DELIVERY EVIDENCE proves it happened before its due point;
- *   late          proven delivered after the due point, or the point has passed
- *                 with no delivery evidence while it is still open;
- *   unverified    closed without delivery evidence (a tick is not delivery),
- *                 or delivered with evidence that cannot place it before the
- *                 due point;
+ *   kept-on-time  ticked on or before its due day, or a governed send read back
+ *                 in Sent Items before its due point;
+ *   late          ticked after its due day, delivered after the due point, or
+ *                 the point has passed while it is still open;
+ *   unverified    delivered with Sent Items evidence that cannot place it
+ *                 either side of the due point;
  *   pending       still open and its due point has not come yet;
  *   dropped       Nick abandoned it — listed, never counted as kept or broken.
  * And, separately, how many promises were RE-DATED during the week (a date move,
  * or a re-commit Nick made on purpose — the two are told apart).
  *
- * ── The one source of delivery proof ────────────────────────────────────────
+ * ── A tick IS delivery (Nick, 26 Oct 2026) ────────────────────────────────────
+ * "If I tick a task off, it's done, and the promise is delivered." A ticked
+ * record counts as kept; its completion DAY decides on time vs late. The score
+ * is measured whenever the task list can be read — it no longer waits for a
+ * governed send to exist. (Until 26 Oct a tick was scored `unverified` and the
+ * score stayed "Not measured" until a delivery email was sent through NEURO —
+ * a rule Nick never asked for.)
+ *
+ * ── Sent Items evidence, when there is one ──────────────────────────────────
  * A GOVERNED send that names the promise (prepared_actions, its evidence
  * carrying `promiseKey` and move `deliver-email`) whose action is `verified`
  * AND whose latest verification record is `verified` — i.e. the exact message
- * was read back in Sent Items (action-executor.judgeSentItem). Nothing else:
- *   - a ticked task is not delivery (promise-ledger: tickedWithoutEvidence);
+ * was read back in Sent Items (action-executor.judgeSentItem). It outranks a
+ * tick when both exist. Never evidence:
  *   - progress-evidence's `likely_fulfilled` is an INFERENCE, never proof;
  *   - a chase is progress, not delivery;
  *   - 'executed' (provider said 202) is transport, not delivery.
@@ -30,12 +38,8 @@
  * `provenBy` before the due point; late needs `sentNotBefore` after it; a
  * bracket that straddles the point is UNVERIFIED for timing, and says so.
  *
- * ⚠ Those sends are prepared by services/promise-delivery (the deliver-email
- *   half of promise-loop). The source counts as CONNECTED only once one has
- *   been prepared AND "Send approved emails" is on; until then the ratio is
- *   NULL and every count says why — a score is never fabricated from ticks.
- *   A due point that passed before the first one is excluded and counted
- *   (`beforeProofSource`), never scored as late.
+ * Those sends are prepared by services/promise-delivery. `proofSource` still
+ * reports whether that path is connected, but the score no longer depends on it.
  *
  * ── Due point ───────────────────────────────────────────────────────────────
  * The date stated in the promise's own wording, else the task's due date when
@@ -173,12 +177,14 @@ function classify(promise, due, proof, nowMs) {
     return { outcome: 'pending', rule: 'its due point has not come yet', evidence: [] };
   }
   if (closedAs(promise) === 'dropped') return { outcome: 'dropped', rule: 'you dropped it', evidence: [] };
+  // A tick is delivery (Nick, 26 Oct 2026). completedAt is a London day; the
+  // latest tick across the promise's records is when it was done.
   const ticked = (promise.records || []).filter((r) => r.status === 'done');
-  return {
-    outcome: 'unverified',
-    rule: 'marked done with no delivery evidence — a tick is not delivery',
-    evidence: ticked.map((r) => ({ kind: 'ticked', taskId: r.taskId, at: r.completedAt || null })),
-  };
+  const evidence = ticked.map((r) => ({ kind: 'ticked', taskId: r.taskId, at: r.completedAt || null }));
+  const days = ticked.map((r) => r.completedAt).filter(Boolean).sort();
+  const doneDay = days.length ? days[days.length - 1] : null;
+  if (doneDay && due.date && doneDay > due.date) return { outcome: 'late', rule: 'ticked after its due day', evidence };
+  return { outcome: 'kept-on-time', rule: doneDay ? 'ticked on or before its due day' : 'ticked (the day was not recorded)', evidence };
 }
 
 /** PURE. The category of an employment matter — never its words (promise-observe's rule). */
@@ -218,9 +224,6 @@ function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), pr
   const nowMs = msOf(now);
   const wk = week || londonWeek(nowMs);
   const counts = { due: 0, keptOnTime: 0, late: 0, unverified: 0, pending: 0, dropped: 0, reDated: 0, undated: 0, beforeProofSource: 0 };
-  // A due point that passed before the first promise delivery could exist cannot
-  // be judged by delivery evidence: excluded and counted, never scored as late.
-  const sinceMs = proofSource.status === 'connected' && proofSource.connectedSince ? Date.parse(proofSource.connectedSince) : NaN;
   const reDated = { moved: 0, recommitted: 0 };
   const entries = [];
   const reDatedEntries = [];
@@ -240,7 +243,6 @@ function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), pr
       continue;
     }
     if (due.date < wk.start || due.date > wk.end) continue;
-    if (Number.isFinite(sinceMs) && due.endsMs <= sinceMs && !proofs.has(p.key)) { counts.beforeProofSource += 1; continue; }
     const verdict = classify(p, due, proofs.get(p.key) || null, nowMs);
     entries.push(entryFor(p, due, verdict));
     if (verdict.outcome === 'dropped') { counts.dropped += 1; continue; }
@@ -253,22 +255,18 @@ function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), pr
   entries.sort((a, b) => String((a.due || {}).date || '').localeCompare(String((b.due || {}).date || '')) || a.taskIds[0] - b.taskIds[0]);
   const settled = counts.due - counts.pending;
   const readable = !gaps.some((g) => g.input === 'tasks');
-  const measured = readable && proofSource.status === 'connected';
+  const measured = readable;
   return {
     contract: CONTRACT,
     week: { start: wk.start, end: wk.end, startsAt: new Date(wk.startMs).toISOString(), endsAt: new Date(wk.endMs).toISOString(), label: `Week of ${dayLabel(wk.start)}` },
     generatedAt: new Date(nowMs).toISOString(),
     counts,
     reDated,
-    // ⚠ NULL, never a number, when delivery cannot be measured: a ratio built
-    // from ticks would be a fabricated score.
+    // NULL, never a number, only when the task list could not be read.
     ratio: measured ? { kept: counts.keptOnTime, of: settled } : null,
     measured,
     proofSource: { rule: PROOF_RULE, ...proofSource },
-    why: !readable ? 'NEURO couldn’t read the task list, so nothing is counted as kept.'
-      : proofSource.status === 'unreadable' ? 'NEURO couldn’t read its delivery records, so nothing is counted as kept.'
-        : proofSource.status !== 'connected' ? `${proofSource.why ? `${proofSource.why.charAt(0).toUpperCase()}${proofSource.why.slice(1)} — ` : ''}ticks are not delivery, so none is counted as kept.`
-          : null,
+    why: !readable ? 'NEURO couldn’t read the task list, so nothing is counted as kept.' : null,
     entries,
     reDatedEntries,
     undated,
