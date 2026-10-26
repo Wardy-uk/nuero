@@ -2126,8 +2126,18 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
     const hit = findPinned(todos, pin);
     if (!hit) return;                       // not loaded yet, or genuinely not here
     autoExpandedFor.current = key;
-    setExpanded(`${hit.source}-${hit.id}`);
+    // ⚠ The SAME key every row compares against (rowKey). This used to set
+    // `${source}-${id}`, which no row ever matched — so "Open the task" from Drafts,
+    // Now or a card pinned the task and left it closed (26 Oct 2026).
+    setExpanded(rowKey(hit));
   }, [pin, todos]);
+  // A new "open it" while the panel is already mounted (Drafts → Tasks → Drafts → another task).
+  const lastContext = useRef(focusContext);
+  useEffect(() => {
+    if (lastContext.current === focusContext) return;
+    lastContext.current = focusContext;
+    setPin(pinFromContext(focusContext));
+  }, [focusContext]);
 
   const toggleSuggestionSelect = (id) => {
     setSelectedSuggestions(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);

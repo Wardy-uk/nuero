@@ -295,3 +295,15 @@ test('a run stored with the OLD invented question is settled on view: Ready, que
   assert.match(v.run.steps[v.run.steps.length - 1].say, /Withdrew a question NEURO could not make specific/);
   assert.equal(JSON.parse(db.getState(`task_agent_run:${id}`)).status, 'ready', 'persisted');
 });
+
+test('the Drafts list ("NEURO working on your tasks") never shows a withdrawn invented question', async () => {
+  const id = T.peopleDone.id;
+  const raw = JSON.parse(db.getState(`task_agent_run:${id}`));
+  raw.status = 'needs-decision';
+  raw.question = { id: 'q1-old2', kind: 'authority', question: 'What is your decision on “Nick to reply formally…”?', why: 'x', options: [], byRule: true };
+  db.setState(`task_agent_run:${id}`, JSON.stringify(raw));
+  const row = agent.activeRuns().runs.find((r) => r.taskId === id);
+  assert.ok(row, 'still listed (it has a draft)');
+  assert.equal(row.question, null);
+  assert.equal(row.status, 'ready');
+});

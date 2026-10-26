@@ -1255,6 +1255,7 @@ function activeRuns() {
   const runs = [];
   for (const r of rows) {
     let run; try { run = JSON.parse(r.value); } catch { continue; }
+    run = _settleInventedQuestion(run); // the Drafts list must not show the withdrawn question either
     if (!run || run.status === 'stopped') continue;
     if (!(run.outputs || []).length && !(run.handoffs || []).length && !run.question) continue;
     runs.push({ taskId: run.taskId, taskText: run.taskText, status: run.status, updatedAt: run.updatedAt, question: run.question ? run.question.question : null, outputs: (run.outputs || []).map((o) => ({ kind: o.kind, title: o.title })), handoffs: (run.handoffs || []).length });
