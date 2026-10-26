@@ -38,10 +38,11 @@ const REQUEST_RE = /\bvolunteer|\bUAT\s+request\b|\baction\s+required\b/i;
 /**
  * Is this triage entry worth a model call? Cheap and deliberately loose: the
  * model decides whether it actually asks for volunteers. Nick's own sent mail
- * and anything already dismissed are never looked at.
+ * is never looked at. ⚠ A DISMISSED email still counts: marking Dan's request
+ * Done in the Inbox is not the same as having put people forward.
  */
 function quickMatch(entry, selfAddress = null) {
-  if (!entry || entry.dismissed) return false;
+  if (!entry) return false;
   const subject = String(entry.subject || '');
   if (!SUBJECT_RE.test(subject)) return false;
   const from = String(entry.fromEmail || '').toLowerCase();

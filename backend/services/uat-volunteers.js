@@ -38,6 +38,7 @@ const DEFAULT_DEPS = {
   daysOffFor: (name, snap) => require('./team-availability').daysOffFor(name, snap),
   holidays: () => { try { return require('./working-days').holidaySet(); } catch { return new Set(); } },
   fetchEmail: (id) => require('./microsoft').fetchEmailById(id),
+  storedTriage: () => { try { return require('./email-triage').getStoredTriage(); } catch { return []; } },
   selfAddress: async () => { try { return await require('./microsoft').getSignedInAddress(); } catch { return null; } },
   extract: async (prompt) => {
     const r = await require('./ai-routing').runTask('uat_request_extract', { prompt, maxTokens: 400 }, { forceCloud: true, timeout: 60000 });
@@ -441,6 +442,13 @@ async function _advance(r, d) {
 /** Every 5 minutes (and after each answer). Never throws. */
 async function tick(injected, { roundId = null } = {}) {
   const d = deps(injected);
+  // The stored inbox is scanned here too, not only from a triage pass: a pass
+  // with no NEW mail skips straight out, so a request already sitting in the
+  // inbox would otherwise wait for unrelated mail to arrive. Each email is
+  // still read once (rounds + the seen list), so this costs a local read.
+  if (!roundId) {
+    try { await scanTriage(d.storedTriage(), injected); } catch (e) { console.warn('[UAT] stored-inbox scan failed:', e.message); }
+  }
   const rows = roundId
     ? [_round(roundId)].filter(Boolean)
     : db.all(`SELECT * FROM uat_rounds WHERE status IN ('proposed', 'inviting', 'ready')`);

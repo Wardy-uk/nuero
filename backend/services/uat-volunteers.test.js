@@ -49,6 +49,7 @@ function world({ off = {}, extractText = EXTRACT_OK } = {}) {
     leaveSnapshot: () => ({ known: true }),
     daysOffFor: (name) => ({ known: true, dates: new Set(off[name] || []) }),
     holidays: () => new Set(),
+    storedTriage: () => w.inbox || [],
     fetchEmail: async (id) => ({ id, from: 'Dan Short', fromEmail: 'dan.short@nurtur.tech', subject: DAN_ENTRY(id).subject, body: 'volunteers please' }),
     selfAddress: async () => 'nickw@nurtur.tech',
     extract: async () => { w.extracts += 1; return extractText; },
@@ -71,7 +72,8 @@ test('the cheap rule lets Dan\'s request through and not a recap or Nick\'s own 
   assert.equal(model.quickMatch(DAN_ENTRY('x')), true);
   assert.equal(model.quickMatch({ subject: 'UAT notes from last week', preview: 'thanks all' }), false);
   assert.equal(model.quickMatch({ ...DAN_ENTRY('x'), fromEmail: 'nickw@nurtur.tech' }, 'nickw@nurtur.tech'), false);
-  assert.equal(model.quickMatch({ ...DAN_ENTRY('x'), dismissed: true }), false);
+  // Marking the request Done in the Inbox is not the same as putting people forward.
+  assert.equal(model.quickMatch({ ...DAN_ENTRY('x'), dismissed: true }), true);
 });
 
 test('an extraction missing the date or time refuses; a past date refuses', () => {
@@ -244,6 +246,17 @@ test('not a request: remembered, no round; an unreadable answer → an unclear r
   const out3 = await uat.scanTriage([DAN_ENTRY('mail-model-down')], w3.deps);
   assert.equal(out3.retry, 1); // model unavailable: no round, asked again next pass
   assert.equal(db.get('SELECT id FROM uat_rounds WHERE source_email_id = ?', ['mail-model-down']), null);
+});
+
+test('the timer finds a request already in the stored inbox, even one marked Done', async () => {
+  const w = world({ extractText: EXTRACT_OK.replace('2026-10-28', '2026-11-25') });
+  w.inbox = [{ ...DAN_ENTRY('mail-stored'), dismissed: true }];
+  await uat.tick(w.deps);
+  const r = db.get('SELECT * FROM uat_rounds WHERE source_email_id = ?', ['mail-stored']);
+  assert.ok(r);
+  assert.equal(r.status, 'proposed');
+  await uat.tick(w.deps); // a second tick reads nothing again
+  assert.equal(w.extracts, 1);
 });
 
 test('Now: a card while picks wait to be sent', () => {
