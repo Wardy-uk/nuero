@@ -115,9 +115,15 @@ test('a request becomes a round with one pick per team; invites carry a one-use 
   const out = await uat.scanTriage([DAN_ENTRY('mail-1'), { id: 'other', subject: 'Lunch?' }], w.deps);
   assert.equal(out.rounds.length, 1);
   const id = out.rounds[0];
-  assert.equal(round(id).status, 'proposed');
-  assert.deepEqual(sels(id).map((s) => [s.pool, s.person, s.status]), [['tier2dd', 'Isabel Busk', 'proposed'], ['cc', 'Heidi Power', 'proposed']]);
+  // Picked AND drafted at once, so the invites already wait in Actions and Drafts.
+  assert.equal(round(id).status, 'inviting');
+  assert.deepEqual(sels(id).map((s) => [s.pool, s.person, s.status]), [['tier2dd', 'Isabel Busk', 'invited'], ['cc', 'Heidi Power', 'invited']]);
+  assert.ok(sels(id).every((s) => pa.get(s.action_id).status === 'prepared'));
   assert.equal(w.pushes.length, 1);
+  const rows = uat.draftRows(w.deps).filter((r) => r.moveKey.startsWith(`uat:${id}:`));
+  assert.deepEqual(rows.map((r) => r.title), ['Ask Isabel Busk to the UAT on Wednesday 28 October', 'Ask Heidi Power to the UAT on Wednesday 28 October']);
+  const card = uat.nowCards(w.now).find((c) => c.meta.roundId === id);
+  assert.ok(card.score >= 80, 'tier 1, so the top-five cut cannot drop it');
 
   // Seen once: a second pass buys no second model call and opens no second round.
   await uat.scanTriage([DAN_ENTRY('mail-1')], w.deps);
@@ -168,7 +174,7 @@ test('answers: confirm, decline → replacement, timeout counts as yes, then Dan
   assert.equal(dec.recorded, 'declined');
   assert.equal(dec.state, 'declined-replaced');
   const zoe = sels(id).find((s) => s.person === 'Zoe Rees');
-  assert.equal(zoe.status, 'proposed');
+  assert.equal(zoe.status, 'invited'); // drafted straight away, waiting for Nick's press
   assert.ok(w.pushes.some((p) => /Heidi Power can't make it/.test(p.title)));
   // A declined person cannot flip back once someone else has been asked.
   const again = await uat.respond(tokens['Heidi Power'], 'confirm', w.deps);
@@ -248,13 +254,30 @@ test('not a request: remembered, no round; an unreadable answer → an unclear r
   assert.equal(db.get('SELECT id FROM uat_rounds WHERE source_email_id = ?', ['mail-model-down']), null);
 });
 
+test('an invite drafted in the morning is redrafted at 15:00 with the next day as its reply-by', async () => {
+  const w = world({ extractText: EXTRACT_OK.replace('2026-10-28', '2026-12-09') });
+  const { rounds: [id] } = await uat.scanTriage([DAN_ENTRY('mail-redraft')], w.deps);
+  const before = sels(id)[0];
+  assert.equal(before.deadline_at, '2026-10-26T17:30:00.000Z');
+  w.now = Date.parse('2026-10-26T15:05:00Z');
+  await uat.tick(w.deps);
+  assert.equal(pa.get(before.action_id).status, 'rejected');
+  const after = sels(id)[0];
+  assert.equal(after.status, 'invited');
+  assert.notEqual(after.action_id, before.action_id);
+  assert.equal(after.deadline_at, '2026-10-27T17:30:00.000Z');
+  assert.match(pa.get(after.action_id).draft.body, /17:30 on Tuesday 27 October/);
+  await uat.tick(w.deps); // stable: no second redraft
+  assert.equal(sels(id)[0].action_id, after.action_id);
+});
+
 test('the timer finds a request already in the stored inbox, even one marked Done', async () => {
   const w = world({ extractText: EXTRACT_OK.replace('2026-10-28', '2026-11-25') });
   w.inbox = [{ ...DAN_ENTRY('mail-stored'), dismissed: true }];
   await uat.tick(w.deps);
   const r = db.get('SELECT * FROM uat_rounds WHERE source_email_id = ?', ['mail-stored']);
   assert.ok(r);
-  assert.equal(r.status, 'proposed');
+  assert.equal(r.status, 'inviting'); // picked and drafted
   await uat.tick(w.deps); // a second tick reads nothing again
   assert.equal(w.extracts, 1);
 });

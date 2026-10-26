@@ -196,6 +196,10 @@ function savedWork({ now = Date.now(), deps = {} } = {}) {
     else if (o && o.outcome === 'abandoned') out.history.push({ ...item, outcome: 'abandoned', at: o.at, status: 'You abandoned this draft — the note and any block are still there', canRestore: true });
     else out.work.push({ ...item, status: workStatus({ block, saved: item.saved, nowMs: now }) });
   }
+  // UAT volunteer emails waiting for Nick's press (26 Oct 2026). Only on the live
+  // path: a caller with its own db fake gets none unless it passes uatRows.
+  const uatRows = deps.uatRows || (deps.db ? () => [] : () => require('./uat-volunteers').draftRows());
+  try { out.communication.push(...uatRows()); } catch (e) { out.gaps.push(`SAiM couldn’t read the UAT volunteer drafts (${e.message})`); }
   const by = (k) => (a, b) => String(b[k] || '').localeCompare(String(a[k] || ''));
   out.work.sort((a, b) => (a.block ? `${a.block.date} ${a.block.start}` : '9999').localeCompare(b.block ? `${b.block.date} ${b.block.start}` : '9999') || by('savedAt')(a, b));
   out.communication.sort(by('savedAt'));

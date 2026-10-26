@@ -143,6 +143,7 @@ async function _picksFor(roundId, d) {
   const nowMs = d.now();
   const picks = model.POOLS.map((p) => _pickInto(roundId, p.id, d, nowMs));
   const names = picks.filter((p) => p.ok).map((p) => p.pick.name);
+  _draftProposed(_round(roundId), d);
   const r = _round(roundId);
   const gaps = picks.filter((p) => !p.ok).map((p) => model.POOLS.find((x) => x.id === p.pool).label);
   try {
@@ -238,10 +239,29 @@ function prepareInvites(roundId, injected) {
   const d = deps(injected);
   const { round, error } = _liveRound(roundId);
   if (error) return error;
+  _sync(roundId, d);
+  const { actions, failed } = _draftProposed(round, d);
+  // Invites drafted earlier and not yet sent are offered again with the same press.
+  for (const s of _selections(roundId).filter((x) => x.status === 'invited' && x.action_id)) {
+    const a = _latestAction(s.action_id, d);
+    if (a && a.status === 'prepared' && !actions.some((x) => x.actionId === a.actionId)) actions.push(a);
+  }
+  return { ok: failed.length === 0 || actions.length > 0, actions, failed, round: view(roundId, injected) };
+}
+
+/**
+ * Draft an invite for every 'proposed' pick (26 Oct 2026: done as soon as a
+ * pick exists, so the drafts sit in Actions and Drafts waiting for Nick's
+ * press — not only when he opens People). Never sends.
+ */
+function _draftProposed(round, d) {
   const nowMs = d.now();
-  const session = _session(round);
   const actions = [];
   const failed = [];
+  if (!round || !['proposed', 'inviting'].includes(round.status)) return { actions, failed };
+  if (round.uat_date && round.uat_date < require('./promise-score').londonWall(nowMs).date) return { actions, failed };
+  const roundId = round.id;
+  const session = _session(round);
   for (const s of _selections(roundId).filter((x) => x.status === 'proposed')) {
     const token = crypto.randomBytes(24).toString('base64url');
     const deadlineMs = model.deadlineFor(nowMs, session, d.holidays());
@@ -256,13 +276,9 @@ function prepareInvites(roundId, injected) {
       [hash(token), res.action.actionId, iso(deadlineMs), iso(nowMs), s.id]);
     actions.push(res.action);
   }
-  // Invites drafted earlier and not yet sent are offered again with the same press.
-  for (const s of _selections(roundId).filter((x) => x.status === 'invited' && x.action_id)) {
-    const a = _latestAction(s.action_id, d);
-    if (a && a.status === 'prepared' && !actions.some((x) => x.actionId === a.actionId)) actions.push(a);
-  }
   if (actions.length && round.status === 'proposed') db.run(`UPDATE uat_rounds SET status = 'inviting', updated_at = ? WHERE id = ?`, [iso(nowMs), roundId]);
-  return { ok: failed.length === 0 || actions.length > 0, actions, failed, round: view(roundId, injected) };
+  if (failed.length) console.warn(`[UAT] round ${roundId}: could not draft ${failed.map((f) => `${f.person} (${f.error})`).join(', ')}`);
+  return { actions, failed };
 }
 
 /**
@@ -293,10 +309,12 @@ function swap(roundId, selectionId, person = null, injected) {
     db.run(`UPDATE uat_selections SET status = 'replaced', updated_at = ? WHERE id = ?`, [iso(nowMs), s.id]);
     db.run(`INSERT INTO uat_selections (round_id, pool, person, email, status, why, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'proposed', 'chosen by Nick', ?, ?)`, [roundId, s.pool, m.name, m.email, iso(nowMs), iso(nowMs)]);
+    _draftProposed(_round(roundId), d);
     return { ok: true, round: view(roundId, injected) };
   }
   db.run(`UPDATE uat_selections SET status = 'replaced', updated_at = ? WHERE id = ?`, [iso(nowMs), s.id]);
   const res = _pickInto(roundId, s.pool, d, nowMs);
+  _draftProposed(_round(roundId), d);
   return { ok: true, picked: res.ok ? res.pick.name : null, round: view(roundId, injected) };
 }
 
@@ -396,9 +414,13 @@ function _sync(roundId, d) {
           [a.executedAt || iso(nowMs), a.actionId, iso(nowMs), s.id]);
       } else if (['rejected', 'expired', 'cancelled'].includes(a.status) || (a.status === 'failed' && a.retrySafe)) {
         db.run(`UPDATE uat_selections SET status = 'proposed', token_hash = NULL, action_id = NULL, deadline_at = NULL, updated_at = ? WHERE id = ?`, [iso(nowMs), s.id]);
-      } else if (a.status === 'prepared' && s.deadline_at && nowMs > Date.parse(s.deadline_at) - STALE_INVITE_MS) {
-        // The draft names a deadline that is about to pass — redraft it on the next press.
-        d.rejectAction(a.actionId, { note: 'its reply-by time was about to pass unsent; NEURO will redraft it', actor: null });
+      } else if (a.status === 'prepared' && s.deadline_at
+        && (model.deadlineFor(nowMs, _session(_round(roundId)), d.holidays()) !== Date.parse(s.deadline_at)
+          || nowMs > Date.parse(s.deadline_at) - STALE_INVITE_MS)) {
+        // The draft's reply-by is no longer the one an invite sent NOW would
+        // carry (it crossed 15:00, or the day moved on), or it is about to pass.
+        // Withdraw it; the caller redrafts with the right time.
+        d.rejectAction(a.actionId, { note: 'its reply-by time changed before it was sent; NEURO redrafted it', actor: null });
         db.run(`UPDATE uat_selections SET status = 'proposed', token_hash = NULL, action_id = NULL, deadline_at = NULL, updated_at = ? WHERE id = ?`, [iso(nowMs), s.id]);
       }
     } else if (s.status === 'sent' && s.deadline_at && nowMs > Date.parse(s.deadline_at)) {
@@ -410,6 +432,7 @@ function _sync(roundId, d) {
 async function _advance(r, d) {
   const nowMs = d.now();
   _sync(r.id, d);
+  _draftProposed(_round(r.id), d);
   const st = model.roundState(_selections(r.id));
   if (r.reply_action_id) {
     const a = _latestAction(r.reply_action_id, d);
@@ -532,14 +555,44 @@ function nowCards(nowMs = Date.now()) {
     out.push({
       type: 'uat_volunteers', id: `uat-${r.id}`, dedupeKey: `uat:${r.id}:${r.status}:${st.toInvite.length}`,
       title, reason: r.status === 'unclear' ? (r.unclear_why || r.subject || '') : (r.feature || r.subject || 'UAT session'),
-      score: r.status === 'ready' ? 78 : 72, urgency, source: 'email', actionHint: 'Open People',
+      // Tier 1 (≥80): a dated ask with a named recipient. At 72 the engine's
+      // top-five cut dropped it silently on a busy Monday (26 Oct 2026).
+      score: r.status === 'unclear' ? 60 : r.status === 'ready' ? 88 : 84, urgency, source: 'email', actionHint: 'Open People',
       meta: { roundId: r.id, uatDate: r.uat_date },
     });
   }
   return out;
 }
 
+/**
+ * Drafts → Communication drafts: every UAT email waiting for Nick's press (the
+ * invites and the reply to Dan). READ only.
+ */
+function draftRows(injected) {
+  const d = deps(injected);
+  const out = [];
+  const rounds = db.all(`SELECT * FROM uat_rounds WHERE status IN ('proposed', 'inviting', 'ready')`);
+  for (const r of rounds) {
+    const day = r.uat_date ? model.dayWords(r.uat_date) : 'UAT';
+    for (const s of _selections(r.id).filter((x) => x.status === 'invited' && x.action_id)) {
+      const a = _latestAction(s.action_id, d);
+      if (!a || a.status !== 'prepared') continue;
+      out.push({ moveKey: `uat:${r.id}:${a.actionId}`, kindLabel: 'UAT invite', title: `Ask ${s.person} to the UAT on ${day}`,
+        actionId: a.actionId, status: 'In Actions — one press sends it. Not sent.', savedAt: a.createdAt || null });
+    }
+    if (r.reply_action_id) {
+      const a = _latestAction(r.reply_action_id, d);
+      if (a && a.status === 'prepared') {
+        out.push({ moveKey: `uat:${r.id}:reply`, kindLabel: 'UAT reply', title: `Tell ${r.from_name || 'Dan'} who is going to the UAT on ${day}`,
+          actionId: a.actionId, status: 'In Actions — one press sends it. Not sent.', savedAt: a.createdAt || null });
+      }
+    }
+  }
+  return out;
+}
+
 module.exports = {
+  draftRows,
   scanTriage, retry, prepareInvites, swap, dismiss, lookup, respond, tick, view, list, rota, nowCards, history,
   _internals: { hash, DEFAULT_DEPS, SEEN_KEY },
 };
