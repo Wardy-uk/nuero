@@ -49,6 +49,13 @@ function apiAuth(req, res, next) {
   // an entirely different reason). Same care as /c/ versus /capture-links.
   if (req.path.startsWith('/v/')) return next();
 
+  // UAT volunteers (26 Oct 2026, approved by Nick): the Confirm/Decline link in
+  // an invite email. Public for the same reason as /c/ — the person asked has no
+  // PIN. The token in the path names one person for one session and can record
+  // only their answer; GET records nothing (routes/uat-respond.js). `/u/` not
+  // `/u`, so /api/uat (Nick's half) stays behind the PIN.
+  if (req.path.startsWith('/u/')) return next();
+
   // Allow the FreeReps iOS app's wire API (#40). Same reason as the exemptions
   // above — the client cannot send a header. This one is not a limitation of the
   // browser but of the app: its config model has no credential field at all, so

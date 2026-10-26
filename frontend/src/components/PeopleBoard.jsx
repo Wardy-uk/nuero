@@ -5,6 +5,7 @@ import PersonDetail from './PersonDetail';
 import WaitingOn from './WaitingOn';
 import PreparedActions from './PreparedActions';
 import SuggestedPeople from './SuggestedPeople';
+import UatVolunteers from './UatVolunteers';
 import './PeopleBoard.css';
 
 // Current direct reports, grouped for display. Leavers and people who move to
@@ -1317,6 +1318,9 @@ export default function PeopleBoard() {
         showLegacy={false}
         filter={a => a.actionType === 'create_calendar_event' && a.origin === '1to1-book'}
       />
+
+      {/* UAT volunteers (26 Oct 2026): Dan's weekly request — picks, invites, answers, reply. */}
+      <UatVolunteers />
 
       <WaitingOn />
 

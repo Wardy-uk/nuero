@@ -210,6 +210,13 @@ export const interactive = {
   post_report_fixes_manual: 'Entering a fix straight into the reports is Nick\'s, in NEURO → Reports → Fixes log. An agent proposes one with post_report_fixes.',
   post_report_fixes_by_id_decide: 'Including a fix in the SOAP or Weekly Risk report is Nick\'s decision, in NEURO → Reports → Fixes log.',
   post_report_fixes_by_id_edit: 'Editing a fix that may reach Chris is Nick\'s, in NEURO → Reports → Fixes log.',
+  // UAT volunteers (26 Oct 2026): picking who is asked and sending the invites is Nick's.
+  post_uat_rounds_by_id_invites: 'Inviting people to UAT emails them as Nick. He sends the invites in NEURO → People → UAT volunteers.',
+  post_uat_rounds_by_id_selections_by_selectionId_swap: 'Who is put forward for UAT is Nick\'s call, in NEURO → People → UAT volunteers.',
+  post_uat_rounds_by_id_dismiss: 'Dismissing a UAT request is Nick\'s call, in NEURO → People → UAT volunteers.',
+  post_uat_rounds_by_id_retry: 'Re-reading a UAT request is done by Nick, in NEURO → People → UAT volunteers.',
+  post_uat_tick: 'The UAT round timer runs on its own; Nick can run it in NEURO.',
+  post_u_by_token: 'This is the answer link for the person invited to UAT — only they press it, from their email.',
   post_canonical_needs_you_synthetic: 'A synthetic P0 interrupts Nick\'s phone. He starts it himself in NEURO → Set up.',
   ...Object.fromEntries([
     'post_ai_settings', 'post_feature_flags_by_key', 'post_capture_links', 'post_capture_links_screen_session', 'delete_capture_links_by_username',

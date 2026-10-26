@@ -1030,6 +1030,8 @@ async function evaluate(options = {}) {
     // An update Nick promised a customer on a watched ticket, from 30 min before
     // its time until his public reply (watched-tickets, 23 Oct 2026).
     ...require('./watched-tickets').nowCards(),
+    // UAT volunteers waiting on Nick's press (26 Oct 2026).
+    ...require('./uat-volunteers').nowCards(),
     // Build 12.3K: a synthetic P0 for proving the watch end to end. Built from
     // its own store, contacts nothing, expires in minutes, titled "Test —".
     ...require('./synthetic-attention').collect(),

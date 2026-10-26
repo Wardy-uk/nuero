@@ -161,6 +161,10 @@ app.use('/api/medical', require('./routes/medical'));
 app.use('/api/performance', require('./routes/performance'));
 app.use('/api/jira', jiraRoutes);
 app.use('/api/escalation', escalationRoutes);
+// UAT volunteers (26 Oct 2026): Nick's half behind the PIN, and the invite's
+// Confirm/Decline link on the PUBLIC mount /api/u (exempt in api-auth.js).
+app.use('/api/uat', require('./routes/uat'));
+app.use('/api/u', require('./routes/uat-respond'));
 app.use('/api/focus', focusRoutes);
 app.use('/api/session', require('./routes/focus-session'));
 app.use('/api/time', timeRoutes);

@@ -5789,7 +5789,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 286,
+    "line": 290,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -6388,6 +6388,42 @@
     "source": "routes/tts.js",
     "line": 13,
     "description": "GET /api/tts/status. can the client rely on this before switching to it?",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_u_by_token",
+    "method": "GET",
+    "route": "/api/u/:token",
+    "domain": "u",
+    "source": "routes/uat-respond.js",
+    "line": 96,
+    "description": "GET /api/u/:token. the invite link: shows the session and Confirm / Decline buttons. Records nothing.",
+    "params": [
+      "token"
+    ],
+    "query": [
+      "a"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_uat",
+    "method": "GET",
+    "route": "/api/uat",
+    "domain": "uat",
+    "source": "routes/uat.js",
+    "line": 15,
+    "description": "GET /api/uat. UAT volunteer rounds (picks, invites, answers, reply to Dan) and the rota per team.",
     "params": [],
     "query": [],
     "body": [],
@@ -15727,6 +15763,117 @@
     ],
     "queryOpen": false,
     "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_u_by_token",
+    "method": "POST",
+    "route": "/api/u/:token",
+    "domain": "u",
+    "source": "routes/uat-respond.js",
+    "line": 106,
+    "description": "POST /api/u/:token. the person's own Confirm or Decline (form field `answer`).",
+    "params": [
+      "token"
+    ],
+    "query": [],
+    "body": [
+      "answer"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_uat_rounds_by_id_dismiss",
+    "method": "POST",
+    "route": "/api/uat/rounds/:id/dismiss",
+    "domain": "uat",
+    "source": "routes/uat.js",
+    "line": 33,
+    "description": "POST /api/uat/rounds/:id/dismiss. not a volunteer request, or Nick is handling it himself.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_uat_rounds_by_id_invites",
+    "method": "POST",
+    "route": "/api/uat/rounds/:id/invites",
+    "domain": "uat",
+    "source": "routes/uat.js",
+    "line": 20,
+    "description": "POST /api/uat/rounds/:id/invites. prepare the invite emails for every pick not yet invited; the screen sends them with one press.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_uat_rounds_by_id_retry",
+    "method": "POST",
+    "route": "/api/uat/rounds/:id/retry",
+    "domain": "uat",
+    "source": "routes/uat.js",
+    "line": 39,
+    "description": "POST /api/uat/rounds/:id/retry. read a UAT email NEURO could not read again.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_uat_rounds_by_id_selections_by_selectionId_swap",
+    "method": "POST",
+    "route": "/api/uat/rounds/:id/selections/:selectionId/swap",
+    "domain": "uat",
+    "source": "routes/uat.js",
+    "line": 26,
+    "description": "POST /api/uat/rounds/:id/selections/:selectionId/swap. swap a pick before its invite is sent (person omitted = next in the rota).",
+    "params": [
+      "id",
+      "selectionId"
+    ],
+    "query": [],
+    "body": [
+      "person"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_uat_tick",
+    "method": "POST",
+    "route": "/api/uat/tick",
+    "domain": "uat",
+    "source": "routes/uat.js",
+    "line": 47,
+    "description": "POST /api/uat/tick. bring every round up to date now (what the 5-minute timer does).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },

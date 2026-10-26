@@ -15,6 +15,7 @@
 const TYPE_LABELS = Object.freeze({
   capacity: 'Capacity warning',
   ticket_commitment: 'Promised ticket update',
+  uat_volunteers: 'UAT volunteers',
   watched_reply: 'Customer reply on a watched ticket',
   escalation: 'Escalation',
   nova_flag: 'Flag from NOVA',

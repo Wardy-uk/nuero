@@ -58,6 +58,9 @@ const SUPPRESSIBLE = new Set([
   // A customer replied on a watched Jira ticket — Nick's call (23 Oct 2026):
   // quiet hours and the cap apply; the unread badge holds it until morning.
   'watched_reply',
+  // UAT volunteers (26 Oct 2026): picks to send, a decline, names ready for
+  // Dan — all wait for Nick's press, none is worth 03:00.
+  'uat_volunteers',
   // "Things I could do for you" — weekly, only when something new passed the
   // usefulness test. An idea, never urgent.
   'capability_suggestions',

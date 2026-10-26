@@ -935,7 +935,8 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
     channel: 'email', voice: 'nick', mode,
     generatedBy: origin === 'composer' ? 'typed by Nick in the Inbox composer'
       : origin === 'saim-move' ? 'drafted by SAiM in a prepared move Nick confirmed — still needs his approval to send'
-        : 'model draft (draft_reply), shown before approval',
+        : origin === 'uat-volunteers' ? 'template (UAT volunteers — the final names, no model call)'
+          : 'model draft (draft_reply), shown before approval',
     to: toList, cc: ccList, subject, body: text, placeholders: _placeholders(text),
     ...(refs.length ? { attachments: refs } : {}),
   };

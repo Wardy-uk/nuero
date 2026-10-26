@@ -457,6 +457,14 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/medical/scan', 'medical.scan'),
   R('POST', '/api/medical/records', 'medical.record'),
   R('DELETE', '/api/medical/records/:id', 'medical.record', { machine: 'refuse' }),
+  // UAT volunteers (26 Oct 2026). Who is asked and what is sent is Nick's; the
+  // public answer link records one person's own Confirm/Decline and nothing else.
+  R('POST', '/api/uat/rounds/:id/invites', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/uat/rounds/:id/selections/:selectionId/swap', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/uat/rounds/:id/dismiss', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/uat/rounds/:id/retry', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/uat/tick', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/u/:token', 'internal.state', { machine: 'refuse' }),
 ]);
 
 const DOMAIN_DEFAULTS = Object.freeze({
@@ -481,7 +489,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   chat: 'internal.state', 'day-plan': 'internal.state', email: 'internal.state', friction: 'internal.state', outcomes: 'internal.state',
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
   'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
-  'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
+  'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state', uat: 'internal.state', u: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
   outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
 });

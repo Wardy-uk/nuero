@@ -1238,6 +1238,48 @@ CREATE TABLE IF NOT EXISTS watched_ticket_commitments (
 );
 CREATE INDEX IF NOT EXISTS idx_watched_commitments_ticket ON watched_ticket_commitments(ticket_key, state);
 
+-- UAT volunteers (26 Oct 2026, services/uat-volunteers.js). One round per UAT
+-- request email; one selection per person asked. The rota is DERIVED from the
+-- selections (last time each person was put forward), never a second store.
+CREATE TABLE IF NOT EXISTS uat_rounds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_email_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (status IN ('unclear', 'proposed', 'inviting', 'ready', 'done', 'dismissed')),
+  uat_date TEXT,
+  start_time TEXT,
+  end_time TEXT,
+  feature TEXT,
+  location TEXT,
+  online TEXT,
+  from_name TEXT,
+  from_email TEXT,
+  subject TEXT,
+  unclear_why TEXT,
+  reply_action_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  closed_at TEXT
+);
+-- One live round per session date: a forwarded or re-sent request cannot start a second.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_uat_rounds_date ON uat_rounds(uat_date) WHERE uat_date IS NOT NULL AND status <> 'dismissed';
+CREATE TABLE IF NOT EXISTS uat_selections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  round_id INTEGER NOT NULL,
+  pool TEXT NOT NULL,
+  person TEXT NOT NULL,
+  email TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('proposed', 'invited', 'sent', 'confirmed', 'declined', 'accepted', 'replaced')),
+  why TEXT,
+  token_hash TEXT UNIQUE,
+  action_id TEXT,
+  sent_at TEXT,
+  deadline_at TEXT,
+  responded_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_uat_selections_round ON uat_selections(round_id, pool, status);
+
 
 -- One row per day, derived from health_samples.
 --

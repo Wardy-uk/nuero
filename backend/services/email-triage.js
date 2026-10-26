@@ -960,6 +960,12 @@ async function runTriage({ force = false } = {}) {
     } catch (e) {
       console.warn('[EmailTriage] Obligation extraction failed:', e.message);
     }
+    // A UAT request for volunteers (26 Oct 2026). Same passenger rule.
+    try {
+      await require('./uat-volunteers').scanTriage(updated);
+    } catch (e) {
+      console.warn('[EmailTriage] UAT volunteer scan failed:', e.message);
+    }
     // And what Nick said HE would do, in what he sent (5 Oct 2026). Same
     // passenger rule: never allowed to fail triage.
     try {

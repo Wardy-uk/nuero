@@ -224,6 +224,11 @@ function start() {
   // Every 15 min: look up any newly logged food NAME as a drink (ABV, kcal per
   // 100 ml) into drink_profiles. Ingest kicks it too; this is the backstop.
   // Idempotent — a name already answered is never asked again.
+  // Every 5 min: UAT volunteer rounds — invites sent, windows closed, Dan's reply ready.
+  cron.schedule('2-59/5 * * * *', () => {
+    require('./uat-volunteers').tick().catch((e) => console.warn('[Scheduler] UAT volunteers failed:', e.message));
+  });
+
   // Every 5 min: customer replies on watched Jira tickets (watched-tickets.js).
   // Idempotent on the Jira comment id, so a missed tick self-corrects.
   cron.schedule('3-59/5 * * * *', () => {
