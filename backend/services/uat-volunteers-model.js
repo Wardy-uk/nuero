@@ -73,7 +73,9 @@ function parseExtraction(text, { todayKey = null } = {}) {
   if (typeof j.asksForVolunteers !== 'boolean') return { ok: false, why: 'the model did not say whether volunteers are asked for' };
   if (!j.asksForVolunteers) return { ok: true, request: { asksForVolunteers: false } };
   if (!_validDate(j.date)) return { ok: false, why: 'no readable session date' };
-  if (todayKey && j.date < todayKey) return { ok: false, why: `the session date ${j.date} has already passed` };
+  // A session already held is not unclear — it is over. `past` lets the caller
+  // remember the email and move on rather than raise a card about it.
+  if (todayKey && j.date < todayKey) return { ok: false, past: true, why: `the session date ${j.date} has already passed` };
   if (!TIME_RE.test(String(j.start || ''))) return { ok: false, why: 'no readable start time' };
   const end = TIME_RE.test(String(j.end || '')) ? j.end : null;
   if (end && end <= j.start) return { ok: false, why: 'the end time is before the start time' };
@@ -200,6 +202,19 @@ function whenWords(ms) {
 
 const first = (name) => String(name || '').trim().split(/\s+/)[0] || 'there';
 
+/**
+ * A person's name to address them by. Graph sometimes gives the address as the
+ * display name ("dan.short@nurtur.tech"); then the local part is used
+ * ("Dan Short"). Never an address in "Hi …".
+ */
+function displayName(name, email) {
+  const n = String(name || '').trim();
+  if (n && !n.includes('@')) return n;
+  const local = String(email || n || '').split('@')[0];
+  const words = local.split(/[._-]+/).filter((w) => /^[a-z]+$/i.test(w));
+  return words.length ? words.map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(' ') : null;
+}
+
 function inviteEmail({ name, session, link, deadlineMs }) {
   const time = session.end ? `${session.start}–${session.end}` : session.start;
   const lines = [
@@ -265,5 +280,5 @@ function roundState(selections, poolIds = POOLS.map((p) => p.id)) {
 module.exports = {
   POOLS, CLOSE_HHMM, LATE_SEND_HHMM,
   quickMatch, parseExtraction, extractionPrompt, poolMembers, pickNext, deadlineFor,
-  dayWords, whenWords, inviteEmail, danReply, roundState, FINAL, ACTIVE,
+  dayWords, whenWords, inviteEmail, danReply, roundState, displayName, FINAL, ACTIVE,
 };

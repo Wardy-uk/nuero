@@ -61,6 +61,8 @@ const hash = (token) => crypto.createHash('sha256').update(String(token)).digest
 
 const _round = (id) => db.get('SELECT * FROM uat_rounds WHERE id = ?', [id]);
 const _selections = (roundId) => db.all('SELECT * FROM uat_selections WHERE round_id = ? ORDER BY id', [roundId]);
+// Who sent the request, as a name (rows stored before 26 Oct may hold the address).
+const _who = (r) => model.displayName(r.from_name, r.from_email) || 'Dan';
 const _session = (r) => ({ date: r.uat_date, start: r.start_time, end: r.end_time, feature: r.feature, location: r.location, online: r.online });
 
 /** name → last time an invite to them was SENT and not declined (ISO). */
@@ -134,7 +136,7 @@ function _openRound(email, parsed, d) {
                      from_name, from_email, subject, unclear_why, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   [email.id, status, req ? req.date : null, req ? req.start : null, req ? req.end : null, req ? req.feature : null,
-    req ? req.location : null, req ? req.online : null, email.from || null, (email.fromEmail || '').toLowerCase() || null,
+    req ? req.location : null, req ? req.online : null, model.displayName(email.from, email.fromEmail), (email.fromEmail || '').toLowerCase() || null,
     email.subject || null, parsed.ok ? null : parsed.why, iso(nowMs), iso(nowMs)]);
   return r.lastInsertRowid;
 }
@@ -176,6 +178,7 @@ async function scanTriage(entries, injected) {
       if (read.retry) { out.retry += 1; continue; }
       const { email, parsed } = read;
       if (parsed.ok && !parsed.request.asksForVolunteers) { _markSeen(e.id); out.notRequests += 1; continue; }
+      if (!parsed.ok && parsed.past) { _markSeen(e.id); out.notRequests += 1; continue; }
       if (parsed.ok && db.get(`SELECT id FROM uat_rounds WHERE uat_date = ? AND status <> 'dismissed'`, [parsed.request.date])) {
         _markSeen(e.id);
         console.log(`[UAT] ${e.id.slice(0, 12)}… is another request for ${parsed.request.date} — the existing round stands`);
@@ -201,6 +204,10 @@ async function retry(roundId, injected) {
   const read = await _read({ id: r.source_email_id }, d);
   if (read.retry) return { ok: false, code: 503, error: 'could not read the email or ask the model — try again shortly' };
   const { parsed } = read;
+  if (!parsed.ok && parsed.past) {
+    db.run(`UPDATE uat_rounds SET status = 'dismissed', unclear_why = ?, closed_at = ?, updated_at = ? WHERE id = ?`, [parsed.why, iso(d.now()), iso(d.now()), roundId]);
+    return { ok: true, round: view(roundId, injected), past: true };
+  }
   if (!parsed.ok) {
     db.run('UPDATE uat_rounds SET unclear_why = ?, updated_at = ? WHERE id = ?', [parsed.why, iso(d.now()), roundId]);
     return { ok: false, code: 422, error: parsed.why };
@@ -448,7 +455,7 @@ async function _advance(r, d) {
   }
   if (!st.ready) return;
   const people = model.POOLS.map((p) => st.byPool[p.id]).filter(Boolean).map((s) => ({ name: s.person }));
-  const body = model.danReply({ toName: r.from_name, session: _session(r), people });
+  const body = model.danReply({ toName: _who(r), session: _session(r), people });
   const res = await d.prepareReply({ emailId: r.source_email_id, body, mode: 'reply', origin: 'uat-volunteers', now: nowMs });
   if (!res || !res.ok) {
     console.warn(`[UAT] could not prepare the reply for round ${r.id}: ${(res && res.error) || 'unknown'}`);
@@ -457,7 +464,7 @@ async function _advance(r, d) {
   }
   db.run(`UPDATE uat_rounds SET status = 'ready', reply_action_id = ?, unclear_why = NULL, updated_at = ? WHERE id = ?`, [res.action.actionId, iso(nowMs), r.id]);
   try {
-    await d.push(`UAT: ready to tell ${r.from_name || 'Dan'}`, `${people.map((p) => p.name).join(' and ')} — send the reply in NEURO → People.`,
+    await d.push(`UAT: ready to tell ${_who(r)}`, `${people.map((p) => p.name).join(' and ')} — send the reply in NEURO → People.`,
       { url: '/?view=people', key: `uat:${r.id}:ready` });
   } catch { /* the reply is waiting either way */ }
 }
@@ -504,7 +511,7 @@ function view(roundId, injected) {
   return {
     id: r.id, status: r.status, unclearWhy: r.unclear_why,
     session: r.uat_date ? { ..._session(r), dayWords: model.dayWords(r.uat_date) } : null,
-    from: { name: r.from_name, email: r.from_email }, subject: r.subject,
+    from: { name: _who(r), email: r.from_email }, subject: r.subject,
     pools: model.POOLS.map((p) => ({
       id: p.id, label: p.label,
       current: st.byPool[p.id] ? _selView(st.byPool[p.id], d) : null,
@@ -548,7 +555,7 @@ function nowCards(nowMs = Date.now()) {
     let title = null;
     let urgency = 'high';
     if (r.status === 'unclear') { title = 'A UAT email NEURO could not read'; urgency = 'medium'; }
-    else if (r.status === 'ready') title = `UAT ${model.dayWords(r.uat_date)}: send the names to ${r.from_name || 'Dan'}`;
+    else if (r.status === 'ready') title = `UAT ${model.dayWords(r.uat_date)}: send the names to ${_who(r)}`;
     else if (st.toInvite.length) title = `UAT ${model.dayWords(r.uat_date)}: invite ${st.toInvite.map((s) => s.person).join(' and ')}`;
     else if (st.unfilled.length) title = `UAT ${model.dayWords(r.uat_date)}: no one free in ${st.unfilled.map((id) => model.POOLS.find((p) => p.id === id).label).join(', ')}`;
     if (!title) continue; // waiting on answers — nothing for Nick to do yet
@@ -583,7 +590,7 @@ function draftRows(injected) {
     if (r.reply_action_id) {
       const a = _latestAction(r.reply_action_id, d);
       if (a && a.status === 'prepared') {
-        out.push({ moveKey: `uat:${r.id}:reply`, kindLabel: 'UAT reply', title: `Tell ${r.from_name || 'Dan'} who is going to the UAT on ${day}`,
+        out.push({ moveKey: `uat:${r.id}:reply`, kindLabel: 'UAT reply', title: `Tell ${_who(r)} who is going to the UAT on ${day}`,
           actionId: a.actionId, status: 'In Actions — one press sends it. Not sent.', savedAt: a.createdAt || null });
       }
     }

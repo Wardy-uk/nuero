@@ -86,6 +86,13 @@ test('an extraction missing the date or time refuses; a past date refuses', () =
   assert.equal(model.parseExtraction('not json').ok, false);
 });
 
+test('a display name that is really an address becomes a name', () => {
+  assert.equal(model.displayName('dan.short@nurtur.tech', 'dan.short@nurtur.tech'), 'Dan Short');
+  assert.equal(model.displayName('Dan Short', 'dan.short@nurtur.tech'), 'Dan Short');
+  assert.equal(model.displayName(null, 'dshort@nurtur.tech'), 'Dshort');
+  assert.equal(model.displayName(null, null), null);
+});
+
 test('picking: off that day is out, never-asked first, then oldest, ties alphabetical', () => {
   const members = model.poolMembers('tier2dd', PEOPLE);
   assert.deepEqual(members.map((m) => m.name), ['Abdi Mohamed', 'Isabel Busk', 'Luke Scaife']); // archived left out
@@ -247,6 +254,14 @@ test('not a request: remembered, no round; an unreadable answer → an unclear r
   assert.equal(round(out2.rounds[0]).status, 'unclear');
   assert.match(round(out2.rounds[0]).unclear_why, /start time/);
   assert.equal(uat.nowCards(w2.now).some((c) => c.title === 'A UAT email NEURO could not read'), true);
+
+  // Last week's request (live case, 26 Oct 2026): over, so remembered — never a card.
+  const wPast = world({ extractText: EXTRACT_OK.replace('2026-10-28', '2026-10-21') });
+  const outPast = await uat.scanTriage([DAN_ENTRY('mail-last-week')], wPast.deps);
+  assert.equal(outPast.rounds.length, 0);
+  assert.equal(db.get('SELECT id FROM uat_rounds WHERE source_email_id = ?', ['mail-last-week']), null);
+  await uat.scanTriage([DAN_ENTRY('mail-last-week')], wPast.deps);
+  assert.equal(wPast.extracts, 1);
 
   const w3 = world({ extractText: null });
   const out3 = await uat.scanTriage([DAN_ENTRY('mail-model-down')], w3.deps);
