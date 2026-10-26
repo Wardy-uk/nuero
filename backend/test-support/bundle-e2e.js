@@ -134,6 +134,9 @@ const MEASURE = `(() => {
     draftsOpen: [...document.querySelectorAll('.tagent__out')].filter((d) => d.open).length,
     text: root ? root.textContent : '',
     leak: /private family matter/.test(document.body.innerHTML),
+    pinned: /Showing the one task you came here for/.test((document.querySelector('.todo-pin-banner') || {}).textContent || ''),
+    rows: document.querySelectorAll('.todo-list .todo-item').length,
+    rowInView: (() => { const r = document.querySelector('.todo-item.expanded'); if (!r) return false; const b = r.getBoundingClientRect(); return b.top >= -1 && b.top < innerHeight; })(),
     over: [...document.querySelectorAll('.tagent *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width && b.right > vw + 1; }).length,
   };
 })()`;
@@ -292,7 +295,13 @@ function electron() {
     assert.ok(s.doneControls.includes('Open brief'), 'the partial brief is kept and openable');
   });
   check('continue', () => { const c = S('cap-continue').steps[0]; assert.ok(c.clicked && c.ok); assert.equal(c.statusLine, 'Ready for you'); assert.equal(c.continueButtons, 0); concise(c, 'continued'); });
-  check('drafts open the task', () => { const s = S('drafts-open'); assert.equal(s.present, true, 'the task opened with its Do this workspace'); assert.equal(s.statusLine, 'Waiting for your decision'); });
+  check('drafts open the task', () => {
+    const s = S('drafts-open'); assert.equal(s.present, true, 'the task opened with its Do this workspace'); assert.equal(s.statusLine, 'Waiting for your decision');
+    // ⚠ Measured 700ms after landing — past the panel's 100ms context clear, which once dropped the pin.
+    assert.equal(s.pinned, true, 'still pinned to that one task after the nav context clears');
+    assert.equal(s.rows, 1, 'only the task Nick opened is listed');
+    assert.equal(s.rowInView, true, 'the opened task is on screen, not below the fold');
+  });
   check('no duplicate run', () => assert.equal(calls - callsAfterSeed, 7, 'answer turn (2) + one plain run (3) + one continued part (2) — double presses made one run each'));
   const db = require('../db/database');
   check('one attempt per task', () => { for (const t of Object.values(T)) { const raw = db.getState(`task_agent_run:${t.id}`); assert.ok(raw); } });

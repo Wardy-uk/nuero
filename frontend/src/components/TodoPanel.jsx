@@ -2130,13 +2130,16 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
     // `${source}-${id}`, which no row ever matched — so "Open the task" from Drafts,
     // Now or a card pinned the task and left it closed (26 Oct 2026).
     setExpanded(rowKey(hit));
+    // Land ON it: the pinned row sits under the add box and filter chips, below the fold.
+    setTimeout(() => { const b = document.querySelector('.todo-pin-banner'); if (b && b.scrollIntoView) b.scrollIntoView({ block: 'start' }); }, 60);
   }, [pin, todos]);
-  // A new "open it" while the panel is already mounted (Drafts → Tasks → Drafts → another task).
-  const lastContext = useRef(focusContext);
+  // A new "open it" while the panel is already mounted: let the row expand again.
+  // ⚠ Never clear the pin here. The panel clears its own nav context 100ms after
+  // landing (onClearContext), and treating that null as "no pin" dropped the pin
+  // straight away — the task vanished unless it was also in the Overdue filter
+  // (26 Oct 2026). Clearing is "Show all tasks", Nick's decision.
   useEffect(() => {
-    if (lastContext.current === focusContext) return;
-    lastContext.current = focusContext;
-    setPin(pinFromContext(focusContext));
+    if (pinFromContext(focusContext)) autoExpandedFor.current = null;
   }, [focusContext]);
 
   const toggleSuggestionSelect = (id) => {
