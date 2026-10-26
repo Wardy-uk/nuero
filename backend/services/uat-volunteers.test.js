@@ -46,7 +46,7 @@ function world({ off = {}, extractText = EXTRACT_OK } = {}) {
   };
   w.deps = {
     people: () => PEOPLE,
-    leaveSnapshot: () => ({ known: true }),
+    leaveSnapshot: () => ({ known: true, rosterCount: PEOPLE.length }),
     daysOffFor: (name) => ({ known: true, dates: new Set(off[name] || []) }),
     holidays: () => new Set(),
     storedTriage: () => w.inbox || [],
@@ -100,8 +100,17 @@ test('picking: off that day is out, never-asked first, then oldest, ties alphabe
   assert.equal(model.pickNext({ members, leave, date: '2026-10-28' }).pick.name, 'Isabel Busk');
   const hist = new Map([['Isabel Busk', '2026-10-01T09:00:00Z'], ['Luke Scaife', '2026-09-01T09:00:00Z']]);
   assert.equal(model.pickNext({ members, history: hist, leave, date: '2026-10-28' }).pick.name, 'Luke Scaife');
-  assert.equal(model.pickNext({ members, history: new Map([['Abdi Mohamed', '2026-01-01']]), date: '2026-10-28' }).pick.name, 'Isabel Busk');
-  const unknown = model.pickNext({ members, date: '2026-10-28' });
+  const allIn = () => ({ known: true, dates: new Set() });
+  assert.equal(model.pickNext({ members, history: new Map([['Abdi Mohamed', '2026-01-01']]), leave: allIn, date: '2026-10-28' }).pick.name, 'Isabel Busk');
+  // Live case, 26 Oct 2026: Adele is on maternity leave and not in People HR.
+  // Someone People HR cannot see is SKIPPED, never picked with a warning.
+  const notInHR = (n) => (n === 'Abdi Mohamed' ? { known: false, reason: 'Abdi Mohamed is not in the NOVA roster' } : { known: true, dates: new Set() });
+  const r1 = model.pickNext({ members, leave: notInHR, date: '2026-10-28' });
+  assert.equal(r1.pick.name, 'Isabel Busk');
+  assert.ok(r1.skipped.some((s) => s.name === 'Abdi Mohamed' && /not in the NOVA roster/.test(s.why)));
+  // Only when the whole feed is unreadable does a pick go ahead, saying so.
+  const unknown = model.pickNext({ members, leave: () => ({ known: false, feedDown: true, reason: 'People HR not readable' }), date: '2026-10-28' });
+  assert.equal(unknown.pick.name, 'Abdi Mohamed');
   assert.match(unknown.why, /leave not checked/);
 });
 

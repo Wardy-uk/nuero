@@ -97,7 +97,13 @@ function _latestAction(actionId, d) {
 function _leaveFn(d) {
   let snap = null;
   try { snap = d.leaveSnapshot(); } catch { snap = null; }
-  return (name) => { try { return d.daysOffFor(name, snap); } catch { return { known: false, reason: 'leave not readable', dates: new Set() }; } };
+  // The whole feed unreadable is different from one person missing from it:
+  // then nobody can be checked, and picks go ahead SAYING so (feedDown).
+  const feedDown = !snap || !snap.known || !snap.rosterCount;
+  return (name) => {
+    if (feedDown) return { known: false, feedDown: true, reason: (snap && snap.reason) || 'People HR not readable', dates: new Set() };
+    try { return d.daysOffFor(name, snap); } catch { return { known: false, feedDown: true, reason: 'leave not readable', dates: new Set() }; }
+  };
 }
 
 function _pickInto(roundId, poolId, d, nowMs) {

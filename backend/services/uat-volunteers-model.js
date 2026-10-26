@@ -144,6 +144,10 @@ function pickNext({ members, history = new Map(), leave = () => ({ known: false,
     if (!m.email) { out.skipped.push({ name: m.name, why: 'no email address in their People note' }); continue; }
     const l = leave(m.name) || { known: false };
     if (l.known && l.dates && l.dates.has(date)) { out.skipped.push({ name: m.name, why: 'off that day (People HR)' }); continue; }
+    // Nick (26 Oct 2026): someone People HR cannot see is SKIPPED, not picked
+    // with a warning — Adele was picked while on maternity leave. Only when the
+    // whole feed is unreadable (`feedDown`) is a pick allowed without a check.
+    if (!l.known && !l.feedDown) { out.skipped.push({ name: m.name, why: `leave not visible (${l.reason || 'not in People HR'})` }); continue; }
     eligible.push({ ...m, last: history.get(m.name) || null, leaveKnown: !!l.known, leaveWhy: l.known ? null : (l.reason || 'leave not readable') });
   }
   eligible.sort((a, b) => {
