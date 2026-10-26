@@ -494,7 +494,10 @@ function collectUrgentEmails(ctx) {
     // Use email triage (ACTION category) as primary source — more reliable than inbox scanner
     const emailTriage = require('./email-triage');
     const triage = emailTriage.getTriageByCategory();
-    const actionEmails = triage?.urgent || [];
+    // An email a UAT volunteers round has taken over is answered there (its own
+    // card, invites and reply) — not raised again as an urgent email (26 Oct 2026).
+    const uatOwned = require('./uat-volunteers').ownedEmailIds();
+    const actionEmails = (triage?.urgent || []).filter((e) => !uatOwned.has(e.id));
 
     if (actionEmails.length > 0) {
       const topEmail = actionEmails[0];
@@ -525,7 +528,7 @@ function collectUrgentEmails(ctx) {
     }
 
     // Also check for DELEGATE emails (lower priority)
-    const delegateEmails = triage?.delegate || [];
+    const delegateEmails = (triage?.delegate || []).filter((e) => !uatOwned.has(e.id));
     if (delegateEmails.length > 0 && actionEmails.length === 0) {
       items.push({
         type: 'email',

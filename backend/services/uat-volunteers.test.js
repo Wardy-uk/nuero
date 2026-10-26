@@ -306,6 +306,17 @@ test('the timer finds a request already in the stored inbox, even one marked Don
   assert.equal(w.extracts, 1);
 });
 
+test('a request UAT has taken over is not also offered as "Draft a reply"', async () => {
+  const w = world();
+  const id = db.get('SELECT source_email_id FROM uat_rounds WHERE uat_date = ?', ['2026-11-04']).source_email_id;
+  assert.ok(uat.ownedEmailIds().has(id));
+  const r = db.run(`INSERT INTO saim_actions (type, payload, status) VALUES ('draft_reply', ?, 'pending')`, [JSON.stringify({ emailId: id })]);
+  const other = db.run(`INSERT INTO saim_actions (type, payload, status) VALUES ('draft_reply', ?, 'pending')`, [JSON.stringify({ emailId: 'someone-else' })]);
+  await uat.tick(w.deps);
+  assert.equal(db.get('SELECT status FROM saim_actions WHERE id = ?', [r.lastInsertRowid]).status, 'superseded');
+  assert.equal(db.get('SELECT status FROM saim_actions WHERE id = ?', [other.lastInsertRowid]).status, 'pending');
+});
+
 test('Now: a card while picks wait to be sent', () => {
   const cards = uat.nowCards(Date.parse('2026-10-27T09:00:00Z'));
   const c = cards.find((x) => x.meta && x.meta.uatDate === '2026-11-04');

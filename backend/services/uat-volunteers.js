@@ -475,9 +475,27 @@ async function _advance(r, d) {
   } catch { /* the reply is waiting either way */ }
 }
 
+/**
+ * Emails a UAT round has taken over (any round Nick has not dismissed as "not a
+ * request"). The urgent-email card and its "Draft a reply" suggestion skip them:
+ * the round IS the reply, and a second path to answering Dan is noise.
+ */
+function ownedEmailIds() {
+  try {
+    return new Set(db.all(`SELECT source_email_id FROM uat_rounds WHERE status <> 'dismissed'`).map((r) => r.source_email_id));
+  } catch { return new Set(); }
+}
+
+function _retireOtherReplies() {
+  for (const id of ownedEmailIds()) {
+    try { db.supersedePendingEmailActions(id); } catch { /* best effort */ }
+  }
+}
+
 /** Every 5 minutes (and after each answer). Never throws. */
 async function tick(injected, { roundId = null } = {}) {
   const d = deps(injected);
+  _retireOtherReplies();
   // The stored inbox is scanned here too, not only from a triage pass: a pass
   // with no NEW mail skips straight out, so a request already sitting in the
   // inbox would otherwise wait for unrelated mail to arrive. Each email is
@@ -605,6 +623,7 @@ function draftRows(injected) {
 }
 
 module.exports = {
+  ownedEmailIds,
   draftRows,
   scanTriage, retry, prepareInvites, swap, dismiss, lookup, respond, tick, view, list, rota, nowCards, history,
   _internals: { hash, DEFAULT_DEPS, SEEN_KEY },
