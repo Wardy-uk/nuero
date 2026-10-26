@@ -212,7 +212,8 @@ function sentimentSummary(sig) {
     survey: csat ? { sent: csat.sent, responded: csat.responded, ratePct: csat.responseRatePct, thin: !!csat.thin } : null,
     tickets: ai ? { scored: ai.scored, negative: ai.negative, average: ai.average } : null,
     team: team ? { title: team.title, responses: team.responses, avg: team.avgScore, thin: !!team.thin } : null,
-    unavailable: (sig.unavailable || []).map((u) => u.name),
+    // NOVA's reason travels with the name, or "Not read: jiraCsat" needs a dig to explain.
+    unavailable: (sig.unavailable || []).map((u) => (u.error ? `${u.name} (${String(u.error).slice(0, 160)})` : u.name)),
   };
 }
 

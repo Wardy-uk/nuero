@@ -332,11 +332,11 @@ test('sentiment stays four separate measures, never one averaged figure', () => 
     ai: { ok: true, data: { scored: 3, negative: 1, average: -0.2 } },
     jiraCsat: { ok: false, error: 'Timeout' },
     surveys: { ok: true, data: { byCategory: { team_satisfaction: [{ title: 'Support Team Satisfaction', responses: 10, avgScore: 3.04, thin: false }] } } },
-    unavailable: [{ name: 'jiraCsat' }] });
+    unavailable: [{ name: 'jiraCsat', error: 'Timeout' }] });
   assert.deepEqual(s.survey, { sent: 427, responded: 2, ratePct: 0.5, thin: true });
   assert.equal(s.tickets.negative, 1);
   assert.equal(s.team.avg, 3.04);
-  assert.deepEqual(s.unavailable, ['jiraCsat']);
+  assert.deepEqual(s.unavailable, ['jiraCsat (Timeout)'], 'the reason travels with the name');
   assert.equal(s.average, undefined, 'no combined figure');
 });
 
