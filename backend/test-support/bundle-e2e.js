@@ -229,6 +229,9 @@ function electron() {
     'plain-press': nj(T.plain, [[1440, 900]], '[data-tagent="idle"]', [{ click: 'Do this', double: true, wait: '[data-tagent="ready"]', shot: 'ready' }]),
     'plain-neuro-phone': nj(T.plain, [[390, 844]], '[data-tagent="ready"]'),
     'plain-saim-phone': sj(T.plain, '[data-tagent="ready"]'),
+    // Drafts → "Open the task" must land on the task itself, opened, with its Do this workspace.
+    'drafts-open': { origin: NEURO, url: `${NEURO}/?view=drafts`, sizes: [[1440, 900]], wait: '.todo-item.expanded .tagent',
+      open: `(() => { const card = [...document.querySelectorAll('li, article, div')].reverse().find((e) => e.querySelector && e.textContent.includes(${JSON.stringify(T.hr.text.slice(0, 30))}) && [...e.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Open the task')); if (!card) return false; if (!window.__e2eClicked) { window.__e2eClicked = 1; [...card.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Open the task').click(); } return true; })()` },
     'cap-desktop': nj(T.capd, [[1440, 900]], '[data-tagent="capped"]'),
     'cap-neuro-phone': nj(T.capd, [[390, 844]], '[data-tagent="capped"]'),
     'cap-saim-phone': sj(T.capd, '[data-tagent="capped"]'),
@@ -289,6 +292,7 @@ function electron() {
     assert.ok(s.doneControls.includes('Open brief'), 'the partial brief is kept and openable');
   });
   check('continue', () => { const c = S('cap-continue').steps[0]; assert.ok(c.clicked && c.ok); assert.equal(c.statusLine, 'Ready for you'); assert.equal(c.continueButtons, 0); concise(c, 'continued'); });
+  check('drafts open the task', () => { const s = S('drafts-open'); assert.equal(s.present, true, 'the task opened with its Do this workspace'); assert.equal(s.statusLine, 'Waiting for your decision'); });
   check('no duplicate run', () => assert.equal(calls - callsAfterSeed, 7, 'answer turn (2) + one plain run (3) + one continued part (2) — double presses made one run each'));
   const db = require('../db/database');
   check('one attempt per task', () => { for (const t of Object.values(T)) { const raw = db.getState(`task_agent_run:${t.id}`); assert.ok(raw); } });
