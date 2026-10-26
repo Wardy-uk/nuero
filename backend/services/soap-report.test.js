@@ -110,13 +110,13 @@ test('last week\'s reds: delivered green, or still red', () => {
   assert.deepEqual(out.map((c) => [c.key, c.green]), [['k1', true], ['k2', false]]);
 });
 
-test('blockers: every red needs an action; every still-red needs why AND consequences', () => {
+test('blockers: every red needs an action; every still-red needs a why (no consequences box)', () => {
   const report = { verdicts: { reds: [{ key: 'r1', text: 'Red one' }] }, carried: [{ key: 'c1', text: 'Old', green: false }, { key: 'c2', text: 'Done', green: true }] };
   assert.equal(soap.blockers(report, soap.emptyManual()).length, 2);
-  const m = { ...soap.emptyManual(), reds: { r1: { action: 'fix it' } }, carried: { c1: { why: 'because', consequences: '' } } };
-  assert.equal(soap.blockers(report, m).length, 1, 'consequences missing still blocks');
-  m.carried.c1.consequences = 'Ricky waits';
-  assert.deepEqual(soap.blockers(report, m), []);
+  const m = { ...soap.emptyManual(), reds: { r1: { action: 'fix it' } }, carried: { c1: { why: '' } } };
+  assert.equal(soap.blockers(report, m).length, 1, 'a missing why still blocks');
+  m.carried.c1.why = 'because';
+  assert.deepEqual(soap.blockers(report, m), [], 'why alone is enough');
 });
 
 test('improvement plan: delivered this week, past due, and the dd/mm year rule', () => {
@@ -362,4 +362,13 @@ test('the SOAP carries the new sections; resolved findings and escalation reason
   }
   assert.match(md, /\| Tier 2 \| 196 \| 5 \| 39.2× \|/);
   assert.match(md, /No early warning this week \(2 checks running/);
+});
+
+test("a red whose measure was replaced is never carried as 'delivered green'", () => {
+  const prev = [{ key: 'ping-pong:# tickets crossed queues #+ times', text: '136 tickets crossed queues 3+ times' }];
+  const [c] = soap.carriedForward(prev, []);
+  assert.equal(c.green, false);
+  assert.match(c.retired, /measure replaced/);
+  const report = { verdicts: { reds: [] }, carried: [c] };
+  assert.deepEqual(soap.blockers(report, soap.emptyManual()), [], 'a replaced measure asks for no why');
 });

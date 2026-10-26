@@ -262,10 +262,10 @@ test('ageing is ranked by ratio to target, not by raw days', () => {
 function flowPayload(over = {}) {
   const sig = data => ({ ok: true, error: null, data });
   return {
-    build: '2026-08-18-classifier-b',
+    build: '2026-10-26-bounced',
     window: { days: 30, from: '2026-07-18' },
     handbacks: sig({ total: 40, previous: 38, changePct: 5.3, routes: [{ from_tier: 'Tier 2', to_tier: 'Customer Care', count: 40 }], unclassified: 0, returnsAfterFix: 0, reasons: { top: [{ reason: 'Insufficient investigation', count: 22 }], withoutReason: 5, classified: 27 } }),
-    pingPong: sig({ threshold: 3, ticketsAffected: 0, worst: [] }),
+    pingPong: sig({ measure: 'bounced', threshold: 1, ticketsAffected: 0, worst: [] }),
     breachesByQueue: sig({ total: 0, withSlaField: 12, byTier: [], coverage: { cachedTickets: 100, lastSync: '2026-08-17T06:00:00Z' } }),
     unowned: sig({ total: 0, byTier: [] }),
     stalled: sig({ staleDays: 14, total: 0, byTier: [], worst: [] }),
@@ -288,7 +288,7 @@ test('a handback rise past the threshold escalates; a flat one only warns', () =
 });
 
 test('ping-pong is off by default, and ticking it in shows the table', () => {
-  const pp = { ok: true, error: null, data: { threshold: 3, ticketsAffected: 12, worst: [{ ticket_key: 'NT-16112', moves: 16, returns: 13 }] } };
+  const pp = { ok: true, error: null, data: { measure: 'bounced', threshold: 1, ticketsAffected: 12, worst: [{ ticket_key: 'NT-16112', moves: 16, bounces: 6, returns: 13 }] } };
 
   const off = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ flow: flowPayload({ pingPong: pp }) })));
   assert.doesNotMatch(off, /Ping-pong/, 'off by default — a table nobody asked for is one nobody reads');
@@ -297,7 +297,7 @@ test('ping-pong is off by default, and ticking it in shows the table', () => {
   const manual = { ...weeklyRisk.emptyManual(), showPingPong: true };
   const on = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ flow: flowPayload({ pingPong: pp }), manual })));
   assert.match(on, /Ping-pong/);
-  assert.match(on, /Queue moves/);
+  assert.match(on, /Bounces/);
   assert.match(on, /NT-16112/);
 });
 
@@ -307,7 +307,7 @@ test('hiding the ping-pong table never hides the escalation it raises', () => {
   // gets to see, which is exactly what this section exists to prevent.
   const a = weeklyRisk.assess(baseSnapshot({
     flow: flowPayload({
-      pingPong: { ok: true, error: null, data: { threshold: 3, ticketsAffected: 12, worst: [{ ticket_key: 'NT-16112', moves: 16, returns: 13 }] } },
+      pingPong: { ok: true, error: null, data: { measure: 'bounced', threshold: 1, ticketsAffected: 12, worst: [{ ticket_key: 'NT-16112', moves: 16, bounces: 6, returns: 13 }] } },
     }),
   }));
   assert.equal(a.manual.showPingPong, false, 'the fixture has it hidden');
@@ -329,10 +329,10 @@ test('the escalations lead — straight after the headline, before the numbered 
   assert.doesNotMatch(md, /To escalate to Chris \(within 2 working days\)/);
 });
 
-test('a ticket past the nameable move count escalates', () => {
+test('a ticket bounced twice or more escalates', () => {
   const a = weeklyRisk.assess(baseSnapshot({
     flow: flowPayload({
-      pingPong: { ok: true, error: null, data: { threshold: 3, ticketsAffected: 12, worst: [{ ticket_key: 'NT-16112', moves: 16, returns: 13 }] } },
+      pingPong: { ok: true, error: null, data: { measure: 'bounced', threshold: 1, ticketsAffected: 12, worst: [{ ticket_key: 'NT-16112', moves: 16, bounces: 6, returns: 13 }] } },
     }),
   }));
   const f = a.findings.find(x => x.kind === 'ping-pong');
@@ -1749,4 +1749,18 @@ test('a null KPI value is no data, never a zero against target (NOVA sends null 
   const zeroFinding = (rows) => wr.assess({ week: '2026-10-19', kpi: { rows, date: '2026-10-16' }, sources: [] }).findings.find((f) => f.kind === 'zero-against-target');
   assert.equal(zeroFinding([row(null)]), undefined, 'null must not read as 0');
   assert.ok(zeroFinding([row(0)]), 'a genuine 0 is still flagged');
+});
+
+test('ping-pong counts bounces, not moves: the long way round is not escalated', () => {
+  // The normal Dev route is four moves; a ticket with many moves but one bounce
+  // is not real back-and-forth (Nick, 26 Oct 2026).
+  const a = weeklyRisk.assess(baseSnapshot({
+    flow: flowPayload({
+      pingPong: { ok: true, error: null, data: { measure: 'bounced', threshold: 1, ticketsAffected: 3, worst: [{ ticket_key: 'NT-1', moves: 9, bounces: 1, returns: 0 }] } },
+    }),
+  }));
+  const f = a.findings.find(x => x.kind === 'ping-pong');
+  assert.equal(f.severity, 'warn');
+  assert.match(f.title, /3 tickets bounced back to a queue they had already left/);
+  assert.doesNotMatch(f.title, /crossed queues/);
 });

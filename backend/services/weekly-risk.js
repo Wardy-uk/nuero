@@ -165,13 +165,18 @@ const SNAPSHOT_STALE_DAYS = 3;
 /** Lookback for the flow signals. 30 days, so a weekly report has a stable base. */
 const FLOW_WINDOW_DAYS = 30;
 /** The NOVA flow-signals build this report knows how to read. */
-const FLOW_BUILD_EXPECTED = '2026-08-18-classifier-b';
+const FLOW_BUILD_EXPECTED = '2026-10-26-bounced';
 /** Flow signals run sequentially against Azure SQL — far slower than a chat call. */
 const FLOW_TIMEOUT_MS = 150_000;
 /** Handback volume rising by more than this share, period on period, is a finding. */
 const HANDBACK_RISE_SHARE = 0.25;
-/** Queue moves before a single ticket is worth naming in the report. */
-const PING_PONG_NAMEABLE = 6;
+/**
+ * Bounces before a single ticket is worth naming in the report. A bounce is a
+ * move back to a queue the ticket already left (NOVA's bounce.ts), never the
+ * normal Dev route or a released fix coming back — so two is real
+ * back-and-forth, not a ticket taking the long way round (Nick, 26 Oct 2026).
+ */
+const PING_PONG_NAMEABLE = 2;
 /** One queue holding more than this share of breaches is a routing story. */
 const BREACH_CONCENTRATION = 0.8;
 
@@ -1162,16 +1167,18 @@ function assess(snap) {
 
     const pp = flow.pingPong;
     if (pp?.ok && pp.data?.ticketsAffected > 0) {
-      const worst = (pp.data.worst || []).filter(t => t.moves >= PING_PONG_NAMEABLE);
+      const worst = (pp.data.worst || []).filter(t => (t.bounces || 0) >= PING_PONG_NAMEABLE);
       findings.push({
-        // A ticket crossing queues six times has had six chances to be owned and
-        // was not owned once. That is worth a manager's attention by itself.
+        // A ticket sent back to a queue it already left, twice, has had two
+        // chances to be owned and was not owned once. Moves alone are not the
+        // signal: CC → T2 → T3 → Dev → CC is the route working.
         severity: worst.length ? 'escalate' : 'warn',
         kind: 'ping-pong',
-        title: `${pp.data.ticketsAffected} tickets crossed queues ${pp.data.threshold}+ times`,
-        detail: worst.length
-          ? `Worst: ${worst.slice(0, 3).map(t => `${t.ticket_key} (${t.moves} moves, ${t.returns} returns)`).join('; ')}. Each of these has no single case owner — the review's number-one recommendation.`
-          : `None past ${PING_PONG_NAMEABLE} moves. Worth watching rather than escalating.`,
+        title: `${pp.data.ticketsAffected} tickets bounced back to a queue they had already left`,
+        detail: (worst.length
+          ? `Worst: ${worst.slice(0, 3).map(t => `${t.ticket_key} (${t.bounces} bounces in ${t.moves} moves)`).join('; ')}. Each of these has no single case owner — the review's number-one recommendation.`
+          : `None bounced ${PING_PONG_NAMEABLE}+ times. Worth watching rather than escalating.`)
+          + ' The normal escalation route and a released fix coming back are not counted.',
         items: pp.data.worst,
       });
     }
@@ -1674,9 +1681,9 @@ function flowSection(flow, { showPingPong = false } = {}) {
 
   if (showPingPong) say('Ping-pong', flow.pingPong, d => {
     const worst = (d.worst || []).slice(0, 5)
-      .map(t => `| ${t.ticket_key} | ${t.moves} | ${t.returns} |`).join('\n');
-    return `**Ping-pong:** **${d.ticketsAffected}** tickets crossed queues ${d.threshold}+ times.\n\n`
-      + (worst ? `| Ticket | Queue moves | Returns |\n|---|---|---|\n${worst}\n` : '_None over threshold._\n');
+      .map(t => `| ${t.ticket_key} | ${t.bounces} | ${t.moves} |`).join('\n');
+    return `**Ping-pong:** **${d.ticketsAffected}** tickets bounced back to a queue they had already left (the normal escalation route and a released fix coming back are not counted).\n\n`
+      + (worst ? `| Ticket | Bounces | Queue moves |\n|---|---|---|\n${worst}\n` : '_No bounced tickets._\n');
   });
 
   say('Open tickets currently over SLA', flow.breachesByQueue, d => {

@@ -133,16 +133,11 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         <Sec k="carried" title="Last week’s reds" {...secProps}>
           {r.carried.map((c) => (
             <div key={c.key} className="soap-red">
-              <p>{c.green ? '🟢 Delivered green: ' : '🔴 Still red: '}<strong>{c.text}</strong></p>
-              {!c.green && (
-                <>
-                  <label>Why it isn’t green
-                    <textarea rows={2} value={(draft.carried[c.key] && draft.carried[c.key].why) || ''} onChange={(e) => setCarried(c.key, 'why', e.target.value)} />
-                  </label>
-                  <label>Consequences for the people around you
-                    <textarea rows={2} value={(draft.carried[c.key] && draft.carried[c.key].consequences) || ''} onChange={(e) => setCarried(c.key, 'consequences', e.target.value)} />
-                  </label>
-                </>
+              <p>{c.green ? '🟢 Delivered green: ' : c.retired ? '⚪ ' : '🔴 Still red: '}<strong>{c.text}</strong>{c.retired ? ` — ${c.retired}` : ''}</p>
+              {!c.green && !c.retired && (
+                <label>Why it isn’t green
+                  <textarea rows={2} value={(draft.carried[c.key] && draft.carried[c.key].why) || ''} onChange={(e) => setCarried(c.key, 'why', e.target.value)} />
+                </label>
               )}
             </div>
           ))}

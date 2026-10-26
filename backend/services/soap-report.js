@@ -328,10 +328,22 @@ function verdictDiff(a, b) {
   return out;
 }
 
-/** Last week's reds against this week's: delivered green, or still red. PURE. */
+/**
+ * Reds whose MEASURE was replaced. Missing this week means nothing — the old
+ * figure is no longer computed — so it must never read as "delivered green".
+ */
+const RETIRED_RED_KEYS = {
+  'ping-pong:# tickets crossed queues #+ times':
+    'measure replaced: ping-pong now counts tickets bounced back to a queue they had already left, not queue moves (the normal Dev route was being counted).',
+};
+
+/** Last week's reds against this week's: delivered green, still red, or measure replaced. PURE. */
 function carriedForward(previousReds, reds) {
   const now = new Set((reds || []).map((r) => r.key));
-  return (previousReds || []).map((r) => ({ key: r.key, text: r.text, green: !now.has(r.key) }));
+  return (previousReds || []).map((r) => {
+    if (RETIRED_RED_KEYS[r.key] && !now.has(r.key)) return { key: r.key, text: r.text, green: false, retired: RETIRED_RED_KEYS[r.key] };
+    return { key: r.key, text: r.text, green: !now.has(r.key) };
+  });
 }
 
 /** The included fixes this report carries. Read at render time, so including one shows at once. */
@@ -386,9 +398,10 @@ function blockers(report, manual) {
     if (!(m.reds[r.key] && m.reds[r.key].action)) out.push(`Red needs what you will do to make it green by next Monday: ${r.text}`);
   }
   if (!ex.has('carried')) for (const c of report.carried || []) {
-    if (c.green) continue;
+    if (c.green || c.retired) continue;
     const e = m.carried[c.key] || {};
-    if (!e.why || !e.consequences) out.push(`Last week's red is still red — say why and what it costs the people around you: ${c.text}`);
+    // Why only (Nick, 26 Oct 2026): the consequences box was dropped from the report.
+    if (!e.why) out.push(`Last week's red is still red — say why: ${c.text}`);
   }
   return out;
 }
@@ -455,8 +468,9 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
     L.push("## Last week's reds", '');
     for (const c of report.carried) {
       if (c.green) { L.push(`- 🟢 Delivered green: ${c.text}`); continue; }
+      if (c.retired) { L.push(`- ⚪ ${c.text} — ${c.retired}`); continue; }
       const e = m.carried[c.key] || {};
-      L.push(`- 🔴 **Still red: ${c.text}** — why: ${e.why || '_(not written yet)_'}; consequences: ${e.consequences || '_(not written yet)_'}`);
+      L.push(`- 🔴 **Still red: ${c.text}** — why: ${e.why || '_(not written yet)_'}`);
     }
     L.push('');
   }
