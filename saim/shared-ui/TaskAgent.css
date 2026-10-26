@@ -50,3 +50,5 @@
 .tagent__trace summary { font-weight: 400; opacity: 0.8; font-size: 12px; }
 .tagent__steps { font-size: 12px; opacity: 0.85; }
 .tagent__section .tagent__link { margin-left: 2px; }
+.tagent__next .tagent__h { margin-top: 10px; }
+.tagent__nextq { font-size: 14px; font-weight: 600; }

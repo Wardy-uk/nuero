@@ -215,7 +215,8 @@ test('people matter: brief prepared, save refused, handoff carries no excerpt, d
   script = [reply([tu('save_output', { kind: 'brief', title: 'End date decision brief', markdown: '## Facts\n- HR reply awaited about the end date for the leaver\n## Options\n1. Confirm\n2. Wait' })]), reply([tu('finish', { completed: ['Brief'], remaining: ['Your decision'] })]), end()];
   await press(T.hr);
   const v = await state(T.hr);
-  assert.equal(v.run.status, 'needs-decision');
+  assert.equal(v.run.status, 'ready', 'finished without an invented decision question (26 Oct 2026)');
+  assert.equal(v.run.question, null);
   assert.equal(v.run.outputs[0].next.canSave, false);
   const s = await call('POST', `/api/task-agent/tasks/${T.hr}/outputs/o1/save`, {});
   assert.equal(s.status, 409);

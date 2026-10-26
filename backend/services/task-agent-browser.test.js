@@ -236,11 +236,11 @@ createRoot(document.getElementById('root')).render(React.createElement(Shell));
     'desktop-save': { task: T.plain, sizes: W, wait: '[data-tagent="ready"]', steps: save },
     'neuro-phone-save': { task: T.plain, sizes: P, wait: '[data-tagent="ready"]', steps: save },
     'desktop-question': { task: T.amb, sizes: D, wait: '[data-tagent="needs-answer"]' },
-    'desktop-decision': { task: T.hr, sizes: D, wait: '[data-tagent="needs-decision"]' },
+    'desktop-decision': { task: T.hr, sizes: D, wait: '[data-tagent="ready"]' },
     'desktop-email': { task: T.email, sizes: W, wait: '[data-tagent="ready"]' },
     'desktop-claude': { task: T.code, sizes: W, wait: '[data-tagent="ready"]', steps: claude },
     'saim-phone-claude': { task: T.code, hash: '#saim', sizes: P, wait: '[data-tagent="ready"]', steps: [claude[0]] },
-    'saim-phone-decision': { task: T.hr, hash: '#saim', sizes: P, wait: '[data-tagent="needs-decision"]' },
+    'saim-phone-decision': { task: T.hr, hash: '#saim', sizes: P, wait: '[data-tagent="ready"]' },
     'saim-phone-question': { task: T.amb, hash: '#saim', sizes: P, wait: '[data-tagent="needs-answer"]' },
     'saim-electron-desktop': { task: T.amb, hash: '#saim', native: true, sizes: W, wait: '[data-tagent="needs-answer"]' },
     'kiosk': { task: T.hr, hash: '#saim', surface: 'kiosk', mode: 'kiosk', sizes: P, wait: '.tasks__panel' },
@@ -392,10 +392,10 @@ test('the SAiM desktop Electron window (window.saimNative) shows Do this — it 
   assert.equal(s.status, 'needs-answer');
 });
 
-test('a people matter: the brief is there, save is not offered, and it stops at Nick’s decision', (t) => {
+test('a people matter: the brief is there, save is not offered, and no invented decision question', (t) => {
   if (skipWhy) return t.skip(skipWhy);
   for (const s of [...sizes('desktop-decision'), ...sizes('saim-phone-decision')]) {
-    assert.equal(s.status, 'needs-decision');
+    assert.equal(s.status, 'ready'); assert.equal(s.questions, 0, 'no invented question');
     assert.deepEqual(s.outputs, ['brief']);
     assert.ok(!s.saveButtons.includes('Save to vault…'));
     assert.match(s.text, /never saves those as notes/);

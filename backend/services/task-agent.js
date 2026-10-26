@@ -201,7 +201,15 @@ function _audit(event, run, extra = {}) {
 }
 
 // ── the task and its context ────────────────────────────────────────────────
-/** PURE. Is this an employment / people matter? Then NEURO prepares and stops at Nick's decision. */
+/**
+ * PURE. Two different things, kept apart (26 Oct 2026):
+ *  - `sensitive` — handle with care: restricted excerpts only, no email, never saved to the
+ *    vault, nothing quoted in a Claude handoff. True when the task's wording OR any linked
+ *    source is an employment / people note.
+ *  - `people` — the TASK ITSELF is an employment / people matter (its own wording, or a PIP
+ *    deliverable). Only this changes what NEURO says about decisions. A task merely RAISED in
+ *    an employee-cases meeting ("document the CI/JIRA toggle process") is not one.
+ */
 function sensitivityOf(task, context) {
   const why = [];
   try {
@@ -211,7 +219,13 @@ function sensitivityOf(task, context) {
   for (const r of (context && context.pinned) || []) {
     for (const c of r.restrictedCodes || []) if (['employee-cases-note', 'hr-wording', 'pip-deliverable'].includes(c) && !why.includes(c)) why.push(c);
   }
-  return { sensitive: why.length > 0, why };
+  return { sensitive: why.length > 0, people: why.includes('hr-wording') || why.includes('pip-deliverable'), why };
+}
+/** PURE. Is the task itself a people matter? Runs stored before 26 Oct carry only `why`. */
+function isPeopleMatter(s) {
+  if (!s || !s.sensitive) return false;
+  if (typeof s.people === 'boolean') return s.people;
+  return (s.why || []).some((w) => w === 'hr-wording' || w === 'pip-deliverable');
 }
 
 /**
@@ -253,9 +267,11 @@ function systemPrompt(run) {
     '- You cannot tick or change tasks, write to the vault, change the calendar, or contact anyone. Do not claim you did. Outputs you save are private working drafts that only Nick sees.',
     '- prepare_email only PREPARES an email draft for Nick to approve on NEURO\'s Actions screen; it sends nothing. Use it only when the task clearly calls for an email and the recipient is named in the task or the sources.',
     '- Never invent a fact, a quote, a source, a name or an email address. If a source does not say it, it is unknown — say so.',
-    run.sensitive && run.sensitive.sensitive
-      ? '- THIS TASK IS AN EMPLOYMENT / PEOPLE MATTER. Prepare a private decision brief (facts from the sources, options, risks, open questions) and then ask_nick with kind "authority" for the ONE specific decision, e.g. "What end date should the brief record?" with the dates the sources mention as options. NEVER choose, recommend as settled or assume the answer yourself — the brief shows the decision as Nick\'s, open, until he states it. When he has stated it, update the brief with his decision and finish; do not ask again. Make no promise, contact or change, and do not prepare any email. Do not speculate about the person beyond what the sources say.'
-      : '',
+    isPeopleMatter(run.sensitive)
+      ? '- THIS TASK IS AN EMPLOYMENT / PEOPLE MATTER. Prepare a private brief or draft (facts from the sources, options, risks, open questions). If a decision only Nick can make is still OPEN, ask_nick with kind "authority" for that ONE specific decision, e.g. "What end date should the brief record?" with the options the sources give. If nothing is left to decide, do NOT ask — finish, and list in remaining exactly what Nick must do himself (review, send, confirm). NEVER choose, recommend as settled or assume a decision yourself. Make no promise, contact or change, and do not prepare any email. Do not speculate about the person beyond what the sources say.'
+      : (run.sensitive && run.sensitive.sensitive
+        ? '- This task was raised in a private people note. Use only the excerpt given for it, do not prepare any email, and do not repeat anything personal about anyone in your outputs. The task itself is ordinary work: do it, and ask only if something is genuinely missing.'
+        : ''),
   ].filter((l) => l !== '').join('\n');
 }
 
@@ -420,7 +436,7 @@ function makeRunTool(work, task, turn, budget = null, limits = null) {
           return { ok: true, saved: title, private: true, ...finalNote() };
         }
         case 'prepare_email': {
-          if (work.sensitive && work.sensitive.sensitive) return { ok: false, error: 'Refused: this is an employment / people matter. Prepare the brief and ask Nick for the decision instead.' };
+          if (work.sensitive && work.sensitive.sensitive) return { ok: false, error: isPeopleMatter(work.sensitive) ? 'Refused: this is an employment / people matter — NEURO prepares no email for it. Prepare the brief; if a decision is still open, ask Nick for it specifically.' : 'Refused: this task was raised in a private people note — NEURO prepares no email for it. Write the draft for Nick instead.' };
           const already = (work.handoffs || []).some((h) => h.kind === 'prepared_action') || (work.pendingEmails || []).length > 0;
           if (already) return { ok: false, error: 'An email is already prepared for this task — Nick will approve or edit it on Actions.' };
           const to = String(input.to || '').trim();
@@ -617,20 +633,15 @@ async function _turn(taskId) {
 
   _commitEmails(work, task);
 
-  const sensitive = work.sensitive && work.sensitive.sensitive;
   if (turn.question) {
     work.question = turn.question;
     work.status = turn.question.kind === 'manual' ? 'needs-manual' : (turn.question.kind === 'authority' ? 'needs-decision' : 'needs-answer');
     _step(work, 'question', `Asked you: ${turn.question.question}`);
-  } else if (sensitive && !(work.answers || []).some((a) => a.kind === 'authority')) {
-    // ⚠ Server-enforced, not left to the prompt: a people matter ends at Nick's decision.
-    // Specific to the task, never "anything further?"; asked once — after he has stated
-    // his decision the run finishes with the updated brief instead of asking again.
-    const what = String(task.text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
-    work.question = { id: `q${(work.answers || []).length + 1}-${d.now()}`, kind: 'authority', question: `What is your decision on “${what}”?`, why: 'This is an employment matter: NEURO has prepared the private material, but the decision is yours.', after: 'NEURO will record your decision in the private brief and stop. It will not contact anyone or change anything.', options: [], askedAt: _iso(d.now()), byRule: true };
-    work.status = 'needs-decision';
-    _step(work, 'question', 'Stopped at your decision (people matter).');
   } else {
+    // ⚠ No invented question (26 Oct 2026). The server used to ask "What is your decision on
+    // <task>?" whenever a sensitive run finished without asking — a question with nothing in
+    // it. A people matter still ends here: NEURO stops, contacts no one, and the card lists
+    // what is left for Nick (`next`). A real open decision is asked by the model, specifically.
     work.question = null;
     // A finished run that produced nothing to keep, prepare or hand off is an
     // evidenced inability to proceed — never "done".
@@ -710,6 +721,23 @@ function _settleStale(run) {
   return run;
 }
 
+/**
+ * A run stored before 26 Oct may be waiting on the server's own invented question ("What is
+ * your decision on <task>?"). That question named no decision, so the run is settled to what
+ * it really was: finished, with its drafts, waiting on nothing but Nick's own next steps.
+ */
+function _settleInventedQuestion(run) {
+  if (run && run.question && run.question.byRule && AWAITING.has(run.status)) {
+    const produced = (run.outputs || []).length || (run.handoffs || []).length || (run.claude && run.claude.recommended);
+    run.question = null;
+    run.status = produced ? 'ready' : 'blocked';
+    run.updatedAt = _iso(deps().now());
+    _step(run, 'note', 'Withdrew a question NEURO could not make specific — nothing is waiting on a decision from you.');
+    _save(run);
+  }
+  return run;
+}
+
 /** Current state, with live status of anything handed off. Writes nothing except settling a dead run. */
 function view(taskId) {
   const id = Number(taskId);
@@ -717,6 +745,7 @@ function view(taskId) {
   let run = _load(id);
   if (run && run.unreadable) return { ok: false, status: 500, error: 'The saved run could not be read.' };
   run = _settleStale(run);
+  run = _settleInventedQuestion(run);
   const budget = budgetView();
   if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null, budget };
   const d = deps();
@@ -735,7 +764,7 @@ function view(taskId) {
       save = { recordId: o.save.recordId, status: !rec ? 'gone' : done ? 'saved' : d.moveIsLatest(rec) ? 'waiting' : 'superseded' };
     }
     const next = sensitive
-      ? { canSave: false, why: 'People / employment matter — NEURO never saves those as notes on its own. Copy it if you want to keep it.' }
+      ? { canSave: false, why: isPeopleMatter(run.sensitive) ? 'People / employment matter — NEURO never saves those as notes on its own. Copy it if you want to keep it.' : 'Raised in a private people note — NEURO does not save it to the vault on its own. Copy it if you want to keep it.' }
       : run.status === 'running' ? { canSave: false, why: 'NEURO is still working.' } : { canSave: true, why: null };
     return { ...o, save, next };
   });
@@ -781,9 +810,12 @@ function workspaceOf(run, ctx = {}) {
     label = `Blocked — ${why}`;
   }
   const phase = state === 'working' ? (PHASES[run.phase] || PHASES.starting) : null;
-  const wont = sensitive
+  const people = isPeopleMatter(run.sensitive);
+  const wont = people
     ? 'NEURO prepares private material only. It will not decide, contact anyone, promise anything or change anything.'
-    : 'NEURO drafts and prepares. It sends, books, saves and changes nothing without your confirmation.';
+    : sensitive
+      ? 'Its source is a private people note, so NEURO used only the permitted excerpt. It drafts and prepares; it contacts no one and changes nothing.'
+      : 'NEURO drafts and prepares. It sends, books, saves and changes nothing without your confirmation.';
 
   const done = [];
   if (used) done.push({ say: `Checked the permitted evidence (${used} source${used === 1 ? '' : 's'}).` });
@@ -817,8 +849,14 @@ function workspaceOf(run, ctx = {}) {
       cost: `Pressing it starts one more bounded part: it counts as another run${runsLine} and can spend up to $${L ? L.maxAttemptUsd.toFixed(2) : '?'} of today’s Do this budget. NEURO keeps what it has and does not repeat searches or notes.`,
     };
   }
+  // Nothing to answer, but the work is with Nick now: say exactly what is left (≤3 lines).
+  const remaining = (run.summary && run.summary.remaining) || [];
+  const next = !need && state === 'ready' && remaining.length
+    ? { items: remaining.slice(0, 3), more: Math.max(0, remaining.length - 3) }
+    : null;
   return {
     status: { state, label, phase, wont, enough, say: state === 'capped' && run.cap ? run.cap.say : null },
+    next,
     continue: cont,
     done: done.slice(0, 3),
     need,
@@ -1226,7 +1264,7 @@ function activeRuns() {
 }
 
 module.exports = {
-  workspaceOf, questionOverlap, continueWorking, MAX_READ_CHARS,
+  workspaceOf, questionOverlap, isPeopleMatter, continueWorking, MAX_READ_CHARS,
   CONTRACT, STATUS, QUESTION_KINDS, OUTPUT_KINDS, TOOLS,
   view, start, answer, stop, activeRuns, prepareSave, handoffPreview, handoff, budgetView,
   sensitivityOf, sourcesFrom, addressesIn, classifyError, policyEnvelope, defaultBrief, fixedContext, composeFinal, screenBrief, BRIEF_RULES, DEFAULT_MODEL,

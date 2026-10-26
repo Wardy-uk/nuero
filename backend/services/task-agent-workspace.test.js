@@ -236,3 +236,62 @@ test('no workspace for the kiosk, the API token or a declared machine; chat has 
   const tools = fs.readFileSync(path.join(__dirname, 'chat-tools.js'), 'utf8');
   assert.doesNotMatch(tools, /task-agent|task_agent/);
 });
+
+// ── 26 Oct 2026: no invented decision question; a private SOURCE is not a people matter ──
+test('a task merely RAISED in a private people note: ordinary work, protections kept, no decision question — "Next for you" instead', async () => {
+  const realForTask = (id) => tc.forTask(id, { viewer: 'owner' });
+  const t = taskStore.createTask({ text: 'Document the CI/JIRA parent ticket and major incident toggle process next week', source: 'test' }).task;
+  agent._internals.setDeps({ forTask: (id) => (id === t.id
+    ? { ok: true, pinned: [{ id: 901, type: 'note', title: 'Weekly team catch up', ref: 'Meetings/2026/10/team catch up.md', restricted: true, restrictedCodes: ['employee-cases-note'], excerpt: 'Agreed Nick documents the CI/JIRA toggle process.' }] }
+    : realForTask(id)) });
+  lastToolResults.length = 0;
+  script = [
+    reply([tu('prepare_email', { to: 'Jane Doe', subject: 'Toggle process', body: 'x' })]),
+    reply([tu('save_output', { kind: 'draft', title: 'CI / JIRA parent ticket & major incident toggle', markdown: '## Process\n- [JIRA project name]\n- Raise the parent ticket' })]),
+    reply([tu('finish', { completed: ['Drafted the process'], remaining: ['Gap-fill: JIRA project name, ticket type, toggle field', 'Review the draft before sharing it with the team'] })]),
+  ];
+  try {
+    const v = await agent.start(t.id, { awaitTurn: true });
+    assert.equal(v.run.sensitive.sensitive, true, 'still handled with care');
+    assert.equal(agent.isPeopleMatter(v.run.sensitive), false, 'but the task itself is not a people matter');
+    assert.equal(v.run.status, 'ready');
+    assert.equal(v.run.question, null, 'no invented question');
+    assert.equal(v.workspace.need, null);
+    assert.deepEqual(v.workspace.next.items, ['Gap-fill: JIRA project name, ticket type, toggle field', 'Review the draft before sharing it with the team']);
+    assert.match(v.workspace.status.wont, /private people note/);
+    assert.doesNotMatch(JSON.stringify(v.workspace), /employment matter|What is your decision on/);
+    assert.ok(lastToolResults.some((r) => /raised in a private people note — NEURO prepares no email/.test(r)), 'email still refused');
+    assert.ok(v.run.outputs.every((o) => o.next.canSave === false), 'still never saved to the vault on its own');
+  } finally { agent._internals.setDeps({ forTask: realForTask }); }
+});
+
+test('a real people matter that finishes without asking: Ready, NO "What is your decision on…" question, the remaining steps listed', async () => {
+  const t = taskStore.createTask({ text: "Nick to reply formally to Stephen Example's flexible working request with a plan", source: 'test' }).task;
+  script = [
+    reply([tu('save_output', { kind: 'draft', title: 'Formal reply – flexible working', markdown: 'Dear Stephen, …' })]),
+    reply([tu('finish', { completed: ['Drafted the formal reply'], remaining: ['Review and approve the draft letter', 'Send it to Stephen yourself — NEURO cannot send employment correspondence'] })]),
+  ];
+  const v = await agent.start(t.id, { awaitTurn: true });
+  assert.equal(agent.isPeopleMatter(v.run.sensitive), true);
+  assert.equal(v.run.status, 'ready');
+  assert.equal(v.run.question, null);
+  assert.equal(v.workspace.need, null);
+  assert.equal(v.workspace.next.items.length, 2);
+  assert.match(v.workspace.status.wont, /will not decide, contact anyone/);
+  T.peopleDone = t;
+});
+
+test('a run stored with the OLD invented question is settled on view: Ready, question withdrawn, nothing waiting on Nick', async () => {
+  const id = T.peopleDone.id;
+  const raw = JSON.parse(db.getState(`task_agent_run:${id}`));
+  raw.status = 'needs-decision';
+  raw.question = { id: 'q1-old', kind: 'authority', question: 'What is your decision on “Nick to reply formally…”?', why: 'x', options: [], byRule: true };
+  db.setState(`task_agent_run:${id}`, JSON.stringify(raw));
+  const v = agent.view(id);
+  assert.equal(v.run.status, 'ready');
+  assert.equal(v.run.question, null);
+  assert.equal(v.workspace.need, null);
+  assert.ok(v.workspace.next && v.workspace.next.items.length >= 1);
+  assert.match(v.run.steps[v.run.steps.length - 1].say, /Withdrew a question NEURO could not make specific/);
+  assert.equal(JSON.parse(db.getState(`task_agent_run:${id}`)).status, 'ready', 'persisted');
+});

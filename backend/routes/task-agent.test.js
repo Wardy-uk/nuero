@@ -215,8 +215,8 @@ test('people matter: prepares the brief from the excerpt only, refuses email, st
   await press(T.hr.id);
   const run = await state(T.hr.id);
   assert.equal(run.sensitive.sensitive, true);
-  assert.equal(run.status, 'needs-decision', 'ended at Nick\'s decision even though the model only said finish');
-  assert.equal(run.question.kind, 'authority');
+  assert.equal(run.status, 'ready', 'a people matter that only said finish ends Ready — no invented "What is your decision on…" question (26 Oct 2026)');
+  assert.equal(run.question, null);
   assert.equal(run.outputs.length, 1, 'the brief WAS prepared — it did not stop before the preparatory work');
   assert.equal((run.handoffs || []).length, 0, 'no email prepared');
   assert.equal(db.get("SELECT COUNT(*) n FROM prepared_actions").n, 0);

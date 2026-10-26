@@ -176,6 +176,16 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
       {/* 3. What I need from you — one question, or nothing. */}
       {ws.need && <NeedBlock need={ws.need} busy={busy} onAnswer={onAnswer} />}
 
+      {/* Nothing to answer, but the work is with Nick now: exactly what is left. */}
+      {!ws.need && !ws.continue && ws.next && (
+        <div className="tagent__section tagent__next" data-tagent-next-for-you>
+          <p className="tagent__h">What I need from you</p>
+          <p className="tagent__nextq">Nothing to decide. Next for you:</p>
+          <ul className="tagent__bul">{ws.next.items.map((x) => <li key={x}>{x}</li>)}</ul>
+          {ws.next.more > 0 && <p className="tagent__meta">and {ws.next.more} more in Activity and evidence.</p>}
+        </div>
+      )}
+
       {/* Paused at a per-attempt limit: what was done, what remains, and ONE explicit control. */}
       {ws.continue && (
         <div className="tagent__q tagent__cont" data-tagent-continue>
