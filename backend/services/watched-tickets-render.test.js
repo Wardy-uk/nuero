@@ -140,3 +140,25 @@ test('every expanded ticket offers Reply', () => {
   }));
   assert.match(html, />Reply</);
 });
+
+// ── Escalate to… (27 Oct 2026): pick a person or type any address ──────────
+test('parseRecipient: a picked person, a typed address, a People name — and nothing guessed', () => {
+  const people = [{ name: 'Chris Middleton', email: 'chris.m@nurtur.tech' }, { name: 'Chris Smith', email: 'chris.s@nurtur.tech' }];
+  assert.deepEqual(mod.parseRecipient('Chris Middleton <chris.m@nurtur.tech>', people), { name: 'Chris Middleton', email: 'chris.m@nurtur.tech' });
+  assert.deepEqual(mod.parseRecipient('Someone@Example.com', people), { name: null, email: 'someone@example.com' });
+  assert.deepEqual(mod.parseRecipient('CHRIS.S@nurtur.tech', people), { name: 'Chris Smith', email: 'chris.s@nurtur.tech' });
+  assert.deepEqual(mod.parseRecipient('chris smith', people), { name: 'Chris Smith', email: 'chris.s@nurtur.tech' });
+  assert.equal(mod.parseRecipient('Chris', people), null, 'a first name is not an address');
+  assert.equal(mod.parseRecipient('not an email', people), null);
+  assert.equal(mod.parseRecipient('Bad <nope>', people), null);
+  assert.equal(mod.parseRecipient('', people), null);
+});
+
+test('escalationEmailDraft: facts off the card and a gap that blocks Send', () => {
+  const d = mod.escalationEmailDraft({ key: 'NT-1', summary: 'Login broken', url: 'https://x/NT-1', status: 'Open', esc: { priority: 'Critical', assignee: null } });
+  assert.match(d.subject, /^Escalation: NT-1 — Login broken$/);
+  assert.match(d.body, /Link: https:\/\/x\/NT-1/);
+  assert.match(d.body, /Assignee: Unassigned/);
+  assert.match(d.body, /\[What you need from them, and by when\]/);
+  assert.doesNotMatch(d.body, /Reason:/);
+});

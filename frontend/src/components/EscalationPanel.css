@@ -664,3 +664,9 @@
   background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px;
 }
 .esc-email-to:focus { outline: none; border-color: var(--accent); }
+.esc-email-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; }
+.esc-email-chips:focus-within { border-color: var(--accent); }
+.esc-email-chips input { flex: 1; min-width: 200px; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; padding: 3px 2px; }
+.esc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border); font-size: 12px; }
+.esc-chip button { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+.esc-chip button:hover { color: var(--text-primary); }

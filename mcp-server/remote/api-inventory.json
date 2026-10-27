@@ -2142,6 +2142,22 @@
     "stream": false
   },
   {
+    "id": "get_escalation_people",
+    "method": "GET",
+    "route": "/api/escalation/people",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 295,
+    "description": "GET /api/escalation/people. the people \"Escalate to…\" can offer: every People note with an email: line, by name. Read only.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_escalation_reasons",
     "method": "GET",
     "route": "/api/escalation/reasons",
@@ -2181,7 +2197,7 @@
     "route": "/api/escalation/watched",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 313,
+    "line": 325,
     "description": "GET /api/escalation/watched. watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.",
     "params": [],
     "query": [],
@@ -9842,7 +9858,7 @@
     "route": "/api/escalation/email",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 295,
+    "line": 307,
     "description": "POST /api/escalation/email. escalate a ticket to someone by email (\"Escalate to…\"): prepares a governed compose_email from Nick's work address; nothing is sent here, it goes on his press. Body: { key, to, subject, body }",
     "params": [],
     "query": [],
@@ -9943,7 +9959,7 @@
     "route": "/api/escalation/watched",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 318,
+    "line": 330,
     "description": "POST /api/escalation/watched. watch a Jira ticket; body { key }. A customer reply then sends a push. Watch, follow, track a ticket.",
     "params": [],
     "query": [],
@@ -9961,7 +9977,7 @@
     "route": "/api/escalation/watched/:key/commitments",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 336,
+    "line": 348,
     "description": "POST /api/escalation/watched/:key/commitments. promise the customer an update by a time; body { due: \"HH:MM\" (today) or \"YYYY-MM-DDTHH:MM\", London }. Update commitment, deadline, reminder.",
     "params": [
       "key"
@@ -9981,7 +9997,7 @@
     "route": "/api/escalation/watched/:key/commitments/:id/:action",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 343,
+    "line": 355,
     "description": "POST /api/escalation/watched/:key/commitments/:id/:action. confirm a spotted update commitment, dismiss it, or mark it done by hand (action = confirm | dismiss | done).",
     "params": [
       "key",
@@ -10001,7 +10017,7 @@
     "route": "/api/escalation/watched/:key/read",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 330,
+    "line": 342,
     "description": "POST /api/escalation/watched/:key/read. mark a watched ticket's customer replies as read.",
     "params": [
       "key"
@@ -10019,7 +10035,7 @@
     "route": "/api/escalation/watched/:key/unwatch",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 349,
+    "line": 361,
     "description": "POST /api/escalation/watched/:key/unwatch. stop watching a ticket (history kept).",
     "params": [
       "key"
@@ -10037,7 +10053,7 @@
     "route": "/api/escalation/watched/check",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 325,
+    "line": 337,
     "description": "POST /api/escalation/watched/check. check every watched ticket for customer replies now, instead of waiting for the 5-minute poll.",
     "params": [],
     "query": [],

@@ -525,34 +525,95 @@ export function escalationEmailDraft(item) {
   };
 }
 
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+/**
+ * One recipient from what Nick typed or picked. PURE. "Name <email>" (a picked
+ * person), a bare address (named if a People note has it), or a People note's
+ * exact name. Anything else is null — never guessed into an address.
+ */
+export function parseRecipient(text, people = []) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  const angle = t.match(/^(.*)<([^>]+)>$/);
+  if (angle) {
+    const email = angle[2].trim().toLowerCase();
+    return EMAIL_RE.test(email) ? { name: angle[1].trim() || null, email } : null;
+  }
+  if (EMAIL_RE.test(t)) {
+    const email = t.toLowerCase();
+    const known = people.find((p) => p.email === email);
+    return { name: known ? known.name : null, email };
+  }
+  const byName = people.filter((p) => p.name.toLowerCase() === t.toLowerCase());
+  return byName.length === 1 ? { name: byName[0].name, email: byName[0].email } : null;
+}
+
 function EmailEscalation({ item, onClose }) {
   const draft = escalationEmailDraft(item);
   const recents = recentTo();
-  const [to, setTo] = useState(recents[0] || '');
+  const [people, setPeople] = useState([]);
+  const [peopleError, setPeopleError] = useState(null);
+  const [recipients, setRecipients] = useState([]);
+  const [typed, setTyped] = useState('');
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [outcome, setOutcome] = useState(null);
 
-  const addresses = to.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  useEffect(() => {
+    let live = true;
+    fetch(apiUrl('/api/escalation/people')).then((r) => r.json()).then((d) => {
+      if (!live) return;
+      if (d.ok) setPeople(d.people || []);
+      else setPeopleError(d.error || 'unreadable');
+    }).catch((e) => { if (live) setPeopleError(e.message); });
+    return () => { live = false; };
+  }, []);
+
+  const add = (text) => {
+    if (!String(text || '').trim()) return true;
+    const r = parseRecipient(text, people);
+    if (!r) { setError(`“${String(text).trim()}” isn’t an email address or a person with one in their People note.`); return false; }
+    setError(null);
+    setRecipients((prev) => (prev.some((x) => x.email === r.email) ? prev : [...prev, r]));
+    setTyped('');
+    return true;
+  };
+  const remove = (email) => setRecipients((prev) => prev.filter((x) => x.email !== email));
+
+  const options = [
+    ...people.map((p) => `${p.name} <${p.email}>`),
+    ...recents.filter((e) => !people.some((p) => p.email === e)),
+  ];
+  const onType = (v) => {
+    // Picking from the list fills the whole option in one go — add it straight away.
+    if (options.includes(v)) { add(v); return; }
+    if (/[,;]$/.test(v)) { add(v.slice(0, -1)); return; }
+    setTyped(v);
+  };
+
   const gap = /\[[^\]]+\]/.test(body);
+  const pending = typed.trim() ? parseRecipient(typed, people) : null;
+  const all = pending && !recipients.some((x) => x.email === pending.email) ? [...recipients, pending] : recipients;
 
   const send = async () => {
+    if (typed.trim() && !pending) { add(typed); return; }
     setBusy(true); setError(null);
-    const { ok, data } = await postJson('/api/escalation/email', { key: item.key, to: addresses, subject, body });
+    const { ok, data } = await postJson('/api/escalation/email', { key: item.key, to: all, subject, body });
     if (!ok) { setBusy(false); setError(data.error || 'Not prepared — nothing was sent.'); return; }
     const r = await executeDirect(data.action);
     setBusy(false);
-    const o = directOutcome(r);
-    if (r.ok) rememberTo(addresses);
-    setOutcome(o);
+    if (r.ok) { rememberTo(all.map((x) => x.email)); setRecipients(all); setTyped(''); }
+    setOutcome(directOutcome(r));
   };
 
+  const label = (r) => r.name || r.email;
   if (outcome && outcome.tone !== 'bad') {
     return (
       <div className="esc-reply">
-        <p className={outcome.tone === 'ok' ? 'esc-reply-done' : 'esc-warn'}>Emailed {addresses.join(', ')} about {item.key}. {outcome.text}</p>
+        <p className={outcome.tone === 'ok' ? 'esc-reply-done' : 'esc-warn'}>Emailed {all.map(label).join(', ')} about {item.key}. {outcome.text}</p>
         <div className="esc-ticket-actions"><button type="button" className="esc-mini" onClick={onClose}>Close</button></div>
       </div>
     );
@@ -562,17 +623,33 @@ function EmailEscalation({ item, onClose }) {
     <div className="esc-reply">
       <div className="esc-reply-head"><span className="esc-escalate-title">Escalate {item.key} to…</span></div>
       {(error || outcome) && <div className="esc-error">{error || outcome.text}</div>}
-      <input className="esc-email-to" value={to} onChange={(e) => setTo(e.target.value)} list={`esc-to-${item.key}`}
-        placeholder="Email address (separate several with commas)" aria-label="Escalate to (email address)" autoFocus />
-      <datalist id={`esc-to-${item.key}`}>{recents.map((r) => <option key={r} value={r} />)}</datalist>
+      <div className="esc-email-to esc-email-chips">
+        {recipients.map((r) => (
+          <span key={r.email} className="esc-chip" title={r.email}>
+            {label(r)}
+            <button type="button" aria-label={`Remove ${label(r)}`} onClick={() => remove(r.email)}>×</button>
+          </span>
+        ))}
+        <input value={typed} list={`esc-to-${item.key}`} autoFocus
+          onChange={(e) => onType(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); add(typed); }
+            else if (e.key === 'Backspace' && !typed && recipients.length) remove(recipients[recipients.length - 1].email);
+          }}
+          onBlur={() => { if (typed.trim()) add(typed); }}
+          placeholder={recipients.length ? 'Add another…' : 'Pick a person, or type any email address'}
+          aria-label="Escalate to — a person or an email address" />
+        <datalist id={`esc-to-${item.key}`}>{options.map((o) => <option key={o} value={o} />)}</datalist>
+      </div>
+      {peopleError && <p className="esc-reply-note">Couldn’t read your People notes ({peopleError}) — type the address instead.</p>}
       <input className="esc-email-to" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" maxLength={240} />
       <textarea className="esc-reply-text" rows={12} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Email" />
       <p className="esc-reply-note">
         Sent from your work address when you press Send{gap ? ' — fill in the [square brackets] first' : ''}.
       </p>
       <div className="esc-ticket-actions esc-ticket-actions-left">
-        <button type="button" className="esc-btn esc-btn-primary" disabled={busy || !addresses.length || !subject.trim() || !body.trim() || gap} onClick={send}>
-          {busy ? 'Sending…' : `Send to ${addresses.length > 1 ? `${addresses.length} people` : addresses[0] || '…'}`}
+        <button type="button" className="esc-btn esc-btn-primary" disabled={busy || !all.length || !subject.trim() || !body.trim() || gap} onClick={send}>
+          {busy ? 'Sending…' : `Send to ${all.length > 1 ? `${all.length} people` : all[0] ? label(all[0]) : '…'}`}
         </button>
         <button type="button" className="esc-btn esc-btn-ghost" disabled={busy} onClick={onClose}>Cancel</button>
       </div>

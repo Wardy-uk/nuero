@@ -291,6 +291,18 @@ router.post('/reply/post', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
+// GET /api/escalation/people — the people "Escalate to…" can offer: every People note with an email: line, by name. Read only.
+router.get('/people', (req, res) => {
+  try {
+    const people = require('../services/contact-directory').fromPeopleNotes()
+      .map((p) => ({ name: p.name, email: p.email.toLowerCase() }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ ok: true, people });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/escalation/email — escalate a ticket to someone by email ("Escalate to…"): prepares a governed compose_email from Nick's work address; nothing is sent here, it goes on his press. Body: { key, to, subject, body }
 router.post('/email', (req, res) => {
   if (req.apiClient) {
