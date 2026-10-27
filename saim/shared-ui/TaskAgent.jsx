@@ -73,7 +73,7 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
       <details className="tagent__fold"><summary>Destination and context (fixed)</summary><pre className="tagent__fixed">{preview.fixed}</pre></details>
       <p className="tagent__h">Your working brief (editable)</p>
       <textarea className="tagent__prompt" rows={10} value={brief} onChange={(e) => setBrief(e.target.value)} aria-label="Working brief (you can edit it)" />
-      <label className="tagent__check"><input type="checkbox" checked={openOnDesk} onChange={(e) => setOpenOnDesk(e.target.checked)} /> Also open Claude on my laptop</label>
+      <label className="tagent__check"><input type="checkbox" checked={openOnDesk} onChange={(e) => setOpenOnDesk(e.target.checked)} /> Open Claude on my laptop, paste this and send it</label>
       <div className="tagent__row">
         <button type="button" className="tagent__go" disabled={busy || !brief.trim()} onClick={() => onSend({ brief, includeDrafts: preview.includeDrafts, openOnDesk })}>Continue this with Claude on desktop</button>
       </div>
@@ -350,7 +350,13 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
     if (r.status === 200 && r.body && r.body.ok) {
       absorb(r.body);
       const copied = await copyText(r.body.prompt);
-      setClaude((c) => ({ ...c, busy: false, copied: r.body.prompt, result: copied ? 'Copied — paste it into Claude on your desktop.' : 'Ready — copy the prompt below into Claude on your desktop (this device would not let NEURO copy it).' }));
+      const desk = r.body.handoff && r.body.handoff.desk;
+      const result = openOnDesk && desk && desk.status === 'requested'
+        ? 'Sent to your laptop — it will open a new Claude chat, paste the prompt and send it. The prompt is also copied, in case it can’t.'
+        : openOnDesk && desk
+          ? `Your laptop wasn’t asked (${desk.why || desk.status}). ${copied ? 'The prompt is copied — paste it into Claude yourself.' : 'Copy the prompt below into Claude yourself.'}`
+          : copied ? 'Copied — paste it into Claude on your desktop.' : 'Ready — copy the prompt below into Claude on your desktop (this device would not let NEURO copy it).';
+      setClaude((c) => ({ ...c, busy: false, copied: r.body.prompt, result }));
     } else {
       setClaude((c) => ({ ...c, busy: false, error: (r.body && r.body.error) || `Not handed off (${r.status}).` }));
     }

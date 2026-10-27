@@ -9392,6 +9392,24 @@
     "stream": false
   },
   {
+    "id": "post_desktop_intents_by_id_paste",
+    "method": "POST",
+    "route": "/api/desktop/intents/:id/paste",
+    "domain": "desktop",
+    "source": "routes/desktop.js",
+    "line": 224,
+    "description": "POST /api/desktop/intents/:id/paste. the agent collecting the text for a",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_desktop_intents_claim",
     "method": "POST",
     "route": "/api/desktop/intents/claim",

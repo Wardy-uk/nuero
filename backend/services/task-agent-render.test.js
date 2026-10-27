@@ -158,7 +158,7 @@ test('the Claude handoff preview shows why, what is included, the statement and 
   assert.doesNotMatch(h, /<textarea[^>]*>## NEURO handoff policy/, 'the policy is never in an editable box');
   assert.match(h, /Continue this with Claude on desktop/);
   assert.match(h, /Include my drafts in full/);
-  assert.match(h, /Also open Claude on my laptop/);
+  assert.match(h, /Open Claude on my laptop, paste this and send it/);
 });
 
 test('blocked says why in the status line; the budget line is the server’s words', () => {

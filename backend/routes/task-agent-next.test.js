@@ -285,6 +285,13 @@ test('Claude handoff: preview splits a fixed envelope, fixed context and an edit
   const desk = require('../services/desk-intents').inFlight();
   assert.equal(desk.known, true);
   assert.equal([...desk.requested, ...desk.taken].filter((x) => x.app === 'claude').length, 1, 'one desk request, not two');
+  // The laptop collects EXACTLY the server-composed prompt, once, after claiming.
+  const di = require('../services/desk-intents');
+  const claimed = di.claim({ canOpen: ['claude', 'claude:paste'] }).intents;
+  assert.deepEqual(claimed.map((i) => i.paste), [true]);
+  assert.ok(!('text' in claimed[0]), 'the text never rides on the claim');
+  assert.deepEqual(di.takePaste(claimed[0].id), { ok: true, text: prompt });
+  assert.equal(di.takePaste(claimed[0].id).ok, false, 'single use');
   const act = db.all("SELECT event_data FROM activity_log WHERE event_type = 'task_agent'").map((x) => x.event_data);
   assert.equal(act.filter((x) => /claude-handoff/.test(x) && x.includes(`"taskId":${T.code},`)).length, 1, 'one activity row for this task');
   assert.ok(!act.some((x) => /test helper|Objective|NEURO handoff policy/.test(x)), 'activity holds no brief or prompt text');

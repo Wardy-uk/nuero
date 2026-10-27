@@ -122,7 +122,8 @@ function deps() {
     moveIsLatest: (rec) => { try { return require('./prepared-move-store').isLatest(rec); } catch { return false; } },
     moveCompleted: (moveKey) => { try { return require('./prepared-move-store').completedMove(moveKey); } catch { return null; } },
     destination: (task) => { try { return require('./prepared-move-planner').destinationFor(task, {}); } catch { return null; } },
-    deskQueue: (why) => require('./desk-intents').queue('claude', { host: null, why }),
+    deskQueue: (why, paste = null) => require('./desk-intents').queue('claude', { host: null, why, paste }),
+    deskStatus: (intentId) => require('./desk-intents').status(intentId),
   };
 }
 
@@ -1196,7 +1197,7 @@ function handoffPreview(taskId, { includeDrafts = false } = {}) {
       'your working brief, as you leave it',
     ],
     excluded: ['restricted notes (not even their titles)', 'Security review/, Archive and opted-out notes', 'credentials', sensitive ? 'every excerpt and draft (people matter)' : 'draft text unless you include it'],
-    statement: 'Nothing is sent to Claude until you press the button. Pressing it copies the prompt for you to paste into Claude on your desktop; it does not send it anywhere. The policy, destination and context are fixed by NEURO; you can edit the working brief.',
+    statement: 'Nothing is sent to Claude until you press the button. Pressing it copies the prompt; if you tick “Open Claude on my laptop”, the laptop also opens a new Claude chat, pastes this prompt and sends it. The policy, destination and context are fixed by NEURO; you can edit the working brief.',
     envelope: policyEnvelope({ sensitive }),
     fixed: fixedContext(run, task, { includeDrafts: inc, destination }),
     brief: defaultBrief(run, task),
@@ -1234,11 +1235,21 @@ function handoff(taskId, { brief, includeDrafts = false, openOnDesk = false } = 
   if (!h) {
     h = { id: `ch-${run.claudeHandoffs.length + 1}`, at: _iso(d.now()), hash, chars: prompt.length, includeDrafts: inc, status: 'copied', desk: null };
     run.claudeHandoffs.push(h);
-    _step(run, 'note', `You handed this to Claude on desktop (prompt copied${openOnDesk ? ', Claude asked to open on the laptop' : ''}).`);
+    _step(run, 'note', `You handed this to Claude on desktop (prompt copied${openOnDesk ? ', the laptop asked to open Claude, paste it and send' : ''}).`);
   }
-  if (openOnDesk && !h.desk) {
+  // A press again re-asks the laptop only if the last request is over without
+  // having opened (expired, failed, refused) — never a second paste of a live one.
+  let retry = false;
+  if (openOnDesk && h.desk) {
+    let st = null;
+    try { st = h.desk.id && d.deskStatus ? d.deskStatus(h.desk.id) : null; } catch { st = null; }
+    retry = h.desk.status !== 'requested' || Boolean(st && st.known && ['expired', 'failed'].includes(st.state));
+  }
+  if (openOnDesk && (!h.desk || retry)) {
     try {
-      const q = d.deskQueue(`Do this — task #${id}`);
+      // ⚠ The prompt is held for the laptop to collect once (≤ 5 minutes) — the
+      // only place a handoff prompt is stored. See desk-intents PASTE_APPS.
+      const q = d.deskQueue(`Do this — task #${id}`, prompt);
       h.desk = q && q.ok !== false ? { id: q.id || (q.intent && q.intent.id) || null, status: 'requested' } : { id: null, status: 'refused', why: (q && (q.reason || q.error)) || 'refused' };
     } catch (e) { h.desk = { id: null, status: 'failed', why: e.message }; }
   }

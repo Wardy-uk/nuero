@@ -212,6 +212,52 @@ function _save(state) {
   }
 }
 
+// ── Paste: the handoff prompt, collected by the agent (27 Oct 2026) ───────────
+//
+// Nick: "can NEURO open Claude and post the prompt". The intent still names an
+// id from the vocabulary and nothing else — the TEXT never rides on the intent
+// or the claim. It is held here, keyed by intent id, and the agent collects it
+// ONCE with its own token (`takePaste`). So the agent still never receives an
+// argument for a program: it opens Claude exactly as before, then types what
+// NEURO composed into the window it opened.
+//
+// ⚠ ONLY APPS IN `PASTE_APPS`, and only server-composed text: the one caller is
+//   the task agent's handoff, whose prompt carries NEURO's fixed policy envelope.
+// ⚠ HELD NO LONGER THAN THE INTENT. Taken on collection, dropped on expiry. It
+//   is the only place a handoff prompt is stored at all.
+// ⚠ AN AGENT THAT CANNOT PASTE (no `<app>:paste` in its canOpen) still gets the
+//   plain open, the text is dropped, and the outcome says so — never a silent
+//   open that leaves him waiting for a paste that will not come.
+const PASTE_APPS = new Set(['claude']);
+const PASTE_KEY = 'desk_intent_paste';
+const PASTE_MAX = 16000;
+
+function _loadPaste() {
+  try { const v = JSON.parse(db.getState(PASTE_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+function _savePaste(map, now = Date.now()) {
+  const kept = {};
+  for (const [id, p] of Object.entries(map || {})) if (p && !isExpired(p, now)) kept[id] = p;
+  try { db.setState(PASTE_KEY, JSON.stringify(kept)); return true; } catch (e) { console.warn('[desk-intents] could not save paste:', e.message); return false; }
+}
+
+/**
+ * The agent collecting the text for an intent it has CLAIMED. Single use.
+ * → { ok, text } | { ok:false, reason }
+ */
+function takePaste(id, { now = Date.now() } = {}) {
+  const state = _load();
+  if (!state) return { ok: false, reason: 'could not read the intent queue' };
+  const claimed = (state.claimed || []).find((c) => c && c.id === id);
+  const map = _loadPaste();
+  const p = map[id];
+  if (p) { delete map[id]; _savePaste(map, now); }
+  if (!claimed) return { ok: false, reason: 'that request has not been claimed by a laptop' };
+  if (!p) return { ok: false, reason: 'nothing to paste (already collected, or expired)' };
+  if (isExpired(p, now)) return { ok: false, reason: 'the text expired before the laptop collected it' };
+  return { ok: true, text: p.text };
+}
+
 /** PURE: has this intent outlived its deadline? */
 function isExpired(intent, now = Date.now()) {
   const at = Date.parse(intent && intent.at);
@@ -229,12 +275,17 @@ function claimable(pending = [], now = Date.now()) {
  *
  * ⚠ Callers: a human-triggered route ONLY. See the header.
  */
-function queue(app, { host = null, why = null } = {}) {
+function queue(app, { host = null, why = null, paste = null } = {}) {
   if (!APPS[app]) {
     // Refused HERE as well as on the laptop. Two independent refusals, because
     // this is the one path in the system that ends in code running on his
     // work machine.
     return { ok: false, reason: 'not something SAiM can open: "' + app + '"' };
+  }
+  if (paste != null) {
+    if (!PASTE_APPS.has(app)) return { ok: false, reason: `${APPS[app]} can’t be pasted into` };
+    if (typeof paste !== 'string' || !paste.trim()) return { ok: false, reason: 'nothing to paste' };
+    if (paste.length > PASTE_MAX) return { ok: false, reason: `the text is longer than ${PASTE_MAX} characters` };
   }
   const state = _load();
   if (!state) return { ok: false, reason: 'could not read the intent queue' };
@@ -245,10 +296,18 @@ function queue(app, { host = null, why = null } = {}) {
     host,
     why: why || null,
     at: new Date().toISOString(),
+    ...(paste != null ? { paste: true } : {}),
   };
+  // The text first: an intent saying "paste" with nothing to collect would
+  // open Claude and then fail in front of him.
+  if (paste != null) {
+    const map = _loadPaste();
+    map[intent.id] = { text: paste, at: intent.at };
+    if (!_savePaste(map)) return { ok: false, reason: 'could not save the text to paste' };
+  }
   state.pending = [...claimable(state.pending), intent];
   if (!_save(state)) return { ok: false, reason: 'could not save the intent' };
-  return { ok: true, intent: { id: intent.id, app, label: APPS[app] }, expiresInMs: TTL_MS };
+  return { ok: true, intent: { id: intent.id, app, label: APPS[app], paste: Boolean(intent.paste) }, expiresInMs: TTL_MS };
 }
 
 /**
@@ -299,7 +358,16 @@ function claim({ host = null, now = Date.now(), canOpen = null } = {}) {
   state.claimed = [...(state.claimed || []).filter(c => !isExpired(c, now)),
     ...mine.map(i => ({ id: i.id, app: i.app, host: i.host || null, at: new Date(now).toISOString() }))];
   _save(state);
-  return { intents: mine.map(i => ({ id: i.id, app: i.app })), gaps: [] };
+  // A paste is handed over only to an agent that says it can paste into that
+  // app; an older agent gets the plain open and the held text is dropped.
+  const canPaste = (i) => i.paste && able.has(`${i.app}:paste`);
+  const unpastable = mine.filter((i) => i.paste && !canPaste(i));
+  if (unpastable.length) {
+    const map = _loadPaste();
+    for (const i of unpastable) delete map[i.id];
+    _savePaste(map, now);
+  }
+  return { intents: mine.map(i => (canPaste(i) ? { id: i.id, app: i.app, paste: true } : { id: i.id, app: i.app })), gaps: [] };
 }
 
 /** The agent tells us what actually happened. */
@@ -365,4 +433,4 @@ function inFlight({ now = Date.now() } = {}) {
   };
 }
 
-module.exports = { queue, claim, record, status, inFlight, isExpired, claimable, offer, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY };
+module.exports = { queue, claim, record, status, inFlight, isExpired, claimable, offer, takePaste, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY, PASTE_KEY, PASTE_APPS, PASTE_MAX };

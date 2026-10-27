@@ -249,6 +249,70 @@ function Report-Intent($id, $ok, $detail) {
   }
 }
 
+# -- Paste into Claude (27 Oct 2026) -------------------------------------------
+#
+# Nick: "open Claude, paste and enter" - the handoff prompt he has already
+# reviewed in NEURO. The intent still carries an id and a flag, never text, and
+# no program is ever started with an argument: this opens Claude's OWN fixed
+# "New Chat" link (the one its jump list uses), then collects the prompt from
+# NEURO on a connection this script opened, and types it into Claude.
+#
+# WARNING  ONLY INTO CLAUDE. Every keystroke is preceded by a check that the
+#   foreground window belongs to the Claude process. If anything else has focus
+#   the paste is abandoned, the prompt is left on the clipboard and the outcome
+#   says so - a prompt typed into the wrong window is the one failure to avoid.
+# WARNING  NEVER WHILE LOCKED. Keystrokes into a locked session go nowhere useful.
+$ClaudeNewChat = if ($AppCommands.ContainsKey('claude-new')) { $AppCommands['claude-new'] } else { 'claude://claude.ai/new?surface=chat&source=desktop_action' }
+$ClaudeProcess = 'claude'
+$CanPasteClaude = $AppCommands.ContainsKey('claude')
+
+# What this agent tells NEURO it can act on: the app ids, plus 'claude:paste'
+# when it can type a handed-off prompt into Claude. NEURO only hands a paste to
+# an agent that says so; an older agent gets the plain open.
+function Get-CanOpen {
+  $ids = @($AppCommands.Keys)
+  if ($CanPasteClaude) { $ids += 'claude:paste' }
+  return $ids | Sort-Object
+}
+
+function Wait-ClaudeForeground([int]$seconds) {
+  $until = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $until) {
+    if ((Get-ForegroundProcessName) -eq $ClaudeProcess) { return $true }
+    Start-Sleep -Milliseconds 250
+  }
+  return $false
+}
+
+function Invoke-ClaudePaste($id) {
+  try {
+    $r = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/desktop/intents/$id/paste" `
+      -Headers @{ 'X-NEURO-API-TOKEN' = $Token } -ContentType 'application/json' -Body '{}' -TimeoutSec 10
+  } catch { Report-Intent $id $false "could not collect the prompt from NEURO: $($_.Exception.Message)"; return }
+  if (-not $r -or -not $r.ok -or -not $r.text) { Report-Intent $id $false "NEURO had no prompt to paste"; return }
+  try { Set-Clipboard -Value ([string]$r.text) } catch { Report-Intent $id $false "could not use the clipboard: $($_.Exception.Message)"; return }
+  if (Test-SessionLocked) { Report-Intent $id $false 'the laptop is locked - prompt left on the clipboard'; return }
+  try { Start-Process -FilePath $ClaudeNewChat -ErrorAction Stop } catch { Report-Intent $id $false "could not open Claude: $($_.Exception.Message)"; return }
+  if (-not (Wait-ClaudeForeground 25)) {
+    # One nudge: bring the Claude window forward ourselves.
+    $p = Get-Process -Name $ClaudeProcess -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+    if ($p) { try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id) } catch { } }
+    if (-not (Wait-ClaudeForeground 3)) { Report-Intent $id $false 'Claude did not come to the front - prompt left on the clipboard, nothing typed'; return }
+  }
+  # Let the new chat finish loading before typing: the window can be in front
+  # while it is still on the previous conversation.
+  Start-Sleep -Seconds 3
+  Add-Type -AssemblyName System.Windows.Forms
+  if ((Get-ForegroundProcessName) -ne $ClaudeProcess) { Report-Intent $id $false 'focus left Claude before pasting - prompt left on the clipboard, nothing typed'; return }
+  [System.Windows.Forms.SendKeys]::SendWait('^v')
+  # A long paste can become an attachment; give it a moment before sending.
+  Start-Sleep -Milliseconds 1500
+  if ((Get-ForegroundProcessName) -ne $ClaudeProcess) { Report-Intent $id $false 'focus left Claude after pasting - pasted but NOT sent'; return }
+  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+  Write-Host "opened Claude, pasted and sent ($id)"
+  Report-Intent $id $true 'opened a new Claude chat, pasted the prompt and sent it'
+}
+
 function Invoke-DeskIntent($intent) {
   $id = $intent.id
   $app = [string]$intent.app
@@ -256,6 +320,10 @@ function Invoke-DeskIntent($intent) {
     # Refused HERE, independently of the server's own refusal. Two locks.
     Write-Warning "refused unknown app id '$app'"
     Report-Intent $id $false "this machine has no '$app'"
+    return
+  }
+  if ($app -eq 'claude' -and $intent.PSObject.Properties['paste'] -and $intent.paste) {
+    Invoke-ClaudePaste $id
     return
   }
   $cmd = $AppCommands[$app]
@@ -277,7 +345,7 @@ function Get-DeskIntents {
   #   to an agent that has not said what it understands, and this route is no
   #   exception - a claim without it would be a way round the guard.
   try {
-    $b = @{ host = $env:COMPUTERNAME; canOpen = @($AppCommands.Keys | Sort-Object) } | ConvertTo-Json -Compress
+    $b = @{ host = $env:COMPUTERNAME; canOpen = @(Get-CanOpen) } | ConvertTo-Json -Compress
     return Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/desktop/intents/claim" `
       -Headers @{ 'X-NEURO-API-TOKEN' = $Token } `
       -ContentType 'application/json' -Body $b -TimeoutSec 10
@@ -424,7 +492,7 @@ function Get-Sample {
     #   agent that says it can act on them. Same rule as refusing a NOVA bridge
     #   that predates a field: a reader older than its writer must announce
     #   itself rather than be assumed capable.
-    canOpen     = @($AppCommands.Keys | Sort-Object)
+    canOpen     = @(Get-CanOpen)
     # The Watch lock's own health (Brief 004): mode, presence verdict and
     # counts only. Lets NEURO's Set up tell a running lock from a missing one.
     watchLock   = Get-WatchLockReport

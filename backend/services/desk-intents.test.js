@@ -277,3 +277,52 @@ test('⚠ an UNREADABLE queue is known:false, never two empty lists', () => {
   assert.equal(f.known, false, '"I could not look" and "nothing is in flight" license opposite sentences');
   assert.ok(f.why, 'and it says why');
 });
+
+// ── Paste (27 Oct 2026): the text is collected, never carried ───────────────
+
+function resetPaste() { reset(); db.setState(di.PASTE_KEY, ''); }
+
+test('⚠ NEGATIVE: paste is refused for any app not in PASTE_APPS, and for junk text', () => {
+  resetPaste();
+  assert.equal(di.queue('terminal', { paste: 'dir' }).ok, false, 'a terminal never takes typed text');
+  assert.equal(di.queue('browser', { paste: 'https://x' }).ok, false);
+  assert.equal(di.queue('claude', { paste: '   ' }).ok, false);
+  assert.equal(di.queue('claude', { paste: 'x'.repeat(di.PASTE_MAX + 1) }).ok, false, 'refused, not trimmed');
+  assert.deepEqual(di.claim({ canOpen: ['claude', 'claude:paste', 'terminal', 'browser'] }).intents, [], 'nothing queued');
+});
+
+test('⚠ the text is on neither the intent nor the claim — the agent collects it once', () => {
+  resetPaste();
+  const q = di.queue('claude', { paste: 'the prompt' });
+  assert.equal(q.ok, true);
+  assert.ok(!JSON.stringify(db.getState(di.STATE_KEY)).includes('the prompt'), 'not in the intent queue');
+  const [i] = di.claim({ canOpen: ['claude', 'claude:paste'] }).intents;
+  assert.deepEqual(Object.keys(i).sort(), ['app', 'id', 'paste']);
+  assert.deepEqual(di.takePaste(i.id), { ok: true, text: 'the prompt' });
+  assert.equal(di.takePaste(i.id).ok, false, 'single use');
+});
+
+test('⚠ the text cannot be collected before a laptop has claimed the request', () => {
+  resetPaste();
+  const q = di.queue('claude', { paste: 'early' });
+  const r = di.takePaste(q.intent.id);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /not been claimed/);
+});
+
+test('⚠ an agent that cannot paste gets the plain open, and the held text is dropped', () => {
+  resetPaste();
+  di.queue('claude', { paste: 'dropped' });
+  const [i] = di.claim({ canOpen: ['claude'] }).intents;
+  assert.deepEqual(Object.keys(i).sort(), ['app', 'id']);
+  assert.ok(!String(db.getState(di.PASTE_KEY)).includes('dropped'));
+});
+
+test('⚠ held text expires with its intent', () => {
+  resetPaste();
+  const q = di.queue('claude', { paste: 'stale' });
+  di.claim({ canOpen: ['claude', 'claude:paste'] });
+  const r = di.takePaste(q.intent.id, { now: Date.now() + di.TTL_MS + 1000 });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /expired/);
+});

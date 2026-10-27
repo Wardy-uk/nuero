@@ -217,4 +217,17 @@ router.post('/intents/:id/done', (req, res) => {
   }
 });
 
+// POST /api/desktop/intents/:id/paste — the agent collecting the text for a
+// paste intent it has claimed. Single use: a second call gets nothing. The text
+// never rides on the intent or the claim, so the agent still opens programs
+// with no arguments; this is what it types into the window it opened.
+router.post('/intents/:id/paste', (req, res) => {
+  try {
+    const r = require('../services/desk-intents').takePaste(req.params.id);
+    res.status(r.ok ? 200 : 409).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
