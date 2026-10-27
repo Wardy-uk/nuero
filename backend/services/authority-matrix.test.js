@@ -62,6 +62,7 @@ test('the MCP gateway does not offer what the matrix refuses — and refuses not
   // The gateway may be STRICTER than the matrix only where the reason is written here.
   const STRICTER = {
     post_actions_by_id_approve: 'local MCP approves internal suggestions (bounded); the remote gateway does not offer it',
+    post_escalation_email: 'Escalate to… records the email as typed by Nick on the Escalations screen; an agent wanting to email someone prepares it through the personal-inbox composer instead',
     post_projects_github_snapshot: 'Build 24: the reporter on Nick\'s machine posts GitHub metadata directly with the API token; an agent through the gateway must never supply repo evidence',
   };
   const extra = Object.keys(interactive).filter((id) => {
