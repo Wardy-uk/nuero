@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiUrl } from '../api';
+import { executeDirect, directOutcome } from '../directAction';
 import './EscalationPanel.css';
 
 /**
@@ -486,6 +487,99 @@ export function ReplyComposer({ ticketKey, onClose, onPosted }) {
   );
 }
 
+// ── Escalate to… by email ───────────────────────────────────────────────────
+
+const RECENT_TO_KEY = 'neuro_escalate_to_recent';
+function recentTo() {
+  try { return JSON.parse(localStorage.getItem(RECENT_TO_KEY) || '[]').filter((s) => typeof s === 'string'); } catch { return []; }
+}
+function rememberTo(addresses) {
+  try { localStorage.setItem(RECENT_TO_KEY, JSON.stringify([...new Set([...addresses, ...recentTo()])].slice(0, 8))); } catch { /* per-device convenience only */ }
+}
+
+/** The email NEURO starts from — every line is a fact off the ticket card, editable before sending. */
+export function escalationEmailDraft(item) {
+  const esc = item.esc || {};
+  const raised = ageDays(esc.created);
+  const lines = [
+    'Hi,',
+    '',
+    `I'd like to escalate ${item.key} to you.`,
+    '',
+    `Ticket: ${item.key}${item.summary ? ` — ${item.summary}` : ''}`,
+    !!item.url && `Link: ${item.url}`,
+    !!item.status && `Status: ${item.status}`,
+    !!esc.priority && `Priority: ${esc.priority}`,
+    `Assignee: ${esc.assignee || 'Unassigned'}`,
+    raised != null && `Escalated: ${agoLabel(raised)}`,
+    !!esc.urgencyReason && `Reason: ${esc.urgencyReason}`,
+    '',
+    '[What you need from them, and by when]',
+    '',
+    'Thanks,',
+    'Nick',
+  ];
+  return {
+    subject: `Escalation: ${item.key}${item.summary ? ` — ${item.summary}` : ''}`.slice(0, 240),
+    body: lines.filter((l) => typeof l === 'string').join('\n'),
+  };
+}
+
+function EmailEscalation({ item, onClose }) {
+  const draft = escalationEmailDraft(item);
+  const recents = recentTo();
+  const [to, setTo] = useState(recents[0] || '');
+  const [subject, setSubject] = useState(draft.subject);
+  const [body, setBody] = useState(draft.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [outcome, setOutcome] = useState(null);
+
+  const addresses = to.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  const gap = /\[[^\]]+\]/.test(body);
+
+  const send = async () => {
+    setBusy(true); setError(null);
+    const { ok, data } = await postJson('/api/escalation/email', { key: item.key, to: addresses, subject, body });
+    if (!ok) { setBusy(false); setError(data.error || 'Not prepared — nothing was sent.'); return; }
+    const r = await executeDirect(data.action);
+    setBusy(false);
+    const o = directOutcome(r);
+    if (r.ok) rememberTo(addresses);
+    setOutcome(o);
+  };
+
+  if (outcome && outcome.tone !== 'bad') {
+    return (
+      <div className="esc-reply">
+        <p className={outcome.tone === 'ok' ? 'esc-reply-done' : 'esc-warn'}>Emailed {addresses.join(', ')} about {item.key}. {outcome.text}</p>
+        <div className="esc-ticket-actions"><button type="button" className="esc-mini" onClick={onClose}>Close</button></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="esc-reply">
+      <div className="esc-reply-head"><span className="esc-escalate-title">Escalate {item.key} to…</span></div>
+      {(error || outcome) && <div className="esc-error">{error || outcome.text}</div>}
+      <input className="esc-email-to" value={to} onChange={(e) => setTo(e.target.value)} list={`esc-to-${item.key}`}
+        placeholder="Email address (separate several with commas)" aria-label="Escalate to (email address)" autoFocus />
+      <datalist id={`esc-to-${item.key}`}>{recents.map((r) => <option key={r} value={r} />)}</datalist>
+      <input className="esc-email-to" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" maxLength={240} />
+      <textarea className="esc-reply-text" rows={12} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Email" />
+      <p className="esc-reply-note">
+        Sent from your work address when you press Send{gap ? ' — fill in the [square brackets] first' : ''}.
+      </p>
+      <div className="esc-ticket-actions esc-ticket-actions-left">
+        <button type="button" className="esc-btn esc-btn-primary" disabled={busy || !addresses.length || !subject.trim() || !body.trim() || gap} onClick={send}>
+          {busy ? 'Sending…' : `Send to ${addresses.length > 1 ? `${addresses.length} people` : addresses[0] || '…'}`}
+        </button>
+        <button type="button" className="esc-btn esc-btn-ghost" disabled={busy} onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // ── One ticket: a compact row that expands ──────────────────────────────────
 
 /** The one thing at the end of a row: a promised update first, else how fresh the ticket is. */
@@ -511,6 +605,7 @@ function rowTail(item) {
 export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated, onPosted }) {
   const { esc, watch } = item;
   const [replying, setReplying] = useState(false);
+  const [emailing, setEmailing] = useState(false);
   const route = escalationRoute(esc);
   const latest = watch?.replies?.[0];
   const raised = ageDays(esc?.created);
@@ -518,7 +613,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
   // round-robin assignment or the CSAT bot as readily as for a human.
   const touched = ageDays(esc?.updated);
   const tail = rowTail(item);
-  const open = expanded || escalating || replying;
+  const open = expanded || escalating || replying || emailing;
   const cls = ['esc-trow'];
   if (item.needs.length) cls.push('esc-trow-needs');
   if (highlighted) cls.push('esc-trow-highlight');
@@ -574,12 +669,14 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
 
           {escalating && <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />}
           {replying && !escalating && <ReplyComposer ticketKey={item.key} onClose={() => setReplying(false)} onPosted={onPosted} />}
-          {!escalating && !replying && (
+          {emailing && !escalating && !replying && <EmailEscalation item={item} onClose={() => setEmailing(false)} />}
+          {!escalating && !replying && !emailing && (
               <div className="esc-ticket-actions">
                 <button type="button" className="esc-mini esc-mini-primary" onClick={() => setReplying(true)}>Reply</button>
                 {!watch && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(item.key)}>Watch</button>}
                 {watch?.unread > 0 && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onRead(item.key)}>Mark read</button>}
                 <button type="button" className="esc-mini" onClick={() => onEscalate(item.key)}>{esc ? 'Escalate again' : 'Escalate'}</button>
+                {esc && <button type="button" className="esc-mini" onClick={() => setEmailing(true)}>Escalate to…</button>}
                 {watch && <button type="button" className="esc-mini" disabled={busy} onClick={() => onUnwatch(item.key)}>Unwatch</button>}
               </div>
           )}

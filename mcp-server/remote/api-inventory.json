@@ -2181,7 +2181,7 @@
     "route": "/api/escalation/watched",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 297,
+    "line": 313,
     "description": "GET /api/escalation/watched. watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.",
     "params": [],
     "query": [],
@@ -9837,6 +9837,27 @@
     "stream": false
   },
   {
+    "id": "post_escalation_email",
+    "method": "POST",
+    "route": "/api/escalation/email",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 295,
+    "description": "POST /api/escalation/email. escalate a ticket to someone by email (\"Escalate to…\"): prepares a governed compose_email from Nick's work address; nothing is sent here, it goes on his press. Body: { key, to, subject, body }",
+    "params": [],
+    "query": [],
+    "body": [
+      "body",
+      "key",
+      "subject",
+      "to"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_escalation_ledger_resolve",
     "method": "POST",
     "route": "/api/escalation/ledger/resolve",
@@ -9922,7 +9943,7 @@
     "route": "/api/escalation/watched",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 302,
+    "line": 318,
     "description": "POST /api/escalation/watched. watch a Jira ticket; body { key }. A customer reply then sends a push. Watch, follow, track a ticket.",
     "params": [],
     "query": [],
@@ -9940,7 +9961,7 @@
     "route": "/api/escalation/watched/:key/commitments",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 320,
+    "line": 336,
     "description": "POST /api/escalation/watched/:key/commitments. promise the customer an update by a time; body { due: \"HH:MM\" (today) or \"YYYY-MM-DDTHH:MM\", London }. Update commitment, deadline, reminder.",
     "params": [
       "key"
@@ -9960,7 +9981,7 @@
     "route": "/api/escalation/watched/:key/commitments/:id/:action",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 327,
+    "line": 343,
     "description": "POST /api/escalation/watched/:key/commitments/:id/:action. confirm a spotted update commitment, dismiss it, or mark it done by hand (action = confirm | dismiss | done).",
     "params": [
       "key",
@@ -9980,7 +10001,7 @@
     "route": "/api/escalation/watched/:key/read",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 314,
+    "line": 330,
     "description": "POST /api/escalation/watched/:key/read. mark a watched ticket's customer replies as read.",
     "params": [
       "key"
@@ -9998,7 +10019,7 @@
     "route": "/api/escalation/watched/:key/unwatch",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 333,
+    "line": 349,
     "description": "POST /api/escalation/watched/:key/unwatch. stop watching a ticket (history kept).",
     "params": [
       "key"
@@ -10016,7 +10037,7 @@
     "route": "/api/escalation/watched/check",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 309,
+    "line": 325,
     "description": "POST /api/escalation/watched/check. check every watched ticket for customer replies now, instead of waiting for the 5-minute poll.",
     "params": [],
     "query": [],

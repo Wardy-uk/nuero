@@ -291,6 +291,22 @@ router.post('/reply/post', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
+// POST /api/escalation/email — escalate a ticket to someone by email ("Escalate to…"): prepares a governed compose_email from Nick's work address; nothing is sent here, it goes on his press. Body: { key, to, subject, body }
+router.post('/email', (req, res) => {
+  if (req.apiClient) {
+    return res.status(403).json({ ok: false, error: 'Escalating a ticket by email is Nick, writing as himself — a machine client cannot do it on his behalf.' });
+  }
+  const { key, to, subject, body } = req.body || {};
+  const k = String(key || '').trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(k)) return res.status(400).json({ ok: false, error: 'not a ticket key' });
+  const r = require('../services/prepared-actions').prepareCompose({
+    from: 'work', to, subject, body, origin: 'composer',
+    generatedBy: 'typed by Nick in Escalations → Escalate to…', evidence: { ticket: k },
+  });
+  if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
+  res.json({ ok: true, prepared: true, action: r.action });
+});
+
 // ── Watched tickets (23 Oct 2026, services/watched-tickets.js) ───────────────
 
 // GET /api/escalation/watched — watched Jira tickets, unread customer replies, and resolved tickets still listened to for 10 working days.

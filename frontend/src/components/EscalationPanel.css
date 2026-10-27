@@ -659,3 +659,8 @@
 .esc-reply-done { margin: 0; color: var(--success); font-size: 13px; }
 .esc-btn-public { background: var(--warning); border-color: var(--warning); }
 .esc-ticket-actions-left { justify-content: flex-start; align-items: center; }
+.esc-email-to {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; font-family: var(--font-sans); font-size: 13px;
+  background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px;
+}
+.esc-email-to:focus { outline: none; border-color: var(--accent); }
