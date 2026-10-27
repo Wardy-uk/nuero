@@ -27,7 +27,7 @@ test('the real expired-sign-in error becomes ONE alert with the fixed words — 
   assert.equal(i.key, 'integration:microsoft-signin:neuro');
   assert.equal(i.level, 'critical');
   assert.equal(i.title, 'Microsoft sign-in has expired');
-  assert.equal(i.detail, 'Calendar, Tasks and work email are paused. Sign in again in Settings → Microsoft 365 Authentication.');
+  assert.equal(i.detail, 'Calendar, Tasks and work email are paused. Press "Sign in to Microsoft" at the top of the NEURO menu.');
   for (const e of ['invalid_grant: AADSTS700082 expired', 'interaction_required', 'AADSTS50076: MFA required', 'AADSTS65001: not consented']) {
     assert.ok(wd.microsoftSignInIssue({ lastTokenError: e }), e);
   }

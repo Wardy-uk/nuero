@@ -1035,6 +1035,8 @@ async function evaluate(options = {}) {
     ...require('./watched-tickets').nowCards(),
     // UAT volunteers waiting on Nick's press (26 Oct 2026).
     ...require('./uat-volunteers').nowCards(),
+    // NEURO's Microsoft sign-in due or expired — about daily now (27 Oct 2026).
+    ...require('./microsoft-signin').nowCards(),
     // Build 12.3K: a synthetic P0 for proving the watch end to end. Built from
     // its own store, contacts nothing, expires in minutes, titled "Test —".
     ...require('./synthetic-attention').collect(),

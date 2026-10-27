@@ -27,6 +27,9 @@ import AdhdPanel from './components/AdhdPanel';
 import CapturePanel from './components/CapturePanel';
 import ChatPanel from './components/ChatPanel';
 import StateOfPlay from './components/StateOfPlay';
+// Eager, like Now and Capture: it is opened at the moment Microsoft has locked
+// NEURO out, and a lazy chunk that fails to load there is the worst time to.
+import MicrosoftSignInPage from './components/MicrosoftSignInPage';
 
 // ── Lazy: everything else ────────────────────────────────────────────────────
 //
@@ -452,6 +455,7 @@ function AuthenticatedApp() {
       case 'medical': return <MedicalPanel />;
       case 'setup': return <SetupWizard onNavigate={handleNavigate} />;
       case 'escalations': return <EscalationPanel />;
+      case 'microsoft-signin': return <MicrosoftSignInPage onNavigate={handleNavigate} />;
       case 'actions': return <ActionsPanel onNavigate={handleNavigate} />;
       case 'decisions': return <DecisionsPanel />;
       case 'weekly-risk': return <WeeklyRiskPanel onNavigate={handleNavigate} />;

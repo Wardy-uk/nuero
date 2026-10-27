@@ -84,6 +84,23 @@
   color: #fff;
 }
 
+/* Microsoft sign-in due / expired — the one menu item that is a warning. */
+.sidebar-signin { border-left: 3px solid var(--warning); }
+.sidebar-signin .sidebar-icon { color: var(--warning); }
+.sidebar-signin-expired { border-left-color: var(--danger); }
+.sidebar-signin-expired .sidebar-icon { color: var(--danger); }
+.sidebar-signin-state {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--warning);
+  color: #000;
+}
+.sidebar-signin-expired .sidebar-signin-state { background: var(--danger); color: #fff; }
+
 .sidebar-group {
   margin-bottom: 4px;
 }

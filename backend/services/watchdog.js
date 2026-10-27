@@ -501,11 +501,12 @@ function checkRuntimeJobs() {
 // Microsoft's "sign in again" family: expired/revoked refresh token (70043,
 // 700082), conditional access / MFA (50076, 50079, 50173, 50078), consent
 // (65001), interaction needed. A plain network blip is NOT one of these.
-const SIGN_IN_ERROR = /invalid_grant|interaction_required|AADSTS(70043|700082|50173|50076|50078|50079|65001)\b|refresh token has expired/i;
+// One definition, shared with the menu's sign-in button (microsoft-signin.js).
+const { SIGN_IN_ERROR } = require('./microsoft-signin');
 const MICROSOFT_SIGNIN_KEY = 'integration:microsoft-signin:neuro';
 const MICROSOFT_JOBS = Object.freeze(['calendar-sync', 'ms-tasks-sync']);
 const SIGNIN_TITLE = 'Microsoft sign-in has expired';
-const SIGNIN_DETAIL = 'Calendar, Tasks and work email are paused. Sign in again in Settings → Microsoft 365 Authentication.';
+const SIGNIN_DETAIL = 'Calendar, Tasks and work email are paused. Press "Sign in to Microsoft" at the top of the NEURO menu.';
 
 /** PURE. Has NEURO's own Microsoft sign-in expired (as opposed to a blip)? Fixed words only. */
 function microsoftSignInIssue(status) {

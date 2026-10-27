@@ -231,6 +231,12 @@ async function getAccessToken() {
     // or the refresh token has expired — need device code flow
     lastTokenError = err?.message || String(err);
     console.warn('[Microsoft] Silent token acquisition failed:', err.message);
+    // Microsoft asking for a fresh sign-in is remembered once, so NEURO learns
+    // how long a sign-in lasts and can say when the next is due.
+    try {
+      const signin = require('./microsoft-signin');
+      if (signin.isSignInError(lastTokenError)) signin.recordExpiry();
+    } catch { /* never let the record cost the caller */ }
     return null;
   }
 }
@@ -396,6 +402,10 @@ async function startDeviceCodeFlow() {
       deviceCodePending = false;
       deviceCodeInfo = null;
       lastSignIn = { at: Date.now(), ok: true };
+      // The sign-in replaces whatever was refused: clear the error now, or the
+      // menu keeps saying "expired" until the next sync happens to run.
+      lastTokenError = null;
+      try { require('./microsoft-signin').recordSignIn(lastSignIn.at); } catch { /* bookkeeping only */ }
       console.log('[Microsoft] Device code auth complete for', result.account.username);
     }).catch(err => {
       deviceCodePending = false;
@@ -1950,6 +1960,7 @@ module.exports = {
   startDeviceCodeFlow,
   isDeviceCodeUsable,
   signInState,
+  signInDue: (now) => require('./microsoft-signin').status(lastTokenError, now),
   fetchCalendarEvents,
   createCalendarEvent,
   deleteCalendarEvent,

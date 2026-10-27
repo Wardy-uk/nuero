@@ -18,7 +18,14 @@ router.get('/status', async (req, res) => {
   // `signIn`: the device-code sign-in in progress and how the last one ended.
   // `authenticated` only means an account is in the cache — an EXPIRED one
   // counts — so it must never be read as "the sign-in finished".
-  res.json({ configured, authenticated, bridgeConfigured, bridgeConnected, signIn: microsoft.signInState() });
+  res.json({ configured, authenticated, bridgeConfigured, bridgeConnected, signIn: microsoft.signInState(), due: microsoft.signInDue() });
+});
+
+// GET /api/microsoft/signin — is a Microsoft sign-in due, and the code in
+// progress if there is one. Polled by the menu, so it reads only memory and one
+// KV row — never Microsoft.
+router.get('/signin', (req, res) => {
+  res.json({ ...microsoft.signInDue(), signIn: microsoft.signInState() });
 });
 
 // GET /api/microsoft/teams-send-status — is the Teams DM path live, or what is

@@ -122,6 +122,9 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
   const [actionsTitle, setActionsTitle] = useState('');
+  // Microsoft sign-in due or expired (27 Oct 2026): a menu button, not a banner
+  // (Nick's call). Null = could not ask, which shows nothing rather than a guess.
+  const [msSignIn, setMsSignIn] = useState(null);
 
   const [openGroups, setOpenGroups] = useState(readOpenGroups);
 
@@ -145,6 +148,11 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
       fetch(apiUrl('/api/imports/pending'))
         .then(res => res.json())
         .then(data => setImportsCount(data.count || 0))
+        .catch(() => {});
+
+      fetch(apiUrl('/api/microsoft/signin'))
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => setMsSignIn(data))
         .catch(() => {});
 
       // The badge is the discovery mechanism: a queued draft reply is invisible
@@ -211,6 +219,23 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
       <div className="sidebar-nav">
         {/* Primary: Now / Capture / Ask / Actions / Commitments */}
         <div className="sidebar-group sidebar-group-primary">
+          {msSignIn && msSignIn.showInMenu && (
+            <button
+              className={[
+                'sidebar-item', 'sidebar-item-primary', 'sidebar-signin',
+                msSignIn.state === 'expired' ? 'sidebar-signin-expired' : 'sidebar-signin-due',
+                activeView === 'microsoft-signin' ? 'active' : '',
+              ].filter(Boolean).join(' ')}
+              title={msSignIn.say || undefined}
+              onClick={() => onNavigate('microsoft-signin')}
+            >
+              <span className="sidebar-icon">⚠</span>
+              <span className="sidebar-label">
+                Sign in to Microsoft
+                <span className="sidebar-signin-state">{msSignIn.state === 'expired' ? 'expired' : 'due'}</span>
+              </span>
+            </button>
+          )}
           {[...(saimWorkspace ? [SAIM_ITEM] : []), ...PRIMARY_ITEMS].map(item => renderItem({ ...item, primary: true }))}
         </div>
 
