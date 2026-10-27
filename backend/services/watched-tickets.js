@@ -259,6 +259,18 @@ function _isMyPublicReply(c, deps) {
   return !!c && c.jsdPublic !== false && c.author?.accountType !== 'customer' && deps.isMe(c.author);
 }
 
+/**
+ * A public reply by a person on the team (Nick or a colleague) — the customer
+ * got an update, so it keeps a promised update whoever wrote it (NT-35291,
+ * 23 Oct 2026: Hope's 16:56 reply kept Nick's 17:30 promise and went unseen).
+ * Apps (NOVA, Automation for Jira) are not a person updating the customer.
+ */
+function _isTeamPublicReply(c, deps) {
+  if (!c || c.jsdPublic === false) return false;
+  if (deps.isMe(c.author)) return c.author?.accountType !== 'customer';
+  return c.author?.accountType === 'atlassian';
+}
+
 const _commitments = (key, states) => db.all(
   `SELECT * FROM watched_ticket_commitments WHERE ticket_key = ? AND state IN (${states.map(() => '?').join(',')}) ORDER BY due_at ASC`,
   [key, ...states]);
@@ -278,9 +290,10 @@ function _proposeFrom(key, comment, deps, nowMs) {
  * A public reply from Nick keeps every open commitment made BEFORE it, and
  * supersedes an unconfirmed proposal from an earlier reply. Returns how many.
  */
-function _keepWith(key, reply) {
+function _keepWith(key, reply, byOther = null) {
   const at = reply.created;
   const atMs = Date.parse(at);
+  const closedBy = byOther ? `reply:${byOther}` : 'reply';
   let kept = 0;
   for (const c of _commitments(key, ['open', 'proposed'])) {
     if (!(Date.parse(c.made_at) < atMs)) continue;
@@ -288,8 +301,8 @@ function _keepWith(key, reply) {
       db.run(`UPDATE watched_ticket_commitments SET state = 'dismissed', closed_at = ?, closed_by = 'superseded' WHERE id = ?`, [at, c.id]);
       continue;
     }
-    db.run(`UPDATE watched_ticket_commitments SET state = 'kept', closed_at = ?, closed_by = 'reply', kept_late = ? WHERE id = ?`,
-      [at, atMs > Date.parse(c.due_at) ? 1 : 0, c.id]);
+    db.run(`UPDATE watched_ticket_commitments SET state = 'kept', closed_at = ?, closed_by = ?, kept_late = ? WHERE id = ?`,
+      [at, closedBy, atMs > Date.parse(c.due_at) ? 1 : 0, c.id]);
     kept += 1;
   }
   return kept;
@@ -681,13 +694,14 @@ async function _process(row, issue, deps, now, sent) {
         const id = commentId(c);
         if (id == null || id <= seen) continue;
         if (isCustomerReply(c)) fresh.push(c);
-        else if (_isMyPublicReply(c, deps)) mine.push(c);
+        else if (_isTeamPublicReply(c, deps)) mine.push(c);
       }
-      // Oldest first: a reply keeps what came before it, then may promise again.
+      // Oldest first: a reply keeps what came before it, then (Nick's only) may promise again.
       mine.sort((a, b) => commentId(a) - commentId(b));
       for (const c of mine) {
-        _keepWith(row.ticket_key, c);
-        _proposeFrom(row.ticket_key, c, deps, now.getTime());
+        const isMe = deps.isMe(c.author);
+        _keepWith(row.ticket_key, c, isMe ? null : (c.author?.displayName || 'a colleague'));
+        if (isMe) _proposeFrom(row.ticket_key, c, deps, now.getTime());
       }
       if (r && r.complete === false && ids.length && Math.min(...ids) > seen) {
         console.warn(`[Watched] ${row.ticket_key}: more new comments than one page — the oldest may be missed`);

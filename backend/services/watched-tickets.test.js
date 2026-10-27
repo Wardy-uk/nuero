@@ -326,6 +326,26 @@ test('watching proposes the promise in my latest public reply; confirm, remind, 
   assert.equal(tcPushes(w).length, 2, 'nothing more once kept');
 });
 
+test('a colleague’s public reply keeps my promised update; an app reply or an internal note does not (NT-35291)', async () => {
+  const w = w2('NT-2010');
+  await wt.watch('NT-2010', w.deps);
+  assert.equal(wt.addCommitment('NT-2010', '17:30', w.now.getTime()).ok, true);
+  const id = commitment('NT-2010').id;
+  w.now = new Date('2026-10-23T15:50:00Z');
+  w.add(BOT, 'Your ticket is now with development.');
+  w.add(AGENT, 'Internal: checked the form store', false);
+  await wt.check(w.deps);
+  assert.equal(commitment('NT-2010').state, 'open');
+  w.add(AGENT, 'Hi Anthony, I wanted to update you on the website enquiries. I will update you again by 9am tomorrow.');
+  await wt.check(w.deps);
+  const c = db.get('SELECT * FROM watched_ticket_commitments WHERE id = ?', [id]);
+  assert.equal(c.state, 'kept');
+  assert.equal(c.kept_late, 0);
+  assert.equal(c.closed_by, 'reply:Hope Agent');
+  assert.equal(db.all("SELECT * FROM watched_ticket_commitments WHERE ticket_key = 'NT-2010' AND state = 'proposed'").length, 0,
+    'a colleague’s promise is not proposed as mine');
+});
+
 test('a new promise in a later reply is proposed, and replaces an unconfirmed one', async () => {
   const w = w2('NT-2002');
   await wt.watch('NT-2002', w.deps);

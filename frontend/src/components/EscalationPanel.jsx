@@ -170,6 +170,7 @@ function Commitments({ t, busy, onCommit }) {
             <span className="esc-commitment-kept-text">
               Update kept {c.closedAt ? clockLabel(c.closedAt) : ''}{c.keptLate ? ` — after the ${clockLabel(c.dueAt)} you promised` : ''}
               {c.closedBy === 'nick' ? ' (marked by you)' : ''}
+              {typeof c.closedBy === 'string' && c.closedBy.startsWith('reply:') ? ` (reply by ${c.closedBy.slice(6)})` : ''}
             </span>
           )}
         </div>
