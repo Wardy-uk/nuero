@@ -46,3 +46,10 @@
   border-radius: 8px;
   color: var(--text-primary);
 }
+
+.ms-signin-alerts {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.ms-signin-alerts h3 { margin: 0 0 6px; font-size: 14px; color: var(--text-primary); }

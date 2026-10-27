@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiUrl } from '../api';
 import { signInOutcome } from './MicrosoftSignIn';
+import usePushNotifications, { deviceLabel, pushUnavailableReason } from '../usePushNotifications';
 import './AdminPanel.css';
 import './MicrosoftSignInPage.css';
 
@@ -103,6 +104,29 @@ export default function MicrosoftSignInPage({ onNavigate }) {
           )}
         </div>
       )}
+
+      <DesktopAlerts />
+    </div>
+  );
+}
+
+/** Turn on a notification on THIS computer when the sign-in expires (27 Oct 2026). */
+function DesktopAlerts() {
+  const { supported, subscribed, error, manualSubscribe } = usePushNotifications();
+  if (deviceLabel() !== 'desktop') return null;
+  const why = pushUnavailableReason();
+  return (
+    <div className="ms-signin-alerts">
+      <h3>Notify this computer</h3>
+      {why || !supported ? <p className="ms-signin-say">{why || 'This browser does not offer push notifications.'}</p>
+        : subscribed ? <p className="ms-signin-say">On. This computer gets a notification when the Microsoft sign-in expires, and nothing else NEURO sends to your phone.</p>
+        : (
+          <>
+            <p className="ms-signin-say">Get a notification on this computer when the Microsoft sign-in expires. Only that — none of the phone’s nudges.</p>
+            <button className="admin-ms-connect-btn" onClick={manualSubscribe}>Turn on</button>
+          </>
+        )}
+      {error && <p className="ms-signin-say">Couldn’t turn it on: {error}</p>}
     </div>
   );
 }

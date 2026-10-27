@@ -220,3 +220,49 @@ test('sendToAll reaches the payload on both paths', async () => {
     else process.env.VAPID_PRIVATE_KEY = prevPriv;
   }
 });
+
+// ── The desktop gets only what was meant for it (27 Oct 2026) ───────────────
+// Nick asked for the Microsoft sign-in alert on the laptop — not every nudge
+// the phone gets. A `desktop` subscription receives a push only when the
+// sender marks it `desk: true`; a re-send without a label keeps the label.
+test('a desktop subscription receives desk alerts only; the phone receives both', async () => {
+  const lib = require('web-push');
+  const keys = lib.generateVAPIDKeys();
+  const prev = { pub: process.env.VAPID_PUBLIC_KEY, priv: process.env.VAPID_PRIVATE_KEY };
+  process.env.VAPID_PUBLIC_KEY = keys.publicKey;
+  process.env.VAPID_PRIVATE_KEY = keys.privateKey;
+  webpush.init();
+  db.setState('push_governor', '{}');
+
+  const phone = 'https://example.invalid/push/phone';
+  const desk = 'https://example.invalid/push/desk';
+  const k = { p256dh: keys.publicKey, auth: 'aaaaaaaaaaaaaaaaaaaaaa' };
+  db.savePushSubscription({ endpoint: phone, keys: k }, { label: 'phone', audience: 'private' });
+  db.savePushSubscription({ endpoint: desk, keys: k }, { label: 'desktop', audience: 'private' });
+  // The page re-posts on every launch without saying what it is — the label stays.
+  db.savePushSubscription({ endpoint: desk, keys: k });
+  assert.equal(db.getAllPushSubscriptions().find((s) => s.endpoint === desk).label, 'desktop');
+
+  const realSend = lib.sendNotification;
+  let hit = [];
+  lib.sendNotification = async (sub) => { hit.push(sub.endpoint); return {}; };
+  try {
+    await webpush.sendToAll('A nudge', 'body', { type: 'test' });
+    assert.deepEqual(hit, [phone], 'an ordinary push must not reach the desktop');
+    hit = [];
+    db.setState('push_governor', '{}');
+    await webpush.sendToAll('⚠ Microsoft sign-in has expired', 'body', { type: 'system_alert', key: 'x', desk: true });
+    assert.deepEqual(hit.sort(), [desk, phone].sort(), 'a desk alert reaches both');
+  } finally {
+    lib.sendNotification = realSend;
+    db.removePushSubscription(phone);
+    db.removePushSubscription(desk);
+    if (prev.pub === undefined) delete process.env.VAPID_PUBLIC_KEY; else process.env.VAPID_PUBLIC_KEY = prev.pub;
+    if (prev.priv === undefined) delete process.env.VAPID_PRIVATE_KEY; else process.env.VAPID_PRIVATE_KEY = prev.priv;
+  }
+});
+
+test('the watchdog marks the Microsoft alerts for the desk and points the click at the sign-in page', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'watchdog.js'), 'utf8');
+  assert.match(src, /desk: true, url: '\/\?view=microsoft-signin'/);
+});

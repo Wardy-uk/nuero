@@ -1312,8 +1312,13 @@ export default function AdminPanel({ pushState = {} }) {
                 </button>
                 <button className="admin-ms-connect-btn" onClick={async () => {
                   try {
-                    // Clear all subs, then re-subscribe
-                    await fetch(apiUrl('/api/push/subscriptions'), { method: 'DELETE' });
+                    // Replace THIS device's subscription only. Clearing every
+                    // subscription here also cut off the phone once the desktop
+                    // could subscribe (27 Oct 2026); a dead endpoint is removed
+                    // by the server on its first 410.
+                    const reg = await navigator.serviceWorker.ready;
+                    const old = await reg.pushManager.getSubscription();
+                    if (old) await old.unsubscribe();
                     await manualSubscribe();
                     alert('Re-subscribed — try sending a test now');
                   } catch (e) { alert('Re-subscribe failed: ' + e.message); }

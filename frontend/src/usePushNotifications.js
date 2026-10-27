@@ -1,6 +1,21 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiUrl } from './api';
 
+// What device this is, said at subscribe time (the server keeps it). A
+// `desktop` subscription receives only the pushes meant for the laptop —
+// today the Microsoft sign-in alerts — not every nudge the phone gets.
+export function deviceLabel(ua = (typeof navigator !== 'undefined' ? navigator.userAgent : '')) {
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(ua) ? 'phone' : 'desktop';
+}
+
+// Why push cannot work here, or null. Browsers only offer push on https (or
+// localhost), and an http address hides the API entirely.
+export function pushUnavailableReason(win = (typeof window !== 'undefined' ? window : {})) {
+  if (win.isSecureContext === false) return 'This page is on an http address. Open NEURO over https (the pi5 .ts.net address) to turn notifications on.';
+  if (!('serviceWorker' in (win.navigator || {})) || !('PushManager' in win)) return 'This browser does not offer push notifications.';
+  return null;
+}
+
 export default function usePushNotifications() {
   const [supported, setSupported] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -25,7 +40,7 @@ export default function usePushNotifications() {
         await fetch(apiUrl('/api/push/subscribe'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(existing)
+          body: JSON.stringify({ ...existing.toJSON(), label: deviceLabel() })
         });
       }
     } catch (e) {
@@ -51,7 +66,7 @@ export default function usePushNotifications() {
       const subRes = await fetch(apiUrl('/api/push/subscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription)
+        body: JSON.stringify({ ...subscription.toJSON(), label: deviceLabel() })
       });
 
       if (subRes.ok) {

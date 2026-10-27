@@ -446,9 +446,16 @@ async function sendToAll(title, body, data = {}) {
       ? { audience: sub.audience, confidence: 'stated', label: sub.label || null }
       : classifyPushEndpoint(sub.endpoint, sub.label),
   }));
-  const subscriptions = ambient
-    ? classified.map(c => c.sub)
-    : classified.filter(c => c.seen.audience !== 'shared').map(c => c.sub);
+  // ⚠ THE DESKTOP GETS ONLY WHAT WAS MEANT FOR IT (27 Oct 2026). Nick asked
+  //   for the Microsoft sign-in alert on the laptop, not every nudge and room
+  //   offer the phone gets — so a subscription labelled `desktop` receives a
+  //   push only when the sender marks it `desk: true`.
+  const forDesk = !!(data && data.desk === true);
+  const subscriptions = (ambient
+    ? classified
+    : classified.filter(c => c.seen.audience !== 'shared'))
+    .filter(c => forDesk || c.seen.label !== 'desktop')
+    .map(c => c.sub);
   const audienceSkipped = classified.length - subscriptions.length;
   // WARNING  Unknowns are SENT TO and COUNTED, never silently trusted. Refusing
   //   would silence the one subscription that predates labelling, which is
@@ -462,7 +469,7 @@ async function sendToAll(title, body, data = {}) {
     const why = audienceSkipped
       // Named rather than reported as "no subscriptions": "the only device
       // here is shared" is a fact he can act on.
-      ? `withheld — the only ${audienceSkipped} subscription(s) are shared devices`
+      ? `withheld — the only ${audienceSkipped} subscription(s) are shared or desktop-only devices`
       : 'no subscriptions';
     console.warn(`[WebPush] ${why} — dropped: "${title}"`);
     _record(title, data, 'undeliverable', why);

@@ -675,10 +675,11 @@ async function run({ notify = true } = {}) {
     // `system_alert` (ALWAYS_DELIVER) because the quiet-hours decision was made
     // above — this send must not then be dropped by the governor.
     for (const i of ints.send) {
-      await webpush.sendToAll(`⚠ ${i.title}`, i.detail || '', { type: 'system_alert', key: i.key });
+      // `desk: true` — the laptop gets these too; the click opens the sign-in page.
+      await webpush.sendToAll(`⚠ ${i.title}`, i.detail || '', { type: 'system_alert', key: i.key, desk: true, url: '/?view=microsoft-signin' });
     }
     for (const r of ints.recovered) {
-      await webpush.sendToAll('✅ Microsoft is working again', 'Calendar, Tasks and work email are syncing again.', { type: 'system_alert', key: `${r.key}:resolved` });
+      await webpush.sendToAll('✅ Microsoft is working again', 'Calendar, Tasks and work email are syncing again.', { type: 'system_alert', key: `${r.key}:resolved`, desk: true });
     }
     const isSense = (x) => String(x.key).startsWith('sense:');
     for (const i of toAlert.filter((x) => !isSense(x))) {

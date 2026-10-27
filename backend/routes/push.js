@@ -13,15 +13,25 @@ router.get('/vapid-public-key', (req, res) => {
 });
 
 // POST /api/push/subscribe
+// Optional `label` says what device this is (phone / desktop / kiosk / tv);
+// an unknown label is refused rather than stored, and an omitted one keeps
+// whatever the device said before.
 router.post('/subscribe', (req, res) => {
-  const subscription = req.body;
+  const { label, ...subscription } = req.body || {};
   if (!subscription || !subscription.endpoint || !subscription.keys) {
     return res.status(400).json({ error: 'Invalid subscription object' });
   }
+  const { classifyPushEndpoint } = require('../services/endpoints');
+  let meta = {};
+  if (label != null) {
+    const seen = classifyPushEndpoint(subscription.endpoint, String(label));
+    if (seen.confidence !== 'stated') return res.status(400).json({ error: `label must be one of phone, desktop, kiosk, tv` });
+    meta = { label: seen.label, audience: seen.audience };
+  }
   try {
-    db.savePushSubscription(subscription);
-    console.log('[Push] New subscription registered');
-    res.json({ ok: true });
+    db.savePushSubscription(subscription, meta);
+    console.log(`[Push] Subscription registered${meta.label ? ` (${meta.label})` : ''}`);
+    res.json({ ok: true, label: meta.label || null });
   } catch (e) {
     console.error('[Push] Subscribe error:', e);
     res.status(500).json({ error: e.message });
@@ -38,7 +48,7 @@ router.post('/subscribe', (req, res) => {
 router.post('/test', async (req, res) => {
   try {
     const before = (db.getPushLog(1)[0] || {}).id || 0;
-    await webpush.sendToAll('SAiM', 'Push notifications are working.', { type: 'test' });
+    await webpush.sendToAll('SAiM', 'Push notifications are working.', { type: 'test', desk: true });
     const row = db.getPushLog(20).find((r) => r.id > before && r.type === 'test');
     if (!row) return res.json({ ok: false, outcome: 'unknown', reason: 'NEURO recorded no outcome for the test' });
     const sent = row.outcome === 'sent' && row.sent_count > 0;

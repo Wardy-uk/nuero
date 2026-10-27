@@ -1137,9 +1137,17 @@ function savePushSubscription(subscription, meta = {}) {
   // device, so this cannot be recovered later — and without it a subscription
   // from the living-room kiosk is indistinguishable from one on his phone, and
   // work detail would be pushed to a screen the family can read.
+  // ⚠ A re-send that does not say what it is KEEPS what an earlier one said:
+  // every client re-posts its subscription on launch, and a bare REPLACE wiped
+  // the desktop label, so the desktop would start receiving everything.
   run(`
-    INSERT OR REPLACE INTO push_subscriptions (endpoint, keys_p256dh, keys_auth, label, audience)
+    INSERT INTO push_subscriptions (endpoint, keys_p256dh, keys_auth, label, audience)
     VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      keys_p256dh = excluded.keys_p256dh,
+      keys_auth = excluded.keys_auth,
+      label = COALESCE(excluded.label, push_subscriptions.label),
+      audience = COALESCE(excluded.audience, push_subscriptions.audience)
   `, [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth,
       meta.label || null, meta.audience || null]);
 }
