@@ -674,8 +674,8 @@ async function run({ notify = true } = {}) {
   if (notify && webpush.isConfigured()) {
     // `system_alert` (ALWAYS_DELIVER) because the quiet-hours decision was made
     // above — this send must not then be dropped by the governor.
+    // `desk: true` — the laptop gets these too; the click opens the sign-in page.
     for (const i of ints.send) {
-      // `desk: true` — the laptop gets these too; the click opens the sign-in page.
       await webpush.sendToAll(`⚠ ${i.title}`, i.detail || '', { type: 'system_alert', key: i.key, desk: true, url: '/?view=microsoft-signin' });
     }
     for (const r of ints.recovered) {
