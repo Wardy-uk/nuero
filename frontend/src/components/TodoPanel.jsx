@@ -119,8 +119,10 @@ export const FILTER_GROUPS = {
   vault: 'source',
   ms: 'source',
   unestimated: 'size',
-  // One group, so picking both WIDENS: "my own life" is personal OR shared.
-  personal: 'home',
+  // Work / Personal / Not set — one group, so picking two WIDENS.
+  work: 'domain',
+  personal: 'domain',
+  nodomain: 'domain',
   household: 'home',
 };
 
@@ -173,8 +175,11 @@ export const FILTER_PREDICATES = {
   // A NEURO task with no estimate (so no size). Only NEURO rows can carry one;
   // a Microsoft or vault line is not "unestimated", it cannot be estimated here.
   unestimated: t => Boolean(t.task_id) && t.estimateMinutes == null,
-  // Positively personal. An unset domain is the 'work' default, never personal.
+  // A NEURO task always stores one (the column defaults to 'work'), so "Not set"
+  // only ever catches rows with no domain at all: Microsoft and daily-note lines.
+  work: t => t.domain === 'work',
   personal: t => t.domain === 'personal',
+  nodomain: t => !t.domain,
   // On the shared VESTA list (needs /api/todos to carry `household`).
   household: t => t.household === 1 || t.household === true,
 };
@@ -200,7 +205,9 @@ export const FILTER_CHIPS = [
   { key: 'vault', label: 'Vault Todos' },
   { key: 'ms', label: 'MS Tasks' },
   { key: 'unestimated', label: 'Not estimated' },
+  { key: 'work', label: 'Work' },
   { key: 'personal', label: 'Personal' },
+  { key: 'nodomain', label: 'Not set' },
   { key: 'household', label: 'Shared with household' },
 ];
 

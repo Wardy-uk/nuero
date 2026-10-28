@@ -162,5 +162,11 @@ test('personal and household filters: positive values only, one widening group',
   assert.equal(mod.FILTER_PREDICATES.household({ household: 1 }), true);
   assert.equal(mod.FILTER_PREDICATES.household({ household: 0 }), false);
   assert.equal(mod.FILTER_PREDICATES.household({}), false);
-  assert.equal(mod.FILTER_GROUPS.personal, mod.FILTER_GROUPS.household, 'picking both should widen, not narrow');
+  // 28 Oct 2026: Personal now sits with Work and Not set; Shared with household is its own chip.
+  assert.equal(mod.FILTER_GROUPS.personal, mod.FILTER_GROUPS.work, 'work/personal/not set widen together');
+  assert.equal(mod.FILTER_GROUPS.personal, mod.FILTER_GROUPS.nodomain);
+  assert.equal(mod.FILTER_PREDICATES.work({ domain: 'work' }), true);
+  assert.equal(mod.FILTER_PREDICATES.work({ domain: null }), false, 'no domain is Not set, never work');
+  assert.equal(mod.FILTER_PREDICATES.nodomain({ domain: null }), true);
+  assert.equal(mod.FILTER_PREDICATES.nodomain({ domain: 'work' }), false);
 });
