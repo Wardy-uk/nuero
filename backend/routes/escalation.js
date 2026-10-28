@@ -68,6 +68,21 @@ function adfText(node, depth = 0) {
   return ['paragraph', 'heading', 'listItem', 'codeBlock'].includes(node.type) ? `${inner}\n` : inner;
 }
 
+/** Issues linked to a ticket that live in another project (its dev work). PURE. */
+function devItemsOf(t) {
+  const own = String(t?.key || '').split('-')[0];
+  const out = [];
+  for (const l of Array.isArray(t?.issuelinks) ? t.issuelinks : []) {
+    const i = l?.inwardIssue || l?.outwardIssue;
+    const key = String(i?.key || '');
+    if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key) || key.split('-')[0] === own || out.some((x) => x.key === key)) continue;
+    const st = i.fields?.status;
+    out.push({ key, status: st?.name || null, done: st?.statusCategory?.key === 'done' });
+  }
+  return out;
+}
+router.devItemsOf = devItemsOf;
+
 /**
  * GET /api/escalation/active — what is escalated right now.
  *
@@ -264,6 +279,9 @@ router.get('/ticket/:key', requireNova, async (req, res) => {
         created: t.created || null,
         updated: t.updated || null,
         description: adfText(t.description).trim().slice(0, 2000) || null,
+        // Linked work in OTHER projects (e.g. the TPJ development item), so
+        // "Escalate by email…" can ask for it by name. Done ones are marked.
+        devItems: devItemsOf(t),
         // Newest first, and flagged so an internal note isn't mistaken for
         // something the customer has already been told.
         comments: (t.comments || []).slice(-5).reverse().map(c => ({

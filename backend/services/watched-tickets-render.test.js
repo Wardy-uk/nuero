@@ -225,3 +225,17 @@ test('with no Tier 2 rejections, the main list still gets its own heading under 
   assert.ok(main > sent, 'the main list has its own heading after the sentiment section');
   assert.ok(html.indexOf('NT-1') > main, 'the escalated ticket sits under its own heading');
 });
+
+test('the email draft is Nick’s wording and asks for an open linked dev item by name', () => {
+  const item = { key: 'NT-14705', summary: 'Let Agreed properties not showing', url: 'https://x/NT-14705', status: 'Waiting on Development',
+    sent: { priority: 'Normal', assignee: 'Naomi Wentworth', score: -0.8, why: 'very unhappy' } };
+  const d = mod.escalationEmailDraft(item, [{ key: 'TPJ-2504', status: 'New', done: false }]);
+  assert.match(d.body, /^Hi,\n\nAnother one I need to escalate, please: NT-14705\./);
+  assert.match(d.body, /Customer sentiment: Angry \(NOVA score -0\.8\) — very unhappy/);
+  assert.match(d.body, /Can we get TPJ-2504 prioritised please$/);
+  assert.doesNotMatch(d.body, /\[/);
+  // A done dev item is not asked for; the gap stays and blocks Send.
+  assert.match(mod.escalationEmailDraft(item, [{ key: 'TPJ-1', done: true }]).body, /\[What you need from them, and by when\]$/);
+  assert.equal(mod.devAsk([{ key: 'TPJ-1' }, { key: 'TPJ-2' }, { key: 'TPJ-3', done: true }]), 'TPJ-1 and TPJ-2');
+  assert.equal(mod.devAsk([]), null);
+});

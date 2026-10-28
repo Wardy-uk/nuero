@@ -523,14 +523,25 @@ function rememberTo(addresses) {
   try { localStorage.setItem(RECENT_TO_KEY, JSON.stringify([...new Set([...addresses, ...recentTo()])].slice(0, 8))); } catch { /* per-device convenience only */ }
 }
 
-/** The email NEURO starts from — every line is a fact off the ticket card, editable before sending. */
-export function escalationEmailDraft(item) {
+/** Linked development items still open, as "TPJ-1" / "TPJ-1 and TPJ-2". PURE. null when there are none. */
+export function devAsk(devItems) {
+  const keys = (devItems || []).filter((d) => d && d.key && !d.done).map((d) => d.key);
+  if (!keys.length) return null;
+  return keys.length === 1 ? keys[0] : `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`;
+}
+
+/**
+ * The email NEURO starts from — Nick's own wording (28 Oct 2026), every line a
+ * fact off the ticket card, editable before sending. With an open linked dev
+ * item it asks for that by name; otherwise a [gap] Send will not pass.
+ */
+export function escalationEmailDraft(item, devItems = null) {
   const esc = item.esc || item.rej || item.sent || {};
   const raised = item.esc ? ageDays(esc.created) : null;
   const lines = [
     'Hi,',
     '',
-    `I'd like to escalate ${item.key} to you.`,
+    `Another one I need to escalate, please: ${item.key}.`,
     '',
     `Ticket: ${item.key}${item.summary ? ` — ${item.summary}` : ''}`,
     !!item.url && `Link: ${item.url}`,
@@ -542,10 +553,7 @@ export function escalationEmailDraft(item) {
     !!item.sent && `Customer sentiment: Angry (NOVA score ${item.sent.score})${item.sent.why ? ` — ${item.sent.why}` : ''}`,
     !!item.rej && 'Rejected by Tier 2 — the rejection is awaiting approval',
     '',
-    '[What you need from them, and by when]',
-    '',
-    'Thanks,',
-    'Nick',
+    devAsk(devItems) ? `Can we get ${devAsk(devItems)} prioritised please` : '[What you need from them, and by when]',
   ];
   return {
     subject: `Escalation: ${item.key}${item.summary ? ` — ${item.summary}` : ''}`.slice(0, 240),
@@ -589,6 +597,24 @@ function EmailEscalation({ item, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [outcome, setOutcome] = useState(null);
+  const [dev, setDev] = useState(null); // null = still reading; {items} or {error}
+  const autoBody = useRef(draft.body);
+
+  // The ticket's linked development items, read from Jira — the ask names them.
+  // Only an untouched draft is rewritten; anything Nick has typed stays.
+  useEffect(() => {
+    let live = true;
+    fetch(apiUrl(`/api/escalation/ticket/${encodeURIComponent(item.key)}`)).then((r) => r.json()).then((d) => {
+      if (!live) return;
+      if (!d.ticket) { setDev({ error: d.error || 'unreadable' }); return; }
+      const items = d.ticket.devItems || [];
+      setDev({ items });
+      const next = escalationEmailDraft(item, items).body;
+      setBody((cur) => (cur === autoBody.current ? next : cur));
+      autoBody.current = next;
+    }).catch((e) => { if (live) setDev({ error: e.message }); });
+    return () => { live = false; };
+  }, [item.key]);
 
   useEffect(() => {
     let live = true;
@@ -670,6 +696,11 @@ function EmailEscalation({ item, onClose }) {
         <datalist id={`esc-to-${item.key}`}>{options.map((o) => <option key={o} value={o} />)}</datalist>
       </div>
       {peopleError && <p className="esc-reply-note">Couldn’t read your People notes ({peopleError}) — type the address instead.</p>}
+      {dev === null && <p className="esc-reply-note">Looking for a linked development item…</p>}
+      {dev?.error && <p className="esc-reply-note">Couldn’t read the ticket’s links ({dev.error}) — add the dev item yourself.</p>}
+      {dev?.items && (dev.items.length
+        ? <p className="esc-reply-note">Linked in Jira: {dev.items.map((d) => `${d.key}${d.status ? ` (${d.status})` : ''}`).join(', ')}{devAsk(dev.items) ? '' : ' — all done, so the ask is left for you to write'}</p>
+        : <p className="esc-reply-note">No linked development item in Jira — say what you need in the [gap].</p>)}
       <input className="esc-email-to" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" maxLength={240} />
       <textarea className="esc-reply-text" rows={12} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Email" />
       <p className="esc-reply-note">
