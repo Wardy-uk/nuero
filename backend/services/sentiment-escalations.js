@@ -10,9 +10,10 @@
  * stops being Angry (calmer reply, or resolved) is DROPPED, so turning angry again
  * later is a new escalation. Only a complete, successful read may drop anything.
  *
- * A push goes out once per ticket arriving in the list. The very first read seeds
- * silently — the tickets already angry did not just arrive, and pushing the whole
- * backlog at once would teach Nick to ignore this.
+ * A push goes out once per ticket arriving in the list. The very first read is the
+ * backlog (Nick: "we need to include the current backlog"), so it gets ONE summary
+ * push naming them rather than one each — a push per ticket would run into the
+ * hourly cap and drop most of them.
  */
 
 const db = require('../db/database');
@@ -30,7 +31,7 @@ function jiraUrl(key) {
   return base ? `${base}/browse/${key}` : null;
 }
 
-/** Fold a fresh, COMPLETE list into the store. Returns the tickets that are new to it. */
+/** Fold a fresh, COMPLETE list into the store (keeping seen/pushed). Returns the tickets new to it. */
 function absorb(list) {
   const known = _read();
   const next = {};
@@ -74,10 +75,26 @@ async function sync({ push = (title, body, data) => require('./webpush').sendToA
   const data = await nova.listSentimentEscalations();
   const tickets = data?.tickets || [];
   const seeded = !!db.getState(SEEDED);
-  const arrived = absorb(tickets);
+  absorb(tickets);
+  // Owed a push = in the list, never pushed, not already opened. Tracked per ticket
+  // rather than "new to the store": the Escalations tab absorbs too, and opening it
+  // before a poll must not swallow the push.
+  const store = _read();
+  const arrived = tickets.filter((t) => store[t.key] && !store[t.key].pushed && !store[t.key].seen);
+  for (const t of tickets) if (store[t.key]) store[t.key].pushed = true;
+  db.setState(STORE, JSON.stringify(store));
   if (!seeded) {
+    let pushed = 0;
+    if (arrived.length) {
+      try {
+        await push(`${arrived.length} angry customer${arrived.length === 1 ? '' : 's'} on open tickets`,
+          arrived.map((t) => t.key).join(', ').slice(0, 200),
+          { type: 'sentiment_escalation', key: 'sentiment:backlog', url: '/?view=escalations' });
+        pushed = 1;
+      } catch (e) { console.warn(`[Sentiment] backlog push failed: ${e.message}`); }
+    }
     db.setState(SEEDED, new Date().toISOString());
-    return { ok: true, total: tickets.length, arrived: arrived.length, pushed: 0, seeded: true };
+    return { ok: true, total: tickets.length, arrived: arrived.length, pushed, seeded: true };
   }
   let pushed = 0;
   for (const t of arrived) {

@@ -20,25 +20,38 @@ nova.listSentimentEscalations = async () => ({ windowDays: 180, tickets: novaLis
 test.before(async () => { await db.init(); });
 test.after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } });
 
-test('first read seeds silently; a later arrival is pushed once', async () => {
+test('first read pushes the backlog as ONE summary; a later arrival is pushed once', async () => {
   const pushes = [];
   const push = async (title, body, data) => { pushes.push({ title, body, data }); };
-  novaList = [{ key: 'NT-1', summary: 'Old anger', score: -0.8 }];
+  novaList = [{ key: 'NT-1', summary: 'Old anger', score: -0.8 }, { key: 'NT-3', summary: 'Older anger', score: -0.75 }];
   const first = await sent.sync({ push });
   assert.equal(first.seeded, true);
-  assert.equal(pushes.length, 0, 'the backlog did not just arrive');
-  assert.equal(sent.getUnseenCount(), 1, 'but it is still unseen');
+  assert.equal(pushes.length, 1, 'one push for the whole backlog');
+  assert.equal(pushes[0].title, '2 angry customers on open tickets');
+  assert.equal(pushes[0].body, 'NT-1, NT-3');
+  assert.equal(pushes[0].data.key, 'sentiment:backlog');
+  assert.equal(sent.getUnseenCount(), 2, 'and both are listed unseen');
 
-  novaList = [{ key: 'NT-1', summary: 'Old anger', score: -0.8 }, { key: 'NT-2', summary: 'Forms broken', score: -0.9, why: 'Threatens to cancel', commentId: '77' }];
+  novaList = [{ key: 'NT-1', summary: 'Old anger', score: -0.8 }, { key: 'NT-3' }, { key: 'NT-2', summary: 'Forms broken', score: -0.9, why: 'Threatens to cancel', commentId: '77' }];
   await sent.sync({ push });
-  assert.equal(pushes.length, 1);
-  assert.match(pushes[0].title, /^NT-2: customer is angry/);
-  assert.match(pushes[0].body, /Threatens to cancel/);
-  assert.equal(pushes[0].data.type, 'sentiment_escalation');
-  assert.equal(pushes[0].data.key, 'sentiment:NT-2:77');
+  assert.equal(pushes.length, 2);
+  assert.match(pushes[1].title, /^NT-2: customer is angry/);
+  assert.match(pushes[1].body, /Threatens to cancel/);
+  assert.equal(pushes[1].data.type, 'sentiment_escalation');
+  assert.equal(pushes[1].data.key, 'sentiment:NT-2:77');
 
   await sent.sync({ push });
-  assert.equal(pushes.length, 1, 'still angry is not a new arrival');
+  assert.equal(pushes.length, 2, 'still angry is not a new arrival');
+});
+
+test('the tab absorbing first does not swallow the push; a ticket already opened is not pushed', async () => {
+  const pushes = [];
+  const push = async (title, body, data) => { pushes.push({ title, body, data }); };
+  sent.absorb([{ key: 'NT-5', summary: 'Seen in the tab first' }, { key: 'NT-6', summary: 'Opened already' }]);
+  sent.markSeen(['NT-6']);
+  novaList = [{ key: 'NT-1' }, { key: 'NT-2' }, { key: 'NT-3' }, { key: 'NT-5', summary: 'Seen in the tab first' }, { key: 'NT-6' }];
+  await sent.sync({ push });
+  assert.deepEqual(pushes.map((p) => p.title), ['NT-5: customer is angry']);
 });
 
 test('opening marks seen; calming down drops it; angry again is new', async () => {
