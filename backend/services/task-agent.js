@@ -1237,13 +1237,13 @@ function handoff(taskId, { brief, includeDrafts = false, openOnDesk = false } = 
     run.claudeHandoffs.push(h);
     _step(run, 'note', `You handed this to Claude on desktop (prompt copied${openOnDesk ? ', the laptop asked to open Claude, paste it and send' : ''}).`);
   }
-  // A press again re-asks the laptop only if the last request is over without
-  // having opened (expired, failed, refused) — never a second paste of a live one.
+  // A press is Nick asking again, so it re-asks the laptop — unless the last
+  // request is still in flight (waiting or claimed), which would paste twice.
   let retry = false;
   if (openOnDesk && h.desk) {
     let st = null;
     try { st = h.desk.id && d.deskStatus ? d.deskStatus(h.desk.id) : null; } catch { st = null; }
-    retry = h.desk.status !== 'requested' || Boolean(st && st.known && ['expired', 'failed'].includes(st.state));
+    retry = h.desk.status !== 'requested' || !(st && st.known && ['waiting', 'claimed'].includes(st.state));
   }
   if (openOnDesk && (!h.desk || retry)) {
     try {
