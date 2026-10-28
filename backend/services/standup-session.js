@@ -102,7 +102,20 @@ function buildSchedule(now = new Date()) {
     today: { name: DAY_NAMES[now.getDay()], date: _dateStr(now), working: _isWorkingDay(now), reason: _workingDays.nonWorkingReason(now) },
     tomorrow: { name: DAY_NAMES[tomorrow.getDay()], date: _dateStr(tomorrow), working: _isWorkingDay(tomorrow), reason: _workingDays.nonWorkingReason(tomorrow) },
     nextWorkingDay: { name: DAY_NAMES[next.getDay()], date: _dateStr(next) },
+    // ⚠ 23 Oct 2026: "park it for next week" was told back as "Monday" and
+    // written as 2026-10-28, a Wednesday. The model was doing calendar
+    // arithmetic in its head; it now reads the date off this list instead.
+    ahead: Array.from({ length: 14 }, (_, i) => {
+      const d = _addDays(now, i + 1);
+      return { name: DAY_NAMES[d.getDay()], date: _dateStr(d), working: _isWorkingDay(d) };
+    }),
   };
+}
+
+/** "Wednesday 28 October" — what a due date is called when it is said back. */
+function _sayDate(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 /** "the weekend" / "a bank holiday" — a plan has to say which, or it reads wrong. */
@@ -125,6 +138,10 @@ function _renderSchedule(s) {
   } else {
     lines.push(`Tomorrow is ${s.tomorrow.name} ${s.tomorrow.date} — NOT a working day: ${_whyNotWorking(s.tomorrow)}. Nick works Monday to Friday.`);
     lines.push(`The next working day is ${s.nextWorkingDay.name} ${s.nextWorkingDay.date}. Say "${s.nextWorkingDay.name}", never "tomorrow" or "first thing in the morning", and never give a task a due date on a weekend or a bank holiday.`);
+  }
+  if (Array.isArray(s.ahead) && s.ahead.length) {
+    lines.push(`Dates ahead (read a due date off this list — never work one out): ${s.ahead
+      .map(d => `${d.name.slice(0, 3)} ${d.date}${d.working ? '' : ' (off)'}`).join(', ')}.`);
   }
   return lines.join('\n');
 }
@@ -511,6 +528,8 @@ Run it roughly like this, adapting to his answers:
 - If he says he is struggling, drop the process. Ask what is in the way. The ritual matters less than the answer.
 - Never guess a commitment key or task id — use the ones in the context.
 - A carried line marked [task #N] or [likely task #N] IS that task, not a new one. Pass its task_id to resolve_commitment, and name the task in passing ("that's #30, the Krista one") so he can say if it is not. If he says it is not, resolve it without task_id. Never call create_task for work that is already a task.
+- One job per focus item. When the focus is existing tasks, each is its own set_focus item with its task_id — never fold several tasks into one line, however related. A carried line that covers several tasks is moved by passing ALL their ids in task_ids; never make a new task for it.
+- A due date comes off the "Dates ahead" list, and you say back the day resolve_commitment returns in "dated" — never a weekday you worked out yourself.
 - When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. When he names a time, book it — do NOT judge clashes yourself; block_time and check_diary decide that, and an event that ENDS at a time does not occupy it (Lunch 12:00-13:00 leaves 13:00 free). Only push back if block_time refuses. If he names no start time, call check_diary for that day and offer him a real gap ("tomorrow 09:30-11:00 is free — want it there?"); book it only once he agrees.
 - You can see his calendar for the next fortnight through check_diary. Never say you don't have a day's calendar without calling it first.
 - You can see his whole task list, ranked the way his Focus screen ranks it, through list_tasks, and email waiting on him through get_urgent_emails. When he asks what's on, what's next or what the top things are, call them and answer from what comes back — never say you don't have a backlog view, and never ask him to recite his list to you.
@@ -610,6 +629,7 @@ const SESSION_TOOLS = [
         due_date: { type: 'string', description: 'YYYY-MM-DD, required when decision is "scheduled".' },
         note: { type: 'string', description: 'Short reason, in his words where possible.' },
         task_id: { type: 'integer', description: 'The NEURO task this commitment is, from [task #N] or [likely task #N] in the context. Omit if it has none, or he said it is not that task.' },
+        task_ids: { type: 'array', items: { type: 'integer' }, description: 'When the line covers SEVERAL existing tasks: every one of them. With "scheduled", each is re-dated and no new task is made.' },
         reopen: { type: 'boolean', description: 'ONLY when he has explicitly asked to change a commitment that is ALREADY CLOSED. Requires his words in note. Never set it because he said "continue" or "move on".' },
       },
       required: ['key', 'decision'],
@@ -678,8 +698,15 @@ const SESSION_TOOLS = [
       properties: {
         items: {
           type: 'array',
-          items: { type: 'string' },
-          description: 'Two or three specific commitments, in his words. Each should be something you could tell was done or not by end of day.',
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'The commitment, in his words.' },
+              task_id: { type: 'integer', description: 'The NEURO task this item IS, when it is one. Always give it for an existing task.' },
+            },
+            required: ['text'],
+          },
+          description: 'Two or three specific commitments, ONE job per item. Each existing task is its own item with its task_id — never combine several tasks into one line.',
         },
         blockers: { type: 'string', description: 'Anything in the way, if he named one.' },
         mood: { type: 'string', description: 'How he sounds, one short phrase. Only if he said something about it.' },
@@ -808,7 +835,7 @@ function _describeToolResult(name, input = {}, result = {}) {
     case 'resolve_commitment':
       return result.unchanged
         ? `resolve_commitment: "${input.key}" was already decided`
-        : `resolve_commitment: recorded ${result.recorded} on "${input.key}"${input.due_date ? ` (due ${input.due_date})` : ''}`;
+        : `resolve_commitment: recorded ${result.recorded} on "${input.key}"${input.due_date ? ` (due ${input.due_date}${result.dated ? `, ${result.dated}` : ''})` : ''}${result.task_ids && result.task_ids.length ? ` for ${result.task_ids.map(id => `#${id}`).join(', ')}` : ''}`;
     case 'set_focus':
       return `set_focus: focus recorded — ${(result.focus || []).join('; ')}`;
     case 'complete_task':
@@ -863,6 +890,32 @@ async function _executeTool(session, name, input = {}) {
         if (!row) return { ok: false, error: `No task #${input.task_id}. Use an id from the context, or leave task_id out.` };
         taskId = row.id;
       }
+      // Several tasks under one line: each is re-dated, nothing new is made.
+      const extraIds = [];
+      for (const raw of (Array.isArray(input.task_ids) ? input.task_ids : [])) {
+        const row = taskStore.getTask(Number(raw));
+        if (!row) return { ok: false, error: `No task #${raw}. Use ids from the context.` };
+        if (row.id !== taskId && !extraIds.includes(row.id)) extraIds.push(row.id);
+      }
+      if (taskId == null && extraIds.length) taskId = extraIds.shift();
+      if (input.decision === 'scheduled') {
+        if (!input.due_date || !/^\d{4}-\d{2}-\d{2}$/.test(input.due_date)) {
+          return { ok: false, error: 'due_date (YYYY-MM-DD) is required for "scheduled" — read it off the dates-ahead list.' };
+        }
+        if (input.due_date < session.dateKey) {
+          return { ok: false, error: `${input.due_date} is in the past. Nothing was recorded.` };
+        }
+        // ⚠ Never mint a task for a line that is several tasks already.
+        if (taskId == null) {
+          const covered = _tasksCovered(target.text || input.key);
+          if (covered.length) {
+            return {
+              ok: false,
+              error: `Nothing recorded. "${target.text}" covers existing tasks ${covered.map(t => `#${t.id} (${t.text})`).join(', ')}. Pass task_ids with every one he is moving, so those tasks are re-dated — do not create a new one.`,
+            };
+          }
+        }
+      }
       session.outcome.commitments = session.outcome.commitments.filter(c => c.key !== input.key);
       session.outcome.commitments.push({
         key: input.key,
@@ -900,7 +953,10 @@ async function _executeTool(session, name, input = {}) {
       if (input.decision === 'scheduled' && input.due_date) {
         try {
           if (taskId) {
-            taskStore.updateTask(taskId, { due_date: input.due_date });
+            for (const id of [taskId, ...extraIds]) {
+              taskStore.updateTask(id, { due_date: input.due_date });
+              if (id !== taskId) _noteLink(session, target.text || input.key, id);
+            }
           } else {
             const created = taskStore.createTask({
               text: target.text || input.key,
@@ -912,6 +968,17 @@ async function _executeTool(session, name, input = {}) {
         } catch (e) {
           console.warn(`[StandupSession] Could not date "${input.key}": ${e.message}`);
         }
+      }
+      if (input.decision === 'scheduled') {
+        const said = _sayDate(input.due_date);
+        return {
+          ok: true,
+          recorded: input.decision,
+          task_id: taskId,
+          task_ids: taskId ? [taskId, ...extraIds] : [],
+          dated: said,
+          note: `Dated ${said}. Tell him "${said}" — that exact day, no other.`,
+        };
       }
       return { ok: true, recorded: input.decision, task_id: taskId };
     }
@@ -1021,8 +1088,29 @@ async function _executeTool(session, name, input = {}) {
     }
 
     case 'set_focus': {
-      const items = (input.items || []).filter(Boolean);
-      if (!items.length) return { ok: false, error: 'items is required' };
+      // Strings still accepted (an older turn, a looser model); objects carry the link.
+      const raw = (input.items || []).filter(Boolean)
+        .map(i => (typeof i === 'string' ? { text: i } : { text: i.text, task_id: i.task_id }))
+        .filter(i => String(i.text || '').trim());
+      if (!raw.length) return { ok: false, error: 'items is required' };
+      const taskStore = require('./task-store');
+      for (const i of raw) {
+        if (i.task_id != null) {
+          const row = taskStore.getTask(Number(i.task_id));
+          if (!row) return { ok: false, error: `No task #${i.task_id}. Nothing was recorded.` };
+          i.task_id = row.id;
+          continue;
+        }
+        const covered = _tasksCovered(i.text);
+        if (covered.length) {
+          return {
+            ok: false,
+            error: `Nothing recorded. "${i.text}" is several tasks in one line: ${covered.map(t => `#${t.id} (${t.text})`).join(', ')}. Give each its own item with its task_id.`,
+          };
+        }
+      }
+      for (const i of raw) if (i.task_id) _noteLink(session, i.text, i.task_id);
+      const items = raw.map(i => i.text);
       session.outcome.focus = items;
       session.outcome.blockers = input.blockers || null;
       session.outcome.mood = input.mood || null;
@@ -1109,6 +1197,31 @@ function _renderToolLog(log) {
 }
 
 /** Remember that `text` is task #taskId, so the note line can say so. One entry per task. */
+/**
+ * The open tasks a line covers when it is SEVERAL jobs written as one.
+ *
+ * ⚠ 22 Oct 2026: the standup turned #372, #334 and #322 into one focus line —
+ * "Round-robin logic, hybrid/WFH targets, and Stephen's flexible working reply"
+ * — with no link to any of them. The next morning "park that for next week"
+ * had nothing to re-date, so it minted #463, a fourth task duplicating three
+ * (one already done). The line is split on its joins, and each part is matched
+ * on its own; two or more distinct tasks means it is a bundle.
+ */
+function _tasksCovered(text) {
+  const parts = String(text || '')
+    .split(/\s*(?:,|;|&|\+|\band\b)\s*/i)
+    .map(p => p.trim())
+    .filter(p => p.split(/\s+/).filter(w => w.length > 2).length >= 2);
+  if (parts.length < 2) return [];
+  const taskStore = require('./task-store');
+  const ids = [];
+  for (const part of parts) {
+    const hit = taskStore.findSimilar(part, { minScore: LINK_HINT_SCORE });
+    if (hit && !ids.some(t => t.id === hit.id)) ids.push({ id: hit.id, text: hit.text });
+  }
+  return ids.length >= 2 ? ids : [];
+}
+
 function _noteLink(session, text, taskId) {
   const links = (session.outcome.taskLinks = session.outcome.taskLinks || []);
   const found = links.find(l => l.taskId === taskId);
