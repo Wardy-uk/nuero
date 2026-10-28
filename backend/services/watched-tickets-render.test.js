@@ -186,3 +186,25 @@ test('rejections never enter the escalated/watched merge', () => {
   assert.match(html, /NT-30/);
   assert.equal(mod.mergeTickets([], { active: [], listening: [] }).length, 0);
 });
+
+const angry = (over) => ({ key: 'NT-40', summary: '360 Tour Links', status: 'Waiting on Development', score: -0.82, why: 'Customer says this is the third time of asking', organisation: 'Regan & Hallworth', seen: false, url: '#', ...over });
+
+test('sentiment escalations render as their own section with a filter, score and reason', () => {
+  const html = render({ escalations: [], watched: { active: [], listening: [] }, sentiment: [angry(), angry({ key: 'NT-41', seen: true })], initialExpanded: ['sent-NT-40'] });
+  assert.match(html, /Sentiment escalations — customer is angry/);
+  assert.match(html, /Sentiment escalations<span[^>]*>2</);
+  assert.match(html, /1 not opened/);
+  assert.match(html, /angry -0.82/);
+  assert.match(html, /Why NOVA scored it Angry/);
+  assert.match(html, /third time of asking/);
+  assert.deepEqual(mod.sentimentItems([angry(), angry({ seen: true })]).map((i) => i.needs), [['new'], []]);
+});
+
+test('an unreadable angry list says so; the sentiment filter shows only that section', () => {
+  const err = render({ escalations: [], watched: { active: [], listening: [] }, sentiment: null, sentimentError: 'Could not read angry tickets from NOVA: 502' });
+  assert.match(err, /Could not read angry tickets[^<]*This is not an empty list/);
+  assert.doesNotMatch(err, /No open ticket has an angry customer/);
+  const only = render({ escalations: [esc({ key: 'NT-1' })], watched: { active: [], listening: [] }, sentiment: [angry()], initialFilter: 'sentiment' });
+  assert.match(only, /NT-40/);
+  assert.doesNotMatch(only, /NT-1</);
+});

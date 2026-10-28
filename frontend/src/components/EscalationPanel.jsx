@@ -130,6 +130,18 @@ export function rejectionItems(rejections = []) {
   }));
 }
 
+/**
+ * Tickets NOVA scores Angry right now, as row items. PURE. Their own section,
+ * angriest first; an unopened one carries "new", which the sidebar badge counts.
+ */
+export function sentimentItems(sentiment = []) {
+  return (sentiment || []).map((s) => ({
+    key: s.key, esc: null, watch: null, sent: s,
+    summary: s.summary || '', url: s.url || null, status: s.status || null,
+    needs: s.seen ? [] : ['new'], hasOpenCommitment: false, listening: false,
+  }));
+}
+
 export const FILTERS = [
   ['all', 'All', () => true],
   ['needs', 'Needs you', (t) => t.needs.length > 0],
@@ -681,7 +693,7 @@ function rowTail(item) {
     return { cls: open.missed ? 'esc-tail esc-tail-alert' : 'esc-tail esc-tail-warn', text: `update ${clockLabel(open.dueAt).replace(' today', '')} · ${untilLabel(open.dueAt).replace('overdue by', 'overdue')}` };
   }
   if ((item.watch?.commitments || []).some((c) => c.state === 'proposed')) return { cls: 'esc-tail esc-tail-ask', text: 'confirm a commitment' };
-  const touched = ageDays((item.esc || item.rej)?.updated);
+  const touched = ageDays((item.esc || item.rej || item.sent)?.updated);
   if (touched != null) return { cls: touched >= 7 ? 'esc-tail esc-tail-cold' : 'esc-tail', text: `touched ${agoLabel(touched)}` };
   if (item.listening) return { cls: 'esc-tail', text: `listening until ${dayMonth(item.watch.listeningUntil)}` };
   return null;
@@ -702,7 +714,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
   const raised = ageDays(esc?.created);
   // "touched", not "replied": Jira bumps `updated` for NOVA triage, a
   // round-robin assignment or the CSAT bot as readily as for a human.
-  const info = esc || item.rej || null;
+  const info = esc || item.rej || item.sent || null;
   const touched = ageDays(info?.updated);
   const tail = rowTail(item);
   const open = expanded || escalating || replying || emailing;
@@ -723,6 +735,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
         <span className="esc-trow-pills">
           {item.needs.filter((n) => !/^update due|^promised update|^confirm/.test(n)).map((n) => <span key={n} className="esc-pill esc-pill-alert">{n}</span>)}
           {route && <span className="esc-pill esc-pill-esc" title={route.title}>{route.label.replace('escalated · ', '')}</span>}
+          {item.sent && <span className="esc-pill esc-pill-alert" title="NOVA's current sentiment score for the customer, -1 to +1">angry {item.sent.score}</span>}
           {watch && !item.listening && <span className="esc-pill esc-pill-watch" title="You get a push when the customer replies">watching</span>}
         </span>
         <span className="esc-trow-status">{item.status || ''}</span>
@@ -735,6 +748,8 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
             {info && <span>{info.priority || 'No priority'}</span>}
             {info && <span>{info.assignee || 'Unassigned'}</span>}
             {item.rej && <span title="Tier 2 rejected this ticket; the rejection is waiting to be approved">rejected by Tier 2 · awaiting approval</span>}
+            {item.sent?.organisation && <span>{item.sent.organisation}</span>}
+            {item.sent?.angryAt && <span title="When the customer's latest angry message was written">angry since {clockLabel(item.sent.angryAt)}</span>}
             {raised != null && <span title="When this escalation was raised">escalated {agoLabel(raised)}</span>}
             {touched != null && (
               <span className={touched >= 7 ? 'esc-row-touched esc-row-touched-cold' : 'esc-row-touched'}
@@ -745,6 +760,13 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
             {watch && !watch.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
             {watch?.lastError && <span className="esc-row-touched-cold" title={watch.lastError}>couldn’t check</span>}
           </div>
+
+          {item.sent?.why && (
+            <blockquote className="esc-watch-reply">
+              <span className="esc-comment-author">Why NOVA scored it Angry</span>
+              <span className="esc-watch-reply-text">{item.sent.why}</span>
+            </blockquote>
+          )}
 
           {latest && (
             <blockquote className={latest.flagged ? 'esc-watch-reply' : 'esc-watch-reply esc-watch-reply-muted'}>
@@ -838,6 +860,7 @@ export function TicketsView({
   escalations, escalationsLoading, escalationsError, escalationsWarning,
   watched, watchedError, note, busy, reasons = [],
   rejections = [], rejectionsError = null, onSeenRejection,
+  sentiment = [], sentimentError = null, onSeenSentiment,
   opened, onOpen, onCloseOpened,
   highlightKey, escalatingKey, onEscalate, onCloseEscalate, onEscalated,
   onWatch, onRead, onUnwatch, onCommit, onRefresh, onPosted,
@@ -854,8 +877,12 @@ export function TicketsView({
   const counts = Object.fromEntries(FILTERS.map(([id, , test]) => [id, items.filter(test).length]));
   const rejItems = rejectionItems(rejections || []);
   const rejUnseen = rejItems.filter((r) => r.needs.length).length;
-  const shown = filter === 'rejected' ? [] : items.filter(FILTERS.find(([id]) => id === filter)[2]);
+  const sentItems = sentimentItems(sentiment || []);
+  const sentUnseen = sentItems.filter((s) => s.needs.length).length;
+  const ownSection = filter === 'rejected' || filter === 'sentiment';
+  const shown = ownSection ? [] : items.filter(FILTERS.find(([id]) => id === filter)[2]);
   const showRejections = filter === 'all' || filter === 'rejected';
+  const showSentiment = filter === 'all' || filter === 'sentiment';
   const loading = escalationsLoading && !escalations;
   const open = (e) => {
     e.preventDefault();
@@ -896,6 +923,10 @@ export function TicketsView({
           onClick={() => setFilter('rejected')} title="Pending Rejection Approval (to CC)">
           Rejected by Tier 2<span className={rejUnseen ? 'esc-filter-count esc-filter-count-alert' : 'esc-filter-count'}>{rejectionsError ? '?' : rejItems.length}</span>
         </button>
+        <button type="button" className={filter === 'sentiment' ? 'esc-filter esc-filter-on' : 'esc-filter'}
+          onClick={() => setFilter('sentiment')} title="Open tickets NOVA scores Angry right now">
+          Sentiment escalations<span className={sentUnseen ? 'esc-filter-count esc-filter-count-alert' : 'esc-filter-count'}>{sentimentError ? '?' : sentItems.length}</span>
+        </button>
       </nav>
 
       {escalationsError && <div className="esc-error">Couldn’t read the escalated queue: {escalationsError}. Watched tickets below are still current.</div>}
@@ -909,6 +940,35 @@ export function TicketsView({
       <div className="esc-ticket-list">
         {opened && (
           <OpenedTicket ticketKey={opened} busy={busy} reasons={reasons} onWatch={onWatch} onClose={onCloseOpened} onEscalated={onEscalated} onPosted={onPosted} />
+        )}
+
+        {showSentiment && (sentItems.length > 0 || sentimentError || filter === 'sentiment') && (
+          <section className="esc-section">
+            <h3 className="esc-section-title">
+              Sentiment escalations — customer is angry
+              <span className="esc-section-sub"> · open tickets NOVA scores Angry now{sentUnseen ? ` · ${sentUnseen} not opened` : ''}</span>
+            </h3>
+            {sentimentError && <div className="esc-error">{sentimentError}. This is not an empty list.</div>}
+            {!sentimentError && sentItems.length === 0 && !loading && <p className="esc-empty">No open ticket has an angry customer right now.</p>}
+            {sentItems.map((item) => (
+              <TicketCard
+                key={`sent-${item.key}`}
+                item={item}
+                busy={busy}
+                reasons={reasons}
+                expanded={expanded.has(`sent-${item.key}`)}
+                onToggle={() => { toggle(`sent-${item.key}`); if (item.needs.length) onSeenSentiment?.(item.key); }}
+                escalating={item.key === escalatingKey}
+                onWatch={onWatch}
+                onRead={onRead}
+                onUnwatch={onUnwatch}
+                onEscalate={onEscalate}
+                onCloseEscalate={onCloseEscalate}
+                onEscalated={onEscalated}
+                onPosted={onPosted}
+              />
+            ))}
+          </section>
         )}
 
         {showRejections && (rejItems.length > 0 || rejectionsError || filter === 'rejected') && (
@@ -942,7 +1002,7 @@ export function TicketsView({
         )}
 
         {loading && <p className="esc-empty">Loading…</p>}
-        {!loading && filter !== 'rejected' && shown.length === 0 && (
+        {!loading && !ownSection && shown.length === 0 && (
           <p className="esc-empty">
             {filter === 'all' && (escalationsError
               ? 'Nothing watched, and the escalated queue couldn’t be read — this is not an empty queue.'
@@ -988,6 +1048,8 @@ export default function EscalationPanel() {
   const [watched, setWatched] = useState(null);
   const [rejections, setRejections] = useState(null);
   const [rejectionsError, setRejectionsError] = useState(null);
+  const [sentiment, setSentiment] = useState(null);
+  const [sentimentError, setSentimentError] = useState(null);
   const [watchedError, setWatchedError] = useState(null);
   const [note, setNote] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -1012,6 +1074,8 @@ export default function EscalationPanel() {
       setEscalations(data.escalations || []);
       setRejections(data.rejections || null);
       setRejectionsError(data.rejectionsError || null);
+      setSentiment(data.sentiment || null);
+      setSentimentError(data.sentimentError || null);
       setEscalationsWarning(data.warning || null);
       setEscalationsError(null);
     } catch (err) {
@@ -1086,6 +1150,14 @@ export default function EscalationPanel() {
         // Optimistic: the row stops saying "new" at once; the sidebar follows on its next poll.
         setRejections((prev) => (prev || []).map((r) => (r.key === k ? { ...r, seen: true } : r)));
         fetch(apiUrl('/api/escalation/rejections/seen'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: [k] }),
+        }).catch(() => {});
+      }}
+      sentiment={sentiment}
+      sentimentError={sentimentError}
+      onSeenSentiment={(k) => {
+        setSentiment((prev) => (prev || []).map((s) => (s.key === k ? { ...s, seen: true } : s)));
+        fetch(apiUrl('/api/escalation/sentiment/seen'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: [k] }),
         }).catch(() => {});
       }}

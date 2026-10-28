@@ -483,6 +483,14 @@ async function syncEscalations() {
       console.warn('[Jira] Pending-rejection read failed, keeping the last list:', e.message);
     }
 
+    // Angry tickets from NOVA ride the same poll, for the same reason and with
+    // the same rule: a failed read keeps the last list.
+    try {
+      await require('./sentiment-escalations').sync();
+    } catch (e) {
+      console.warn('[Jira] Sentiment-escalation read failed, keeping the last list:', e.message);
+    }
+
     return { ok: true, total: issues.length, newUnseen };
   } catch (err) {
     console.error('[Jira] Escalation sync failed:', err.message);

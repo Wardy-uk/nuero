@@ -157,7 +157,7 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
       // A failed read keeps the last number rather than showing 0.
       fetch(apiUrl('/api/escalation/counts'))
         .then(res => (res.ok ? res.json() : null))
-        .then(data => { if (data && typeof data.unseen === 'number') { setEscCount(data.unseen); setEscTitle(`${data.escalations} escalation${data.escalations === 1 ? '' : 's'} waiting on you · ${data.rejections} rejection${data.rejections === 1 ? '' : 's'} not opened`); } })
+        .then(data => { if (data && typeof data.unseen === 'number') { setEscCount(data.unseen); setEscTitle(`${data.escalations} escalation${data.escalations === 1 ? '' : 's'} waiting on you · ${data.rejections} rejection${data.rejections === 1 ? '' : 's'} not opened · ${data.sentiment ?? 0} angry customer${data.sentiment === 1 ? '' : 's'} not opened`); } })
         .catch(() => {});
 
       fetch(apiUrl('/api/email/unseen-count'))

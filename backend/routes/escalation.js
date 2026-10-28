@@ -23,6 +23,7 @@ const express = require('express');
 const router = express.Router();
 const nova = require('../services/nova-client');
 const jira = require('../services/jira');
+const sentimentEscalations = require('../services/sentiment-escalations');
 
 /**
  * How far back the urgency arm asks NOVA's log — #104.
@@ -173,12 +174,30 @@ router.get('/active', async (req, res) => {
     rejectionsError = `Could not read ${jira.PENDING_REJECTION_STATUS}: ${e.message}`;
   }
 
+  // Tickets NOVA scores Angry right now — their own section, same seen-store
+  // rules. null when NOVA could not answer: an unread section is not empty.
+  let sentiment = null;
+  let sentimentError = null;
+  if (nova.isConfigured()) {
+    try {
+      const data = await nova.listSentimentEscalations();
+      sentimentEscalations.absorb(data?.tickets || []);
+      sentiment = sentimentEscalations.decorate(data?.tickets || []);
+    } catch (e) {
+      sentimentError = `Could not read angry tickets from NOVA: ${e.message}`;
+    }
+  } else {
+    sentimentError = 'NOVA is not configured, so angry tickets cannot be read';
+  }
+
   res.json({
     escalations: decorated,
     awaitingReply,
     total: decorated.length,
     rejections,
     rejectionsError,
+    sentiment,
+    sentimentError,
     // #104 — the list states the window it used. A count that cannot describe
     // its own edge is indistinguishable from a complete one, which is how a cap
     // stays invisible until the day it starts cutting.
@@ -190,12 +209,20 @@ router.get('/active', async (req, res) => {
 /**
  * GET /api/escalation/counts — the sidebar badge for Escalations. Unseen =
  * escalations waiting on Nick (no reply from him, not acknowledged, not
- * delegated) + pending-rejection tickets he has not opened. Local reads only.
+ * delegated) + pending-rejection and angry tickets he has not opened. Local reads only.
  */
 router.get('/counts', (req, res) => {
   const escalations = jira.getUnseenEscalationCount();
   const rejections = jira.getUnseenRejectionCount();
-  res.json({ unseen: escalations + rejections, escalations, rejections });
+  const sentiment = sentimentEscalations.getUnseenCount();
+  res.json({ unseen: escalations + rejections + sentiment, escalations, rejections, sentiment });
+});
+
+/** POST /api/escalation/sentiment/seen {keys} — Nick opened these angry-ticket rows. */
+router.post('/sentiment/seen', (req, res) => {
+  const { keys } = req.body || {};
+  if (!Array.isArray(keys) || !keys.length) return res.status(400).json({ ok: false, error: 'keys (array) is required' });
+  res.json({ ok: true, marked: sentimentEscalations.markSeen(keys.map(String)) });
 });
 
 /** POST /api/escalation/rejections/seen {keys} — Nick opened these rows. */

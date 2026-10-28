@@ -106,6 +106,14 @@ async function listEscalations({ days = 90, type } = {}) {
   return call(`/api/neuro-bridge/escalations?${q}`);
 }
 
+/**
+ * Open NT tickets NOVA currently scores Angry — the Sentiment escalations section.
+ * `{ windowDays, tickets: [{ key, summary, status, assignee, score, why, angryAt, … }] }`.
+ */
+async function listSentimentEscalations() {
+  return call('/api/neuro-bridge/sentiment-escalations');
+}
+
 /** Enough ticket detail to confirm it is the right ticket before escalating. */
 async function getTicket(key) {
   return call(`/api/neuro-bridge/ticket/${encodeURIComponent(key)}`);
@@ -217,7 +225,7 @@ async function get121KnownRecordings() {
 }
 
 module.exports = {
-  isConfigured, listUrgencyReasons, listEscalations, getTicket, escalate, call,
+  isConfigured, listUrgencyReasons, listEscalations, listSentimentEscalations, getTicket, escalate, call,
   push121Booking, cancel121, push121Cadence, get121State, get121Completed,
   push121SweepStats,
   push121TranscriptCandidate, push121TranscriptCorrection, get121KnownRecordings, get121PendingCandidates,
