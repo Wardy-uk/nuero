@@ -65,7 +65,7 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
       <p className="tagent__meta"><strong>Included:</strong> {preview.included.join('; ')}.</p>
       <p className="tagent__meta"><strong>Never included:</strong> {preview.excluded.join('; ')}.</p>
       <p className="tagent__statement">{preview.statement}</p>
-      {!preview.sensitive && (
+      {!(preview.people ?? preview.sensitive) && (
         <label className="tagent__check"><input type="checkbox" checked={preview.includeDrafts} disabled={busy} onChange={(e) => onIncludeDrafts(e.target.checked)} /> Include my drafts in full</label>
       )}
       <p className="tagent__h">Fixed by NEURO — not editable</p>

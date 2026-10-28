@@ -477,6 +477,21 @@ test('agents can read a task’s saved drafts over MCP — never a people matter
   }
 });
 
+test('ordinary work raised in an employee-cases note: drafts are shared (only a people matter withholds them)', async () => {
+  // Live #369: a CI/Jira process write-up raised in a standup note that also
+  // covered an employee matter — sensitive, but not a people matter.
+  const id = taskStore.createTask({ text: 'Document the CI/JIRA parent ticket process', source: 'test' }).id;
+  const template = JSON.parse(db.getState(`task_agent_run:${T.code}`));
+  db.setState(`task_agent_run:${id}`, JSON.stringify({ ...template, taskId: id, sensitive: { sensitive: true, people: false, why: ['employee-cases-note'] } }));
+  const r = await call('GET', `/api/task-agent/tasks/${id}/drafts`, undefined, { 'X-NEURO-API-TOKEN': 'tok-5678' });
+  assert.equal(r.status, 200, r.raw);
+  assert.ok(r.json.drafts.some((d) => /clock crosses midnight/.test(d.markdown)));
+  const p = await call('GET', `/api/task-agent/tasks/${id}/handoff/preview`);
+  assert.equal(p.json.people, false);
+  assert.equal(p.json.includeDrafts, true, 'drafts included by default');
+  assert.match(p.json.fixed, /clock crosses midnight/);
+});
+
 test('the kiosk proxy never forwards a task-agent path, for any method (the access layer, not a header)', () => {
   const proxy = require('../../saim/backend/src/routes/neuroProxy.js');
   for (const p of ['/task-agent/tasks/1', '/task-agent/active', '/task-agent/tasks/1/start', '/task-agent/tasks/1/handoff', '/task-agent/tasks/1/handoff/preview', '/task-agent/tasks/1/outputs/o1/save']) {

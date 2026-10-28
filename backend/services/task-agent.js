@@ -1092,6 +1092,10 @@ function defaultBrief(run, task) {
 /** PURE. The fixed, server-composed half: destination, context and NEURO's work so far. */
 function fixedContext(run, task, { includeDrafts = false, destination = null } = {}) {
   const sensitive = run.sensitive && run.sensitive.sensitive;
+  // Drafts are withheld only for a real people matter. Ordinary work raised in a
+  // private note keeps its excerpts out, but its drafts are Nick's to send on
+  // (27 Oct 2026) — the agent was told not to repeat anything personal in them.
+  const people = isPeopleMatter(run.sensitive);
   const lines = [`## Destination (fixed)`, `NEURO task #${task.id}: ${task.text}`];
   if (destination && destination.project) lines.push(`Project: ${destination.project} (vault folder ${destination.folder})`);
   lines.push('', '## Context from NEURO (fixed)');
@@ -1108,8 +1112,8 @@ function fixedContext(run, task, { includeDrafts = false, destination = null } =
   if (!done.length && !(run.outputs || []).length) lines.push('- (nothing yet)');
   for (const c of done) lines.push(`- ${c}`);
   for (const o of run.outputs || []) {
-    lines.push(`- Draft (${o.kind}): ${o.title}${includeDrafts && !sensitive ? '' : (sensitive ? ' — not included' : ` — not included here; read it with NEURO's MCP: GET /api/task-agent/tasks/${task.id}/drafts`)}`);
-    if (includeDrafts && !sensitive) lines.push('', '```markdown', o.markdown, '```', '');
+    lines.push(`- Draft (${o.kind}): ${o.title}${includeDrafts && !people ? '' : (people ? ' — not included' : ` — not included here; read it with NEURO's MCP: GET /api/task-agent/tasks/${task.id}/drafts`)}`);
+    if (includeDrafts && !people) lines.push('', '```markdown', o.markdown, '```', '');
   }
   return lines.join('\n');
 }
@@ -1164,10 +1168,11 @@ function screenBrief(brief, run, { includeDrafts = false } = {}) {
     if (s.excerpt && String(s.excerpt).trim().length >= 20 && text.includes(String(s.excerpt).trim().slice(0, 40))) problems.push(`it quotes the restricted note “${s.title}”`);
     if (s.title && String(s.title).trim().length >= 6 && text.toLowerCase().includes(String(s.title).trim().toLowerCase())) problems.push('it names a restricted note');
   }
-  if (!includeDrafts || sensitive) {
+  const people = isPeopleMatter(run.sensitive);
+  if (!includeDrafts || people) {
     for (const o of run.outputs || []) {
       const body = String(o.markdown || '').trim();
-      if (body.length >= 40 && text.includes(body.slice(0, 40))) problems.push(`it pastes the private draft “${o.title}”${sensitive ? ' (a people matter — drafts are never included)' : ' — tick “Include my drafts” instead'}`);
+      if (body.length >= 40 && text.includes(body.slice(0, 40))) problems.push(`it pastes the private draft “${o.title}”${people ?' (a people matter — drafts are never included)' : ' — tick “Include my drafts” instead'}`);
     }
   }
   return [...new Set(problems)];
@@ -1182,11 +1187,12 @@ function handoffPreview(taskId, { includeDrafts = false } = {}) {
   if (!task) return { ok: false, status: 404, error: 'No such task.' };
   const destination = d.destination(task);
   const sensitive = Boolean(run.sensitive && run.sensitive.sensitive);
-  const inc = includeDrafts && !sensitive;
+  const people = isPeopleMatter(run.sensitive);
+  const inc = includeDrafts && !people;
   const usable = (run.sources || []).filter((s) => !s.restricted).length;
   return {
     ok: true, taskId: id, recommended: Boolean(run.claude && run.claude.recommended),
-    why: (run.claude && run.claude.why) || null, includeDrafts: inc, sensitive,
+    why: (run.claude && run.claude.why) || null, includeDrafts: inc, sensitive, people,
     destination: destination && destination.project ? { project: destination.project, folder: destination.folder } : null,
     included: [
       'the fixed NEURO handoff policy',
@@ -1196,7 +1202,7 @@ function handoffPreview(taskId, { includeDrafts = false } = {}) {
       inc ? 'your private drafts, in full (you ticked this)' : 'draft titles only — not their text',
       'your working brief, as you leave it',
     ],
-    excluded: ['restricted notes (not even their titles)', 'Security review/, Archive and opted-out notes', 'credentials', sensitive ? 'every excerpt and draft (people matter)' : 'draft text unless you include it'],
+    excluded: ['restricted notes (not even their titles)', 'Security review/, Archive and opted-out notes', 'credentials', people ? 'every excerpt and draft (people matter)' : sensitive ? 'every excerpt (raised in a private note)' + (inc ? '' : '; draft text unless you include it') : 'draft text unless you include it'],
     statement: 'Nothing is sent to Claude until you press the button. Pressing it copies the prompt; if you tick “Open Claude on my laptop”, the laptop also opens a new Claude chat, pastes this prompt and sends it. The policy, destination and context are fixed by NEURO; you can edit the working brief.',
     envelope: policyEnvelope({ sensitive }),
     fixed: fixedContext(run, task, { includeDrafts: inc, destination }),
@@ -1221,7 +1227,7 @@ function handoff(taskId, { brief, includeDrafts = false, openOnDesk = false } = 
   const task = d.getTask(id);
   if (!task) return { ok: false, status: 404, error: 'No such task.' };
   const sensitive = Boolean(run.sensitive && run.sensitive.sensitive);
-  const inc = includeDrafts && !sensitive;
+  const inc = includeDrafts && !isPeopleMatter(run.sensitive);
   const problems = screenBrief(brief, run, { includeDrafts: inc });
   if (problems.length) return { ok: false, status: 400, error: `Not handed off: ${problems.join('; ')}. Edit the working brief and try again.`, problems };
   const prompt = composeFinal(run, task, brief, { includeDrafts: inc, destination: d.destination(task) });
@@ -1268,7 +1274,7 @@ function draftsForAgent(taskId) {
   const id = Number(taskId);
   const run = _load(id);
   if (!run || run.unreadable) return { ok: false, status: 404, error: 'There is no Do this work for this task.' };
-  if (run.sensitive && run.sensitive.sensitive) return { ok: false, status: 403, error: 'This is a people matter — its drafts stay in NEURO and are not shared with agents.' };
+  if (isPeopleMatter(run.sensitive)) return { ok: false, status: 403, error: 'This is a people matter — its drafts stay in NEURO and are not shared with agents.' };
   const task = deps().getTask(id);
   return {
     ok: true, taskId: id, task: task ? task.text : null, status: run.status,
