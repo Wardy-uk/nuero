@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import { duePresets } from '../../../shared/due-dates.cjs';
@@ -2765,7 +2765,10 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
   const overdueTodos = activeTodos.filter(isMineOverdue);
   const mustDoTodos = activeTodos.filter(t => t.mustdo);
 
-  const subCategoryOptions = useMemo(() => {
+  // ⚠ NOT a hook. It sat below the Smart view early return, so switching into
+  // Smart view rendered one hook fewer and crashed the screen (React #300). It
+  // never memoised anything anyway — activeTodos is a new array every render.
+  const subCategoryOptions = (() => {
     if (!sourceFilter) return [];
     const counts = {};
     for (const t of activeTodos) {
@@ -2778,7 +2781,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
       counts[sub] = (counts[sub] || 0) + 1;
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [sourceFilter, activeTodos]);
+  })();
 
   // ⚠ The pin outranks every filter. A card said "open THIS", and dropping it
   // into a filtered list is the same dead end as not linking at all — the row
