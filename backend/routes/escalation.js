@@ -160,16 +160,49 @@ router.get('/active', async (req, res) => {
   const decorated = jira.decorateWithReplyState(escalations);
   const awaitingReply = decorated.filter(e => e.needsReply).length;
 
+  // Tickets Tier 2 rejected, awaiting approval — their own section. Read live
+  // and folded into the seen-store, so the tab and the sidebar count agree.
+  // null (never []) when Jira could not answer: an unread section is not empty.
+  let rejections = null;
+  let rejectionsError = null;
+  try {
+    const list = await jira.fetchPendingRejections();
+    jira.absorbRejections(list);
+    rejections = jira.decorateRejections(list);
+  } catch (e) {
+    rejectionsError = `Could not read ${jira.PENDING_REJECTION_STATUS}: ${e.message}`;
+  }
+
   res.json({
     escalations: decorated,
     awaitingReply,
     total: decorated.length,
+    rejections,
+    rejectionsError,
     // #104 — the list states the window it used. A count that cannot describe
     // its own edge is indistinguishable from a complete one, which is how a cap
     // stays invisible until the day it starts cutting.
     urgency,
     warning,
   });
+});
+
+/**
+ * GET /api/escalation/counts — the sidebar badge for Escalations. Unseen =
+ * escalations waiting on Nick (no reply from him, not acknowledged, not
+ * delegated) + pending-rejection tickets he has not opened. Local reads only.
+ */
+router.get('/counts', (req, res) => {
+  const escalations = jira.getUnseenEscalationCount();
+  const rejections = jira.getUnseenRejectionCount();
+  res.json({ unseen: escalations + rejections, escalations, rejections });
+});
+
+/** POST /api/escalation/rejections/seen {keys} — Nick opened these rows. */
+router.post('/rejections/seen', (req, res) => {
+  const { keys } = req.body || {};
+  if (!Array.isArray(keys) || !keys.length) return res.status(400).json({ ok: false, error: 'keys (array) is required' });
+  res.json({ ok: true, marked: jira.markRejectionsSeen(keys.map(String)) });
 });
 
 // GET /api/escalation/reasons — the urgency vocabulary, for the picker.

@@ -183,6 +183,20 @@ async function fetchActiveEscalations(opts = {}) {
 }
 
 /**
+ * Tickets Tier 2 has rejected, waiting for someone to approve the rejection
+ * (Nick, 28 Oct 2026: "when a ticket is rejected by tier 2, the status is set to
+ * Pending Rejection Approval (to CC)"). Matched on the status NAME, which Jira
+ * validates — a misspelt status is a 400, not an empty list.
+ */
+const PENDING_REJECTION_STATUS = 'Pending Rejection Approval (to CC)';
+
+async function fetchPendingRejections() {
+  return searchEscalations(
+    `project = ${JIRA_PROJECT_KEY} AND status = "${PENDING_REJECTION_STATUS}" ORDER BY updated DESC`
+  );
+}
+
+/**
  * Every ticket assigned to Nick that is not finished.
  *
  * ⚠ This did not exist, and its absence is the opposite of what it looks like.
@@ -459,11 +473,65 @@ async function syncEscalations() {
       console.warn('[Jira] Failed to sync escalation nudge:', e.message);
     }
 
+    // Rejections ride the same poll so the sidebar count is current without
+    // opening the tab. Its own try: a failed read keeps the last store rather
+    // than emptying it (an unread queue is not an empty one), and never costs
+    // the escalation sync above.
+    try {
+      absorbRejections(await fetchPendingRejections());
+    } catch (e) {
+      console.warn('[Jira] Pending-rejection read failed, keeping the last list:', e.message);
+    }
+
     return { ok: true, total: issues.length, newUnseen };
   } catch (err) {
     console.error('[Jira] Escalation sync failed:', err.message);
     return { ok: false, error: err.message };
   }
+}
+
+// ── Pending rejections: seen state ───────────────────────────────────────────
+//
+// `rejection_seen` = { [key]: { seen, summary, status, updated } }. A ticket is
+// unseen until Nick opens its row on the Escalations tab. A ticket that leaves
+// the status is DROPPED, so one rejected again later comes back unseen — it is
+// a new rejection. Only a complete, successful read may drop anything.
+
+function _readRejections() {
+  try { const raw = db.getState('rejection_seen'); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+}
+
+/** Fold a fresh, COMPLETE list of pending rejections into the store. */
+function absorbRejections(list) {
+  const known = _readRejections();
+  const next = {};
+  for (const t of list || []) {
+    next[t.key] = { ...(known[t.key] || { seen: false }), summary: t.summary || '', status: t.status, updated: t.updated || null };
+  }
+  db.setState('rejection_seen', JSON.stringify(next));
+  db.setState('rejection_last_sync', new Date().toISOString());
+  return next;
+}
+
+/** Stamp each rejection with `seen` (an unknown key is unseen). */
+function decorateRejections(list) {
+  const known = _readRejections();
+  return (list || []).map((t) => ({ ...t, seen: !!known[t.key]?.seen }));
+}
+
+/** Mark the NAMED keys seen. Returns the keys that changed. */
+function markRejectionsSeen(keys) {
+  const known = _readRejections();
+  const changed = [];
+  for (const k of new Set((keys || []).filter(Boolean))) {
+    if (known[k] && !known[k].seen) { known[k].seen = true; known[k].seenAt = new Date().toISOString(); changed.push(k); }
+  }
+  if (changed.length) db.setState('rejection_seen', JSON.stringify(known));
+  return changed;
+}
+
+function getUnseenRejectionCount() {
+  return Object.values(_readRejections()).filter((r) => !r.seen).length;
 }
 
 function markEscalationsSeen() {
@@ -687,6 +755,12 @@ module.exports = {
   isConfigured,
   fetchEscalationTickets,
   fetchActiveEscalations,
+  fetchPendingRejections,
+  absorbRejections,
+  decorateRejections,
+  markRejectionsSeen,
+  getUnseenRejectionCount,
+  PENDING_REJECTION_STATUS,
   fetchOpenIssuesByKey,
   syncEscalations,
   markEscalationsSeen,

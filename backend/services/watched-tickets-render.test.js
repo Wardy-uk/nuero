@@ -162,3 +162,27 @@ test('escalationEmailDraft: facts off the card and a gap that blocks Send', () =
   assert.match(d.body, /\[What you need from them, and by when\]/);
   assert.doesNotMatch(d.body, /Reason:/);
 });
+
+// ── Rejected by Tier 2 — awaiting approval (28 Oct 2026) ────────────────────
+const rej = (over) => ({ key: 'NT-30', summary: 'Logo wrong on brochure', status: 'Pending Rejection Approval (to CC)', updated: '2026-10-27T10:00:00Z', url: '#', seen: false, ...over });
+
+test('rejections render as their own section; an unopened one says "new"', () => {
+  const html = render({ escalations: [esc({ key: 'NT-1' })], watched: { active: [], listening: [] }, rejections: [rej(), rej({ key: 'NT-31', seen: true })] });
+  assert.match(html, /Rejected by Tier 2 — awaiting approval/);
+  assert.match(html, /NT-30/); assert.match(html, /NT-31/);
+  assert.match(html, /1 not opened/);
+  const items = mod.rejectionItems([rej(), rej({ key: 'NT-31', seen: true })]);
+  assert.deepEqual(items.map((i) => i.needs), [['new'], []]);
+});
+
+test('an unreadable rejections list says so — never an empty one', () => {
+  const html = render({ escalations: [], watched: { active: [], listening: [] }, rejections: null, rejectionsError: 'Could not read X: 502' });
+  assert.match(html, /This is not an empty list/);
+  assert.doesNotMatch(html, /No tickets are waiting on a rejection approval/);
+});
+
+test('rejections never enter the escalated/watched merge', () => {
+  const html = render({ escalations: [], watched: { active: [], listening: [] }, rejections: [rej()] });
+  assert.match(html, /NT-30/);
+  assert.equal(mod.mergeTickets([], { active: [], listening: [] }).length, 0);
+});

@@ -670,3 +670,12 @@
 .esc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border); font-size: 12px; }
 .esc-chip button { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
 .esc-chip button:hover { color: var(--text-primary); }
+
+/* Rejected by Tier 2 — awaiting approval (28 Oct 2026): its own section above the list. */
+.esc-section { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.esc-section-title { margin: 4px 0 2px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+.esc-section-sub { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-muted, var(--text-secondary)); }
+.esc-ticket-list > .esc-section { gap: 0; margin: 0; border-bottom: 1px solid var(--border); }
+.esc-ticket-list > .esc-section .esc-section-title { padding: 10px 16px 6px; }
+.esc-ticket-list > .esc-section > .esc-empty,
+.esc-ticket-list > .esc-section > .esc-error { margin: 0 16px 10px; }

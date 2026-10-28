@@ -122,6 +122,9 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
   const [actionsTitle, setActionsTitle] = useState('');
+  const [escCount, setEscCount] = useState(0);
+  const [escTitle, setEscTitle] = useState('');
+  const [inboxCount, setInboxCount] = useState(0);
   // Microsoft sign-in due or expired (27 Oct 2026): a menu button, not a banner
   // (Nick's call). Null = could not ask, which shows nothing rather than a guess.
   const [msSignIn, setMsSignIn] = useState(null);
@@ -148,6 +151,18 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
       fetch(apiUrl('/api/imports/pending'))
         .then(res => res.json())
         .then(data => setImportsCount(data.count || 0))
+        .catch(() => {});
+
+      // Unseen escalations + pending-rejection tickets, and unread inbox mail.
+      // A failed read keeps the last number rather than showing 0.
+      fetch(apiUrl('/api/escalation/counts'))
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data && typeof data.unseen === 'number') { setEscCount(data.unseen); setEscTitle(`${data.escalations} escalation${data.escalations === 1 ? '' : 's'} waiting on you · ${data.rejections} rejection${data.rejections === 1 ? '' : 's'} not opened`); } })
+        .catch(() => {});
+
+      fetch(apiUrl('/api/email/unseen-count'))
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data && typeof data.unseen === 'number') setInboxCount(data.unseen); })
         .catch(() => {});
 
       fetch(apiUrl('/api/microsoft/signin'))
@@ -208,6 +223,12 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
           /* 930 does not fit a badge and 930 is the real number, so say "lots"
              rather than either lying or breaking the row. */
           <span className="sidebar-badge" title={actionsTitle || undefined}>{actionsCount > 99 ? '99+' : actionsCount}</span>
+        )}
+        {item.id === 'escalations' && escCount > 0 && (
+          <span className="sidebar-badge" title={escTitle || undefined}>{escCount > 99 ? '99+' : escCount}</span>
+        )}
+        {item.id === 'inbox' && inboxCount > 0 && (
+          <span className="sidebar-badge" title="Unread in Outlook and not dealt with here">{inboxCount > 99 ? '99+' : inboxCount}</span>
         )}
 
       </span>

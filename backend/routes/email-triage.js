@@ -108,6 +108,18 @@ router.get('/replies', (req, res) => {
   }
 });
 
+// GET /api/email/unseen-count — the Inbox sidebar badge: emails in triage that
+// are still unread in Outlook and not dealt with here. Top-level path, never
+// under /triage (#70). Read state is as of the last triage pass.
+router.get('/unseen-count', (req, res) => {
+  try {
+    const live = emailTriage.getStoredTriage().filter(e => !e.dismissed);
+    res.json({ ok: true, unseen: live.filter(e => !e.isRead).length, total: live.length, lastScan: require('../db/database').getState('email_triage_time') || null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/email/triage — get classified inbox
 router.get('/triage', async (req, res) => {
   try {
