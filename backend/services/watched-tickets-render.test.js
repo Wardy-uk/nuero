@@ -254,7 +254,7 @@ test('a ticket already escalated by email says so on its row, and a sentiment ro
     onWatch: noop, onRead: noop, onUnwatch: noop, onCommit: noop, onEscalate: noop, onCloseEscalate: noop, onEscalated: noop, onPosted: noop,
   }));
   assert.match(html, /esc-pill-mail/);
-  assert.match(html, /escalated by email to Chris Middleton · 28 Oct/);
+  assert.match(html, /escalated by email to (<!-- -->)?Chris Middleton · 28 Oct/);
   assert.match(html, /raised in Jira/);
   assert.equal((html.match(/esc-pill-mail/g) || []).length, 1, 'only the emailed ticket carries the pill');
 });
