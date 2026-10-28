@@ -262,6 +262,7 @@ test('Claude handoff: preview splits a fixed envelope, fixed context and an edit
   assert.match(p.json.fixed, /## Destination \(fixed\)\nNEURO task #\d+: Fix the flaky Jira sync test/);
   assert.match(p.json.fixed, /Draft \(investigation\): Flaky sync test — what we know — not included/);
   assert.ok(!p.json.fixed.includes('clock crosses midnight'), 'draft text only if Nick includes it');
+  assert.match(p.json.fixed, /read it with NEURO's MCP: GET /api/task-agent/tasks/d+/drafts/, 'an excluded draft says where an agent can read it');
   assert.match(p.json.brief, /## Objective/);
   assert.match(p.json.brief, /20 times in a row/);
   const withDrafts = await call('GET', `/api/task-agent/tasks/${T.code}/handoff/preview?includeDrafts=1`);
@@ -459,6 +460,18 @@ test('kiosk, API token, local MCP and chat clients get 403 from every new route'
       assert.equal(res.status, 403, `${JSON.stringify(h)} ${m} ${r}`);
       assert.doesNotMatch(res.raw, /flaky|rota|Week 47|prompt/i);
     }
+  }
+});
+
+test('agents can read a task's saved drafts over MCP — never a people matter's', async () => {
+  for (const h of [{ 'X-NEURO-API-TOKEN': 'tok-5678' }, { 'X-NEURO-PIN': 'pin-1234', 'X-Neuro-Machine-Client': 'mcp-local' }]) {
+    const r = await call('GET', `/api/task-agent/tasks/${T.code}/drafts`, undefined, h);
+    assert.equal(r.status, 200, JSON.stringify(h));
+    assert.ok(r.json.drafts.some((d) => /clock crosses midnight/.test(d.markdown)), 'the full draft text');
+    const hr = await call('GET', `/api/task-agent/tasks/${T.hr}/drafts`, undefined, h);
+    assert.equal(hr.status, 403);
+    assert.match(hr.json.error, /people matter/);
+    assert.doesNotMatch(hr.raw, /Heidi|end date/);
   }
 });
 

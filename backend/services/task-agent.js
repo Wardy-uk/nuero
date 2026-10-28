@@ -1108,7 +1108,7 @@ function fixedContext(run, task, { includeDrafts = false, destination = null } =
   if (!done.length && !(run.outputs || []).length) lines.push('- (nothing yet)');
   for (const c of done) lines.push(`- ${c}`);
   for (const o of run.outputs || []) {
-    lines.push(`- Draft (${o.kind}): ${o.title}${includeDrafts && !sensitive ? '' : ' — not included'}`);
+    lines.push(`- Draft (${o.kind}): ${o.title}${includeDrafts && !sensitive ? '' : (sensitive ? ' — not included' : ` — not included here; read it with NEURO's MCP: GET /api/task-agent/tasks/${task.id}/drafts`)}`);
     if (includeDrafts && !sensitive) lines.push('', '```markdown', o.markdown, '```', '');
   }
   return lines.join('\n');
@@ -1259,6 +1259,23 @@ function handoff(taskId, { brief, includeDrafts = false, openOnDesk = false } = 
   return { ok: true, handoff: h, repeated: !fresh, prompt, ...view(id) };
 }
 
+/**
+ * The drafts "Do this" saved for a task, for an agent over MCP (Nick, 27 Oct 2026:
+ * "make the draft accessible via the MCP"). Read only. A people matter's drafts stay
+ * in NEURO — the same rule the Claude handoff applies, so the two cannot disagree.
+ */
+function draftsForAgent(taskId) {
+  const id = Number(taskId);
+  const run = _load(id);
+  if (!run || run.unreadable) return { ok: false, status: 404, error: 'There is no Do this work for this task.' };
+  if (run.sensitive && run.sensitive.sensitive) return { ok: false, status: 403, error: 'This is a people matter — its drafts stay in NEURO and are not shared with agents.' };
+  const task = deps().getTask(id);
+  return {
+    ok: true, taskId: id, task: task ? task.text : null, status: run.status,
+    drafts: (run.outputs || []).map((o) => ({ id: o.id, kind: o.kind, title: o.title, markdown: o.markdown, updatedAt: o.updatedAt || o.createdAt || null })),
+  };
+}
+
 /** For Drafts: every task with agent work in progress (outputs, a handoff or a question). */
 function activeRuns() {
   let rows = [];
@@ -1278,7 +1295,7 @@ function activeRuns() {
 module.exports = {
   workspaceOf, questionOverlap, isPeopleMatter, continueWorking, MAX_READ_CHARS,
   CONTRACT, STATUS, QUESTION_KINDS, OUTPUT_KINDS, TOOLS,
-  view, start, answer, stop, activeRuns, prepareSave, handoffPreview, handoff, budgetView,
+  view, start, answer, stop, activeRuns, draftsForAgent, prepareSave, handoffPreview, handoff, budgetView,
   sensitivityOf, sourcesFrom, addressesIn, classifyError, policyEnvelope, defaultBrief, fixedContext, composeFinal, screenBrief, BRIEF_RULES, DEFAULT_MODEL,
   _internals: {
     setDeps: (o) => { _deps = o ? { ...deps(), ...o } : null; },

@@ -323,9 +323,9 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
     return () => clearTimeout(timer.current);
   }, [run, load]);
 
-  const loadPreview = useCallback(async (includeDrafts = false) => {
+  const loadPreview = useCallback(async (includeDrafts = true) => {
     setClaude((c) => ({ ...c, busy: true, error: null }));
-    const r = await call(`/api/task-agent/tasks/${enc(taskId)}/handoff/preview${includeDrafts ? '?includeDrafts=1' : ''}`);
+    const r = await call(`/api/task-agent/tasks/${enc(taskId)}/handoff/preview?includeDrafts=${includeDrafts ? 1 : 0}`);
     if (r.status === 200 && r.body && r.body.ok) setClaude((c) => ({ ...c, preview: r.body, busy: false }));
     else setClaude((c) => ({ ...c, busy: false, error: (r.body && r.body.error) || `Could not prepare the handoff (${r.status}).` }));
   }, [call, taskId]);
@@ -380,7 +380,7 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
       renderSave={renderSave ? (recordId) => renderSave(recordId, () => { setSaving(null); load(); }) : null}
       onCopy={(t) => copyText(t)}
       claude={claudeOpen ? { ...claude, onIncludeDrafts: (v) => loadPreview(v), onSend: sendHandoff } : null}
-      onClaudeOpen={() => { setClaudeOpen(true); loadPreview(false); }}
+      onClaudeOpen={() => { setClaudeOpen(true); loadPreview(true); }}
       onClaudeClose={() => { setClaudeOpen(false); setClaude({ preview: null, busy: false, error: null, result: null }); }}
     />
   );

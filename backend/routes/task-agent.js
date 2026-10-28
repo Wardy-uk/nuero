@@ -3,7 +3,9 @@
 // "Do this" — NEURO progressing one task as far as it safely can (23 Oct 2026).
 // See services/task-agent.js and docs/task-agent.md.
 //
-// ⚠ EVERY ROUTE HERE, READS INCLUDED, IS NICK'S OWN SURFACE ONLY. The kiosk, the
+// ⚠ EVERY ROUTE HERE BUT ONE, READS INCLUDED, IS NICK'S OWN SURFACE ONLY. The one
+// exception is GET /tasks/:taskId/drafts (Nick, 27 Oct 2026): the saved drafts are
+// readable by agents over MCP, except a people matter's, which stay here. The kiosk, the
 // API token (MCP, n8n), any declared machine client and chat get neither the
 // control nor the working output: the output can quote a restricted note's
 // excerpt, which only Nick may see. Identity is task-context.viewerOf(req) — it
@@ -36,6 +38,13 @@ router.get('/tasks/:taskId', (req, res) => {
   try {
     if (!owner(req, res)) return;
     send(res, svc().view(req.params.taskId));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// GET /api/task-agent/tasks/:taskId/drafts — the drafts "Do this" saved for a task (id, kind, title, full markdown), so Claude desktop or another agent can read the working draft over MCP. Read only. A people matter's drafts are refused (403) and stay in NEURO. Keywords: task agent drafts, do this draft, saved draft, working draft.
+router.get('/tasks/:taskId/drafts', (req, res) => {
+  try {
+    send(res, svc().draftsForAgent(req.params.taskId));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -143,7 +152,7 @@ router.post('/tasks/:taskId/outputs/:outputId/save', async (req, res) => {
 router.get('/tasks/:taskId/handoff/preview', (req, res) => {
   try {
     if (!owner(req, res)) return;
-    send(res, svc().handoffPreview(req.params.taskId, { includeDrafts: req.query.includeDrafts === '1' }));
+    send(res, svc().handoffPreview(req.params.taskId, { includeDrafts: req.query.includeDrafts !== '0' }));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

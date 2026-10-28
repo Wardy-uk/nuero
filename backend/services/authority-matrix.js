@@ -153,6 +153,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/task-context/scan', 'internal.state', { machine: 'refuse' }),
   R('GET', '/api/task-agent/tasks/:taskId', 'task-agent.run'),
   R('GET', '/api/task-agent/tasks/:taskId/handoff/preview', 'task-agent.run'),
+  R('GET', '/api/task-agent/tasks/:taskId/drafts', 'read'),
   R('POST', '/api/task-agent/tasks/:taskId/handoff', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/outputs/:outputId/save', 'task-agent.run'),
   // Do this's key, on/off and daily limits are Nick's, in Settings — never a machine's.
