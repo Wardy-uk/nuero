@@ -275,11 +275,36 @@ function Get-CanOpen {
   return $ids | Sort-Object
 }
 
+# WARNING  Windows' focus-stealing protection keeps a background process (this
+#   agent) from bringing a window forward: an already-open Claude navigated
+#   to New Chat but stayed behind Teams (measured 28 Oct 2026). A synthetic
+#   Alt press immediately before SetForegroundWindow lifts that lock; it is
+#   the documented workaround and touches no other window.
+if (-not ('Neuro.Focus' -as [type])) {
+  Add-Type -Namespace Neuro -Name Focus -MemberDefinition @'
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+'@
+}
+
+function Set-ClaudeForeground {
+  $p = Get-Process -Name $ClaudeProcess -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+  if (-not $p) { return }
+  $h = $p.MainWindowHandle
+  if ([Neuro.Focus]::IsIconic($h)) { [void][Neuro.Focus]::ShowWindow($h, 9) }
+  [Neuro.Focus]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+  [Neuro.Focus]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+  [void][Neuro.Focus]::SetForegroundWindow($h)
+}
+
 function Wait-ClaudeForeground([int]$seconds) {
   $until = (Get-Date).AddSeconds($seconds)
   while ((Get-Date) -lt $until) {
     if ((Get-ForegroundProcessName) -eq $ClaudeProcess) { return $true }
-    Start-Sleep -Milliseconds 250
+    Set-ClaudeForeground
+    Start-Sleep -Milliseconds 500
   }
   return $false
 }
@@ -293,12 +318,9 @@ function Invoke-ClaudePaste($id) {
   try { Set-Clipboard -Value ([string]$r.text) } catch { Report-Intent $id $false "could not use the clipboard: $($_.Exception.Message)"; return }
   if (Test-SessionLocked) { Report-Intent $id $false 'the laptop is locked - prompt left on the clipboard'; return }
   try { Start-Process -FilePath $ClaudeNewChat -ErrorAction Stop } catch { Report-Intent $id $false "could not open Claude: $($_.Exception.Message)"; return }
-  if (-not (Wait-ClaudeForeground 25)) {
-    # One nudge: bring the Claude window forward ourselves.
-    $p = Get-Process -Name $ClaudeProcess -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-    if ($p) { try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id) } catch { } }
-    if (-not (Wait-ClaudeForeground 3)) { Report-Intent $id $false 'Claude did not come to the front - prompt left on the clipboard, nothing typed'; return }
-  }
+  # Give the New Chat link a moment to reach Claude before pulling it forward.
+  Start-Sleep -Seconds 2
+  if (-not (Wait-ClaudeForeground 25)) { Report-Intent $id $false 'Claude did not come to the front - prompt left on the clipboard, nothing typed'; return }
   # Let the new chat finish loading before typing: the window can be in front
   # while it is still on the previous conversation.
   Start-Sleep -Seconds 3
