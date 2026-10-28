@@ -47,7 +47,8 @@ test('first read pushes the backlog as ONE summary; a later arrival is pushed on
 test('the tab absorbing first does not swallow the push; a ticket already opened is not pushed', async () => {
   const pushes = [];
   const push = async (title, body, data) => { pushes.push({ title, body, data }); };
-  sent.absorb([{ key: 'NT-5', summary: 'Seen in the tab first' }, { key: 'NT-6', summary: 'Opened already' }]);
+  // The tab reads the whole list, as the route does: the earlier tickets plus two new ones.
+  sent.absorb([{ key: 'NT-1' }, { key: 'NT-2' }, { key: 'NT-3' }, { key: 'NT-5', summary: 'Seen in the tab first' }, { key: 'NT-6', summary: 'Opened already' }]);
   sent.markSeen(['NT-6']);
   novaList = [{ key: 'NT-1' }, { key: 'NT-2' }, { key: 'NT-3' }, { key: 'NT-5', summary: 'Seen in the tab first' }, { key: 'NT-6' }];
   await sent.sync({ push });
