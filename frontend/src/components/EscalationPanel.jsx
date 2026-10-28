@@ -142,6 +142,26 @@ export function sentimentItems(sentiment = []) {
   }));
 }
 
+/**
+ * What has already been done to each ticket, so a row says so (28 Oct 2026):
+ * emails sent with "Escalate by email…" (newest first) and, for rows from the
+ * sentiment/rejection sections, whether it is also raised in Jira. PURE.
+ */
+export function withHistory(list, emailed = null, raisedKeys = new Set()) {
+  return (list || []).map((it) => ({
+    ...it,
+    mail: (emailed && emailed[it.key]) || null,
+    raisedInJira: !it.esc && raisedKeys.has(it.key),
+  }));
+}
+
+/** "Chris · 28 Oct 12:41" for the newest email on a ticket. PURE. */
+export function mailLabel(m) {
+  if (!m) return '';
+  const who = (m.to || []).join(', ') || 'someone';
+  return `${who} · ${dayMonth(m.at)} ${clockLabel(m.at).replace(/ today$/, '')}`;
+}
+
 export const FILTERS = [
   ['all', 'All', () => true],
   ['needs', 'Needs you', (t) => t.needs.length > 0],
@@ -585,7 +605,7 @@ export function parseRecipient(text, people = []) {
   return byName.length === 1 ? { name: byName[0].name, email: byName[0].email } : null;
 }
 
-function EmailEscalation({ item, onClose }) {
+function EmailEscalation({ item, onClose, onSent }) {
   const draft = escalationEmailDraft(item);
   const recents = recentTo();
   const [people, setPeople] = useState([]);
@@ -659,7 +679,7 @@ function EmailEscalation({ item, onClose }) {
     if (!ok) { setBusy(false); setError(data.error || 'Not prepared — nothing was sent.'); return; }
     const r = await executeDirect(data.action);
     setBusy(false);
-    if (r.ok) { rememberTo(all.map((x) => x.email)); setRecipients(all); setTyped(''); }
+    if (r.ok) { rememberTo(all.map((x) => x.email)); setRecipients(all); setTyped(''); onSent?.(); }
     setOutcome(directOutcome(r));
   };
 
@@ -738,7 +758,7 @@ function rowTail(item) {
  * updates promised, and the actions. A reply NEURO judged a thank-you is shown
  * muted, so "it went quiet" and "it was filtered" stay different.
  */
-export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated, onPosted }) {
+export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated, onPosted, onEmailed }) {
   const { esc, watch } = item;
   const [replying, setReplying] = useState(false);
   const [emailing, setEmailing] = useState(false);
@@ -770,6 +790,13 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
           {route && <span className="esc-pill esc-pill-esc" title={route.title}>{route.label.replace('escalated · ', '')}</span>}
           {item.sent && <span className="esc-pill esc-pill-alert" title="NOVA's current sentiment score for the customer, -1 to +1">angry {item.sent.score}</span>}
           {watch && !item.listening && <span className="esc-pill esc-pill-watch" title="You get a push when the customer replies">watching</span>}
+          {item.raisedInJira && <span className="esc-pill esc-pill-esc" title="Also raised in Jira (it is in the escalated list)">raised in Jira</span>}
+          {item.mail?.length > 0 && (
+            <span className="esc-pill esc-pill-mail" title={item.mail.map((m) => `Emailed ${mailLabel(m)}${m.status === 'verified' ? '' : ` (${m.status})`}`).join('
+')}>
+              emailed{item.mail.length > 1 ? ` ×${item.mail.length}` : ''}
+            </span>
+          )}
         </span>
         <span className="esc-trow-status">{item.status || ''}</span>
         <span className="esc-trow-tail">{tail && <span className={tail.cls}>{tail.text}</span>}</span>
@@ -790,6 +817,11 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
             )}
             {route && <span title={route.title}>{route.label}</span>}
             {item.listening && <span>resolved · listening until {dayMonth(watch.listeningUntil)}</span>}
+            {(item.mail || []).map((m, i) => (
+              <span key={`m${i}`} className="esc-row-mailed" title={m.status === 'verified' ? 'Confirmed in Sent Items' : `Status: ${m.status}`}>
+                escalated by email to {mailLabel(m)}{m.status === 'verified' ? '' : ` (${m.status})`}
+              </span>
+            ))}
             {watch && !watch.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
             {watch?.lastError && <span className="esc-row-touched-cold" title={watch.lastError}>couldn’t check</span>}
           </div>
@@ -817,7 +849,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
 
           {escalating && <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />}
           {replying && !escalating && <ReplyComposer ticketKey={item.key} onClose={() => setReplying(false)} onPosted={onPosted} />}
-          {emailing && !escalating && !replying && <EmailEscalation item={item} onClose={() => setEmailing(false)} />}
+          {emailing && !escalating && !replying && <EmailEscalation item={item} onClose={() => setEmailing(false)} onSent={onEmailed} />}
           {!escalating && !replying && !emailing && (
               <div className="esc-ticket-actions">
                 <button type="button" className="esc-mini esc-mini-primary" onClick={() => setReplying(true)}>Reply</button>
@@ -896,6 +928,7 @@ export function TicketsView({
   watched, watchedError, note, busy, reasons = [],
   rejections = [], rejectionsError = null, onSeenRejection,
   sentiment = [], sentimentError = null, onSeenSentiment,
+  emailed = null, onEmailed,
   opened, onOpen, onCloseOpened,
   highlightKey, escalatingKey, onEscalate, onCloseEscalate, onEscalated,
   onWatch, onRead, onUnwatch, onCommit, onRefresh, onPosted,
@@ -908,11 +941,12 @@ export function TicketsView({
   // A ticket opened from the key box opens up when it is found in the list.
   useEffect(() => { if (highlightKey) setExpanded((prev) => new Set(prev).add(highlightKey)); }, [highlightKey]);
   const [key, setKey] = useState('');
-  const items = mergeTickets(escalations || [], watched);
+  const raisedKeys = new Set((escalations || []).map((e) => e.key));
+  const items = withHistory(mergeTickets(escalations || [], watched), emailed, raisedKeys);
   const counts = Object.fromEntries(FILTERS.map(([id, , test]) => [id, items.filter(test).length]));
-  const rejItems = rejectionItems(rejections || []);
+  const rejItems = withHistory(rejectionItems(rejections || []), emailed, raisedKeys);
   const rejUnseen = rejItems.filter((r) => r.needs.length).length;
-  const sentItems = sentimentItems(sentiment || []);
+  const sentItems = withHistory(sentimentItems(sentiment || []), emailed, raisedKeys);
   const sentUnseen = sentItems.filter((s) => s.needs.length).length;
   const ownSection = filter === 'rejected' || filter === 'sentiment';
   const shown = ownSection ? [] : items.filter(FILTERS.find(([id]) => id === filter)[2]);
@@ -1003,6 +1037,7 @@ export function TicketsView({
                 onCloseEscalate={onCloseEscalate}
                 onEscalated={onEscalated}
                 onPosted={onPosted}
+                onEmailed={onEmailed}
               />
             ))}
           </section>
@@ -1032,6 +1067,7 @@ export function TicketsView({
                 onCloseEscalate={onCloseEscalate}
                 onEscalated={onEscalated}
                 onPosted={onPosted}
+                onEmailed={onEmailed}
               />
             ))}
           </section>
@@ -1072,6 +1108,7 @@ export function TicketsView({
             onCloseEscalate={onCloseEscalate}
             onEscalated={onEscalated}
             onPosted={onPosted}
+            onEmailed={onEmailed}
           />
         ))}
       </div>
@@ -1089,6 +1126,7 @@ export default function EscalationPanel() {
   const [rejections, setRejections] = useState(null);
   const [rejectionsError, setRejectionsError] = useState(null);
   const [sentiment, setSentiment] = useState(null);
+  const [emailed, setEmailed] = useState(null);
   const [sentimentError, setSentimentError] = useState(null);
   const [watchedError, setWatchedError] = useState(null);
   const [note, setNote] = useState(null);
@@ -1116,6 +1154,7 @@ export default function EscalationPanel() {
       setRejectionsError(data.rejectionsError || null);
       setSentiment(data.sentiment || null);
       setSentimentError(data.sentimentError || null);
+      setEmailed(data.emailed || null);
       setEscalationsWarning(data.warning || null);
       setEscalationsError(null);
     } catch (err) {
@@ -1195,6 +1234,8 @@ export default function EscalationPanel() {
       }}
       sentiment={sentiment}
       sentimentError={sentimentError}
+      emailed={emailed}
+      onEmailed={() => loadEscalations()}
       onSeenSentiment={(k) => {
         setSentiment((prev) => (prev || []).map((s) => (s.key === k ? { ...s, seen: true } : s)));
         fetch(apiUrl('/api/escalation/sentiment/seen'), {

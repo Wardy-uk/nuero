@@ -239,3 +239,22 @@ test('the email draft is Nick’s wording and asks for an open linked dev item b
   assert.equal(mod.devAsk([{ key: 'TPJ-1' }, { key: 'TPJ-2' }, { key: 'TPJ-3', done: true }]), 'TPJ-1 and TPJ-2');
   assert.equal(mod.devAsk([]), null);
 });
+
+test('a ticket already escalated by email says so on its row, and a sentiment row says it is raised in Jira', () => {
+  const html = renderToString(React.createElement(mod.TicketsView, {
+    escalations: [{ key: 'NT-9', summary: 'Raised one', created: new Date().toISOString(), updated: new Date().toISOString(), viaTier: true }],
+    watched: { active: [], listening: [] },
+    sentiment: [
+      { key: 'NT-31647', summary: 'Angry and emailed', score: -0.82, seen: true },
+      { key: 'NT-9', summary: 'Raised one', score: -0.7, seen: true },
+    ],
+    emailed: { 'NT-31647': [{ at: '2026-10-28T12:41:00Z', to: ['Chris Middleton'], status: 'verified' }] },
+    rejections: [], reasons: [], busy: false,
+    initialExpanded: ['sent-NT-31647'],
+    onWatch: noop, onRead: noop, onUnwatch: noop, onCommit: noop, onEscalate: noop, onCloseEscalate: noop, onEscalated: noop, onPosted: noop,
+  }));
+  assert.match(html, /esc-pill-mail/);
+  assert.match(html, /escalated by email to Chris Middleton · 28 Oct/);
+  assert.match(html, /raised in Jira/);
+  assert.equal((html.match(/esc-pill-mail/g) || []).length, 1, 'only the emailed ticket carries the pill');
+});

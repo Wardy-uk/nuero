@@ -22,3 +22,23 @@ test('linked issues in another project are dev items; the ticket’s own project
   ]);
   assert.deepEqual(devItemsOf({ key: 'NT-1' }), []);
 });
+
+// Escalation emails already sent, by ticket — so a row can say so (28 Oct 2026).
+const { emailedFrom } = require('./escalation');
+
+test('only sent (or sending) escalation emails count, grouped by ticket, newest first', () => {
+  const row = (ticket, status, at, to) => ({
+    status, created_at: at, approved_at: at, executed_at: status === 'verified' ? at : null,
+    evidence_json: JSON.stringify(ticket ? { origin: 'composer', ticket } : { origin: 'composer' }),
+    draft_json: JSON.stringify({ to }),
+  });
+  const out = emailedFrom([
+    row('NT-31647', 'verified', '2026-10-28T12:41:00Z', [{ name: 'Chris Middleton', email: 'chris@x' }]),
+    row('NT-31647', 'verified', '2026-10-29T09:00:00Z', [{ name: null, email: 'liam@x' }]),
+    row('NT-1', 'prepared', '2026-10-28T10:00:00Z', [{ email: 'a@x' }]),
+    row('NT-2', 'rejected', '2026-10-28T10:00:00Z', [{ email: 'a@x' }]),
+    row(null, 'verified', '2026-10-28T10:00:00Z', [{ email: 'a@x' }]),
+  ]);
+  assert.deepEqual(Object.keys(out), ['NT-31647']);
+  assert.deepEqual(out['NT-31647'].map((m) => m.to[0]), ['liam@x', 'Chris Middleton']);
+});

@@ -679,3 +679,5 @@
 .esc-ticket-list > .esc-section .esc-section-title { padding: 10px 16px 6px; }
 .esc-ticket-list > .esc-section > .esc-empty,
 .esc-ticket-list > .esc-section > .esc-error { margin: 0 16px 10px; }
+.esc-pill-mail { color: var(--success, #3fb950); border-color: color-mix(in srgb, var(--success, #3fb950) 35%, transparent); }
+.esc-row-mailed { color: var(--success, #3fb950); }

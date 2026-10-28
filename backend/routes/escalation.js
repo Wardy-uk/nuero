@@ -83,6 +83,39 @@ function devItemsOf(t) {
 }
 router.devItemsOf = devItemsOf;
 
+// Statuses that mean the email went (or is on its way and may have gone).
+// Prepared-but-not-sent, rejected, superseded and failed are left out.
+const EMAILED_STATUSES = ['approved', 'executing', 'executed', 'execution_uncertain', 'verified'];
+
+/** Rows → { KEY: [{at, to, status}] }, newest first. PURE. */
+function emailedFrom(rows) {
+  const out = {};
+  for (const r of rows || []) {
+    let ev = {}; let draft = {};
+    try { ev = JSON.parse(r.evidence_json || '{}'); } catch { /* unreadable row skipped */ }
+    try { draft = JSON.parse(r.draft_json || '{}'); } catch { /* recipients unknown */ }
+    const key = String(ev.ticket || '').toUpperCase();
+    if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key) || !EMAILED_STATUSES.includes(r.status)) continue;
+    const to = (draft.to || []).map((x) => x.name || x.email).filter(Boolean);
+    (out[key] = out[key] || []).push({ at: r.executed_at || r.approved_at || r.created_at, to, status: r.status });
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return out;
+}
+
+/** Every escalation email NEURO has sent, by ticket. Last 180 days. */
+function emailedTickets() {
+  const since = new Date(Date.now() - 180 * 86400000).toISOString();
+  const rows = require('../db/database').getDb().prepare(
+    `SELECT status, created_at, approved_at, executed_at, evidence_json, draft_json
+       FROM prepared_actions
+      WHERE action_type = 'compose_email' AND created_at >= ?
+        AND json_extract(evidence_json, '$.ticket') IS NOT NULL`
+  ).all(since);
+  return emailedFrom(rows);
+}
+router.emailedFrom = emailedFrom;
+
 /**
  * GET /api/escalation/active — what is escalated right now.
  *
@@ -205,9 +238,15 @@ router.get('/active', async (req, res) => {
     sentimentError = 'NOVA is not configured, so angry tickets cannot be read';
   }
 
+  let emailed = null;
+  try { emailed = emailedTickets(); } catch (e) { console.warn('[Escalation] emailed read failed:', e.message); }
+
   res.json({
     escalations: decorated,
     awaitingReply,
+    // Tickets escalated by email ("Escalate by email…"), so a row can say so.
+    // null = could not read, which is not the same as none sent.
+    emailed,
     total: decorated.length,
     rejections,
     rejectionsError,
