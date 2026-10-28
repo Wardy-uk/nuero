@@ -304,3 +304,8 @@ test('EmailEscalation reads the untouched draft before moving it on', () => {
   assert.ok(read > 0 && move > read, 'untouched is captured before autoBody moves');
   assert.match(block, /setBody\(\(cur\) => \(cur === untouched \? next : cur\)\)/);
 });
+
+test('"All" counts every ticket the page shows, sentiment and rejections included, once each', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../frontend/src/components/EscalationPanel.jsx'), 'utf8');
+  assert.match(src, /counts\.all = new Set\(\[\.\.\.items, \.\.\.rejItems, \.\.\.sentItems\]\.map\(\(t\) => t\.key\)\)\.size/);
+});

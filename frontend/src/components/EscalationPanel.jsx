@@ -1092,6 +1092,10 @@ export function TicketsView({
   const rejUnseen = rejItems.filter((r) => r.needs.length).length;
   const sentItems = withHistory(sentimentItems(sentiment || []), emailed, raisedKeys);
   const sentUnseen = sentItems.filter((s) => s.needs.length).length;
+  // "All" shows the sentiment and rejection sections too, so it counts them —
+  // each ticket once, however many sections it sits in (28 Oct 2026: All read 3
+  // over a page of 11).
+  counts.all = new Set([...items, ...rejItems, ...sentItems].map((t) => t.key)).size;
   const ownSection = filter === 'rejected' || filter === 'sentiment';
   const shown = ownSection ? [] : items.filter(FILTERS.find(([id]) => id === filter)[2]);
   const showRejections = filter === 'all' || filter === 'rejected';
