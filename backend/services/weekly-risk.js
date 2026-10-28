@@ -616,6 +616,14 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     jiraEscalations = require('./jira').getUnseenEscalations?.() ?? null;
   } catch { jiraEscalations = null; }
 
+  // How many tickets Nick escalated in the report week — raised in Jira, and
+  // by email from the Escalations screen (28 Oct 2026). Never allowed to fail
+  // the report; an unread half is null, not 0.
+  let myEscalations = null;
+  try {
+    myEscalations = await require('./my-escalations').weekCounts({ from: reportWeek, to: addDays(reportWeek, 6) });
+  } catch (e) { myEscalations = { error: e.message }; }
+
   return {
     week,
     generatedAt: new Date().toISOString(),
@@ -630,6 +638,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     flow: flow.data,
     csat: { now: csatNow.data, prior: csatPrior.data },
     jiraEscalations,
+    myEscalations,
     tasks,
     management: managementLog.status(),
     // Competency 1, measured rather than typed. Until this existed the overtime
@@ -1397,6 +1406,7 @@ function assess(snap) {
     management: mgmt ? { ...mgmt, loggedInWeek: loggedInWeek(mgmt.rows, reportWeek) } : null,
     tasks,
     jiraEscalations: snap.jiraEscalations,
+    myEscalations: snap.myEscalations || null,
     sources: snap.sources,
     manual: snap.manual,
     fixes: reportWeek
@@ -1834,6 +1844,10 @@ function render(a) {
   lines.push('');
   lines.push(flowSection(a.flow, { showPingPong: manual.showPingPong === true }));
   lines.push('');
+  if (a.myEscalations && 'total' in a.myEscalations) {
+    lines.push(`${require('./my-escalations').line(a.myEscalations)} _(w/c ${formatUk(a.myEscalations.from)})_`);
+    lines.push('');
+  }
 
   lines.push('## 4. Overtime');
   lines.push('');

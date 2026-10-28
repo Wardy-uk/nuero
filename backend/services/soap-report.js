@@ -523,6 +523,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
     L.push('| | This week | Last week |', '|---|---|---|');
     for (const r of report.volumes) L.push(`| ${r.label} | ${r.now === null ? 'no data' : r.now}${!r.flow && r.asOf ? ` (at ${shortDate(r.asOf)})` : ''} | ${r.was === null ? 'no data' : r.was} |`);
   } else L.push(na('sla', 'NOVA did not answer'));
+  if (report.myEscalations && 'total' in report.myEscalations) L.push('', require('./my-escalations').line(report.myEscalations));
   L.push('');
 
   L.cur = 'csat';
@@ -737,12 +738,17 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
   const slm = await use('slm', () => bw.slmPoints(process.env.OBSIDIAN_VAULT_PATH || null, { from: week.from, to: week.upTo }))();
   if (slm && !slm.known) { gaps.push({ source: 'the Friday Support Leadership Meeting', why: slm.why, verdict: false }); gapsBySection.slm = slm.why; }
 
+  // Nick's own escalations this week (raised in Jira, by email). A count, not
+  // a verdict: it never enters the hash, and an unread half says so.
+  const myEscalations = await pull('myEscalations', 'volumes', 'your escalations',
+    () => require('./my-escalations').weekCounts({ from: week.from, to: week.upTo }));
+
   const v = verdicts({ assessment, supportSla, leaderboard, plan });
   return {
     kind, from: week.from, to: week.to, upTo: week.upTo, generatedAt: new Date(now).toISOString(),
     verdicts: v, verdictHash: verdictHash(v), verdictComplete: !gaps.some((g) => g.verdict),
     slaDaily: daily, supportSla, leaderboard, plan, customers, gaps, gapsBySection,
-    perQueue, ageing: assessment ? assessment.ageing || [] : null, volumes,
+    perQueue, ageing: assessment ? assessment.ageing || [] : null, volumes, myEscalations,
     csat: assessment ? assessment.csatRows || [] : null, sentiment, winning,
     findings, findingsOpen, leading,
     slm: slm && slm.known ? { highlights: slm.highlights, lowlights: slm.lowlights, blockers: slm.blockers, note: slm.note && slm.note.name || null, date: slm.note && slm.note.date || null } : null,
