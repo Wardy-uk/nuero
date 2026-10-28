@@ -3,7 +3,7 @@
 // v8 — purges entries poisoned by the SPA fallback serving index.html (200) for
 // missing hashed chunks. Those were cached under the chunk's own URL, so the bad
 // response survived the server-side fix until the cache was dropped.
-const CACHE_VERSION = 'neuro-v8';
+const CACHE_VERSION = 'neuro-v9';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 
 // App shell files to precache on install
