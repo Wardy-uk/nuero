@@ -57,9 +57,23 @@ function adfText(node, depth = 0) {
   return ['paragraph', 'heading', 'listItem', 'codeBlock', 'blockquote'].includes(node.type) ? `${inner}\n` : inner;
 }
 
-/** A public comment written by a JSM customer account. Nothing else counts. */
+// Our own mail domains. A support mailbox that emails a ticket (the ServiceHub
+// resolution notice from tpj.support@nurtur.tech, 28 Oct 2026) gets a JSM
+// CUSTOMER account, so accountType alone called it the customer replying.
+const OWN_DOMAINS = String(process.env.WATCHED_OWN_DOMAINS || 'nurtur.tech')
+  .split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
+
+function isOwnAddress(author) {
+  for (const v of [author?.emailAddress, author?.displayName]) {
+    const m = String(v || '').trim().toLowerCase().match(/@([a-z0-9.-]+)$/);
+    if (m && OWN_DOMAINS.some((d) => m[1] === d || m[1].endsWith(`.${d}`))) return true;
+  }
+  return false;
+}
+
+/** A public comment written by a JSM customer account that is not one of ours. Nothing else counts. */
 function isCustomerReply(c) {
-  return !!c && c.author?.accountType === 'customer' && c.jsdPublic !== false;
+  return !!c && c.author?.accountType === 'customer' && c.jsdPublic !== false && !isOwnAddress(c.author);
 }
 
 const QUOTE_START = [

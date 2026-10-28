@@ -60,6 +60,10 @@ test('only a public comment from a customer account counts', () => {
   assert.equal(wt.isCustomerReply({ author: CUSTOMER, jsdPublic: true }), true);
   assert.equal(wt.isCustomerReply({ author: CUSTOMER, jsdPublic: false }), false);
   assert.equal(wt.isCustomerReply({ author: AGENT, jsdPublic: true }), false);
+  // Our own support mailbox emailing the ticket is a JSM customer account, not the customer (NT-35291, 28 Oct 2026).
+  assert.equal(wt.isCustomerReply({ author: { accountType: 'customer', displayName: 'tpj.support@nurtur.tech' }, jsdPublic: true }), false);
+  assert.equal(wt.isCustomerReply({ author: { accountType: 'customer', emailAddress: 'x@mail.nurtur.tech', displayName: 'Support' }, jsdPublic: true }), false);
+  assert.equal(wt.isCustomerReply({ author: { accountType: 'customer', displayName: 'Anthony@cliveanthony.co.uk' }, jsdPublic: true }), true);
   assert.equal(wt.isCustomerReply({ author: BOT, jsdPublic: true }), false);
 });
 

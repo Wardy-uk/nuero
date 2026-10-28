@@ -97,7 +97,8 @@ test('one list on screen: filter counts, needs-you pills, escalation route, the 
   assert.match(html, /overdue by (20|19)m/);
   assert.match(html, /esc-commitment-missed/);
   assert.match(html, /\+ Add update commitment/);
-  assert.match(html, /Escalate again/);
+  assert.match(html, /Raise in Jira again/);
+  assert.match(html, /Escalate by email…/);
   assert.equal((html.match(/id="esc-ticket-/g) || []).length, 3);
 });
 
@@ -207,4 +208,20 @@ test('an unreadable angry list says so; the sentiment filter shows only that sec
   const only = render({ escalations: [esc({ key: 'NT-1' })], watched: { active: [], listening: [] }, sentiment: [angry()], initialFilter: 'sentiment' });
   assert.match(only, /NT-40/);
   assert.doesNotMatch(only, /NT-1</);
+});
+
+test('with no Tier 2 rejections, the main list still gets its own heading under the sentiment section', () => {
+  const html = renderToString(React.createElement(mod.TicketsView, {
+    escalations: [{ key: 'NT-1', summary: 'Escalated one', created: new Date().toISOString(), updated: new Date().toISOString(), viaTier: true }],
+    watched: { active: [], listening: [] },
+    sentiment: [{ key: 'NT-2', summary: 'Angry one', score: -0.8, seen: false }],
+    rejections: [],
+    reasons: [], busy: false, loading: false,
+    onWatch: noop, onRead: noop, onUnwatch: noop, onCommit: noop, onEscalate: noop, onCloseEscalate: noop, onEscalated: noop, onPosted: noop,
+  }));
+  const sent = html.indexOf('Sentiment escalations — customer is angry');
+  const main = html.indexOf('Escalated and watched');
+  assert.ok(sent >= 0, 'sentiment section renders');
+  assert.ok(main > sent, 'the main list has its own heading after the sentiment section');
+  assert.ok(html.indexOf('NT-1') > main, 'the escalated ticket sits under its own heading');
 });

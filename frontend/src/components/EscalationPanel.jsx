@@ -317,7 +317,7 @@ function EscalatePanel({ ticketKey, reasons, onEscalated, onClose, showDetail = 
   return (
     <div className="esc-escalate">
       <div className="esc-escalate-head">
-        <span className="esc-escalate-title">Escalate {ticketKey}</span>
+        <span className="esc-escalate-title">Raise {ticketKey} in Jira</span>
         <span className="esc-escalate-sub">Raises priority, tightens the due date and leaves an internal note, through NOVA. Nothing changes until you confirm.</span>
       </div>
       {error && <div className="esc-error">{error}</div>}
@@ -525,8 +525,8 @@ function rememberTo(addresses) {
 
 /** The email NEURO starts from — every line is a fact off the ticket card, editable before sending. */
 export function escalationEmailDraft(item) {
-  const esc = item.esc || {};
-  const raised = ageDays(esc.created);
+  const esc = item.esc || item.rej || item.sent || {};
+  const raised = item.esc ? ageDays(esc.created) : null;
   const lines = [
     'Hi,',
     '',
@@ -539,6 +539,8 @@ export function escalationEmailDraft(item) {
     `Assignee: ${esc.assignee || 'Unassigned'}`,
     raised != null && `Escalated: ${agoLabel(raised)}`,
     !!esc.urgencyReason && `Reason: ${esc.urgencyReason}`,
+    !!item.sent && `Customer sentiment: Angry (NOVA score ${item.sent.score})${item.sent.why ? ` — ${item.sent.why}` : ''}`,
+    !!item.rej && 'Rejected by Tier 2 — the rejection is awaiting approval',
     '',
     '[What you need from them, and by when]',
     '',
@@ -790,8 +792,10 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
                 <button type="button" className="esc-mini esc-mini-primary" onClick={() => setReplying(true)}>Reply</button>
                 {!watch && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(item.key)}>Watch</button>}
                 {watch?.unread > 0 && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onRead(item.key)}>Mark read</button>}
-                <button type="button" className="esc-mini" onClick={() => onEscalate(item.key)}>{esc ? 'Escalate again' : 'Escalate'}</button>
-                {esc && <button type="button" className="esc-mini" onClick={() => setEmailing(true)}>Escalate to…</button>}
+                <button type="button" className="esc-mini" onClick={() => setEmailing(true)}
+                  title="Email this ticket to someone, from your work address">Escalate by email…</button>
+                <button type="button" className="esc-mini" onClick={() => onEscalate(item.key)}
+                  title="Raise the priority in Jira through NOVA and track it here">{esc ? 'Raise in Jira again' : 'Raise priority in Jira'}</button>
                 {watch && <button type="button" className="esc-mini" disabled={busy} onClick={() => onUnwatch(item.key)}>Unwatch</button>}
               </div>
           )}
@@ -883,6 +887,8 @@ export function TicketsView({
   const shown = ownSection ? [] : items.filter(FILTERS.find(([id]) => id === filter)[2]);
   const showRejections = filter === 'all' || filter === 'rejected';
   const showSentiment = filter === 'all' || filter === 'sentiment';
+  const sentSection = showSentiment && (sentItems.length > 0 || !!sentimentError || filter === 'sentiment');
+  const rejSection = showRejections && (rejItems.length > 0 || !!rejectionsError || filter === 'rejected');
   const loading = escalationsLoading && !escalations;
   const open = (e) => {
     e.preventDefault();
@@ -942,7 +948,7 @@ export function TicketsView({
           <OpenedTicket ticketKey={opened} busy={busy} reasons={reasons} onWatch={onWatch} onClose={onCloseOpened} onEscalated={onEscalated} onPosted={onPosted} />
         )}
 
-        {showSentiment && (sentItems.length > 0 || sentimentError || filter === 'sentiment') && (
+        {sentSection && (
           <section className="esc-section">
             <h3 className="esc-section-title">
               Sentiment escalations — customer is angry
@@ -971,7 +977,7 @@ export function TicketsView({
           </section>
         )}
 
-        {showRejections && (rejItems.length > 0 || rejectionsError || filter === 'rejected') && (
+        {rejSection && (
           <section className="esc-section">
             <h3 className="esc-section-title">
               Rejected by Tier 2 — awaiting approval
@@ -997,8 +1003,11 @@ export function TicketsView({
                 onPosted={onPosted}
               />
             ))}
-            {filter === 'all' && shown.length > 0 && <h3 className="esc-section-title">Escalated and watched</h3>}
           </section>
+        )}
+
+        {filter === 'all' && shown.length > 0 && (sentSection || rejSection) && (
+          <h3 className="esc-section-title">Escalated and watched</h3>
         )}
 
         {loading && <p className="esc-empty">Loading…</p>}
