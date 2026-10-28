@@ -262,7 +262,7 @@ test('Claude handoff: preview splits a fixed envelope, fixed context and an edit
   assert.match(p.json.fixed, /## Destination \(fixed\)\nNEURO task #\d+: Fix the flaky Jira sync test/);
   assert.match(p.json.fixed, /Draft \(investigation\): Flaky sync test — what we know — not included/);
   assert.ok(!p.json.fixed.includes('clock crosses midnight'), 'draft text only if Nick includes it');
-  assert.match(p.json.fixed, /read it with NEURO's MCP: GET /api/task-agent/tasks/d+/drafts/, 'an excluded draft says where an agent can read it');
+  assert.ok(p.json.fixed.includes(`read it with NEURO's MCP: GET /api/task-agent/tasks/${T.code}/drafts`), 'an excluded draft says where an agent can read it');
   assert.match(p.json.brief, /## Objective/);
   assert.match(p.json.brief, /20 times in a row/);
   const withDrafts = await call('GET', `/api/task-agent/tasks/${T.code}/handoff/preview?includeDrafts=1`);
