@@ -253,8 +253,10 @@ test('Claude handoff: preview splits a fixed envelope, fixed context and an edit
   let v = await state(T.code);
   assert.equal(v.run.claude.recommended, true);
   const before = snapshot();
-  const p = await call('GET', `/api/task-agent/tasks/${T.code}/handoff/preview`);
+  const p = await call('GET', `/api/task-agent/tasks/${T.code}/handoff/preview?includeDrafts=0`);
   assert.equal(p.status, 200);
+  const byDefault = await call('GET', `/api/task-agent/tasks/${T.code}/handoff/preview`);
+  assert.equal(byDefault.json.includeDrafts, true, 'drafts are included unless Nick unticks them (27 Oct 2026)');
   CODE_PREVIEW = p.json;
   assert.match(p.json.statement, /Nothing is sent to Claude until you press the button/);
   assert.match(p.json.statement, /policy, destination and context are fixed by NEURO/);
