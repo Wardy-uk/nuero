@@ -792,8 +792,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
           {watch && !item.listening && <span className="esc-pill esc-pill-watch" title="You get a push when the customer replies">watching</span>}
           {item.raisedInJira && <span className="esc-pill esc-pill-esc" title="Also raised in Jira (it is in the escalated list)">raised in Jira</span>}
           {item.mail?.length > 0 && (
-            <span className="esc-pill esc-pill-mail" title={item.mail.map((m) => `Emailed ${mailLabel(m)}${m.status === 'verified' ? '' : ` (${m.status})`}`).join('
-')}>
+            <span className="esc-pill esc-pill-mail" title={item.mail.map((m) => `Emailed ${mailLabel(m)}${m.status === 'verified' ? '' : ` (${m.status})`}`).join('; ')}>
               emailed{item.mail.length > 1 ? ` ×${item.mail.length}` : ''}
             </span>
           )}
