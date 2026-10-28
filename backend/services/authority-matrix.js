@@ -240,6 +240,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/escalation/ledger/resolve', 'jira.escalation.resolve'),
   R('POST', '/api/escalation/reply/post', 'jira.comment'),
   R('POST', '/api/escalation/email', 'email.send'),
+  R('POST', '/api/escalation/people/address', 'vault.write', { machine: 'refuse' }),
 
   // Microsoft tasks.
   R('POST', '/api/todos/complete-ms', 'microsoft.task.complete'),

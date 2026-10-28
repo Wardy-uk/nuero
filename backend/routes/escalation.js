@@ -317,6 +317,8 @@ router.get('/ticket/:key', requireNova, async (req, res) => {
         duedate: t.duedate || null,
         tier: t.customfield_12981?.value || null,
         assignee: t.assignee?.displayName || null,
+        // Jira hides most addresses; when it does give one, the email can CC them.
+        assigneeEmail: t.assignee?.emailAddress || null,
         reporter: t.reporter?.displayName || null,
         created: t.created || null,
         updated: t.updated || null,
@@ -417,26 +419,65 @@ router.get('/people', (req, res) => {
     const people = require('../services/contact-directory').fromPeopleNotes()
       .map((p) => ({ name: p.name, email: p.email.toLowerCase() }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    res.json({ ok: true, people });
+    // People notes with no address yet — where a new address can be filed.
+    let withoutEmail = [];
+    try {
+      const has = new Set(people.map((p) => p.name.toLowerCase()));
+      withoutEmail = (require('../services/entities').getRoster().full || [])
+        .filter((n) => !has.has(String(n).toLowerCase())).sort((a, b) => a.localeCompare(b));
+    } catch { /* the picker then offers a new note only */ }
+    res.json({ ok: true, people, withoutEmail, me: require('../services/mail-identity').WORK_ADDRESS });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// POST /api/escalation/email — escalate a ticket to someone by email ("Escalate to…"): prepares a governed compose_email from Nick's work address; nothing is sent here, it goes on his press. Body: { key, to, subject, body }
+// POST /api/escalation/email — escalate a ticket to someone by email ("Escalate to…"): prepares a governed compose_email from Nick's work address; nothing is sent here, it goes on his press. Body: { key, to, cc, subject, body } — cc is usually the ticket's assignee
 router.post('/email', (req, res) => {
   if (req.apiClient) {
     return res.status(403).json({ ok: false, error: 'Escalating a ticket by email is Nick, writing as himself — a machine client cannot do it on his behalf.' });
   }
-  const { key, to, subject, body } = req.body || {};
+  const { key, to, cc, subject, body } = req.body || {};
   const k = String(key || '').trim().toUpperCase();
   if (!/^[A-Z][A-Z0-9]+-\d+$/.test(k)) return res.status(400).json({ ok: false, error: 'not a ticket key' });
   const r = require('../services/prepared-actions').prepareCompose({
-    from: 'work', to, subject, body, origin: 'composer',
+    from: 'work', to, cc: Array.isArray(cc) ? cc : [], subject, body, origin: 'composer',
     generatedBy: 'typed by Nick in Escalations → Escalate to…', evidence: { ticket: k },
   });
   if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
   res.json({ ok: true, prepared: true, action: r.action });
+});
+
+// POST /api/escalation/people/address — file an address Nick has just emailed into a People note; body { email, person, create }. create:false fills an EXISTING note's empty email: line (never overwrites); create:true makes a new People note with it. Add contact, save email address, new person.
+router.post('/people/address', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'Filing an address in a People note is Nick’s call, made after he sends the email.' });
+  const { email, person, create, ticket } = req.body || {};
+  const addr = String(email || '').trim().toLowerCase();
+  const name = String(person || '').trim().replace(/\s+/g, ' ');
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(addr)) return res.status(400).json({ ok: false, error: 'not an email address' });
+  if (!name || name.length > 80 || /[\\/:*?"<>|#^[\]]/.test(name)) return res.status(400).json({ ok: false, error: 'give the person’s name (no / \\ : * ? " < > | # ^ [ ])' });
+  if (addr === require('../services/mail-identity').WORK_ADDRESS) return res.status(400).json({ ok: false, error: 'that is your own address' });
+  const directory = require('../services/contact-directory');
+  const taken = directory.fromPeopleNotes().find((p) => String(p.email).toLowerCase() === addr);
+  if (taken) return res.status(409).json({ ok: false, error: `${addr} is already in ${taken.name}’s note` });
+  const source = `typed by Nick when escalating ${String(ticket || '').toUpperCase().slice(0, 20) || 'a ticket'} (${new Date().toISOString().slice(0, 10)})`;
+  if (!create) {
+    const r = directory.learnEmail(name, addr, { source });
+    if (r.ok) return res.json({ ok: true, person: r.person, email: addr, created: false });
+    const why = {
+      'no-person-note': `there is no People note for “${name}”`,
+      'already-set': `${name}’s note already has an address — NEURO never overwrites one`,
+      'no-vault': 'the vault could not be reached',
+    }[r.reason] || r.reason;
+    return res.status(r.reason === 'already-set' ? 409 : r.reason === 'no-person-note' ? 404 : 500).json({ ok: false, error: why });
+  }
+  const made = require('../services/person-profile').managePersonProfile({
+    action: 'create', person: name,
+    frontmatter: { email: addr, 'email-source': source, 'direct-report': false, manager: '', cadence: '', status: 'auto-stub', 'first-seen': new Date().toISOString().slice(0, 10) },
+  });
+  if (made.status !== 'created') return res.status(/already exists/.test(made.error || '') ? 409 : 500).json({ ok: false, error: made.error || 'not created' });
+  directory.invalidate();
+  res.json({ ok: true, person: name, email: addr, created: true, path: made.path });
 });
 
 // ── Watched tickets (23 Oct 2026, services/watched-tickets.js) ───────────────

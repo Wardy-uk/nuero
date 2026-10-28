@@ -681,3 +681,7 @@
 .esc-ticket-list > .esc-section > .esc-error { margin: 0 16px 10px; }
 .esc-pill-mail { color: var(--success, #3fb950); border-color: color-mix(in srgb, var(--success, #3fb950) 35%, transparent); }
 .esc-row-mailed { color: var(--success, #3fb950); }
+.esc-cc-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-secondary); margin-right: 2px; }
+.esc-file-addr { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
+.esc-file-addr-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.esc-file-addr-row input, .esc-file-addr-row select { min-width: 200px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; font-size: 13px; }

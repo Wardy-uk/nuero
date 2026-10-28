@@ -155,6 +155,37 @@ test('parseRecipient: a picked person, a typed address, a People name — and no
   assert.equal(mod.parseRecipient('', people), null);
 });
 
+// ── CC the assignee; offer to file a new address (28 Oct 2026) ─────────────
+test('assigneeCc: People note first, then Jira, else asked for; never Nick or nobody', () => {
+  const people = [{ name: 'Liam Sims', email: 'liam@nurtur.tech' }];
+  assert.deepEqual(mod.assigneeCc('liam sims', people, 'other@x.com'), { name: 'Liam Sims', email: 'liam@nurtur.tech', inNotes: true });
+  assert.deepEqual(mod.assigneeCc('Jo Bloggs', people, 'Jo@Nurtur.tech'), { name: 'Jo Bloggs', email: 'jo@nurtur.tech', inNotes: false });
+  assert.deepEqual(mod.assigneeCc('Jo Bloggs', people, null), { name: 'Jo Bloggs', email: null, inNotes: false }, 'no address = the form asks');
+  assert.equal(mod.assigneeCc('Nick Ward', people), null);
+  assert.equal(mod.assigneeCc('Someone', [], 'nickw@nurtur.tech', 'nickw@nurtur.tech'), null);
+  assert.equal(mod.assigneeCc(null, people), null);
+  assert.equal(mod.assigneeCc('Unassigned', people), null);
+});
+
+test('unfiledAddresses: only addresses no People note holds, once each, never Nick', () => {
+  const people = [{ name: 'Liam Sims', email: 'liam@nurtur.tech' }];
+  const out = mod.unfiledAddresses([
+    { name: 'Liam Sims', email: 'liam@nurtur.tech' }, { name: null, email: 'new@x.com' },
+    { name: 'New', email: 'new@x.com' }, { email: 'nickw@nurtur.tech' },
+  ], people, 'nickw@nurtur.tech');
+  assert.deepEqual(out.map((r) => r.email), ['new@x.com']);
+  assert.equal(mod.guessName({ email: 'john.smith2@nurtur.tech' }), 'John Smith');
+  assert.equal(mod.guessName({ email: 'jsmith@nurtur.tech' }), '', 'one word is not a name — Nick types it');
+  assert.equal(mod.guessName({ name: 'Jo Bloggs', email: 'x@y.z' }), 'Jo Bloggs');
+});
+
+test('the escalation email sends the CC and offers to file new addresses', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../frontend/src/components/EscalationPanel.jsx'), 'utf8');
+  assert.match(src, /postJson\('\/api\/escalation\/email', \{ key: item\.key, to: all, cc: ccList/);
+  assert.match(src, /postJson\('\/api\/escalation\/people\/address'/);
+  assert.match(src, /setUnfiled\(unfiledAddresses\(/);
+});
+
 test('escalationEmailDraft: facts off the card and a gap that blocks Send', () => {
   const d = mod.escalationEmailDraft({ key: 'NT-1', summary: 'Login broken', url: 'https://x/NT-1', status: 'Open', esc: { priority: 'Critical', assignee: null } });
   assert.match(d.subject, /^Escalation: NT-1 — Login broken$/);

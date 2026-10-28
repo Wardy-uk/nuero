@@ -606,6 +606,80 @@ export function parseRecipient(text, people = []) {
   return byName.length === 1 ? { name: byName[0].name, email: byName[0].email } : null;
 }
 
+/**
+ * Who to CC: the ticket's assignee. Their address comes from their People note,
+ * else from Jira; with neither, `email` is null and the form asks for it.
+ * Nobody (unassigned) or Nick himself → null.
+ */
+export function assigneeCc(name, people = [], jiraEmail = null, me = null) {
+  const n = String(name || '').trim();
+  if (!n || /^unassigned$/i.test(n) || /^nick ward$/i.test(n)) return null;
+  const known = people.find((p) => p.name.toLowerCase() === n.toLowerCase());
+  const email = known?.email || (EMAIL_RE.test(String(jiraEmail || '')) ? String(jiraEmail).toLowerCase() : null);
+  if (email && me && email === String(me).toLowerCase()) return null;
+  return { name: known?.name || n, email, inNotes: !!known };
+}
+
+/** Addresses just emailed that no People note holds (never Nick's own). */
+export function unfiledAddresses(list = [], people = [], me = null) {
+  const seen = new Set();
+  return list.filter((r) => {
+    const e = String(r?.email || '').toLowerCase();
+    if (!e || seen.has(e) || (me && e === String(me).toLowerCase()) || people.some((p) => p.email === e)) return false;
+    seen.add(e);
+    return true;
+  });
+}
+
+/** A name to offer for a new note: the one given, else "john.smith@x" → "John Smith". */
+export function guessName(r) {
+  if (r?.name && !EMAIL_RE.test(r.name)) return r.name;
+  const local = String(r?.email || '').split('@')[0].replace(/[0-9]+/g, '');
+  const parts = local.split(/[._-]+/).filter((w) => w.length > 1);
+  return parts.length >= 2 ? parts.map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
+}
+
+/** One address Nick just emailed that NEURO has nowhere: file it, or leave it. */
+function FileAddress({ r, ticket, withoutEmail, onDone }) {
+  const guess = guessName(r);
+  const match = withoutEmail.find((n) => n.toLowerCase() === guess.toLowerCase());
+  const [mode, setMode] = useState(match ? 'existing' : 'new');
+  const [existing, setExisting] = useState(match || '');
+  const [name, setName] = useState(guess);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    const person = mode === 'existing' ? existing : name;
+    const { ok, data } = await postJson('/api/escalation/people/address', { email: r.email, person, create: mode === 'new', ticket });
+    setBusy(false);
+    if (ok) onDone(`${r.email} saved ${data.created ? `in a new note for ${data.person}` : `in ${data.person}’s note`}.`);
+    else setMsg(data.error || 'Not saved.');
+  };
+  return (
+    <div className="esc-file-addr">
+      <p className="esc-reply-note"><strong>{r.email}</strong> isn’t in your People notes. Add it?</p>
+      <div className="esc-file-addr-row">
+        <select value={mode} onChange={(e) => setMode(e.target.value)} aria-label={`Where to file ${r.email}`}>
+          <option value="existing" disabled={!withoutEmail.length}>To an existing note</option>
+          <option value="new">As a new note</option>
+        </select>
+        {mode === 'existing'
+          ? (
+            <select value={existing} onChange={(e) => setExisting(e.target.value)} aria-label="Existing People note">
+              <option value="">Pick a person…</option>
+              {withoutEmail.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          )
+          : <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name" aria-label="Name for the new People note" />}
+        <button type="button" className="esc-mini" disabled={busy || !(mode === 'existing' ? existing : name.trim())} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="esc-mini" disabled={busy} onClick={() => onDone(null)}>Not now</button>
+      </div>
+      {msg && <div className="esc-error">{msg}</div>}
+    </div>
+  );
+}
+
 function EmailEscalation({ item, onClose, onSent }) {
   const draft = escalationEmailDraft(item);
   const recents = recentTo();
@@ -620,6 +694,23 @@ function EmailEscalation({ item, onClose, onSent }) {
   const [outcome, setOutcome] = useState(null);
   const [dev, setDev] = useState(null); // null = still reading; {items} or {error}
   const autoBody = useRef(draft.body);
+  const [withoutEmail, setWithoutEmail] = useState([]);
+  const [me, setMe] = useState(null);
+  const [jiraAssignee, setJiraAssignee] = useState(null); // {name, email} once the ticket is read
+  const [cc, setCc] = useState([]);
+  const [ccOff, setCcOff] = useState(false);   // Nick took the assignee off, or chose to leave them off
+  const [ccTyped, setCcTyped] = useState('');
+  const [assigneeTyped, setAssigneeTyped] = useState(null); // the address Nick gave for an assignee NEURO had none for
+  const [unfiled, setUnfiled] = useState([]);
+  const [filedNotes, setFiledNotes] = useState([]);
+  const fallbackAssignee = (item.esc || item.sent || item.rej)?.assignee || null;
+  const assignee = assigneeCc(jiraAssignee?.name ?? fallbackAssignee, people, jiraAssignee?.email, me);
+
+  // The assignee goes on CC once their address is known — unless Nick took them off.
+  useEffect(() => {
+    if (ccOff || !assignee?.email) return;
+    setCc((prev) => (prev.some((x) => x.email === assignee.email) ? prev : [...prev, { name: assignee.name, email: assignee.email }]));
+  }, [assignee?.email, ccOff]);
 
   // The ticket's linked development items, read from Jira — the ask names them.
   // Only an untouched draft is rewritten; anything Nick has typed stays.
@@ -630,6 +721,7 @@ function EmailEscalation({ item, onClose, onSent }) {
       if (!d.ticket) { setDev({ error: d.error || 'unreadable' }); return; }
       const items = d.ticket.devItems || [];
       setDev({ items });
+      setJiraAssignee({ name: d.ticket.assignee || null, email: d.ticket.assigneeEmail || null });
       const next = escalationEmailDraft(item, items).body;
       // Read the untouched draft BEFORE moving it on: setBody's updater runs
       // later, and comparing it to `next` kept the [gap] every time (28 Oct 2026).
@@ -644,7 +736,7 @@ function EmailEscalation({ item, onClose, onSent }) {
     let live = true;
     fetch(apiUrl('/api/escalation/people')).then((r) => r.json()).then((d) => {
       if (!live) return;
-      if (d.ok) setPeople(d.people || []);
+      if (d.ok) { setPeople(d.people || []); setWithoutEmail(d.withoutEmail || []); setMe(d.me || null); }
       else setPeopleError(d.error || 'unreadable');
     }).catch((e) => { if (live) setPeopleError(e.message); });
     return () => { live = false; };
@@ -679,19 +771,43 @@ function EmailEscalation({ item, onClose, onSent }) {
   const send = async () => {
     if (typed.trim() && !pending) { add(typed); return; }
     setBusy(true); setError(null);
-    const { ok, data } = await postJson('/api/escalation/email', { key: item.key, to: all, subject, body });
+    const ccList = cc.filter((x) => !all.some((y) => y.email === x.email));
+    const { ok, data } = await postJson('/api/escalation/email', { key: item.key, to: all, cc: ccList, subject, body });
     if (!ok) { setBusy(false); setError(data.error || 'Not prepared — nothing was sent.'); return; }
     const r = await executeDirect(data.action);
     setBusy(false);
-    if (r.ok) { rememberTo(all.map((x) => x.email)); setRecipients(all); setTyped(''); onSent?.(); }
+    if (r.ok) {
+      rememberTo(all.map((x) => x.email)); setRecipients(all); setTyped(''); onSent?.();
+      setUnfiled(unfiledAddresses([...all, ...ccList], people, me));
+    }
     setOutcome(directOutcome(r));
+  };
+
+  const addCc = () => {
+    const r = parseRecipient(ccTyped, people);
+    if (!r) { setError(`“${ccTyped.trim()}” isn’t an email address.`); return; }
+    setError(null);
+    setCc((prev) => (prev.some((x) => x.email === r.email) ? prev : [...prev, { name: r.name || assignee?.name || null, email: r.email }]));
+    setAssigneeTyped(r.email);
+    setCcTyped('');
   };
 
   const label = (r) => r.name || r.email;
   if (outcome && outcome.tone !== 'bad') {
+    const ccSent = cc.filter((x) => !all.some((y) => y.email === x.email));
     return (
       <div className="esc-reply">
-        <p className={outcome.tone === 'ok' ? 'esc-reply-done' : 'esc-warn'}>Emailed {all.map(label).join(', ')} about {item.key}. {outcome.text}</p>
+        <p className={outcome.tone === 'ok' ? 'esc-reply-done' : 'esc-warn'}>
+          Emailed {all.map(label).join(', ')}{ccSent.length ? ` (cc ${ccSent.map(label).join(', ')})` : ''} about {item.key}. {outcome.text}
+        </p>
+        {filedNotes.map((n) => <p key={n} className="esc-reply-note">{n}</p>)}
+        {unfiled.map((r) => (
+          <FileAddress key={r.email} r={r} ticket={item.key} withoutEmail={withoutEmail}
+            onDone={(note) => {
+              setUnfiled((prev) => prev.filter((x) => x.email !== r.email));
+              if (note) setFiledNotes((prev) => [...prev, note]);
+            }} />
+        ))}
         <div className="esc-ticket-actions"><button type="button" className="esc-mini" onClick={onClose}>Close</button></div>
       </div>
     );
@@ -719,6 +835,31 @@ function EmailEscalation({ item, onClose, onSent }) {
           aria-label="Escalate to — a person or an email address" />
         <datalist id={`esc-to-${item.key}`}>{options.map((o) => <option key={o} value={o} />)}</datalist>
       </div>
+      <div className="esc-email-to esc-email-chips" aria-label="CC">
+        <span className="esc-cc-label">CC</span>
+        {cc.map((r) => (
+          <span key={r.email} className="esc-chip" title={r.email}>
+            {label(r)}{(assignee?.email || assigneeTyped) === r.email ? ' (assignee)' : ''}
+            <button type="button" aria-label={`Remove ${label(r)} from CC`} onClick={() => {
+              if ((assignee?.email || assigneeTyped) === r.email) setCcOff(true);
+              setCc((prev) => prev.filter((x) => x.email !== r.email));
+            }}>×</button>
+          </span>
+        ))}
+        {!cc.length && !assignee && <span className="esc-reply-note">No one — the ticket has no assignee to copy in.</span>}
+      </div>
+      {assignee && !assignee.email && !assigneeTyped && !ccOff && (
+        <div className="esc-file-addr">
+          <p className="esc-reply-note">{assignee.name} is the assignee, but there’s no email address for them in your People notes or Jira. Their address, to CC them:</p>
+          <div className="esc-file-addr-row">
+            <input value={ccTyped} onChange={(e) => setCcTyped(e.target.value)} placeholder="name@nurtur.tech"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCc(); } }}
+              aria-label={`${assignee.name}’s email address`} />
+            <button type="button" className="esc-mini" disabled={!ccTyped.trim()} onClick={addCc}>Add to CC</button>
+            <button type="button" className="esc-mini" onClick={() => setCcOff(true)}>Leave them off</button>
+          </div>
+        </div>
+      )}
       {peopleError && <p className="esc-reply-note">Couldn’t read your People notes ({peopleError}) — type the address instead.</p>}
       {dev === null && <p className="esc-reply-note">Looking for a linked development item…</p>}
       {dev?.error && <p className="esc-reply-note">Couldn’t read the ticket’s links ({dev.error}) — add the dev item yourself.</p>}
