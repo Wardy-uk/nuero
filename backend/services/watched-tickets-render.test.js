@@ -233,6 +233,8 @@ test('the email draft is Nick’s wording and asks for an open linked dev item b
   assert.match(d.body, /^Hi,\n\nAnother one I need to escalate, please: NT-14705\./);
   assert.match(d.body, /Customer sentiment: Angry \(NOVA score -0\.8\) — very unhappy/);
   assert.match(d.body, /Can we get TPJ-2504 prioritised please$/);
+  assert.match(d.body, /\nDev work item: TPJ-2504 \(New\)\n/);
+  assert.doesNotMatch(mod.escalationEmailDraft(item, []).body, /Dev work item/);
   assert.doesNotMatch(d.body, /\[/);
   // A done dev item is not asked for; the gap stays and blocks Send.
   assert.match(mod.escalationEmailDraft(item, [{ key: 'TPJ-1', done: true }]).body, /\[What you need from them, and by when\]$/);
@@ -257,4 +259,17 @@ test('a ticket already escalated by email says so on its row, and a sentiment ro
   assert.match(html, /escalated by email to (<!-- -->)?Chris Middleton · 28 Oct/);
   assert.match(html, /raised in Jira/);
   assert.equal((html.match(/esc-pill-mail/g) || []).length, 1, 'only the emailed ticket carries the pill');
+});
+
+// The swap-in itself (28 Oct 2026): the untouched draft must be read BEFORE it
+// is moved on, or the updater compares the old body to the new and keeps the gap.
+test('EmailEscalation reads the untouched draft before moving it on', () => {
+  const src = require('fs').readFileSync(FILE, 'utf8');
+  const at = src.indexOf('const next = escalationEmailDraft(item, items).body;');
+  assert.ok(at > 0, 'positive control: the swap-in is where it was');
+  const block = src.slice(at, at + 600);
+  const read = block.indexOf('const untouched = autoBody.current;');
+  const move = block.indexOf('autoBody.current = next;');
+  assert.ok(read > 0 && move > read, 'untouched is captured before autoBody moves');
+  assert.match(block, /setBody\(\(cur\) => \(cur === untouched \? next : cur\)\)/);
 });

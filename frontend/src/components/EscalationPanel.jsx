@@ -571,6 +571,7 @@ export function escalationEmailDraft(item, devItems = null) {
     raised != null && `Escalated: ${agoLabel(raised)}`,
     !!esc.urgencyReason && `Reason: ${esc.urgencyReason}`,
     !!item.sent && `Customer sentiment: Angry (NOVA score ${item.sent.score})${item.sent.why ? ` — ${item.sent.why}` : ''}`,
+    !!devAsk(devItems) && `Dev work item${devAsk(devItems).includes(' and ') ? 's' : ''}: ${(devItems || []).filter((d) => !d.done).map((d) => `${d.key}${d.status ? ` (${d.status})` : ''}`).join(', ')}`,
     !!item.rej && 'Rejected by Tier 2 — the rejection is awaiting approval',
     '',
     devAsk(devItems) ? `Can we get ${devAsk(devItems)} prioritised please` : '[What you need from them, and by when]',
@@ -630,8 +631,11 @@ function EmailEscalation({ item, onClose, onSent }) {
       const items = d.ticket.devItems || [];
       setDev({ items });
       const next = escalationEmailDraft(item, items).body;
-      setBody((cur) => (cur === autoBody.current ? next : cur));
+      // Read the untouched draft BEFORE moving it on: setBody's updater runs
+      // later, and comparing it to `next` kept the [gap] every time (28 Oct 2026).
+      const untouched = autoBody.current;
       autoBody.current = next;
+      setBody((cur) => (cur === untouched ? next : cur));
     }).catch((e) => { if (live) setDev({ error: e.message }); });
     return () => { live = false; };
   }, [item.key]);

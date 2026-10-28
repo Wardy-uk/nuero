@@ -23,6 +23,20 @@ test('linked issues in another project are dev items; the ticket’s own project
   assert.deepEqual(devItemsOf({ key: 'NT-1' }), []);
 });
 
+test('only TPJ is development: NT-31647’s NTPJ project link is not asked for', () => {
+  const st = (name, cat) => ({ fields: { status: { name, statusCategory: { key: cat } } } });
+  const t = {
+    key: 'NT-31647',
+    issuelinks: [
+      { inwardIssue: { key: 'NTPJ-10472', ...st('Waiting on Tech', 'indeterminate') } },
+      { inwardIssue: { key: 'TPJ-2687', ...st('In Progress', 'indeterminate') } },
+      { outwardIssue: { key: 'TPJ-2741', ...st('TO SCOPE / TRIAGE', 'new') } },
+    ],
+  };
+  assert.deepEqual(devItemsOf(t).map((d) => d.key), ['TPJ-2687', 'TPJ-2741']);
+  assert.deepEqual(devItemsOf(t, ['NTPJ']).map((d) => d.key), ['NTPJ-10472']);
+});
+
 // Escalation emails already sent, by ticket — so a row can say so (28 Oct 2026).
 const { emailedFrom } = require('./escalation');
 

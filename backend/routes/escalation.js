@@ -68,14 +68,17 @@ function adfText(node, depth = 0) {
   return ['paragraph', 'heading', 'listItem', 'codeBlock'].includes(node.type) ? `${inner}\n` : inner;
 }
 
-/** Issues linked to a ticket that live in another project (its dev work). PURE. */
-function devItemsOf(t) {
-  const own = String(t?.key || '').split('-')[0];
+// The Jira projects that hold development work. NT-31647 links NTPJ-10472 too,
+// and Nick asked only for the TPJ items (28 Oct 2026). DEV_PROJECTS overrides.
+const DEV_PROJECTS = String(process.env.DEV_PROJECTS || 'TPJ').split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
+
+/** Issues linked to a ticket that live in a development project (its dev work). PURE. */
+function devItemsOf(t, devProjects = DEV_PROJECTS) {
   const out = [];
   for (const l of Array.isArray(t?.issuelinks) ? t.issuelinks : []) {
     const i = l?.inwardIssue || l?.outwardIssue;
     const key = String(i?.key || '');
-    if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key) || key.split('-')[0] === own || out.some((x) => x.key === key)) continue;
+    if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key) || !devProjects.includes(key.split('-')[0]) || out.some((x) => x.key === key)) continue;
     const st = i.fields?.status;
     out.push({ key, status: st?.name || null, done: st?.statusCategory?.key === 'done' });
   }
