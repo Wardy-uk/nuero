@@ -75,6 +75,13 @@ export function dueKey(dueDate) {
   return dueDate ? String(dueDate).slice(0, 10) : null;
 }
 
+/** This week's Sunday, local — the end of "due this week". On a Sunday it is today. */
+export function weekEndKey() {
+  const d = new Date();
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function isOverdue(dueDate) {
   const due = dueKey(dueDate);
   return due ? due < todayKey() : false;
@@ -102,6 +109,7 @@ export const FILTER_GROUPS = {
   mustdo: 'lane',
   overdue: 'date',
   today: 'date',
+  week: 'date',
   nodue: 'date',
   high: 'priority',
   commitment: 'origin',
@@ -139,6 +147,12 @@ export const FILTER_PREDICATES = {
   // invisible to every date-driven surface NEURO has — the Must Move lane,
   // time-fit, the day planner — so no other filter can find it. It is also PIP
   // competency 3, which counts open items missing a date.
+  // Today to Sunday. Overdue is NOT included — it has its own chip in the same
+  // group, and picking both widens the list to "late or due by Sunday".
+  week: t => {
+    const due = dueKey(t.due_date);
+    return due ? due >= todayKey() && due <= weekEndKey() : false;
+  },
   nodue: t => !t.due_date,
   high: t => t.priority === 'high',
   commitment: t => t.origin === 'commitment',
@@ -164,6 +178,51 @@ export const FILTER_PREDICATES = {
   // On the shared VESTA list (needs /api/todos to carry `household`).
   household: t => t.household === 1 || t.household === true,
 };
+
+/**
+ * The chips, in display order — ONE list, drawn by the Tasks page and by the
+ * auto-schedule picker, so the two can never offer different filters. Labels
+ * carry no count; each screen appends its own.
+ */
+export const FILTER_CHIPS = [
+  { key: 'mustdo', label: 'Must Do' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'today', label: 'Due today' },
+  { key: 'week', label: 'Due this week' },
+  { key: 'nodue', label: 'No due date' },
+  { key: 'high', label: 'High priority' },
+  // Nick's own split. Full labels rather than the badge's short forms: a filter
+  // is a labelled control with room, and these have to read the same as the
+  // headings in the report they feed.
+  { key: 'commitment', label: `${LABELS.commitment}s` },
+  { key: 'improvement', label: LABELS.improvement },
+  { key: 'unclassified', label: UNCLASSIFIED_LABEL },
+  { key: 'vault', label: 'Vault Todos' },
+  { key: 'ms', label: 'MS Tasks' },
+  { key: 'unestimated', label: 'Not estimated' },
+  { key: 'personal', label: 'Personal' },
+  { key: 'household', label: 'Shared with household' },
+];
+
+/** Several chips may be on in one group: ANY within a group, EVERY group. */
+export function matchesFilterGroups(t, filters, skipGroup = null) {
+  return Object.entries(filters || {}).every(([g, keys]) => {
+    if (g === skipGroup || !keys || !keys.length) return true;
+    return keys.some((k) => { const p = FILTER_PREDICATES[k]; return p ? p(t) : true; });
+  });
+}
+
+/** Toggle one chip in a {group: [keys]} selection. 'all' clears. */
+export function toggleFilter(prev, key) {
+  if (key === 'all') return {};
+  const group = FILTER_GROUPS[key];
+  if (!group) return prev;
+  const next = { ...prev };
+  const on = next[group] || [];
+  next[group] = on.includes(key) ? on.filter((k) => k !== key) : [...on, key];
+  if (!next[group].length) delete next[group];
+  return next;
+}
 
 /** The sub-category a row falls under, within a selected source group. */
 function subCategoryOf(todo, sourceFilter) {
@@ -2729,10 +2788,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
   // Several chips may be on in one group (5 Oct 2026): a row matches a group if
   // it matches ANY chip on in it, and must match every group that has one.
   const activeFilterKeys = Object.values(filters).flat().filter(Boolean);
-  const matchesGroups = (t, skipGroup = null) => Object.entries(filters).every(([g, keys]) => {
-    if (g === skipGroup || !keys || !keys.length) return true;
-    return keys.some((k) => { const p = FILTER_PREDICATES[k]; return p ? p(t) : true; });
-  });
+  const matchesGroups = (t, skipGroup = null) => matchesFilterGroups(t, filters, skipGroup);
 
   let filtered = activeTodos;
   if (pin) {
@@ -2760,14 +2816,8 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
     }
     const group = FILTER_GROUPS[key];
     if (!group) return;
-    setFilters(prev => {
-      const next = { ...prev };
-      const on = next[group] || [];
-      // A chip toggles on its own; others in its group stay as they are.
-      next[group] = on.includes(key) ? on.filter((k) => k !== key) : [...on, key];
-      if (!next[group].length) delete next[group];
-      return next;
-    });
+    // A chip toggles on its own; others in its group stay as they are.
+    setFilters(prev => toggleFilter(prev, key));
     // Sub-filters belong to whichever source is selected; they cannot survive
     // it changing or being cleared.
     if (group === 'source') setSubFilters([]);
@@ -2873,6 +2923,8 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
         <AutoSchedule
           todos={ordered}
           bandOf={bandOfRow}
+          initialFilters={filters}
+          filterKit={{ chips: FILTER_CHIPS, groups: FILTER_GROUPS, matches: matchesFilterGroups, toggle: toggleFilter }}
           onClose={() => { setShowAutoSchedule(false); refreshAfterWrite(); }}
           onSaved={refreshAfterWrite}
         />
@@ -3018,22 +3070,9 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
           // OTHER dimensions currently selected. A static count beside an active
           // filter promises a number it will not deliver.
           { key: 'all', label: 'All' },
-          ...(mustDoTodos.length > 0 ? [{ key: 'mustdo', label: `Must Do (${countFor('mustdo')})` }] : []),
-          { key: 'overdue', label: `Overdue (${countFor('overdue')})` },
-          { key: 'today', label: `Due today (${countFor('today')})` },
-          { key: 'nodue', label: `No due date (${countFor('nodue')})` },
-          { key: 'high', label: `High priority (${countFor('high')})` },
-          // Nick's own split. Full labels rather than the badge's short forms:
-          // a filter is a labelled control with room, and these have to read the
-          // same as the headings in the report they feed.
-          { key: 'commitment', label: `${LABELS.commitment}s (${countFor('commitment')})` },
-          { key: 'improvement', label: `${LABELS.improvement} (${countFor('improvement')})` },
-          { key: 'unclassified', label: `${UNCLASSIFIED_LABEL} (${countFor('unclassified')})` },
-          { key: 'vault', label: `Vault Todos (${countFor('vault')})` },
-          { key: 'ms', label: `MS Tasks (${countFor('ms')})` },
-          { key: 'unestimated', label: `Not estimated (${countFor('unestimated')})` },
-          { key: 'personal', label: `Personal (${countFor('personal')})` },
-          { key: 'household', label: `Shared with household (${countFor('household')})` },
+          ...FILTER_CHIPS
+            .filter((c) => c.key !== 'mustdo' || mustDoTodos.length > 0)
+            .map((c) => ({ key: c.key, label: `${c.label} (${countFor(c.key)})` })),
         ].map(f => (
           <button
             key={f.key}

@@ -52,3 +52,4 @@
 .asched-ok { color: var(--success); font-size: 12px; white-space: nowrap; }
 .asched-fail { color: var(--danger); font-size: 12px; }
 .asched-apply { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
+.asched-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }

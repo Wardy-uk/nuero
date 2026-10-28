@@ -57,7 +57,7 @@ async function send(path, method, body) {
   return json;
 }
 
-export default function AutoSchedule({ todos, bandOf, onClose, onSaved }) {
+export default function AutoSchedule({ todos, bandOf, initialFilters, filterKit, onClose, onSaved }) {
   // Snapshot on open: the list refreshing under a half-made selection would move
   // rows out from under the cursor.
   const [rows] = useState(() => (todos || []).filter((t) => !t.done && keyOf(t)));
@@ -70,18 +70,29 @@ export default function AutoSchedule({ todos, bandOf, onClose, onSaved }) {
   const [error, setError] = useState(null);
   const [applying, setApplying] = useState(false);
   const [outcomes, setOutcomes] = useState({});
+  // The SAME chips and rules as the Tasks page (passed in, never copied), and
+  // it opens on whatever filters were on there.
+  const [filters, setFilters] = useState(() => initialFilters || {});
+  const activeFilterCount = Object.values(filters).flat().length;
+  const visible = useMemo(
+    () => rows.filter((t) => filterKit.matches(t, filters)),
+    [rows, filters, filterKit],
+  );
+  const countFor = (key) => rows.filter((t) => filterKit.matches(t, filters, filterKit.groups[key])
+    && filterKit.matches(t, { x: [key] })).length;
 
+  const hiddenPicked = [...selected].filter((k) => !visible.some((t) => keyOf(t) === k)).length;
   const byKey = useMemo(() => new Map(rows.map((t) => [keyOf(t), t])), [rows]);
   const grouped = useMemo(() => {
     const out = [];
-    for (const t of rows) {
+    for (const t of visible) {
       const band = bandOf(t);
       let g = out.find((x) => x.band === band);
       if (!g) { g = { band, rows: [] }; out.push(g); }
       g.rows.push(t);
     }
     return out;
-  }, [rows, bandOf]);
+  }, [visible, bandOf]);
 
   const invalidate = () => { setPlan(null); setOutcomes({}); };
   const toggle = (k) => {
@@ -174,10 +185,38 @@ export default function AutoSchedule({ todos, bandOf, onClose, onSaved }) {
         <section className="asched-pick">
           <div className="asched-pick-head">
             <strong>Tasks</strong>
-            <span>{selected.size} of {rows.length} picked</span>
-            <button type="button" className="asched-link" onClick={() => setMany(rows.map(keyOf), true)}>All</button>
-            <button type="button" className="asched-link" onClick={() => setMany(rows.map(keyOf), false)}>None</button>
+            <span>
+              {selected.size} picked
+              {activeFilterCount > 0 ? ` · showing ${visible.length} of ${rows.length}` : ` of ${rows.length}`}
+              {hiddenPicked > 0 ? ` · ${hiddenPicked} picked but hidden by filters` : ''}
+            </span>
+            <button type="button" className="asched-link" onClick={() => setMany(visible.map(keyOf), true)}>
+              {activeFilterCount ? 'Pick all shown' : 'All'}
+            </button>
+            <button type="button" className="asched-link" onClick={() => setMany(visible.map(keyOf), false)}>
+              {activeFilterCount ? 'Unpick shown' : 'None'}
+            </button>
+            {selected.size > 0 && (
+              <button type="button" className="asched-link" onClick={() => setMany(rows.map(keyOf), false)}>Clear picks</button>
+            )}
           </div>
+          <div className="asched-filters">
+            <button type="button" className={`todo-filter-btn ${activeFilterCount === 0 ? 'active' : ''}`}
+              onClick={() => setFilters({})}>All</button>
+            {filterKit.chips.map((c) => {
+              const on = (filters[filterKit.groups[c.key]] || []).includes(c.key);
+              const n = countFor(c.key);
+              if (!on && n === 0) return null;
+              return (
+                <button key={c.key} type="button"
+                  className={`todo-filter-btn ${on ? 'active' : ''}`}
+                  onClick={() => setFilters((prev) => filterKit.toggle(prev, c.key))}>
+                  {c.label} ({n})
+                </button>
+              );
+            })}
+          </div>
+          {visible.length === 0 && <p className="asched-note">No tasks match these filters.</p>}
           {excluded > 0 && (
             <p className="asched-note">{excluded} daily-note line{excluded === 1 ? '' : 's'} left out — a line in a note cannot hold a due date.</p>
           )}
