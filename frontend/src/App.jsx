@@ -528,7 +528,12 @@ function AuthenticatedApp() {
         </aside>
       </div>
       <StatusBar status={status} />
-      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={(target) => { setNavContext(target || null); setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} onGoToBriefing={() => { setActiveView('today'); setSidebarOpen(false); }} onGoToInbox={() => { setActiveView('inbox'); setSidebarOpen(false); }} />
+      {/* ⚠ Through handleNavigate, never setActiveView directly: it is what
+          writes ?view= to the URL. Without it, a lazy page whose chunk is stale
+          after a deploy triggers lazyLoad's one-shot reload and the reload lands
+          back on the OLD view — the nudge is gone (dismissed) and nothing opened
+          (28 Oct 2026). */}
+      <NudgeBanner onGoToStandup={() => handleNavigate('standup')} onGoToTodos={(target) => handleNavigate('todos', target || null)} onGoToJournal={() => handleNavigate('journal')} onGoToPeople={() => handleNavigate('people')} onGoToBriefing={() => handleNavigate('today')} onGoToInbox={() => handleNavigate('inbox')} />
       <InstallBanner />
       {/* Mobile bottom nav */}
       <nav className={`mobile-bottom-nav ${chatOpen ? 'chat-active-hide' : ''}`}>

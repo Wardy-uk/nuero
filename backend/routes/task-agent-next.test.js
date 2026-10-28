@@ -463,7 +463,7 @@ test('kiosk, API token, local MCP and chat clients get 403 from every new route'
   }
 });
 
-test('agents can read a task's saved drafts over MCP — never a people matter's', async () => {
+test('agents can read a task’s saved drafts over MCP — never a people matter’s', async () => {
   for (const h of [{ 'X-NEURO-API-TOKEN': 'tok-5678' }, { 'X-NEURO-PIN': 'pin-1234', 'X-Neuro-Machine-Client': 'mcp-local' }]) {
     const r = await call('GET', `/api/task-agent/tasks/${T.code}/drafts`, undefined, h);
     assert.equal(r.status, 200, JSON.stringify(h));
