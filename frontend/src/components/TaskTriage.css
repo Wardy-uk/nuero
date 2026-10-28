@@ -185,11 +185,12 @@
 .todo-drag-handle {
   cursor: grab;
   color: var(--text-muted);
-  padding: 10px 4px 0 0;
+  padding: 12px 6px 0 2px;
   user-select: none;
-  font-size: 14px;
-  line-height: 1;
+  line-height: 0;
 }
+.todo-drag-handle svg { display: block; fill: currentColor; pointer-events: none; }
+.todo-drag-handle:hover { color: var(--text-primary); }
 .todo-drag-handle:active { cursor: grabbing; }
 .todo-drag-handle--off { cursor: default; opacity: 0.25; }
 .todo-drag-row.dragging { opacity: 0.4; }

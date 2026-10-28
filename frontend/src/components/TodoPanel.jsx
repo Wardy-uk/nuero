@@ -17,6 +17,7 @@ import { pinFromContext, findPinned } from '../taskPin';
 import TaskDedupe from './TaskDedupe';
 import TaskBlocks, { BlockTimeControl } from './TaskBlocks';
 import TaskTriage from './TaskTriage.jsx';
+import AutoSchedule from './AutoSchedule.jsx';
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
 import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
 import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
@@ -2029,6 +2030,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
   // The triage run (TaskTriage) replaced the MoSCoW-only review on 20 Oct 2026.
   // It needs the full list, so opening it from the focused view switches mode.
   const [showTriage, setShowTriage] = useState(false);
+  const [showAutoSchedule, setShowAutoSchedule] = useState(false);
   const openTriage = () => { setMode('full'); setShowTriage(true); };
   const [actingSuggestionId, setActingSuggestionId] = useState(null);
   // Drag to reorder: the row being dragged, where it would land, and the band
@@ -2862,6 +2864,22 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
     );
   }
 
+  if (showAutoSchedule) {
+    if (loading) return <div className="todo-container"><div className="todo-empty">Loading tasks&hellip;</div></div>;
+    // List order = band order, then the server's order inside each band.
+    const ordered = BAND_ORDER.flatMap((b) => activeTodos.filter((t) => bandOfRow(t) === b));
+    return (
+      <div className="todo-container">
+        <AutoSchedule
+          todos={ordered}
+          bandOf={bandOfRow}
+          onClose={() => { setShowAutoSchedule(false); refreshAfterWrite(); }}
+          onSaved={refreshAfterWrite}
+        />
+      </div>
+    );
+  }
+
   const todoSaimLine = buildTodoSaimLine(activeTodos, overdueTodos);
 
   return (
@@ -2896,6 +2914,13 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
             title="Run through every task still missing a MoSCoW, priority, estimate, due date or origin"
           >
             Triage{fullData?.triageCount ? ` (${fullData.triageCount})` : ''}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowAutoSchedule(true)}
+            title="Pick tasks, a start date and a daily cap; NEURO spreads their due dates across working days"
+          >
+            Auto-schedule
           </button>
           <button className="btn btn-secondary" onClick={() => setMode('focused')}>
             Smart view
@@ -3100,7 +3125,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
           {filtered.length > 0 && (
             <p className="todo-order-note">
               {canReorder
-                ? 'Drag 83f to put tasks in your order within a band — Focus, Now and the planner follow it. Change a MoSCoW to move a task between bands.'
+                ? 'Drag the dotted handle to put tasks in your order within a band — Focus, Now and the planner follow it. Change a MoSCoW to move a task between bands.'
                 : 'Clear the filters to drag tasks into your own order.'}
             </p>
           )}
@@ -3161,7 +3186,11 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
                       }}
                       onDragEnd={() => { setDrag(null); setDropAt(null); }}
                     >
-                      83f
+                      <svg width="8" height="14" viewBox="0 0 8 14" aria-hidden="true" focusable="false">
+                        <circle cx="2" cy="2" r="1.25" /><circle cx="6" cy="2" r="1.25" />
+                        <circle cx="2" cy="7" r="1.25" /><circle cx="6" cy="7" r="1.25" />
+                        <circle cx="2" cy="12" r="1.25" /><circle cx="6" cy="12" r="1.25" />
+                      </svg>
                     </span>
                     <TodoItem
                       todo={todo}

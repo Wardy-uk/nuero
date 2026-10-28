@@ -246,6 +246,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/todos/complete-ms', 'microsoft.task.complete'),
   R('POST', '/api/todos/wip-ms', 'microsoft.task.progress'),
   R('PATCH', '/api/todos/ms/:msId/local', 'internal.state'),
+  R('POST', '/api/todos/auto-schedule/plan', 'read'),
   R('PATCH', '/api/todos/ms/:msId', 'microsoft.task.fields'),
 
   // The house, the laptop, the household surface, NOVA, Notion.

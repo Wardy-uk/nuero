@@ -742,6 +742,23 @@ function msEditShapeProblem(body) {
   return null;
 }
 
+// POST /api/todos/auto-schedule/plan — auto-schedule, auto schedule, reschedule tasks, spread due dates.
+// Packs the picked tasks, in the order given, into working days from startDate
+// up to maxHours of task time a day, skipping bank holidays and Nick's booked
+// leave. READ-ONLY: it returns the plan and writes nothing — the panel applies
+// each due date through PATCH /api/tasks/:id or PATCH /api/todos/ms/:msId.
+router.post('/auto-schedule/plan', (req, res) => {
+  try {
+    const { startDate, maxHours, items } = req.body || {};
+    const result = require('../services/task-autoschedule').planFor({ startDate, maxHours, items });
+    if (!result.ok) return res.status(400).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error('[Todos] auto-schedule plan failed:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.patch('/ms/:msId', async (req, res) => {
   try {
     const { msId } = req.params;

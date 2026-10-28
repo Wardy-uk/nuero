@@ -374,7 +374,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 913,
+    "line": 930,
     "description": "DELETE /api/todos/moscow. remove MoSCoW rating for a task",
     "params": [],
     "query": [],
@@ -6383,7 +6383,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 862,
+    "line": 879,
     "description": "GET /api/todos/moscow. MoSCoW ratings, keyed by task id for the tasks NEURO owns",
     "params": [],
     "query": [],
@@ -6399,7 +6399,7 @@
     "route": "/api/todos/moscow/review",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 927,
+    "line": 944,
     "description": "GET /api/todos/moscow/review. untriaged tasks for the swipe review.",
     "params": [],
     "query": [],
@@ -7519,7 +7519,7 @@
     "route": "/api/todos/ms/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 745,
+    "line": 762,
     "description": "PATCH /api/todos/ms/:msId.",
     "params": [
       "msId"
@@ -15679,12 +15679,32 @@
     "stream": false
   },
   {
+    "id": "post_todos_auto_schedule_plan",
+    "method": "POST",
+    "route": "/api/todos/auto-schedule/plan",
+    "domain": "todos",
+    "source": "routes/todos.js",
+    "line": 750,
+    "description": "POST /api/todos/auto-schedule/plan. auto-schedule, auto schedule, reschedule tasks, spread due dates.",
+    "params": [],
+    "query": [],
+    "body": [
+      "items",
+      "maxHours",
+      "startDate"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_todos_complete_ms",
     "method": "POST",
     "route": "/api/todos/complete-ms",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 822,
+    "line": 839,
     "description": "POST /api/todos/complete-ms. complete a Microsoft To-Do/Planner task and",
     "params": [],
     "query": [],
@@ -15742,7 +15762,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 891,
+    "line": 908,
     "description": "POST /api/todos/moscow.",
     "params": [],
     "query": [],
@@ -15814,7 +15834,7 @@
     "route": "/api/todos/suggestions/batch",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1155,
+    "line": 1172,
     "description": "POST /api/todos/suggestions/batch. add or dismiss several spotted task",
     "params": [],
     "query": [],
@@ -15833,7 +15853,7 @@
     "route": "/api/todos/suggestions/:actionId/add",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1124,
+    "line": 1141,
     "description": "POST /api/todos/suggestions/:actionId/add. add a spotted task suggestion",
     "params": [
       "actionId"
@@ -15851,7 +15871,7 @@
     "route": "/api/todos/suggestions/:actionId/dismiss",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1139,
+    "line": 1156,
     "description": "POST /api/todos/suggestions/:actionId/dismiss. dismiss a spotted task",
     "params": [
       "actionId"
@@ -15869,7 +15889,7 @@
     "route": "/api/todos/suggestions/:actionId/fields",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 986,
+    "line": 1003,
     "description": "POST /api/todos/suggestions/:actionId/fields. set the moscow, priority and",
     "params": [
       "actionId"
