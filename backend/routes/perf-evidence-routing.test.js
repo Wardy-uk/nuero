@@ -105,3 +105,19 @@ test('an unreadable vault is a named gap, not an empty meetings list', () => {
   assert.match(out.sources.meetings.error, /Meetings/);
   assert.equal(out.sources.wins.ok, true);
 });
+
+test('a 1-2-1 is withheld by its title, and health or personal-life text by its words, whatever the injected screen says', () => {
+  const { personalScreen, meetingText } = feed._internals;
+  assert.equal(personalScreen({ title: 'Meeting: One-on-One 1 Tier Two Performance and Career Progression' }).sensitive, true);
+  assert.equal(personalScreen({ title: 'Meeting: Return to work', text: '' }).sensitive, true);
+  assert.equal(personalScreen({ title: 'Meeting: Jira review', text: 'The employee said a cyst had grown' }).sensitive, true);
+  assert.equal(personalScreen({ title: 'Meeting: Stand-up', text: 'Maria has 30 tickets over five days' }).sensitive, false, 'positive control');
+  const fence = String.fromCharCode(10);
+  const cleaned = meetingText(['## Summary', '[](plaud://image?x=1)', '**A stand-up** on queues'].join(fence));
+  assert.doesNotMatch(cleaned, /plaud:|\*\*|^Summary/m);
+  fs.writeFileSync(path.join(vault, 'Meetings', '2026', '10', '2026-10-07 – 1-2-1 with Someone.md'), '---\ntype: meeting\n---\n## Summary\nTalked about their medical leave.\n');
+  const out = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => ({ sensitive: false, categories: [] }) });
+  const m = out.items.find((i) => /1-2-1 with Someone/.test(i.title));
+  assert.equal(m.sensitive, true);
+  assert.doesNotMatch(m.detail, /medical/);
+});

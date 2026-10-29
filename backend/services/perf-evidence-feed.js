@@ -209,12 +209,38 @@ function decisions(db, w) {
  * has one, without the Plaud boilerplate (title echo, "Recording", Plaud ID).
  */
 function meetingText(body) {
-  const plain = String(body || '').replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, '$2');
+  const plain = String(body || '')
+    .replace(/!?\[[^\]]*\]\((?:plaud|https?):[^)]*\)/g, '')        // Plaud cards and image/link markup
+    .replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, '$2')
+    .replace(/\*\*([^*]+)\*\*/g, '$1');
   const at = plain.search(/^#{1,4}\s*(Summary|Overview|Meeting Notes|Key Points|Discussion|Conclusions?)\b/im);
   const from = at >= 0 ? plain.slice(at) : plain;
   return from.split('\n')
     .filter((l) => !/Plaud ID|^\s*Recording\b|^\s*Transcript:/i.test(l))
-    .map((l) => l.replace(/^#+\s*/, '').trim()).filter(Boolean).join('\n');
+    .map((l) => l.replace(/^#+\s*/, '').trim())
+    .filter((l) => l && !/^(Summary|Overview|Meeting Notes)$/i.test(l))
+    .join('\n');
+}
+
+/**
+ * PURE. Does this item concern someone's health or personal life, or is it a
+ * people conversation by its nature? (29 Oct 2026)
+ *
+ * employmentScreen needs a NAMED colleague on 2+ lines; a 1-2-1 write-up that
+ * says "the employee" throughout sailed past it and put a team member's medical
+ * details into VANTAGE. So two blunter rules, erring towards withholding:
+ *  - a 1-2-1 / HR-type meeting is withheld by its TITLE, whatever it says;
+ *  - any health or personal-circumstance term anywhere withholds the item.
+ * A false withhold costs a line of context; a false pass copies someone's
+ * private life into another system and a model prompt.
+ */
+const PEOPLE_MEETING = /\b(1[- ]?(2|to)[- ]?1|one[- ]on[- ]one|1:1|one to one|HR\b|human resources|return to work|RTW|welfare|wellbeing|absence|sickness|disciplinary|grievance|probation|investigation meeting|performance review|appraisal|occupational health|exit interview)\b/i;
+const PERSONAL = /\b(medical|medication|medicine|diagnos\w*|surgery|surgical|hospital|GP\b|doctor|dentist|dental|sick(ness)?|ill(ness)?\b|injur\w*|cyst|tumou?r|cancer|pregnan\w*|maternity|paternity|miscarri\w*|bereave\w*|funeral|passed away|mental health|anxiety|depress\w*|stress(ed)? leave|counsell?ing|therapy|therapist|assault\w*|police|divorce|disabilit\w*|fit note|occupational health|OH report|accommodation(s)?|carer|caring responsibilit\w*|childcare|condition)\b/i;
+
+function personalScreen({ title = '', text = '' } = {}) {
+  if (PEOPLE_MEETING.test(title)) return { sensitive: true, categories: ['people-meeting'] };
+  if (PERSONAL.test(`${title}\n${text}`)) return { sensitive: true, categories: ['personal'] };
+  return { sensitive: false, categories: [] };
 }
 
 /** Meeting write-ups in Meetings/YYYY/MM for the window. */
@@ -325,8 +351,11 @@ function candidates({ from, to } = {}, deps = {}) {
     const text = it._screenText || it.detail || '';
     delete it._screenText;
     if (!['meetings', 'email', 'management-log', 'decisions'].includes(it.source)) continue;
-    let verdict;
-    try { verdict = screen({ sourceTitle: it.title, sourceText: text }); } catch { verdict = { sensitive: true, categories: ['screen-failed'] }; }
+    // The blunt personal screen ALWAYS runs, injected screen or not.
+    let verdict = personalScreen({ title: it.title, text });
+    if (!verdict.sensitive) {
+      try { verdict = screen({ sourceTitle: it.title, sourceText: text }); } catch { verdict = { sensitive: true, categories: ['screen-failed'] }; }
+    }
     if (verdict.sensitive) {
       it.sensitive = true;
       it.detail = 'Details withheld — this concerns an employee matter. Open it in NEURO to read it.';
@@ -341,4 +370,4 @@ function candidates({ from, to } = {}, deps = {}) {
   };
 }
 
-module.exports = { candidates, parseWindow, MAX_WINDOW_DAYS, _internals: { meetings, meetingText, sqliteToIso, fm } };
+module.exports = { candidates, parseWindow, MAX_WINDOW_DAYS, _internals: { meetings, meetingText, personalScreen, sqliteToIso, fm } };
