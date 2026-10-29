@@ -39,8 +39,10 @@ before(async () => {
   ins.run('On time thing', 'done', '2026-10-09', 'work', 'k4', '2026-10-08 09:00:00', null);
   raw.prepare(`INSERT INTO wins (date_key, occurred_at, source, kind, text, evidence, count, dedupe_key, created_at)
     VALUES ('2026-10-07','2026-10-07T10:00:00','git','commit','Shipped NOVA fix','abc',3,'w1','2026-10-07')`).run();
+  raw.prepare(`INSERT INTO wins (date_key, occurred_at, source, kind, text, evidence, count, dedupe_key, created_at)
+    VALUES ('2026-10-07','2026-10-07T11:00:00','activity','task_done','Book my car in for its MOT','9',1,'w2','2026-10-07')`).run();
   fs.writeFileSync(path.join(vault, 'Meetings', '2026', '10', '2026-10-06 – Support Leadership.md'),
-    '---\ntype: meeting\ndate: 2026-10-06\n---\n# Support Leadership\n## Summary\nAgreed the [[QA framework|QA]] rollout.\n');
+    '---\ntype: meeting\ndate: 2026-10-06\n---\n# Support Leadership\nRecording - Plaud ID: `abc`\n## Summary\nAgreed the [[QA framework|QA]] rollout.\n');
   fs.writeFileSync(path.join(vault, 'Meetings', '2026', '10', '2026-10-06 – Support Leadership 2.md'), '---\ntype: meeting\n---\ntwin');
 
   const app = express();
@@ -73,9 +75,13 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   assert.ok(ids.includes('task-late:3'), 'done after due date is in');
   assert.ok(!ids.includes('task-late:4'), 'done on time is not late');
   assert.ok(ids.includes('win:1'));
+  assert.ok(!ids.includes('win:2'), 'a task completion from the wins ledger is not taken — it cannot tell work from personal');
+  assert.ok(ids.includes('task-done:4'), 'a work task done on time comes from the tasks table');
+  assert.ok(!ids.includes('task-done:3'), 'done late is task-late, not task-done');
   const meetings = body.items.filter((i) => i.kind === 'meeting');
   assert.equal(meetings.length, 1, 'the " 2" twin is skipped');
   assert.match(meetings[0].detail, /QA rollout/);
+  assert.doesNotMatch(meetings[0].detail, /Plaud ID/);
   assert.equal(body.items.find((i) => i.id === 'task-overdue:1:2026-10-10').hint, 'against');
   for (const s of Object.values(body.sources)) assert.equal(s.ok, true);
 });

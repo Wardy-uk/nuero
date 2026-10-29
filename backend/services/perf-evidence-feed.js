@@ -113,11 +113,40 @@ function tasksLate(db, w) {
   }));
 }
 
+/**
+ * Wins, minus what another source here already carries or what is not Nick's work:
+ *  - task completions (`activity`/`task_done`, `task`): the ledger does not know a
+ *    task's DOMAIN, and live on 29 Oct it carried "Book my car in for its MOT";
+ *    work tasks come from the tasks table instead (`tasksDone`);
+ *  - `meeting` and `reply`: the meetings and replies sources carry them richer;
+ *  - `ritual` ("Standup done", daily) and NEURO's own drafted replies.
+ * Measured on the live feed 20-28 Oct 2026: 83 wins, 71 of them one of these.
+ */
+const WIN_EXCLUDED_SOURCES = new Set(['task', 'meeting', 'reply', 'ritual']);
+const WIN_EXCLUDED_KINDS = new Set(['task_done', 'draft_reply']);
+
+function tasksDone(db, w) {
+  return db.prepare(`
+    SELECT id, text, due_date, completed_at, origin, origin_proposed
+      FROM tasks
+     WHERE status = 'done' AND domain = 'work' AND completed_at IS NOT NULL
+       AND substr(completed_at,1,10) BETWEEN ? AND ?
+       AND (due_date IS NULL OR substr(completed_at,1,10) <= substr(due_date,1,10))
+  `).all(w.from, w.to).map((t) => ({
+    id: `task-done:${t.id}`,
+    source: 'tasks', kind: 'task-done', hint: 'for',
+    at: sqliteToIso(t.completed_at),
+    title: t.text,
+    detail: `Done ${String(t.completed_at).slice(0, 10)}${t.due_date ? `, on or before its due date ${String(t.due_date).slice(0, 10)}` : ''}. Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
+    ref: `neuro:task:${t.id}`,
+  }));
+}
+
 function winsIn(db, w) {
   return db.prepare(`
     SELECT id, date_key, occurred_at, source, kind, text, evidence, count
       FROM wins WHERE date_key BETWEEN ? AND ? ORDER BY occurred_at
-  `).all(w.from, w.to).map((r) => ({
+  `).all(w.from, w.to).filter((r) => !WIN_EXCLUDED_SOURCES.has(r.source) && !WIN_EXCLUDED_KINDS.has(r.kind)).map((r) => ({
     id: `win:${r.id}`,
     source: 'wins', kind: `win:${r.source}`, hint: 'for',
     at: r.occurred_at,
@@ -173,6 +202,19 @@ function decisions(db, w) {
   }));
 }
 
+/**
+ * The part of a meeting note worth reading: from its summary-ish section if it
+ * has one, without the Plaud boilerplate (title echo, "Recording", Plaud ID).
+ */
+function meetingText(body) {
+  const plain = String(body || '').replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, '$2');
+  const at = plain.search(/^#{1,4}\s*(Summary|Overview|Meeting Notes|Key Points|Discussion|Conclusions?)\b/im);
+  const from = at >= 0 ? plain.slice(at) : plain;
+  return from.split('\n')
+    .filter((l) => !/Plaud ID|^\s*Recording\b|^\s*Transcript:/i.test(l))
+    .map((l) => l.replace(/^#+\s*/, '').trim()).filter(Boolean).join('\n');
+}
+
 /** Meeting write-ups in Meetings/YYYY/MM for the window. */
 function meetings(vaultRoot, w) {
   const out = [];
@@ -193,7 +235,7 @@ function meetings(vaultRoot, w) {
       if (meta.type && !/meeting|transcript/i.test(meta.type)) continue;
       const date = (String(meta.date || meta.start_at || '').match(/^\d{4}-\d{2}-\d{2}/) || [])[0] || day;
       if (!date || date < w.from || date > w.to) continue;
-      const text = body.replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, '$2').replace(/^#+\s*/gm, '').replace(/\n{2,}/g, '\n');
+      const text = meetingText(body);
       out.push({
         id: `meeting:${path.posix.join('Meetings', ym.slice(0, 4), ym.slice(5, 7), f)}`,
         source: 'meetings', kind: 'meeting', hint: null,
@@ -210,6 +252,7 @@ function meetings(vaultRoot, w) {
 const SOURCES = [
   ['tasks-overdue', (ctx) => tasksOverdue(ctx.db, ctx.w, ctx.today)],
   ['tasks-late', (ctx) => tasksLate(ctx.db, ctx.w)],
+  ['tasks-done', (ctx) => tasksDone(ctx.db, ctx.w)],
   ['wins', (ctx) => winsIn(ctx.db, ctx.w)],
   ['replies-sent', (ctx) => repliesSent(ctx.db, ctx.w)],
   ['management-log', (ctx) => managementLog(ctx.db, ctx.w)],
@@ -226,6 +269,7 @@ const NOT_INCLUDED = [
   'Outlook Sent Items not sent through NEURO (only replies NEURO sent are here)',
   'Jira ticket work and escalations raised (NOVA owns those)',
   'Personal-domain tasks (never — work only)',
+  'Microsoft To Do / Planner completions (the wins ledger cannot tell work from personal for those)',
 ];
 
 function prevDay(key) {
@@ -265,4 +309,4 @@ function candidates({ from, to } = {}, deps = {}) {
   };
 }
 
-module.exports = { candidates, parseWindow, MAX_WINDOW_DAYS, _internals: { meetings, sqliteToIso, fm } };
+module.exports = { candidates, parseWindow, MAX_WINDOW_DAYS, _internals: { meetings, meetingText, sqliteToIso, fm } };
