@@ -418,6 +418,26 @@ function buildReason(candidate) {
   return 'Likely action found in note';
 }
 
+/**
+ * Who a line is assigned to by its `👤 [[People/Name|…]]` marker, or null if none.
+ *
+ * NOVA writes each 1-2-1 action back into the person's People note with that marker
+ * (`nova-121-writeback.renderAction`), and `person-profile` does the same. A line
+ * assigned to someone else is something Nick ASKED them to do — raising it as Nick's
+ * task put three of Heidi's 1-2-1 actions in his review queue as MUST/high (28 Oct 2026).
+ */
+const NICK_NAME = 'nick ward';
+
+function assigneeOf(line) {
+  const m = String(line || '').match(/👤\s*\[\[People\/([^|\]]+)(?:\|[^\]]*)?\]\]/);
+  return m ? m[1].trim() : null;
+}
+
+function assignedToSomeoneElse(line) {
+  const who = assigneeOf(line);
+  return !!who && who.toLowerCase() !== NICK_NAME;
+}
+
 function extractActionCandidates(text, relativePath) {
   const body = stripFrontmatter(text);
   const lines = body.split(/\r?\n/);
@@ -438,6 +458,10 @@ function extractActionCandidates(text, relativePath) {
       actionableSection = isActionHeading(trimmed);
       continue;
     }
+
+    // Someone else's action (a 1-2-1 action NOVA wrote back, a profile task) is not
+    // Nick's to do, whatever section it sits in.
+    if (assignedToSomeoneElse(trimmed)) continue;
 
     let confidence = 0;
     let textValue = '';
@@ -1306,6 +1330,7 @@ module.exports = {
   buildFocusItemId,
   buildSemanticSignature,
   extractActionCandidates,
+  assignedToSomeoneElse,
   rememberReviewedAction,
   reviewStatusFor,
   // Exported for the pin in candidate-recording-scope.test.js: "unknown never
