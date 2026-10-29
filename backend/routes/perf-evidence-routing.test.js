@@ -86,6 +86,19 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   for (const s of Object.values(body.sources)) assert.equal(s.ok, true);
 });
 
+test('an employment matter keeps its title and loses its detail; a failing screen withholds', () => {
+  const sensitive = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => ({ sensitive: true, categories: ['employee-cases-note'] }) });
+  const m = sensitive.items.find((i) => i.kind === 'meeting');
+  assert.equal(m.sensitive, true);
+  assert.doesNotMatch(m.detail, /QA rollout/);
+  assert.match(m.title, /Support Leadership/);
+  assert.ok(!sensitive.items.some((i) => '_screenText' in i), 'the full text never leaves NEURO');
+  const broken = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => { throw new Error('boom'); } });
+  assert.equal(broken.items.find((i) => i.kind === 'meeting').sensitive, true);
+  const clean = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => ({ sensitive: false, categories: [] }) });
+  assert.match(clean.items.find((i) => i.kind === 'meeting').detail, /QA rollout/, 'positive control');
+});
+
 test('an unreadable vault is a named gap, not an empty meetings list', () => {
   const out = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { vaultRoot: path.join(scratch, 'nope') });
   assert.equal(out.sources.meetings.ok, false);

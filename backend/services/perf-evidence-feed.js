@@ -169,6 +169,8 @@ function repliesSent(db, w) {
       at: r.sent_at,
       title: `Replied: ${r.subject || '(no subject)'}`,
       detail: `${to.length ? `To ${to.slice(0, 4).join(', ')}. ` : ''}${clip(r.body, 500)}`,
+      _screenText: `${r.subject || ''}
+${r.body || ''}`,
       ref: null,
     };
   });
@@ -242,6 +244,7 @@ function meetings(vaultRoot, w) {
         at: `${date}T12:00:00`,
         title: `Meeting: ${f.replace(/\.md$/, '').replace(/^\d{4}-\d{2}-\d{2}\s*[–-]?\s*/, '')}`,
         detail: clip(text, 900),
+        _screenText: text,
         ref: `vault:${path.posix.join('Meetings', ym.slice(0, 4), ym.slice(5, 7), f)}`,
       });
     }
@@ -272,6 +275,16 @@ const NOT_INCLUDED = [
   'Microsoft To Do / Planner completions (the wins ledger cannot tell work from personal for those)',
 ];
 
+function defaultScreen() {
+  const pm = require('./prepared-move');
+  let roster;
+  try { roster = require('./entities').getRoster(); } catch { roster = null; }
+  return ({ sourceTitle, sourceText }) => {
+    if (!roster) return { sensitive: true, categories: ['roster-unreadable'] };
+    return pm.employmentScreen({ wording: sourceTitle, sourceTitle, sourceText, roster });
+  };
+}
+
 function prevDay(key) {
   const d = new Date(`${key}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
@@ -298,6 +311,25 @@ function candidates({ from, to } = {}, deps = {}) {
       items.push(...got);
     } catch (e) {
       sources[name] = { ok: false, error: e.message };
+    }
+  }
+  // ⚠ Employment matters are withheld (29 Oct 2026). Found on the first live
+  // read: a meeting excerpt described a named colleague's personal situation.
+  // That a conversation happened is evidence of how Nick manages; WHAT it was
+  // about is the colleague's, and must not be copied into VANTAGE or a model
+  // prompt. NEURO's own screen decides (prepared-move.employmentScreen — HR
+  // wording, or a note discussing named people's sickness/absence/etc. on 2+
+  // lines). A screen that fails withholds rather than passes.
+  const screen = deps.screen || defaultScreen();
+  for (const it of items) {
+    const text = it._screenText || it.detail || '';
+    delete it._screenText;
+    if (!['meetings', 'email', 'management-log', 'decisions'].includes(it.source)) continue;
+    let verdict;
+    try { verdict = screen({ sourceTitle: it.title, sourceText: text }); } catch { verdict = { sensitive: true, categories: ['screen-failed'] }; }
+    if (verdict.sensitive) {
+      it.sensitive = true;
+      it.detail = 'Details withheld — this concerns an employee matter. Open it in NEURO to read it.';
     }
   }
   items.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
