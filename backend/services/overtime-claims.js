@@ -49,7 +49,14 @@ function ensureTable() {
 }
 
 const bad = (error, code = 400) => ({ ok: false, code, error });
-const novaFail = (e) => ({ ok: false, code: e.status && e.status < 500 ? e.status : 502, error: e.message });
+// A bridge route NOVA does not have falls through to NOVA's app auth and answers 401 (or 404),
+// which read as "Not authenticated" — the wrong cause. Say what it means.
+const novaFail = (e) => {
+  if ((e.status === 401 && e.message === 'Not authenticated') || (e.status === 404 && /failed \(404\)/.test(e.message))) {
+    return { ok: false, code: 502, error: 'NOVA has no overtime bridge yet — deploy NOVA v1.1.764 or later on AAPP01.' };
+  }
+  return { ok: false, code: e.status && e.status < 500 ? e.status : 502, error: e.message };
+};
 
 // ── Reads ──
 

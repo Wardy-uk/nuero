@@ -63,3 +63,13 @@ test('a decision sends Nick as the decider and passes NOVA\'s refusal through', 
     assert.match(r.error, /needs a reason/);
   } finally { nova.call = original; }
 });
+
+test('a NOVA without the overtime bridge is named as such, not as "Not authenticated"', async () => {
+  const original = nova.call;
+  try {
+    nova.call = async () => { const e = new Error('Not authenticated'); e.status = 401; throw e; };
+    assert.match((await ot.claims({})).error, /no overtime bridge yet/);
+    nova.call = async () => { const e = new Error('claim not found'); e.status = 404; throw e; };
+    assert.strictEqual((await ot.check(9)).error, 'claim not found', 'a real 404 keeps its own words');
+  } finally { nova.call = original; }
+});
