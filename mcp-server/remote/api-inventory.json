@@ -4504,6 +4504,25 @@
     "stream": false
   },
   {
+    "id": "get_perf_evidence_candidates",
+    "method": "GET",
+    "route": "/api/perf-evidence/candidates",
+    "domain": "perf-evidence",
+    "source": "routes/perf-evidence.js",
+    "line": 14,
+    "description": "GET /api/perf-evidence/candidates. performance evidence for VANTAGE: Nick's own work in a window of at most 31 days (tasks overdue or done late, wins, replies sent, management log, decisions, meeting write-ups). Read-only; each source says whether it answered.",
+    "params": [],
+    "query": [
+      "from",
+      "to"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_performance_exertion",
     "method": "GET",
     "route": "/api/performance/exertion",
@@ -5887,7 +5906,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 290,
+    "line": 292,
     "description": "GET /api/status.",
     "params": [],
     "query": [],

@@ -281,6 +281,8 @@ app.use('/api/adhd', require('./routes/adhd'));
 // separate route because it is READ-ONLY and /api/adhd is not.
 app.use('/api/friction', require('./routes/friction'));
 app.use('/api/wins', require('./routes/wins'));
+// Performance evidence feed for VANTAGE (read-only).
+app.use('/api/perf-evidence', require('./routes/perf-evidence'));
 app.use('/api/weekly-target', require('./routes/weekly-target'));
 app.use('/api/standup-session', require('./routes/standup-session'));
 app.use('/api/outcomes', require('./routes/outcomes'));

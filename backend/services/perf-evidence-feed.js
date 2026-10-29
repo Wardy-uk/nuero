@@ -1,0 +1,268 @@
+'use strict';
+
+/**
+ * Performance evidence feed (29 Oct 2026) — what NEURO can show about Nick's
+ * own work in a date window, for VANTAGE's Performance Evidence section.
+ *
+ * READ-ONLY, and it JUDGES NOTHING. Which SFIA skill an item bears on, and
+ * whether it counts, is VANTAGE's model's proposal and then Nick's decision.
+ * This only says what happened, when, and where it is recorded.
+ *
+ * Counter-evidence is included on purpose (Nick, 29 Oct 2026: "literally
+ * everything"): a work task left open past its due date, and one finished
+ * after it, are items too. They carry a `hint` of 'against', which is a
+ * statement about the item's shape, not a verdict — a set date can be a plan
+ * rather than a promise, and the task's `origin` travels with it so VANTAGE can
+ * tell a commitment from Nick's own stretch goal.
+ *
+ * Every source reports whether it answered. A source that could not be read is
+ * a named gap, never an empty list — "no meetings that week" and "could not read
+ * the vault" lead to different conclusions about a man's performance.
+ *
+ * Personal-domain tasks are never included. Work only.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const MAX_WINDOW_DAYS = 31;
+const MAX_ITEMS = 1500;
+const EXCERPT = 700;
+
+const isDateKey = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
+  && !Number.isNaN(Date.parse(`${v}T00:00:00Z`))
+  && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+
+/** Validate a window. Refused, never clamped. Pure. */
+function parseWindow(from, to) {
+  if (!isDateKey(from)) return { error: 'from must be YYYY-MM-DD' };
+  if (!isDateKey(to)) return { error: 'to must be YYYY-MM-DD' };
+  if (to < from) return { error: 'to is before from' };
+  const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+  if (days > MAX_WINDOW_DAYS) return { error: `window is ${days} days; at most ${MAX_WINDOW_DAYS}` };
+  return { from, to, days };
+}
+
+/** Local date key — never toISOString (the Pi may run UTC). */
+function localKey(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const clip = (s, n = EXCERPT) => {
+  const t = String(s || '').replace(/\r/g, '').replace(/\s+\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+};
+
+/** SQLite CURRENT_TIMESTAMP is UTC with no zone. Pure. */
+function sqliteToIso(v) {
+  if (!v) return null;
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return `${s.replace(' ', 'T')}Z`;
+  return s;
+}
+
+function fm(content) {
+  const c = String(content || '').replace(/\r\n/g, '\n');
+  if (!c.startsWith('---\n')) return { meta: {}, body: c };
+  const end = c.indexOf('\n---', 4);
+  if (end === -1) return { meta: {}, body: c };
+  const meta = {};
+  for (const line of c.slice(4, end).split('\n')) {
+    const i = line.indexOf(':');
+    if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+  }
+  return { meta, body: c.slice(end + 4) };
+}
+
+// ── sources ─────────────────────────────────────────────────────────────────
+
+function tasksOverdue(db, w, today) {
+  // Open work tasks whose due date fell inside the window and has passed.
+  const until = w.to < today ? w.to : prevDay(today);
+  if (until < w.from) return [];
+  return db.prepare(`
+    SELECT id, text, due_date, origin, origin_proposed, source, status
+      FROM tasks
+     WHERE status IN ('open','in-progress') AND domain = 'work'
+       AND due_date IS NOT NULL AND substr(due_date,1,10) BETWEEN ? AND ?
+  `).all(w.from, until).map((t) => ({
+    id: `task-overdue:${t.id}:${String(t.due_date).slice(0, 10)}`,
+    source: 'tasks', kind: 'task-overdue', hint: 'against',
+    at: `${String(t.due_date).slice(0, 10)}T17:00:00`,
+    title: t.text,
+    detail: `Due ${String(t.due_date).slice(0, 10)} and still open. Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
+    ref: `neuro:task:${t.id}`,
+  }));
+}
+
+function tasksLate(db, w) {
+  return db.prepare(`
+    SELECT id, text, due_date, completed_at, origin, origin_proposed
+      FROM tasks
+     WHERE status = 'done' AND domain = 'work' AND due_date IS NOT NULL AND completed_at IS NOT NULL
+       AND substr(completed_at,1,10) BETWEEN ? AND ?
+       AND substr(completed_at,1,10) > substr(due_date,1,10)
+  `).all(w.from, w.to).map((t) => ({
+    id: `task-late:${t.id}`,
+    source: 'tasks', kind: 'task-late', hint: 'against',
+    at: sqliteToIso(t.completed_at),
+    title: t.text,
+    detail: `Done ${String(t.completed_at).slice(0, 10)}, after its due date ${String(t.due_date).slice(0, 10)}. Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
+    ref: `neuro:task:${t.id}`,
+  }));
+}
+
+function winsIn(db, w) {
+  return db.prepare(`
+    SELECT id, date_key, occurred_at, source, kind, text, evidence, count
+      FROM wins WHERE date_key BETWEEN ? AND ? ORDER BY occurred_at
+  `).all(w.from, w.to).map((r) => ({
+    id: `win:${r.id}`,
+    source: 'wins', kind: `win:${r.source}`, hint: 'for',
+    at: r.occurred_at,
+    title: r.count > 1 ? `${r.text} (×${r.count})` : r.text,
+    detail: `Recorded by NEURO's wins ledger (${r.source}${r.kind ? ` / ${r.kind}` : ''}).`,
+    ref: r.evidence ? `${r.source}:${r.evidence}` : null,
+  }));
+}
+
+function repliesSent(db, w) {
+  return db.prepare(`
+    SELECT id, subject, from_name, recipients, body, sent_at
+      FROM sent_replies WHERE substr(sent_at,1,10) BETWEEN ? AND ?
+  `).all(w.from, w.to).map((r) => {
+    let to = [];
+    try { to = (JSON.parse(r.recipients || '[]') || []).map((x) => x.name || x.email).filter(Boolean); } catch { /* none */ }
+    return {
+      id: `reply:${r.id}`,
+      source: 'email', kind: 'reply-sent', hint: null,
+      at: r.sent_at,
+      title: `Replied: ${r.subject || '(no subject)'}`,
+      detail: `${to.length ? `To ${to.slice(0, 4).join(', ')}. ` : ''}${clip(r.body, 500)}`,
+      ref: null,
+    };
+  });
+}
+
+function managementLog(db, w) {
+  return db.prepare(`
+    SELECT id, entry_date, logged_at, type, person, summary, action, status
+      FROM management_log WHERE substr(entry_date,1,10) BETWEEN ? AND ?
+  `).all(w.from, w.to).map((r) => ({
+    id: `mlog:${r.id}`,
+    source: 'management-log', kind: `mlog:${r.type}`, hint: null,
+    at: `${String(r.entry_date).slice(0, 10)}T12:00:00`,
+    title: `${r.type}${r.person ? ` with ${r.person}` : ''}: ${clip(r.summary, 120)}`,
+    detail: clip(`${r.summary}${r.action ? `\nAction: ${r.action}` : ''}\nStatus: ${r.status}. Logged ${String(r.logged_at).slice(0, 10)}.`),
+    ref: `neuro:management-log:${r.id}`,
+  }));
+}
+
+function decisions(db, w) {
+  return db.prepare(`
+    SELECT id, decision_text, created_at FROM decisions
+     WHERE substr(created_at,1,10) BETWEEN ? AND ?
+  `).all(w.from, w.to).map((r) => ({
+    id: `decision:${r.id}`,
+    source: 'decisions', kind: 'decision', hint: null,
+    at: sqliteToIso(r.created_at),
+    title: `Decision: ${clip(r.decision_text, 140)}`,
+    detail: clip(r.decision_text),
+    ref: null,
+  }));
+}
+
+/** Meeting write-ups in Meetings/YYYY/MM for the window. */
+function meetings(vaultRoot, w) {
+  const out = [];
+  const months = new Set();
+  for (let d = new Date(`${w.from}T00:00:00Z`); d.toISOString().slice(0, 10) <= w.to; d.setUTCDate(d.getUTCDate() + 1)) {
+    months.add(d.toISOString().slice(0, 7));
+  }
+  for (const ym of months) {
+    const dir = path.join(vaultRoot, 'Meetings', ym.slice(0, 4), ym.slice(5, 7));
+    let files;
+    try { files = fs.readdirSync(dir); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+    for (const f of files) {
+      if (!f.endsWith('.md') || / 2\.md$/.test(f) || /Prep\.md$/i.test(f)) continue;
+      const day = (f.match(/^(\d{4}-\d{2}-\d{2})/) || [])[1];
+      let content;
+      try { content = fs.readFileSync(path.join(dir, f), 'utf8'); } catch { continue; }
+      const { meta, body } = fm(content);
+      if (meta.type && !/meeting|transcript/i.test(meta.type)) continue;
+      const date = (String(meta.date || meta.start_at || '').match(/^\d{4}-\d{2}-\d{2}/) || [])[0] || day;
+      if (!date || date < w.from || date > w.to) continue;
+      const text = body.replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, '$2').replace(/^#+\s*/gm, '').replace(/\n{2,}/g, '\n');
+      out.push({
+        id: `meeting:${path.posix.join('Meetings', ym.slice(0, 4), ym.slice(5, 7), f)}`,
+        source: 'meetings', kind: 'meeting', hint: null,
+        at: `${date}T12:00:00`,
+        title: `Meeting: ${f.replace(/\.md$/, '').replace(/^\d{4}-\d{2}-\d{2}\s*[–-]?\s*/, '')}`,
+        detail: clip(text, 900),
+        ref: `vault:${path.posix.join('Meetings', ym.slice(0, 4), ym.slice(5, 7), f)}`,
+      });
+    }
+  }
+  return out;
+}
+
+const SOURCES = [
+  ['tasks-overdue', (ctx) => tasksOverdue(ctx.db, ctx.w, ctx.today)],
+  ['tasks-late', (ctx) => tasksLate(ctx.db, ctx.w)],
+  ['wins', (ctx) => winsIn(ctx.db, ctx.w)],
+  ['replies-sent', (ctx) => repliesSent(ctx.db, ctx.w)],
+  ['management-log', (ctx) => managementLog(ctx.db, ctx.w)],
+  ['decisions', (ctx) => decisions(ctx.db, ctx.w)],
+  ['meetings', (ctx) => {
+    if (!ctx.vaultRoot) throw new Error('vault not configured');
+    if (!fs.existsSync(path.join(ctx.vaultRoot, 'Meetings'))) throw new Error('Meetings/ not found in the vault');
+    return meetings(ctx.vaultRoot, ctx.w);
+  }],
+];
+
+/** What the feed deliberately does not carry yet, so nobody reads it as the whole picture. */
+const NOT_INCLUDED = [
+  'Outlook Sent Items not sent through NEURO (only replies NEURO sent are here)',
+  'Jira ticket work and escalations raised (NOVA owns those)',
+  'Personal-domain tasks (never — work only)',
+];
+
+function prevDay(key) {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Candidates for a window. `deps` are injectable for tests.
+ * @returns {{ ok, from, to, items, sources:{[name]:{ok,count?,error?}}, truncated, notIncluded }}
+ */
+function candidates({ from, to } = {}, deps = {}) {
+  const w = parseWindow(from, to);
+  if (w.error) { const e = new Error(w.error); e.status = 400; throw e; }
+  const db = deps.db || require('../db/database').getDb();
+  const vaultRoot = deps.vaultRoot !== undefined ? deps.vaultRoot : (process.env.OBSIDIAN_VAULT_PATH || '');
+  const today = deps.today || localKey();
+  const ctx = { db, w, vaultRoot, today };
+  const items = [];
+  const sources = {};
+  for (const [name, fn] of SOURCES) {
+    try {
+      const got = fn(ctx);
+      sources[name] = { ok: true, count: got.length };
+      items.push(...got);
+    } catch (e) {
+      sources[name] = { ok: false, error: e.message };
+    }
+  }
+  items.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+  const truncated = items.length > MAX_ITEMS;
+  return {
+    ok: true, from: w.from, to: w.to,
+    items: truncated ? items.slice(-MAX_ITEMS) : items,
+    sources, truncated, notIncluded: NOT_INCLUDED,
+  };
+}
+
+module.exports = { candidates, parseWindow, MAX_WINDOW_DAYS, _internals: { meetings, sqliteToIso, fm } };

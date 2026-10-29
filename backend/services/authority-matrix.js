@@ -492,7 +492,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   actions: 'internal.state', attention: 'internal.state', activity: 'internal.state', adhd: 'internal.state', canonical: 'internal.state',
   chat: 'internal.state', 'day-plan': 'internal.state', email: 'internal.state', friction: 'internal.state', outcomes: 'internal.state',
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
-  'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
+  'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', 'perf-evidence': 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state', uat: 'internal.state', u: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
   outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
