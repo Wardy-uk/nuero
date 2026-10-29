@@ -132,6 +132,9 @@ router.get('/working-days', (req, res) => {
     const today = new Date();
     res.json({
       ...wd.status(),
+      // Every non-working date NEURO knows (bank holidays), for a caller that
+      // lays work out over days — VANTAGE's Replan (29 Oct 2026).
+      dates: wd.holidaySet ? [...wd.holidaySet()].sort() : [],
       today: {
         date: require('../../shared/working-days.cjs').toDateStr(today),
         working: wd.isWorkingDay(today),
