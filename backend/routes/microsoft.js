@@ -88,6 +88,30 @@ router.get('/planner/tasks', async (req, res) => {
   }
 });
 
+// GET /api/microsoft/planner/plans — the Planner boards Nick can see (VANTAGE
+// plan picker). 503 when Graph could not be asked: never an empty list.
+router.get('/planner/plans', async (req, res) => {
+  try {
+    const plans = await microsoft.fetchPlannerPlans();
+    if (plans === null) return res.status(503).json({ error: 'Could not read your Planner boards (Microsoft sign-in or Graph unavailable)' });
+    res.json({ plans });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/microsoft/planner/plans/:planId/tasks — every task on one Planner
+// board, not just Nick's (VANTAGE seeds a plan register from it).
+router.get('/planner/plans/:planId/tasks', async (req, res) => {
+  try {
+    const tasks = await microsoft.fetchPlannerPlanTasks(req.params.planId);
+    if (tasks === null) return res.status(503).json({ error: 'Could not read that Planner board' });
+    res.json({ tasks, truncated: Boolean(tasks.truncated) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/microsoft/todo/lists — fetch To-Do task lists
 router.get('/todo/lists', async (req, res) => {
   try {

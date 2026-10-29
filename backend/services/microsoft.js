@@ -1118,6 +1118,65 @@ async function fetchPlannerPlanNames(planIds, now = Date.now()) {
   return out;
 }
 
+// ── Whole boards, for VANTAGE's plans (29 Oct 2026) ──────────────────────────
+//
+// `/me/planner/tasks` is only what is ASSIGNED to Nick. Choosing a board to
+// become a plan, and seeding a register from it, needs the board's whole task
+// list. Both reads are covered by Tasks.ReadWrite; Graph only lets Nick read a
+// board he is a member of.
+//
+// null = could not read. An empty array = read, and empty. The routes keep the
+// two apart, because a board list that silently reads [] looks like a man with
+// no boards.
+
+/** Boards Nick can see: `/me/planner/plans`, plus any board one of his own tasks is on. */
+async function fetchPlannerPlans() {
+  const token = await getAccessToken();
+  if (!token) return null;
+  const byId = new Map();
+  let listed = false;
+  try {
+    const data = await graphFetchAll('/me/planner/plans', token);
+    if (data && Array.isArray(data.value)) {
+      listed = true;
+      for (const p of data.value) if (p && p.id) byId.set(p.id, { id: p.id, title: (p.title || '').trim() || null, source: 'member' });
+    }
+  } catch (err) {
+    console.warn('[Planner] /me/planner/plans failed:', err.message);
+  }
+  let mine = null;
+  try { mine = await fetchPlannerTasks(); } catch { mine = null; }
+  const myCounts = new Map();
+  for (const t of mine || []) if (t.planId) myCounts.set(t.planId, (myCounts.get(t.planId) || 0) + 1);
+  const missing = [...myCounts.keys()].filter(id => !byId.has(id) || !byId.get(id).title);
+  if (missing.length) {
+    const names = await fetchPlannerPlanNames(missing);
+    for (const id of missing) {
+      const prev = byId.get(id);
+      byId.set(id, { id, title: names.get(id) || prev?.title || null, source: prev?.source || 'your-tasks' });
+    }
+  }
+  if (!listed && mine === null) return null;
+  return [...byId.values()].map(p => ({ ...p, yourTasks: myCounts.get(p.id) || 0 }));
+}
+
+/** Every task on one board, not just Nick's. null = could not read. */
+async function fetchPlannerPlanTasks(planId) {
+  if (!planId || !/^[A-Za-z0-9_-]+$/.test(planId)) return null;
+  const token = await getAccessToken();
+  if (!token) return null;
+  try {
+    const data = await graphFetchAll(`/planner/plans/${encodeURIComponent(planId)}/tasks?$top=200`, token);
+    if (!data || !Array.isArray(data.value)) return null;
+    const rows = data.value;
+    if (data.truncated) rows.truncated = true;
+    return rows;
+  } catch (err) {
+    console.warn(`[Planner] plan ${planId} tasks failed:`, err.message);
+    return null;
+  }
+}
+
 // Build 14B: createTodoTask / updateTodoTask / updatePlannerTask (bridge
 // passthroughs that forwarded an arbitrary body to NOVA) were deleted.
 
@@ -1980,6 +2039,8 @@ module.exports = {
   fetchTodoTasks,
   fetchPlannerTasks,
   fetchPlannerPlanNames,
+  fetchPlannerPlans,
+  fetchPlannerPlanTasks,
   completeTodoTask,
   completePlannerTask,
   completeMicrosoftTask,
