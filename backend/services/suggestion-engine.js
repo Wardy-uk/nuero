@@ -236,6 +236,25 @@ function suggestionIdentity(type, payload, focusItemId) {
 }
 
 /**
+ * PURE. The key two PENDING rows must share to be the same card.
+ *
+ * A navigation shortcut is keyed on WHERE IT GOES (type + payload), never on the
+ * focus item: decision-engine renames its overdue card from `todo-overdue-summary`
+ * to `todo-overdue-top` the moment the count drops to one, so the 08:00 and 09:00
+ * passes queued the identical "Jump to tasks (overdue)" twice (29 Oct 2026). Two
+ * shortcuts to the same screen are one card whatever produced them. Everything
+ * else keeps type + focus item.
+ */
+function pendingKey(type, payload, focusItemId) {
+  if (actionPresenter.describe({ type, payload }).kind === REPEATABLE_KIND) {
+    const p = payload && typeof payload === 'object' ? payload : {};
+    const stable = Object.keys(p).sort().map((k) => `${k}=${JSON.stringify(p[k])}`).join('&');
+    return `${type}:nav:${stable}`;
+  }
+  return `${type}:${focusItemId}`;
+}
+
+/**
  * The identities of everything of ONE type that Nick has already decided on.
  */
 function decidedIdentities(type) {
@@ -283,7 +302,7 @@ function generateSuggestions(focusItems) {
   // compounded to 15,605 pending rows, most of them the same handful repeated.
   const pendingActions = db.getPendingSaimActions(1000);
   const pendingKeys = new Set(
-    pendingActions.map(a => `${a.type}:${a.focus_item_id}`)
+    pendingActions.map(a => pendingKey(a.type, a.payload, a.focus_item_id))
   );
   // Read lazily and once per type: on the overwhelmingly common pass every
   // suggestion is navigation, and this query is never made at all.
@@ -296,7 +315,7 @@ function generateSuggestions(focusItems) {
       const suggestion = rule.generate(item);
       if (!suggestion) continue;
 
-      const dedupeKey = `${suggestion.type}:${item.id}`;
+      const dedupeKey = pendingKey(suggestion.type, suggestion.payload, item.id);
       if (pendingKeys.has(dedupeKey)) continue;
 
       // An actuator is offered once per decision. A shortcut stays repeatable.
@@ -345,10 +364,10 @@ function persistSuggestions(suggestions) {
   // depends on reading a complete pending set; this one cannot be defeated by a
   // limit, a race between two /api/focus calls, or a future caller that forgets.
   const existing = new Set(
-    db.getPendingSaimActions(1000).map(a => `${a.type}:${a.focus_item_id}`)
+    db.getPendingSaimActions(1000).map(a => pendingKey(a.type, a.payload, a.focus_item_id))
   );
   for (const s of suggestions) {
-    const key = `${s.type}:${s.focusItemId}`;
+    const key = pendingKey(s.type, s.payload, s.focusItemId);
     if (existing.has(key)) continue;
     existing.add(key);
     const id = db.createSaimAction(s.type, s.payload, s.confidence, s.reason, s.focusItemId);
@@ -891,6 +910,7 @@ module.exports = {
   expireStaleNavigation,
   // Pure, so the "offered once" rule pins without a database.
   suggestionIdentity,
+  pendingKey,
   IDENTITY_FIELD,
   LEGACY_OUTBOUND_RETIRED,
   legacyRetired,
