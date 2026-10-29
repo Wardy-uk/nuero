@@ -1,0 +1,65 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+
+const ot = require('./overtime-claims');
+const nova = require('./nova-client');
+
+const exp = {
+  month: '2026-10',
+  rows: [
+    { claimId: 1, agentName: 'Abdi Example', date: '2026-10-07', hours: 2, lateFromEarlierMonth: false },
+    { claimId: 2, agentName: 'Abdi Example', date: '2026-09-30', hours: 1.5, lateFromEarlierMonth: true },
+    { claimId: 3, agentName: 'Zoe Example', date: '2026-10-20', hours: 3, lateFromEarlierMonth: false },
+  ],
+  totals: [
+    { agentName: 'Abdi Example', agentEmail: 'a@x', claims: 2, hours: 3.5 },
+    { agentName: 'Zoe Example', agentEmail: 'z@x', claims: 1, hours: 3 },
+  ],
+  totalHours: 6.5,
+};
+
+test('the payroll email states every person, the total and the late claims', () => {
+  const m = ot.payrollEmail(exp);
+  assert.strictEqual(m.subject, 'Overtime – October 2026');
+  assert.match(m.body, /Abdi Example: 3\.5 hours \(2 claims\)/);
+  assert.match(m.body, /Zoe Example: 3 hours \(1 claim\)/);
+  assert.match(m.body, /Total: 6\.5 hours\./);
+  assert.match(m.body, /1 of these claims is for work in an earlier month/);
+  assert.strictEqual(ot.payrollEmail(exp, { additional: true }).subject, 'Overtime – October 2026 (additional)');
+});
+
+test('bad input is refused before NOVA is asked', async () => {
+  const original = nova.call;
+  let calls = 0;
+  nova.call = async () => { calls += 1; return {}; };
+  try {
+    assert.strictEqual((await ot.decide(5, { decision: 'maybe' })).code, 400);
+    assert.strictEqual((await ot.decide(5, { decision: 'reject', note: '  ' })).code, 400, 'a rejection needs a reason');
+    assert.strictEqual((await ot.decide(0, { decision: 'approve' })).code, 400);
+    assert.strictEqual((await ot.claims({ month: '2026-13' })).code, 400);
+    assert.strictEqual((await ot.claims({ status: 'paid' })).code, 400);
+    assert.strictEqual((await ot.payrollFile('Oct')).code, 400);
+    assert.strictEqual(calls, 0);
+  } finally { nova.call = original; }
+});
+
+test('a decision sends Nick as the decider and passes NOVA\'s refusal through', async () => {
+  const original = nova.call;
+  let seen = null;
+  nova.call = async (path, opts) => {
+    seen = { path, body: opts.body };
+    const e = new Error('This claim has Working Time warnings — approving it needs a reason, which is recorded.');
+    e.status = 400;
+    throw e;
+  };
+  try {
+    const r = await ot.decide(7, { decision: 'approve' });
+    assert.strictEqual(seen.path, '/api/neuro-bridge/overtime/claims/7/decide');
+    assert.deepStrictEqual(seen.body.decidedBy, { name: 'Nick Ward', email: 'nickw@nurtur.tech' });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.code, 400);
+    assert.match(r.error, /needs a reason/);
+  } finally { nova.call = original; }
+});

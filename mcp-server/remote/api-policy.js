@@ -218,6 +218,11 @@ export const interactive = {
   post_uat_rounds_by_id_dismiss: 'Dismissing a UAT request is Nick\'s call, in NEURO → People → UAT volunteers.',
   post_uat_rounds_by_id_retry: 'Re-reading a UAT request is done by Nick, in NEURO → People → UAT volunteers.',
   post_uat_tick: 'The UAT round timer runs on its own; Nick can run it in NEURO.',
+  // Overtime claims (29 Oct 2026): deciding a claim, opt-outs and the payroll send are Nick's.
+  post_overtime_claims_by_id_decide: 'Approving or rejecting overtime is Nick\'s decision, in NEURO → People → Overtime.',
+  post_overtime_claims_optouts: 'Recording a Working Time opt-out is Nick\'s, in NEURO → People → Overtime.',
+  post_overtime_claims_optouts_by_id_withdraw: 'Recording a Working Time opt-out withdrawal is Nick\'s, in NEURO → People → Overtime.',
+  post_overtime_claims_payroll_prepare: 'Overtime goes to payroll on Nick\'s press, in NEURO → People → Overtime.',
   post_u_by_token: 'This is the answer link for the person invited to UAT — only they press it, from their email.',
   post_canonical_needs_you_synthetic: 'A synthetic P0 interrupts Nick\'s phone. He starts it himself in NEURO → Set up.',
   ...Object.fromEntries([

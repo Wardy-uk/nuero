@@ -84,6 +84,7 @@ const HikeSafetyPanel = lazyLoad(() => import('./components/HikeSafetyPanel'));
 const BriefingsPanel = lazyLoad(() => import('./components/BriefingsPanel'));
 const SoapReportPanel = lazyLoad(() => import('./components/SoapReportPanel'));
 const FixesLogPanel = lazyLoad(() => import('./components/FixesLogPanel'));
+const OvertimePanel = lazyLoad(() => import('./components/OvertimePanel'));
 const MedicalPanel = lazyLoad(() => import('./components/MedicalPanel'));
 const SetupWizard = lazyLoad(() => import('./components/SetupWizard'));
 const InsightsPanel = lazyLoad(() => import('./components/InsightsPanel'));
@@ -452,6 +453,7 @@ function AuthenticatedApp() {
       case 'briefings': return <BriefingsPanel />;
       case 'soap': return <SoapReportPanel />;
       case 'fixes-log': return <FixesLogPanel />;
+      case 'overtime': return <OvertimePanel />;
       case 'medical': return <MedicalPanel />;
       case 'setup': return <SetupWizard onNavigate={handleNavigate} />;
       case 'escalations': return <EscalationPanel />;

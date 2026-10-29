@@ -229,6 +229,12 @@ function start() {
     require('./uat-volunteers').tick().catch((e) => console.warn('[Scheduler] UAT volunteers failed:', e.message));
   });
 
+  // Every 10 min: overtime sent to payroll — once the email is VERIFIED in Sent Items, tell
+  // NOVA to mark those claims sent. Idempotent; a pass with nothing unmarked asks NOVA nothing.
+  cron.schedule('4-59/10 * * * *', () => {
+    require('./overtime-claims').reconcile().catch((e) => console.warn('[Scheduler] overtime payroll reconcile failed:', e.message));
+  });
+
   // Every 5 min: customer replies on watched Jira tickets (watched-tickets.js).
   // Idempotent on the Jira comment id, so a missed tick self-corrects.
   cron.schedule('3-59/5 * * * *', () => {

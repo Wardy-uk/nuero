@@ -4435,6 +4435,95 @@
     "stream": false
   },
   {
+    "id": "get_overtime_claims",
+    "method": "GET",
+    "route": "/api/overtime-claims",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 17,
+    "description": "GET /api/overtime-claims. ?status=&month= — overtime claims agents made in NOVA.",
+    "params": [],
+    "query": [
+      "month",
+      "status"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_overtime_claims_by_id_check",
+    "method": "GET",
+    "route": "/api/overtime-claims/:id/check",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 56,
+    "description": "GET /api/overtime-claims/:id/check. live: the agent's Jira/NOVA activity in the window and the Working Time read.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_overtime_claims_optouts",
+    "method": "GET",
+    "route": "/api/overtime-claims/optouts",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 23,
+    "description": "GET /api/overtime-claims/optouts. recorded 48-hour Working Time opt-outs.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_overtime_claims_payroll",
+    "method": "GET",
+    "route": "/api/overtime-claims/payroll",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 38,
+    "description": "GET /api/overtime-claims/payroll. ?month=YYYY-MM — the month's approved, unsent claims and past sends.",
+    "params": [],
+    "query": [
+      "month"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_overtime_claims_payroll_file",
+    "method": "GET",
+    "route": "/api/overtime-claims/payroll/file",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 41,
+    "description": "GET /api/overtime-claims/payroll/file. ?month=YYYY-MM — download the payroll spreadsheet.",
+    "params": [],
+    "query": [
+      "month"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_people",
     "method": "GET",
     "route": "/api/people",
@@ -5906,7 +5995,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 292,
+    "line": 293,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -12349,6 +12438,87 @@
     "query": [],
     "body": [
       "minutes"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_by_id_decide",
+    "method": "POST",
+    "route": "/api/overtime-claims/:id/decide",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 59,
+    "description": "POST /api/overtime-claims/:id/decide. approve or reject a claim (decision, note, overrideReason).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "decision",
+      "note",
+      "overrideReason"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_optouts",
+    "method": "POST",
+    "route": "/api/overtime-claims/optouts",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 26,
+    "description": "POST /api/overtime-claims/optouts. record a signed 48-hour opt-out (agentEmail, agentName, optedOutOn, documentRef).",
+    "params": [],
+    "query": [],
+    "body": [
+      "agentEmail",
+      "agentName",
+      "documentRef",
+      "optedOutOn"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_optouts_by_id_withdraw",
+    "method": "POST",
+    "route": "/api/overtime-claims/optouts/:id/withdraw",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 32,
+    "description": "POST /api/overtime-claims/optouts/:id/withdraw. the agent withdrew their opt-out (withdrawnOn).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "withdrawnOn"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_payroll_prepare",
+    "method": "POST",
+    "route": "/api/overtime-claims/payroll/prepare",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 50,
+    "description": "POST /api/overtime-claims/payroll/prepare. prepare the email to payroll with the month's file (month); the screen sends it with one press.",
+    "params": [],
+    "query": [],
+    "body": [
+      "month"
     ],
     "queryOpen": false,
     "bodyOpen": true,

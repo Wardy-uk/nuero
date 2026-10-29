@@ -51,6 +51,7 @@ const GROUPS = [
     { id: 'people',       label: 'People',       icon: '>' },
     { id: 'calendar',     label: 'Calendar',     icon: '>' },
     { id: 'meeting-prep', label: 'Meeting Prep', icon: '>' },
+    { id: 'overtime',     label: 'Overtime',     icon: '>' },
   ] },
   { id: 'work', label: 'WORK', items: [
     { id: 'dashboard',   label: 'Review',          icon: '⬡' },
