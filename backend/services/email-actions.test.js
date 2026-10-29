@@ -76,6 +76,16 @@ test('a dismissed or out-of-lane email is never asked about', async () => {
   assert.equal(res.created, 0);
 });
 
+test('mail from Nick himself (NEURO\'s daily briefing) is never asked about', async () => {
+  // The live case, 29 Oct 2026: the briefing's WhatsApp line came back as an ask.
+  const res = await ea.extractFromTriage([
+    email({ id: 'brief', from: 'Nick Ward', fromEmail: 'NickW@nurtur.tech',
+      subject: 'Daily briefing — Thursday 29 October', lane: 'reply' }),
+  ]);
+  assert.equal(res.considered, 0);
+  assert.equal(res.asked, 0);
+});
+
 // ---------------------------------------------------------------------------
 // Parsing — a non-answer is not "nothing owed"
 // ---------------------------------------------------------------------------

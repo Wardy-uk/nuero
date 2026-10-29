@@ -296,8 +296,20 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
   // Plan" became "Send update on key progress and blockers").
   return _extract(entries, {
     limit, ledgerKey: LEDGER_KEY, scope: 'work', tag: 'EmailActions',
-    eligible: (e) => LANES.has(e.lane) && !e.dismissed && !CALENDAR_NOTICE.test(String(e.subject || '')),
+    eligible: (e) => LANES.has(e.lane) && !e.dismissed && !CALENDAR_NOTICE.test(String(e.subject || ''))
+      && !fromNickHimself(e),
   });
+}
+
+/**
+ * Mail from Nick's own work address is never an ask of him — the personal inbox
+ * has always held this rule and the work one never did. The case that bit: NEURO's
+ * 08:00 "Daily briefing" goes out FROM his address TO him, and its line about the
+ * WhatsApp evaluation came back as a task he had been "asked" to do (29 Oct 2026).
+ */
+function fromNickHimself(email) {
+  const own = require('./mail-identity').WORK_ADDRESS.toLowerCase();
+  return String(email?.fromEmail || '').trim().toLowerCase() === own;
 }
 
 /**
