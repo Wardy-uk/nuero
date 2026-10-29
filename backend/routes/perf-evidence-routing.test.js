@@ -82,7 +82,13 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   assert.equal(meetings.length, 1, 'the " 2" twin is skipped');
   assert.match(meetings[0].detail, /QA rollout/);
   assert.doesNotMatch(meetings[0].detail, /Plaud ID/);
-  assert.equal(body.items.find((i) => i.id === 'task-overdue:1:2026-10-10').hint, 'against');
+  // Lateness is a fact, not a verdict: NEURO labels nothing 'against' (29 Oct 2026 —
+  // a one-day slip on a fix Nick found and made had been sorted as evidence against him).
+  assert.equal(body.items.find((i) => i.id === 'task-overdue:1:2026-10-10').hint, null);
+  const late = body.items.find((i) => i.id === 'task-late:3');
+  assert.equal(late.hint, null);
+  assert.match(late.detail, /Done 2026-10-08 \(due 2026-10-05, 3 day\(s\) later\)/);
+  assert.doesNotMatch(late.detail, /after its due date/);
   for (const s of Object.values(body.sources)) assert.equal(s.ok, true);
 });
 

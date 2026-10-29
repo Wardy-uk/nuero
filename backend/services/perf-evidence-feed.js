@@ -88,12 +88,17 @@ function tasksOverdue(db, w, today) {
        AND due_date IS NOT NULL AND substr(due_date,1,10) BETWEEN ? AND ?
   `).all(w.from, until).map((t) => ({
     id: `task-overdue:${t.id}:${String(t.due_date).slice(0, 10)}`,
-    source: 'tasks', kind: 'task-overdue', hint: 'against',
+    source: 'tasks', kind: 'task-overdue', hint: null,
     at: `${String(t.due_date).slice(0, 10)}T17:00:00`,
     title: t.text,
-    detail: `Due ${String(t.due_date).slice(0, 10)} and still open. Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
+    detail: `Due ${String(t.due_date).slice(0, 10)}; still open ${daysBetween(t.due_date, today)} day(s) on. Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
     ref: `neuro:task:${t.id}`,
   }));
+}
+
+/** Whole days from one date key to another. Pure. */
+function daysBetween(a, b) {
+  return Math.round((Date.parse(`${String(b).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(a).slice(0, 10)}T00:00:00Z`)) / 86400000);
 }
 
 function tasksLate(db, w) {
@@ -105,10 +110,10 @@ function tasksLate(db, w) {
        AND substr(completed_at,1,10) > substr(due_date,1,10)
   `).all(w.from, w.to).map((t) => ({
     id: `task-late:${t.id}`,
-    source: 'tasks', kind: 'task-late', hint: 'against',
+    source: 'tasks', kind: 'task-late', hint: null,
     at: sqliteToIso(t.completed_at),
     title: t.text,
-    detail: `Done ${String(t.completed_at).slice(0, 10)}, after its due date ${String(t.due_date).slice(0, 10)}. Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
+    detail: `Done ${String(t.completed_at).slice(0, 10)} (due ${String(t.due_date).slice(0, 10)}, ${daysBetween(t.due_date, t.completed_at)} day(s) later). Origin: ${t.origin ? `${t.origin}${t.origin_proposed ? ' (inferred)' : ''}` : 'not classified'}.`,
     ref: `neuro:task:${t.id}`,
   }));
 }
