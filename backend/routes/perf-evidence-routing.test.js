@@ -89,7 +89,11 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   assert.equal(late.hint, null);
   assert.match(late.detail, /Done 2026-10-08 \(due 2026-10-05, 3 day\(s\) later\)/);
   assert.doesNotMatch(late.detail, /after its due date/);
-  for (const s of Object.values(body.sources)) assert.equal(s.ok, true);
+  // Confluence has never been read in this database: a named gap, never an empty list.
+  const { confluence, ...local } = body.sources;
+  for (const s of Object.values(local)) assert.equal(s.ok, true);
+  assert.equal(confluence.ok, false);
+  assert.match(confluence.error, /Confluence not (read yet|configured)/);
 });
 
 test('an employment matter keeps its title and loses its detail; a failing screen withholds', () => {
