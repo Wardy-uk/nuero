@@ -903,6 +903,87 @@ function rowTail(item) {
  * updates promised, and the actions. A reply NEURO judged a thank-you is shown
  * muted, so "it went quiet" and "it was filtered" stay different.
  */
+/**
+ * Approve or decline the pending Jira approval on a ticket Tier 2 rejected.
+ * The approval is read live from Jira (GET /api/escalation/approval/:key); the
+ * press sends only the decision, the backend re-reads which approval it is.
+ * Two steps: the button, then a confirm naming exactly what happens.
+ */
+export function ApprovalBox({ ticketKey, onDecided, initial = null }) {
+  const [state, setState] = useState(initial || { loading: true });
+  const [confirming, setConfirming] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    if (initial) return undefined;
+    let live = true;
+    fetch(apiUrl(`/api/escalation/approval/${encodeURIComponent(ticketKey)}`))
+      .then((r) => r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` })))
+      .then((j) => { if (live) setState(j); })
+      .catch((e) => { if (live) setState({ ok: false, error: e.message }); });
+    return () => { live = false; };
+  }, [ticketKey, initial]);
+
+  const send = async (decision) => {
+    setSending(true);
+    try {
+      const r = await fetch(apiUrl(`/api/escalation/approval/${encodeURIComponent(ticketKey)}/decide`), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+      });
+      const j = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+      setResult(j);
+      setConfirming(null);
+      if (j.ok) onDecided?.(ticketKey, decision);
+    } catch (e) {
+      setResult({ ok: false, error: `${e.message}. It may or may not have reached Jira — check ${ticketKey}.` });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (result?.ok) {
+    return (
+      <div className="esc-approval esc-approval-done">
+        {result.decision === 'approve' ? 'Approved' : 'Declined'} in Jira{result.outcome === 'confirmed' ? ' — confirmed on the ticket.' : '.'}
+        {result.warning && <div className="esc-warn">{result.warning}</div>}
+      </div>
+    );
+  }
+  if (state.loading) return <div className="esc-approval"><span className="esc-approval-q">Reading the approval from Jira…</span></div>;
+  if (!state.ok) return <div className="esc-approval"><div className="esc-error">Couldn’t read the approval: {state.error}</div></div>;
+  if (!state.pending) return <div className="esc-approval"><span className="esc-approval-q">{state.why}</span></div>;
+
+  const a = state.pending;
+  return (
+    <div className="esc-approval">
+      <div className="esc-approval-q">
+        <strong>This request requires your approval</strong>
+        <span className="esc-section-sub"> · {a.name}{a.approvers?.length ? ` · approvers: ${a.approvers.join(', ')}` : ''}</span>
+      </div>
+      {!confirming && (
+        <div className="esc-approval-actions">
+          <button type="button" className="esc-approve" disabled={sending} onClick={() => setConfirming('approve')}>✓ Approve</button>
+          <button type="button" className="esc-decline" disabled={sending} onClick={() => setConfirming('decline')}>✕ Decline</button>
+        </div>
+      )}
+      {confirming && (
+        <div className="esc-approval-confirm">
+          <span>{confirming === 'approve'
+            ? `Approve “${a.name}” on ${ticketKey} in Jira, as you? Tier 2’s rejection goes ahead.`
+            : `Decline “${a.name}” on ${ticketKey} in Jira, as you? The rejection does not go ahead.`} This cannot be undone from NEURO.</span>
+          <div className="esc-approval-actions">
+            <button type="button" className={confirming === 'approve' ? 'esc-approve' : 'esc-decline'} disabled={sending}
+              onClick={() => send(confirming)}>{sending ? 'Sending…' : confirming === 'approve' ? 'Yes, approve' : 'Yes, decline'}</button>
+            <button type="button" className="esc-mini" disabled={sending} onClick={() => setConfirming(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {result && !result.ok && <div className="esc-error">{result.error}</div>}
+    </div>
+  );
+}
+
 export function TicketCard({ item, busy, expanded, onToggle, highlighted, escalating, reasons, onWatch, onRead, onUnwatch, onCommit, onEscalate, onCloseEscalate, onEscalated, onPosted, onEmailed }) {
   const { esc, watch } = item;
   const [replying, setReplying] = useState(false);
@@ -948,6 +1029,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
 
       {open && (
         <div className="esc-trow-body">
+          {item.rej && <ApprovalBox ticketKey={item.key} onDecided={onEscalated} />}
           <div className="esc-watch-notes">
             {info && <span>{info.priority || 'No priority'}</span>}
             {info && <span>{info.assignee || 'Unassigned'}</span>}
@@ -1156,50 +1238,21 @@ export function TicketsView({
       )}
       {note && <div className="esc-warn">{note}</div>}
 
-      <div className="esc-ticket-list">
-        {opened && (
+      {opened && (
+        <div className="esc-ticket-list esc-opened-list">
           <OpenedTicket ticketKey={opened} busy={busy} reasons={reasons} onWatch={onWatch} onClose={onCloseOpened} onEscalated={onEscalated} onPosted={onPosted} />
-        )}
-
-        {sentSection && (
-          <section className="esc-section">
-            <h3 className="esc-section-title">
-              Sentiment escalations — customer is angry
-              <span className="esc-section-sub"> · open tickets NOVA scores Angry now{sentUnseen ? ` · ${sentUnseen} not opened` : ''}</span>
-            </h3>
-            {sentimentError && <div className="esc-error">{sentimentError}. This is not an empty list.</div>}
-            {!sentimentError && sentItems.length === 0 && !loading && <p className="esc-empty">No open ticket has an angry customer right now.</p>}
-            {sentItems.map((item) => (
-              <TicketCard
-                key={`sent-${item.key}`}
-                item={item}
-                busy={busy}
-                reasons={reasons}
-                expanded={expanded.has(`sent-${item.key}`)}
-                onToggle={() => { toggle(`sent-${item.key}`); if (item.needs.length) onSeenSentiment?.(item.key); }}
-                escalating={item.key === escalatingKey}
-                onWatch={onWatch}
-                onRead={onRead}
-                onUnwatch={onUnwatch}
-                onEscalate={onEscalate}
-                onCloseEscalate={onCloseEscalate}
-                onEscalated={onEscalated}
-                onPosted={onPosted}
-                onEmailed={onEmailed}
-              />
-            ))}
-          </section>
-        )}
+        </div>
+      )}
 
         {rejSection && (
-          <section className="esc-section">
+          <section className="esc-block esc-block-rej">
             <h3 className="esc-section-title">
               Rejected by Tier 2 — awaiting approval
               <span className="esc-section-sub"> · status “Pending Rejection Approval (to CC)”{rejUnseen ? ` · ${rejUnseen} not opened` : ''}</span>
             </h3>
             {rejectionsError && <div className="esc-error">{rejectionsError}. This is not an empty list.</div>}
             {!rejectionsError && rejItems.length === 0 && !loading && <p className="esc-empty">No tickets are waiting on a rejection approval.</p>}
-            {rejItems.map((item) => (
+            {rejItems.length > 0 && <div className="esc-ticket-list">{rejItems.map((item) => (
               <TicketCard
                 key={`rej-${item.key}`}
                 item={item}
@@ -1217,14 +1270,44 @@ export function TicketsView({
                 onPosted={onPosted}
                 onEmailed={onEmailed}
               />
-            ))}
+            ))}</div>}
           </section>
         )}
 
-        {filter === 'all' && shown.length > 0 && (sentSection || rejSection) && (
-          <h3 className="esc-section-title">Escalated and watched</h3>
+        {sentSection && (
+          <section className="esc-block esc-block-sent">
+            <h3 className="esc-section-title">
+              Sentiment escalations — customer is angry
+              <span className="esc-section-sub"> · open tickets NOVA scores Angry now{sentUnseen ? ` · ${sentUnseen} not opened` : ''}</span>
+            </h3>
+            {sentimentError && <div className="esc-error">{sentimentError}. This is not an empty list.</div>}
+            {!sentimentError && sentItems.length === 0 && !loading && <p className="esc-empty">No open ticket has an angry customer right now.</p>}
+            {sentItems.length > 0 && <div className="esc-ticket-list">{sentItems.map((item) => (
+              <TicketCard
+                key={`sent-${item.key}`}
+                item={item}
+                busy={busy}
+                reasons={reasons}
+                expanded={expanded.has(`sent-${item.key}`)}
+                onToggle={() => { toggle(`sent-${item.key}`); if (item.needs.length) onSeenSentiment?.(item.key); }}
+                escalating={item.key === escalatingKey}
+                onWatch={onWatch}
+                onRead={onRead}
+                onUnwatch={onUnwatch}
+                onEscalate={onEscalate}
+                onCloseEscalate={onCloseEscalate}
+                onEscalated={onEscalated}
+                onPosted={onPosted}
+                onEmailed={onEmailed}
+              />
+            ))}</div>}
+          </section>
         )}
 
+      {!ownSection && (
+      <section className="esc-block">
+        {(sentSection || rejSection) && <h3 className="esc-section-title">Escalated and watched</h3>}
+      <div className="esc-ticket-list">
         {loading && <p className="esc-empty">Loading…</p>}
         {!loading && !ownSection && shown.length === 0 && (
           <p className="esc-empty">
@@ -1260,6 +1343,8 @@ export function TicketsView({
           />
         ))}
       </div>
+      </section>
+      )}
     </div>
   );
 }

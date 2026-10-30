@@ -309,3 +309,27 @@ test('"All" counts every ticket the page shows, sentiment and rejections include
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../frontend/src/components/EscalationPanel.jsx'), 'utf8');
   assert.match(src, /counts\.all = new Set\(\[\.\.\.items, \.\.\.rejItems, \.\.\.sentItems\]\.map\(\(t\) => t\.key\)\)\.size/);
 });
+
+// ── Separate sections + Approve/Decline (30 Oct 2026) ────────────────────────
+test('the rejected section is its own block, OUTSIDE the escalated list box', () => {
+  const html = render({ escalations: [esc({ key: 'NT-1' })], watched: { active: [], listening: [] }, rejections: [rej()] });
+  const rejAt = html.indexOf('esc-block-rej');
+  const mainHead = html.indexOf('Escalated and watched');
+  assert.ok(rejAt >= 0 && mainHead > rejAt, 'rejected block comes first, main list after its own heading');
+  // The rejected ticket must not sit inside the main list's box.
+  const mainBox = html.slice(mainHead);
+  assert.doesNotMatch(mainBox, /NT-30/);
+});
+
+test('a rejected ticket, opened, offers Approve and Decline', () => {
+  const html = render({ escalations: [], watched: { active: [], listening: [] }, rejections: [rej()], initialExpanded: ['rej-NT-30'] });
+  assert.match(html, /Reading the approval from Jira/, 'the approval is read live, not assumed');
+  const box = renderToString(React.createElement(mod.ApprovalBox, { ticketKey: 'NT-30',
+    initial: { ok: true, pending: { id: '2931', name: 'Pending Rejection Approval (to CC)', approvers: ['Chris Middleton'] } } }));
+  assert.match(box, /This request requires your approval/);
+  assert.match(box, /Approve/); assert.match(box, /Decline/);
+  const none = renderToString(React.createElement(mod.ApprovalBox, { ticketKey: 'NT-30',
+    initial: { ok: true, pending: null, why: 'There is no pending approval on this ticket — it may already have been answered.' } }));
+  assert.doesNotMatch(none, /Approve/);
+  assert.match(none, /no pending approval/);
+});

@@ -413,7 +413,23 @@ router.post('/reply/post', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
-// GET /api/escalation/people — the people "Escalate to…" can offer: every People note with an email: line, by name. Read only.
+// GET /api/escalation/approval/:key — the pending Jira Service Management approval on a ticket (e.g. a Tier 2 rejection awaiting approval). Read only.
+router.get('/approval/:key', async (req, res) => {
+  const r = await require('../services/ticket-approvals').status(req.params.key);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// POST /api/escalation/approval/:key/decide — approve or decline the pending JSM approval on a ticket as Nick. Body: { decision: 'approve' | 'decline' }. The approval is read live from Jira; ledgered and read back. Human only.
+router.post('/approval/:key/decide', async (req, res) => {
+  if (req.apiClient) {
+    return res.status(403).json({ ok: false, error: 'Answering a Jira approval is Nick deciding as himself — a machine client cannot do it on his behalf.' });
+  }
+  const { decision } = req.body || {};
+  const r = await require('../services/ticket-approvals').decide({ key: req.params.key, decision });
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// GET /api/escalation/people —the people "Escalate to…" can offer: every People note with an email: line, by name. Read only.
 router.get('/people', (req, res) => {
   try {
     const people = require('../services/contact-directory').fromPeopleNotes()

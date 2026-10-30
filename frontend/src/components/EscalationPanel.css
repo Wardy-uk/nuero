@@ -671,14 +671,34 @@
 .esc-chip button { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
 .esc-chip button:hover { color: var(--text-primary); }
 
-/* Rejected by Tier 2 — awaiting approval (28 Oct 2026): its own section above the list. */
-.esc-section { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.esc-section-title { margin: 4px 0 2px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+/* Sections (30 Oct 2026): Rejected by Tier 2, Sentiment, and Escalated and watched are
+   each their own block with a heading and their OWN list box — never one list with
+   headings inside it, where the rejected section read as hidden in the middle. */
+.esc-section-title { margin: 0 0 8px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
 .esc-section-sub { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-muted, var(--text-secondary)); }
-.esc-ticket-list > .esc-section { gap: 0; margin: 0; border-bottom: 1px solid var(--border); }
-.esc-ticket-list > .esc-section .esc-section-title { padding: 10px 16px 6px; }
-.esc-ticket-list > .esc-section > .esc-empty,
-.esc-ticket-list > .esc-section > .esc-error { margin: 0 16px 10px; }
+.esc-block { margin: 0 0 22px; }
+.esc-block > .esc-empty, .esc-block > .esc-error { margin: 0 0 8px; }
+.esc-block-rej, .esc-block-sent {
+  padding: 12px 14px 14px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--warning) 6%, transparent); border-left: 4px solid var(--warning);
+}
+.esc-block-sent { background: color-mix(in srgb, var(--danger) 6%, transparent); border-left-color: var(--danger); }
+.esc-block-rej > .esc-section-title { color: var(--warning); }
+.esc-block-sent > .esc-section-title { color: var(--danger); }
+.esc-opened-list { margin-bottom: 22px; }
+
+/* Approve / Decline a pending Jira approval (30 Oct 2026). */
+.esc-approval { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: var(--radius-sm); background: var(--bg-tertiary); }
+.esc-approval-q { font-size: 13px; color: var(--text-primary); }
+.esc-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.esc-approval-confirm { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.esc-approve, .esc-decline { min-width: 140px; padding: 7px 14px; border-radius: var(--radius-sm); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.esc-approve { background: var(--accent); border: 1px solid var(--accent); color: var(--bg-primary); }
+.esc-decline { background: transparent; border: 1px solid var(--border); color: var(--text-primary); }
+.esc-decline:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.esc-approve:disabled, .esc-decline:disabled { opacity: .6; cursor: default; }
+.esc-approval-done { color: var(--success); font-size: 13px; }
 .esc-pill-mail { color: var(--success, #3fb950); border-color: color-mix(in srgb, var(--success, #3fb950) 35%, transparent); }
 .esc-row-mailed { color: var(--success, #3fb950); }
 .esc-cc-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-secondary); margin-right: 2px; }

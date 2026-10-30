@@ -47,6 +47,12 @@ const WRITERS = Object.freeze({
     why: 'Nick reads the exact text and its visibility in a preview and clicks Post, so the click IS the approval of that payload (the Inbox Send rule); machine clients are refused. Not A4 because the approver is the author, writing in his own name.',
     readback: 'comments re-read: the new comment exists, by Nick, with the visibility asked for',
   },
+  'jira.approval': {
+    target: 'Jira Service Management (request approval)', authority: 'A3', initiation: 'human-only', ledger: true,
+    effect: 'answer one pending JSM approval as Nick — approve or decline (e.g. a Tier 2 rejection awaiting approval)',
+    why: 'Nick presses Approve or Decline and then confirms, on a card showing the ticket and the approval's own name, so the confirm IS the decision; the approval id is read live from Jira, never taken from the browser; machine clients are refused. An approval cannot be re-answered, so one decision per approval, ever.',
+    readback: 'approvals re-read: the same approval now carries the decision asked for',
+  },
   'microsoft.task.complete': {
     target: 'Microsoft Planner / To Do', authority: 'A3', initiation: 'human', ledger: true,
     // Setting 100% / completed again is harmless, so an unknown outcome may be

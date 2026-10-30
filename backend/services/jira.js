@@ -338,6 +338,33 @@ async function postRequestComment(key, body, isPublic) {
 }
 
 /**
+ * A request's JSM approvals (e.g. "Pending Rejection Approval (to CC)").
+ * Shape kept small: id, name, finalDecision (pending|approved|declined),
+ * canAnswer (whether the token's user — Nick — may answer it), approvers' names.
+ */
+async function fetchRequestApprovals(key) {
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(String(key || ''))) throw new Error(`"${key}" is not a ticket key`);
+  if (!isConfigured()) return null;
+  const r = await jiraRequest(`/rest/servicedeskapi/request/${encodeURIComponent(key)}/approval`);
+  return (r.values || []).map((a) => ({
+    id: a.id != null ? String(a.id) : null, name: a.name || null,
+    finalDecision: a.finalDecision || null, canAnswer: a.canAnswerApproval === true,
+    approvers: (a.approvers || []).map((x) => x.approver?.displayName).filter(Boolean),
+  }));
+}
+
+/** Answer one JSM approval as the token's user. decision: 'approve' | 'decline'. */
+async function answerRequestApproval(key, approvalId, decision) {
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(String(key || ''))) throw new Error(`"${key}" is not a ticket key`);
+  if (!/^\d+$/.test(String(approvalId || ''))) throw new Error('approval id must be numeric');
+  if (decision !== 'approve' && decision !== 'decline') throw new Error('decision must be approve or decline');
+  const r = await jiraRequest(`/rest/servicedeskapi/request/${encodeURIComponent(key)}/approval/${approvalId}`, {
+    method: 'POST', body: { decision }, timeoutMs: 30000,
+  });
+  return { finalDecision: r.finalDecision || null };
+}
+
+/**
  * The still-open subset of a list of keys, in the same shape.
  *
  * Urgency escalations are known only to NOVA's log, which records that an
@@ -759,6 +786,8 @@ module.exports = {
   fetchIssueComments,
   fetchIssueBasics,
   postRequestComment,
+  fetchRequestApprovals,
+  answerRequestApproval,
   mapAssignedIssue,
   isConfigured,
   fetchEscalationTickets,
