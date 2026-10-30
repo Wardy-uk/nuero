@@ -204,6 +204,7 @@ export const interactive = {
   post_catalogues_by_slug_shared: 'Sharing a catalogue publishes it on VESTA, read by the household on the public internet. Nick shares it in NEURO → Catalogues.',
   post_1to1_nova_sync: 'Reconciling 1-2-1 sessions writes to NOVA. It runs on its own timer; Nick can run it in NEURO.',
   post_1to1_nova_transcripts: 'Offering transcripts writes candidates into NOVA. It runs on its own timer.',
+  post_1to1_peoplehr_by_sessionId: 'Saying a 1-2-1 is written up in PeopleHR is Nick\'s statement about an HR record. He ticks it in NEURO → People.',
   post_notion_sync_run: 'Publishing to Notion puts vault notes in front of an external AI. Nick runs it in NEURO → Notion Sync.',
   post_notion_sync_auto: 'Turning the Notion publish timer on or off is Nick\'s decision, in NEURO → Notion Sync.',
   post_calendar_events_by_id_respond: 'Retired since Build 8: responding to an invite as Nick is not done from NEURO.',

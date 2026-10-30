@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
+import { NovaOverviewTiles, NovaCardBlock } from './NovaOneToOne';
 import { executeDirect, directOutcome } from '../directAction';
 import PersonDetail from './PersonDetail';
 import WaitingOn from './WaitingOn';
@@ -1231,6 +1232,14 @@ export default function PeopleBoard() {
   // IN a 1-2-1 is recorded. `null` while unread and on any failure: a person NOVA does
   // not track is ABSENT from the map, and that is deliberately not the same as 0.
   const [openActions, setOpenActions] = useState(null);
+  // NOVA's 1-2-1 Overview (30 Oct 2026): `{ ok, data, error }`, null while unread.
+  const [novaOverview, setNovaOverview] = useState(null);
+  const fetchNovaOverview = () => fetch(apiUrl('/api/1to1/overview'))
+    .then(r => r.json())
+    .then(j => setNovaOverview({ ok: !!j?.ok, data: j?.data || null, error: j?.error }))
+    .catch(e => setNovaOverview({ ok: false, data: null, error: e.message }));
+  const novaByName = {};
+  for (const a of (novaOverview?.ok && novaOverview.data?.agents) || []) novaByName[a.agent_name] = a;
 
   // Auto-expand removed — was opening overdue 1-2-1 forms on every page visit
 
@@ -1272,6 +1281,8 @@ export default function PeopleBoard() {
       .then(r => r.json())
       .then(j => setOpenActions(j?.ok ? (j.agents || {}) : null))
       .catch(() => setOpenActions(null));
+
+    fetchNovaOverview();
   }, []);
 
   const fetchOneToOnes = (refresh = false) => {
@@ -1329,6 +1340,8 @@ export default function PeopleBoard() {
           /people, and the roster it is proposing additions to is right below.
           A screen you have to go and find is one that never gets found. */}
       <SuggestedPeople />
+
+      {viewMode === 'reports' && <NovaOverviewTiles state={novaOverview} onRefresh={fetchNovaOverview} />}
 
       <div className="people-header">
         <h2 className="people-title">Team</h2>
@@ -1449,6 +1462,7 @@ export default function PeopleBoard() {
                     );
                   })()}
                   {person.note && <span className="person-note">{person.note}</span>}
+                  <NovaCardBlock agent={novaByName[person.name]} onChanged={fetchNovaOverview} />
                   <RecentOneToOnes meetings={oneToOnes?.[person.name]} />
                   {tags.length > 0 && (
                     <div className="person-tags">
@@ -1470,7 +1484,7 @@ export default function PeopleBoard() {
                       is what tells you whether to worry. Absent means NOVA does not track
                       them or could not be asked; 0 means nothing owed and renders as
                       nothing at all. */}
-                  {openActions?.[person.name] > 0 && (
+                  {!novaByName[person.name] && openActions?.[person.name] > 0 && (
                     <div className="person-card-tasks">
                       <span className="person-card-task-count">
                         ☐ {openActions[person.name]} 1-2-1 action{openActions[person.name] === 1 ? '' : 's'} owed

@@ -164,6 +164,18 @@ async function get121State({ days = 60 } = {}) {
   return call(`/api/neuro-bridge/121/state?days=${encodeURIComponent(days)}`);
 }
 
+/** NOVA's 1-2-1 Overview, verbatim — the People board renders it, computes nothing. */
+async function get121Overview() {
+  return call('/api/neuro-bridge/121/overview');
+}
+
+/** Nick's PeopleHR tick on one HELD 1-2-1 session. `logged` must be a boolean. */
+async function set121PeopleHr(sessionId, logged) {
+  return call(`/api/neuro-bridge/121/session/${encodeURIComponent(sessionId)}/peoplehr`, {
+    method: 'POST', body: { logged },
+  });
+}
+
 /**
  * 1-2-1s NOVA has finished running, with the actions agreed in them.
  *
@@ -227,6 +239,7 @@ async function get121KnownRecordings() {
 module.exports = {
   isConfigured, listUrgencyReasons, listEscalations, listSentimentEscalations, getTicket, escalate, call,
   push121Booking, cancel121, push121Cadence, get121State, get121Completed,
+  get121Overview, set121PeopleHr,
   push121SweepStats,
   push121TranscriptCandidate, push121TranscriptCorrection, get121KnownRecordings, get121PendingCandidates,
 };

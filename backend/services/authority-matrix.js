@@ -259,6 +259,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/1to1/booking-request', 'calendar.attendee.create'),
   R('POST', '/api/1to1/booking-sweep', 'calendar.attendee.create'),
   R('POST', '/api/1to1/nova-transcripts', 'nova.121'),
+  // Saying a 1-2-1 is written up in PeopleHR is Nick's statement about an HR record.
+  R('POST', '/api/1to1/peoplehr/:sessionId', 'nova.121'),
   R('POST', '/api/notion-sync/run', 'notion.publish'),
   R('POST', '/api/notion-sync/auto', 'notion.publish'),
   R('*', '/api/notion-sync/token', 'config.security'),

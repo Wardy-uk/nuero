@@ -1,0 +1,47 @@
+/* NOVA 1-2-1 Overview on the People board — tiles above the team, a block on each card. */
+
+.nova121-overview { margin: 0 0 18px; }
+.nova121-overview-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.nova121-overview-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.nova121-overview-sub { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.nova121-refresh {
+  margin-left: auto; width: 28px; height: 26px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer;
+}
+.nova121-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.nova121-tile { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+.nova121-tile-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-family: var(--font-mono); }
+.nova121-tile-value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+.nova121-unavailable { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+
+.nova121-src {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase;
+  color: #5ec1ca; border: 1px solid rgba(94, 193, 202, 0.35); border-radius: 3px; padding: 1px 5px;
+}
+
+.nova121-card { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.nova121-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.nova121-grid { display: grid; grid-template-columns: 64px 1fr; gap: 3px 8px; font-size: 12px; color: var(--text-secondary); align-items: center; }
+.nova121-k { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; color: var(--text-muted); }
+.nova121-strong { font-weight: 600; }
+.nova121-late { font-size: 10px; }
+.nova121-weeks { font-size: 11px; font-weight: 600; }
+.nova121-muted { color: var(--text-muted); }
+.nova121-hr { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.nova121-hr input { accent-color: #5ec1ca; width: 14px; height: 14px; cursor: pointer; }
+.nova121-error { margin-top: 4px; font-size: 11px; color: var(--danger); }
+
+.nova121-pill { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 1px 7px; border: 1px solid; }
+.nova121-pill-red { color: var(--danger); background: rgba(224, 85, 85, 0.12); border-color: rgba(224, 85, 85, 0.35); }
+.nova121-pill-amber { color: var(--warning); background: rgba(240, 160, 64, 0.12); border-color: rgba(240, 160, 64, 0.35); }
+.nova121-pill-green { color: var(--success); background: rgba(64, 201, 122, 0.12); border-color: rgba(64, 201, 122, 0.35); }
+.nova121-pill-teal { color: #5ec1ca; background: rgba(94, 193, 202, 0.12); border-color: rgba(94, 193, 202, 0.35); }
+.nova121-pill-grey { color: var(--text-secondary); background: rgba(136, 144, 164, 0.1); border-color: rgba(136, 144, 164, 0.3); }
+.nova121-pill-muted { color: var(--text-muted); background: transparent; border-color: var(--border); }
+
+.nova121-tone-red, .nova121-rag-red { color: var(--danger); }
+.nova121-tone-amber, .nova121-rag-amber { color: var(--warning); }
+.nova121-tone-green, .nova121-rag-green { color: var(--success); }
+.nova121-tone-teal { color: #5ec1ca; }
+.nova121-tone-plain { color: var(--text-secondary); }
+.nova121-rag-grey { color: var(--text-muted); }

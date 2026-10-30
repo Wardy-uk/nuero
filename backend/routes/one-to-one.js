@@ -288,6 +288,40 @@ router.get('/open-actions', async (req, res) => {
   }
 });
 
+// GET /api/1to1/overview — NOVA's 1-2-1 Overview (status, write-up, PeopleHR, delivery),
+// verbatim, for the People board. One source with the NOVA screen, so the two cannot
+// disagree. ⚠ `ok:false` with `data:null` when NOVA cannot be asked — never an empty team.
+router.get('/overview', async (req, res) => {
+  try {
+    const nova = require('../services/nova-client');
+    if (!nova.isConfigured()) return res.json({ ok: false, error: 'NOVA bridge not configured', data: null });
+    const data = await nova.get121Overview();
+    if (!data || !Array.isArray(data.agents) || !data.summary) {
+      return res.json({ ok: false, error: 'NOVA did not return the 1-2-1 overview (bridge predates it)', data: null });
+    }
+    res.json({ ok: true, data });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, data: null });
+  }
+});
+
+// POST /api/1to1/peoplehr/:sessionId { logged } — tick a held 1-2-1 as written up in
+// PeopleHR, in NOVA. A statement only Nick can make: machine-refused in the matrix.
+router.post('/peoplehr/:sessionId', async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const { logged } = req.body || {};
+  if (!Number.isInteger(sessionId) || sessionId <= 0) return res.status(400).json({ ok: false, error: 'sessionId must be a positive integer' });
+  if (typeof logged !== 'boolean') return res.status(400).json({ ok: false, error: 'logged must be true or false' });
+  try {
+    const nova = require('../services/nova-client');
+    if (!nova.isConfigured()) return res.status(503).json({ ok: false, error: 'NOVA bridge not configured' });
+    await nova.set121PeopleHr(sessionId, logged);
+    res.json({ ok: true, sessionId, logged });
+  } catch (e) {
+    res.status(e.status && e.status < 500 ? e.status : 502).json({ ok: false, error: e.message });
+  }
+});
+
 // Propose a slot. Reads the calendar; creates nothing.
 router.post('/propose', async (req, res) => {
   try {
