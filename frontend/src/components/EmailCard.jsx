@@ -225,18 +225,31 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
     loadDetail();
   };
 
+  // 30 Oct 2026: the drafter may ASK before it writes — when Nick is not the
+  // addressee, or the reply needs something only he knows. The questions show
+  // above the box; what he types there goes back WITH the questions, so the
+  // next draft knows what was answered.
+  const [draftQuestions, setDraftQuestions] = useState(null);
   const draftWithAI = () => {
     setDrafting(true);
     setError('');
+    const typed = replyText.trim();
+    const instruction = draftQuestions && typed
+      ? `${draftQuestions.map(q => `Q: ${q}`).join(' ')} Nick's answer: ${typed}`
+      : typed;
     fetch(apiUrl(`${base}/draft`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction: replyText.trim() || undefined }),
+      body: JSON.stringify({ instruction: instruction || undefined }),
     })
       .then(r => r.json())
       .then(d => {
-        if (d.ok) setReplyText(d.draft);
-        else setError(d.error || 'Could not draft a reply');
+        if (d.ok && Array.isArray(d.questions) && d.questions.length) {
+          setDraftQuestions(d.questions);
+        } else if (d.ok) {
+          setDraftQuestions(null);
+          setReplyText(d.draft);
+        } else setError(d.error || 'Could not draft a reply');
       })
       .catch(() => setError('Could not draft a reply'))
       .finally(() => setDrafting(false));
@@ -471,11 +484,18 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
               or just type below — anything you write is used as a steer if you then draft with AI
             </span>
           </div>
+          {draftQuestions && (
+            <div className="inbox-draft-questions">
+              <div className="inbox-draft-questions-head">Before I draft this:</div>
+              <ul>{draftQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>
+              <div className="inbox-draft-questions-hint">Answer in the box below, then press Draft with AI again.</div>
+            </div>
+          )}
           <textarea
             className="inbox-reply-text"
             value={replyText}
             onChange={e => setReplyText(e.target.value)}
-            placeholder="Write your reply..."
+            placeholder={draftQuestions ? 'Your answers…' : 'Write your reply...'}
             rows={8}
             // Locked once prepared: the grant binds THESE words. Discard to edit.
             disabled={!!prepared && prepared.status === 'prepared'}

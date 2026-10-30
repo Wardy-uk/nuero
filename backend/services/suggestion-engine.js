@@ -575,16 +575,27 @@ async function executeAction(action) {
           // A Gmail email is read from Gmail — a Gmail id never reaches Graph.
           const gi = require('./gmail-intake');
           const message = gi.isGmailId(emailId)
-            ? await gi.readMessage(emailId).then((m) => (m && m.ok && m.exists ? { from: m.fromName || m.from, subject: m.subject, body: m.body } : null))
+            ? await gi.readMessage(emailId).then((m) => (m && m.ok && m.exists ? { from: m.fromName || m.from, fromEmail: m.from, subject: m.subject, body: m.body, to: m.to, cc: m.cc } : null))
             : await require('./microsoft').fetchEmailById(emailId);
-          const prompt = `Draft a reply to this email as Nick Ward, Head of Technical Support at Nurtur. Direct, warm, concise — British English, no corporate padding. Sign off "Nick". Output only the reply body, no subject line and no commentary.
-
-From: ${message?.from || payload.from || 'Unknown'}
-Subject: ${message?.subject || payload.subject || '(no subject)'}
-
-${String(message?.body || message?.preview || '').slice(0, 4000)}`;
-          const result = await require('./ai-routing').runTask('email_draft', { prompt, maxTokens: 500 });
-          draft = (result?.text || '').trim();
+          // Who the email is TO decides what a reply can say (reply-drafter,
+          // 30 Oct 2026). Here there is no box to answer into, so a question
+          // means: open the email and answer it there.
+          const selfAddresses = gi.isGmailId(emailId)
+            ? [require('./personal-mail').addressFor('gmail')]
+            : [await require('./microsoft').getSignedInAddress().catch(() => null), require('./mail-identity').WORK_ADDRESS];
+          const out = await require('./reply-drafter').draft({
+            message: { from: payload.from, subject: payload.subject, ...(message || {}) },
+            persona: gi.isGmailId(emailId) ? 'personal' : 'work', selfAddresses,
+          });
+          if (out?.kind === 'questions') {
+            return {
+              ok: false,
+              detail: `I need you first: ${out.questions.join(' ')} Open the email and answer in the reply box, then press Draft.`,
+              questions: out.questions,
+              navigate: 'inbox',
+            };
+          }
+          draft = (out?.text || '').trim();
         } catch (e) {
           console.warn('[Suggestion] Draft generation failed:', e.message);
         }

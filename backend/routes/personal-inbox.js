@@ -318,20 +318,18 @@ router.post('/triage/:id/draft', async (req, res) => {
     const loaded = await loadPersonal(id);
     if (!loaded) return res.status(404).json({ ok: false, error: 'that message is no longer in the mailbox' });
     const { merged } = loaded;
-    const steer = trimText(req.body && req.body.instruction, 400);
-    const prompt = `Draft a reply to this PERSONAL email as Nick Ward (not as Head of Technical Support — this is his own mail). Friendly, plain, British English, short. Sign off "Nick". Output only the reply body.${steer ? `\n\nNick's steer for this reply: ${steer}` : ''}
-
-From: ${merged.from || 'Unknown'}
-Subject: ${merged.subject || '(no subject)'}
-
-${trimText(merged.body, 4000)}`;
-    let text = ''; let provider = 'fallback';
-    try {
-      const r = await aiRouting.runTask('email_draft', { prompt, maxTokens: 500 });
-      if (r && r.text && r.text.trim()) { text = r.text.trim(); provider = r.provider; }
-    } catch (e) { console.warn('[PersonalTriage] draft failed:', e.message); }
+    const steer = trimText(req.body && req.body.instruction, 1000);
+    // Who the email is TO decides what a reply can say — and whether NEURO
+    // should ask Nick first (reply-drafter, 30 Oct 2026).
+    const pm = require('../services/personal-mail');
+    const selfAddresses = ['nick', 'contact', 'gmail'].map((k) => pm.addressFor(k))
+      .concat(require('../services/mail-identity').WORK_ADDRESS);
+    const out = await require('../services/reply-drafter').draft({ message: merged, steer, persona: 'personal', selfAddresses });
+    if (out && out.kind === 'questions') {
+      return res.json({ ok: true, draft: null, questions: out.questions, position: out.position, provider: out.provider });
+    }
     const first = String(merged.from || 'there').split(' ')[0].replace(/[^A-Za-z'-]/g, '') || 'there';
-    res.json({ ok: true, draft: text || `Hi ${first},\n\nThanks for this — I'll come back to you shortly.\n\nNick`, provider });
+    res.json({ ok: true, draft: (out && out.text) || `Hi ${first},\n\nThanks for this — I'll come back to you shortly.\n\nNick`, provider: (out && out.provider) || 'fallback' });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

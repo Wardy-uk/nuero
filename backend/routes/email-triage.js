@@ -333,28 +333,21 @@ router.post('/triage/:emailId/draft', async (req, res) => {
     const loaded = await loadEmail(emailId);
     if (!loaded) return res.status(404).json({ ok: false, error: 'Email not found' });
     const { merged, triageItem } = loaded;
-    const steer = trimText(req.body?.instruction || '', 400);
+    const steer = trimText(req.body?.instruction || '', 1000);
 
-    const prompt = `Draft a reply to this email as Nick Ward, Head of Technical Support at Nurtur. Be direct, warm and concise — British English, no corporate padding. Sign off "Nick". Output only the reply body, no subject line and no commentary.${steer ? `\n\nNick's steer for this reply: ${steer}` : ''}
-
-From: ${merged.from || 'Unknown'}
-Subject: ${merged.subject || '(no subject)'}
-
-${trimText(merged.body || merged.preview || '', 4000)}`;
-
-    let text = '';
-    let provider = 'fallback';
-    try {
-      const result = await aiRouting.runTask('email_draft', { prompt, maxTokens: 500 });
-      if (result?.text?.trim()) {
-        text = result.text.trim();
-        provider = result.provider;
-      }
-    } catch (e) {
-      console.warn('[EmailTriage] Draft AI failed:', e.message);
+    // Who the email is TO decides what a reply can say — and whether NEURO
+    // should ask Nick first (reply-drafter, 30 Oct 2026).
+    const isGmail = require('../services/gmail-intake').isGmailId(merged.id);
+    const selfAddresses = isGmail
+      ? [require('../services/personal-mail').addressFor('gmail')]
+      : [await microsoft.getSignedInAddress().catch(() => null), require('../services/mail-identity').WORK_ADDRESS];
+    const out = await require('../services/reply-drafter').draft({
+      message: merged, steer, persona: isGmail ? 'personal' : 'work', selfAddresses,
+    });
+    if (out?.kind === 'questions') {
+      return res.json({ ok: true, draft: null, questions: out.questions, position: out.position, provider: out.provider });
     }
-
-    res.json({ ok: true, draft: text || buildFallbackSuggestedReply(merged, triageItem), provider });
+    res.json({ ok: true, draft: out?.text || buildFallbackSuggestedReply(merged, triageItem), provider: out?.provider || 'fallback' });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

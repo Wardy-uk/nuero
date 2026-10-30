@@ -432,6 +432,19 @@
   color: var(--text-muted);
 }
 
+/* The drafter asked before writing (30 Oct 2026). */
+.inbox-draft-questions {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: rgba(90, 163, 249, 0.08);
+  font-size: 13px;
+}
+.inbox-draft-questions-head { font-weight: 600; margin-bottom: 4px; }
+.inbox-draft-questions ul { margin: 0 0 6px; padding-left: 18px; }
+.inbox-draft-questions-hint { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+
 .inbox-reply-text {
   width: 100%;
   box-sizing: border-box;
