@@ -255,6 +255,10 @@ function start() {
     .catch((e) => console.warn('[Scheduler] perf feedback failed:', e.message));
   cron.schedule('41 7-22 * * *', () => perfFeedback(3));
   cron.schedule('5,25,45 0-5 * * *', () => perfFeedback(5));
+  // Confluence pages Nick wrote or revised (perf-confluence.js), hourly, GET only.
+  cron.schedule('53 * * * *', () => require('./perf-confluence').run()
+    .then((r) => { if (!r.ok) console.warn('[PerfConfluence]', r.error); else if (r.counted || r.createdSweep) console.log('[PerfConfluence]', JSON.stringify(r)); })
+    .catch((e) => console.warn('[PerfConfluence]', e.message)));
 
   cron.schedule('35 * * * *', () => {
     try {

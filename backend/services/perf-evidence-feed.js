@@ -301,6 +301,9 @@ const SOURCES = [
   // What others said about Nick's work, read from meetings inside NEURO by
   // perf-feedback.js (the cache only — never a model call on this read path).
   ['feedback', (ctx) => require('./perf-feedback').itemsFor(ctx.w)],
+  // Confluence pages Nick wrote or substantially revised (perf-confluence.js;
+  // the cache only — read hourly by the scheduler, never on this read path).
+  ['confluence', (ctx) => require('./perf-confluence').itemsFor(ctx.w)],
 ];
 
 /** What the feed deliberately does not carry yet, so nobody reads it as the whole picture. */
@@ -309,6 +312,7 @@ const NOT_INCLUDED = [
   'Jira ticket work and escalations raised (NOVA owns those)',
   'Personal-domain tasks (never — work only)',
   'Microsoft To Do / Planner completions (the wins ledger cannot tell work from personal for those)',
+  'SharePoint documents (job descriptions and other files there are not read)',
 ];
 
 function defaultScreen() {
@@ -360,7 +364,7 @@ function candidates({ from, to } = {}, deps = {}) {
   for (const it of items) {
     const text = it._screenText || it.detail || '';
     delete it._screenText;
-    if (!['meetings', 'email', 'management-log', 'decisions'].includes(it.source)) continue;
+    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence'].includes(it.source)) continue;
     // The blunt personal screen ALWAYS runs, injected screen or not.
     let verdict = personalScreen({ title: it.title, text });
     if (!verdict.sensitive) {
