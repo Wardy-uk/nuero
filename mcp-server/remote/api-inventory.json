@@ -1945,6 +1945,24 @@
     "stream": false
   },
   {
+    "id": "get_email_triage_by_emailId_invite",
+    "method": "GET",
+    "route": "/api/email/triage/:emailId/invite",
+    "domain": "email",
+    "source": "routes/email-triage.js",
+    "line": 406,
+    "description": "GET /api/email/triage/:emailId/invite. the meeting behind an invite email (accept, decline, tentative, meeting request): subject, times, organiser, Nick's current answer. Read live from Outlook.",
+    "params": [
+      "emailId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_email_triage_feedback",
     "method": "GET",
     "route": "/api/email/triage/feedback",
@@ -9898,6 +9916,27 @@
     "stream": false
   },
   {
+    "id": "post_email_triage_by_emailId_invite",
+    "method": "POST",
+    "route": "/api/email/triage/:emailId/invite",
+    "domain": "email",
+    "source": "routes/email-triage.js",
+    "line": 416,
+    "description": "POST /api/email/triage/:emailId/invite. answer a meeting invite (accept, decline, tentative, respond to meeting request). Body: { response: accept|tentative|decline, comment? }. Tells the organiser, reads the answer back, marks the email read and closes its card. Nick only — machines refused.",
+    "params": [
+      "emailId"
+    ],
+    "query": [],
+    "body": [
+      "comment",
+      "response"
+    ],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_email_triage_by_emailId_reply",
     "method": "POST",
     "route": "/api/email/triage/:emailId/reply",
@@ -9945,7 +9984,7 @@
     "route": "/api/email/triage/clear",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 489,
+    "line": 516,
     "description": "POST /api/email/triage/clear. clear all cached triage data and re-scan",
     "params": [],
     "query": [],
@@ -9979,7 +10018,7 @@
     "route": "/api/email/triage/dismiss/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 421,
+    "line": 448,
     "description": "POST /api/email/triage/dismiss/:emailId. dismiss an email from triage.",
     "params": [
       "emailId"
@@ -10019,7 +10058,7 @@
     "route": "/api/email/triage/promote/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 475,
+    "line": 502,
     "description": "POST /api/email/triage/promote/:emailId. \"this should have been an action\".",
     "params": [
       "emailId"
@@ -10056,7 +10095,7 @@
     "route": "/api/email/triage/run",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 408,
+    "line": 435,
     "description": "POST /api/email/triage/run. trigger a fresh triage cycle.",
     "params": [],
     "query": [],
