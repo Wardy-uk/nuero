@@ -974,19 +974,69 @@ function classifyAction(text) {
   return { owner: 'unowned', actors: [], actorsKnown: false };
 }
 
+// PLAUD's `## Action Items` templates do not put the owner in the sentence. They
+// group the list under an owner line, and the bullets underneath carry no name:
+//
+//   **@Speaker 7**                                    (29 Oct stand-up)
+//   ### **@Speaker 1**                                (10 Sep review)
+//   **[[People/Chris Middleton|@Chris Middleton]] (executive / leader)**
+//   - [[People/Nick Ward|@Nick Ward]] (Manager)       (children indented under it)
+//
+// Read bullet by bullet, "Review the new ticket marked urgent" has no owner, so it
+// fell into the unowned tier and reached Nick's queue — every other person's actions
+// in the meeting, labelled "Unassigned". In October 37 of 41 owner blocks were
+// somebody else's. The `## Next Arrangements` template still states the owner in
+// the prose and is unaffected.
+//
+// Returns the owner's name, or null when the line is not an owner line. A checkbox
+// is never an owner line: "- [ ] @Nick check X" is an action.
+function ownerHeaderOf(trimmed) {
+  if (/\[\s?[xX ]?\s?\]/.test(trimmed.replace(/\[\[[^\]]*\]\]/g, ''))) return null;
+  let value = trimmed
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^[-*+]\s+/, '')
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+    .replace(/\[\[([^\]]+)\]\]/g, (_, target) => target.split('/').pop())
+    .replace(/\*\*|__/g, '')
+    .trim();
+  const m = value.match(/^@\s*([^()@:]+?)\s*(?:\([^)]*\))?\s*:?\s*$/);
+  return m ? m[1].trim() : null;
+}
+
+// The owner line decides the bullets under it. An unnamed PLAUD speaker is still
+// somebody — the actions were handed to a person in the room — so it is "others"
+// with no name to chase, never Nick's.
+function classifyOwnerName(name) {
+  const clean = String(name || '').replace(/(?:’s|'s)$/, '').trim();
+  if (/^speaker\s*\d+$/i.test(clean)) return { owner: 'others', actors: [], actorsKnown: false };
+  if (NICK_RE.test(clean)) return { owner: 'mine', actors: [], actorsKnown: false };
+  const known = peopleFirstNames().has(clean.toLowerCase());
+  return { owner: 'others', actors: [clean], actorsKnown: known };
+}
+
+// "Speak with Nick about the emails going out incorrectly" names Nick as the
+// person being spoken TO. With no owner on the line it used to read as unowned and
+// land in his queue — the one reading it plainly is not.
+const NICK_AS_OBJECT_RE = /\b(?:with|to|ask|tell|send|email|update|inform|remind|chase|brief|show)\s+nick(?:\s+ward)?\b/i;
+
 function extractMeetingActions(text, relativePath) {
   const body = stripFrontmatter(text);
   const lines = body.split(/\r?\n/);
   const out = [];
   const seen = new Set();
   let inActionSection = false;
+  let blockOwner = null;
   const todoIntelligence = require('./todo-intelligence');
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const trimmed = line.trim();
 
-    if (/^#{1,6}\s+/.test(trimmed)) { inActionSection = isActionHeading(trimmed); continue; }
+    // Before the heading test: `### **@Speaker 1**` is a heading, and treating it
+    // as one ended the action section at the first owner.
+    const ownerName = inActionSection && trimmed ? ownerHeaderOf(trimmed) : null;
+    if (ownerName) { blockOwner = classifyOwnerName(ownerName); continue; }
+    if (/^#{1,6}\s+/.test(trimmed)) { inActionSection = isActionHeading(trimmed); blockOwner = null; continue; }
     if (!inActionSection || !trimmed) continue;
     // PLAUD's "## AI Suggestions" block is quoted prose about unresolved issues,
     // explicitly NOT action items.
@@ -998,7 +1048,7 @@ function extractMeetingActions(text, relativePath) {
     const raw = cleanCandidateText(bullet[1]);
     if (!raw || raw.length < 8 || raw.length > 220) continue;
 
-    const { owner, actors, actorsKnown } = classifyAction(raw);
+    const { owner, actors, actorsKnown } = blockOwner || classifyAction(raw);
 
     // B — someone else's. Not a task for Nick, but it IS something he is waiting
     // on, and this used to be thrown away with the name attached. Recorded
@@ -1025,6 +1075,7 @@ function extractMeetingActions(text, relativePath) {
 
     if (owner === 'unowned') {                              // C — needs to look like an action
       if (STATEMENT_OF_FACT_RE.test(raw)) continue;
+      if (NICK_AS_OBJECT_RE.test(raw)) continue;
       if (!startsWithActionVerb(raw)) continue;
     }
 
