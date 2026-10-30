@@ -52,6 +52,12 @@ router.post('/payroll/prepare', wrap(async (req, res) => {
   send(res, await ot.preparePayroll(String(month || '')));
 }));
 
+// POST /api/overtime-claims/payroll/test-send — email Nick (and only Nick) a [TEST] copy of the month's payroll email with the file (month); payroll gets nothing and no claim is marked.
+router.post('/payroll/test-send', wrap(async (req, res) => {
+  const { month } = req.body;
+  send(res, await ot.testPayroll(String(month || '')));
+}));
+
 // GET /api/overtime-claims/:id/check — live: the agent's Jira/NOVA activity in the window and the Working Time read.
 router.get('/:id/check', wrap(async (req, res) => send(res, await ot.check(Number(req.params.id)))));
 

@@ -478,6 +478,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/overtime-claims/optouts', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/optouts/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/payroll/prepare', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/overtime-claims/payroll/test-send', 'email.self'),
 ]);
 
 const DOMAIN_DEFAULTS = Object.freeze({

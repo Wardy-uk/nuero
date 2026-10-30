@@ -219,6 +219,16 @@ function Month() {
     } finally { setBusy(false); await load(); }
   };
 
+  const testSend = async () => {
+    setBusy(true); setNote(null);
+    try {
+      const r = await postJson('/api/overtime-claims/payroll/test-send', { month });
+      setNote(r.ok
+        ? { tone: 'ok', text: `Test copy sent to ${r.to} with the file. Payroll got nothing and no claim was marked sent.` }
+        : { tone: 'bad', text: r.error || 'The test email was not sent.' });
+    } finally { setBusy(false); }
+  };
+
   const exp = data && data.export;
   const rejected = (decided || []).filter((c) => c.status === 'rejected');
   const waiting = (decided || []).filter((c) => c.status === 'submitted');
@@ -256,6 +266,7 @@ function Month() {
             {data.inFlight
               ? <span className="ot__warn">The {month} email is {data.inFlight.status}; NOVA marks the claims sent once it is confirmed in Sent Items.</span>
               : <button className="ot__primary" disabled={busy || !exp.rows.length} onClick={send}>{busy ? 'Sending…' : `Send to ${data.to}`}</button>}
+            <button className="ot__quiet" disabled={busy || !exp.rows.length} onClick={testSend}>Send a test to me</button>
             <button className="ot__quiet" disabled={!data.hasFile || !exp.rows.length} onClick={download}>Download the file</button>
           </div>
           {note && <div className={`ot__note ot__note--${note.tone}`}>{note.text}</div>}

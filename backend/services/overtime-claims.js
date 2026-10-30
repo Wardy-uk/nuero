@@ -219,6 +219,29 @@ async function reconcile() {
   return { marked };
 }
 
+/**
+ * Email Nick (and only Nick) a [TEST] copy of the month's payroll email with the real file.
+ * Not the payroll send: no prepared action, nothing recorded, NOVA marks nothing, payroll
+ * receives nothing. email-sender.sendMail refuses any address but Nick's own.
+ */
+async function testPayroll(month) {
+  if (!MONTH_RE.test(month)) return bad('month must be YYYY-MM');
+  let exp;
+  try { exp = await nova.call(`/api/neuro-bridge/overtime/export?month=${month}`, { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
+  if (!exp.rows.length) return bad('there are no approved, unsent claims for this month', 409);
+  const additional = _sendsFor(month).some((s) => s.marked_at);
+  const mail = payrollEmail(exp, { additional });
+  const sender = require('./email-sender');
+  const r = await sender.sendMail({
+    to: [{ email: sender.OWN_ADDRESS }],
+    subject: `[TEST] ${mail.subject}`,
+    body: [`TEST COPY — sent only to you. ${PAYROLL_EMAIL()} has NOT received this, and no claim has been marked sent.`, '', mail.body].join('\n'),
+    attachments: [{ name: exp.filename, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dataBase64: exp.xlsxBase64 }],
+  });
+  if (!r.sent) return bad(`the test email was not sent (${r.reason})`, 502);
+  return { ok: true, to: sender.OWN_ADDRESS, claims: exp.rows.length };
+}
+
 /** The xlsx for a download, straight from NOVA. */
 async function payrollFile(month) {
   if (!MONTH_RE.test(month)) return bad('month must be YYYY-MM');
@@ -230,5 +253,5 @@ async function payrollFile(month) {
 
 module.exports = {
   claims, check, decide, optOuts, recordOptOut, withdrawOptOut,
-  payrollMonth, preparePayroll, reconcile, payrollFile, payrollEmail, monthLabel, ensureTable,
+  payrollMonth, preparePayroll, testPayroll, reconcile, payrollFile, payrollEmail, monthLabel, ensureTable,
 };

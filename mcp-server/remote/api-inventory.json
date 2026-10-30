@@ -4525,7 +4525,7 @@
     "route": "/api/overtime-claims/:id/check",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 56,
+    "line": 62,
     "description": "GET /api/overtime-claims/:id/check. live: the agent's Jira/NOVA activity in the window and the Working Time read.",
     "params": [
       "id"
@@ -12629,7 +12629,7 @@
     "route": "/api/overtime-claims/:id/decide",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 59,
+    "line": 65,
     "description": "POST /api/overtime-claims/:id/decide. approve or reject a claim (decision, note, overrideReason).",
     "params": [
       "id"
@@ -12694,6 +12694,24 @@
     "source": "routes/overtime-claims.js",
     "line": 50,
     "description": "POST /api/overtime-claims/payroll/prepare. prepare the email to payroll with the month's file (month); the screen sends it with one press.",
+    "params": [],
+    "query": [],
+    "body": [
+      "month"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_payroll_test_send",
+    "method": "POST",
+    "route": "/api/overtime-claims/payroll/test-send",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 56,
+    "description": "POST /api/overtime-claims/payroll/test-send. email Nick (and only Nick) a [TEST] copy of the month's payroll email with the file (month); payroll gets nothing and no claim is marked.",
     "params": [],
     "query": [],
     "body": [

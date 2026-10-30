@@ -165,7 +165,9 @@ function briefToHtml(brief) {
 // REFUSED here, before a token is even fetched, so this function cannot become
 // a second, ungoverned way out of the building. The one remaining caller is
 // weekly-risk.testSend, which mails Nick a [TEST] copy.
-async function sendMail({ to, subject, body, cc = null, html = false }) {
+// attachments: [{ name, contentType, dataBase64 }], inline only (Graph's /sendMail limit is ~3 MB
+// per message); used by the overtime payroll [TEST] copy so Nick sees the real file.
+async function sendMail({ to, subject, body, cc = null, html = false, attachments = null }) {
   const recipients = (Array.isArray(to) ? to : []).filter(r => r?.email);
   if (!recipients.length) return { sent: false, reason: 'no_recipients' };
   const others = [...recipients, ...(Array.isArray(cc) ? cc : [])]
@@ -190,6 +192,14 @@ async function sendMail({ to, subject, body, cc = null, html = false }) {
     body: { contentType: html ? 'HTML' : 'Text', content: String(body) },
     toRecipients: recipients.map(r => ({ emailAddress: { address: r.email, name: r.name || undefined } })),
   };
+  if (Array.isArray(attachments) && attachments.length) {
+    message.attachments = attachments.map(a => ({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: String(a.name || 'attachment'),
+      contentType: a.contentType || 'application/octet-stream',
+      contentBytes: a.dataBase64,
+    }));
+  }
   if (Array.isArray(cc) && cc.length) {
     message.ccRecipients = cc.filter(r => r?.email).map(r => ({ emailAddress: { address: r.email } }));
   }
