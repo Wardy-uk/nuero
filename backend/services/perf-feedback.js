@@ -104,7 +104,7 @@ function participantsOf(people, body) {
 
 /** Nick's weighting of the setting. Pure. */
 function tierOf({ title, names, unnamed }, { manager, seniors, self = 'Nick Ward' }) {
-  const others = names.filter((n) => norm(n) !== norm(self));
+  const others = [...new Map(names.filter((n) => norm(n) !== norm(self)).map((n) => [norm(n), n])).values()];
   const has = (who) => others.some((n) => norm(n) === norm(who) || norm(n).split(' ')[0] === norm(who).split(' ')[0] && norm(who).split(' ').length === 1);
   if (manager && others.length === 1 && has(manager) && !unnamed) return 1;
   if (/\btech(nical)? leadership\b/i.test(title) || (has('Chris Middleton') && has('Ricky Bostock'))) return 2;
