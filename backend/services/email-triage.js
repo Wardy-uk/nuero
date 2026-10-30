@@ -145,7 +145,13 @@ async function classifyEmails(emails, prior = new Map()) {
     const aiCategory = cls ? String(cls.category || 'FYI').toUpperCase()
       : (was?.aiClassified ? (was.aiCategory || null) : null);
     let category = aiCategory || deterministic.category;
+    // Marketing from an outside sender nobody knows (30 Oct 2026): the rules
+    // only see subject + preview, and a newsletter's opening line can carry
+    // any word ("cancel anytime", a down jacket). When the model read it and
+    // said IGNORE, that wins — never for a colleague or a known person.
+    const outsideStranger = deterministic.internal === false && deterministic.senderKnown === false;
     if (deterministic.category === 'IGNORE') category = 'IGNORE';
+    else if (aiCategory === 'IGNORE' && outsideStranger) category = 'IGNORE';
     else if (deterministic.category === 'FYI' && aiCategory === 'ACTION') category = 'FYI';
     else if (deterministic.category === 'ACTION' && aiCategory === 'IGNORE') category = 'ACTION';
     else if (deterministic.category === 'DELEGATE' && aiCategory !== 'ACTION') category = 'DELEGATE';

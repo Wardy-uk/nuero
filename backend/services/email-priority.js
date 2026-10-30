@@ -17,7 +17,14 @@ const URGENT_KEYWORDS = [
   'complaint',
   'legal',
   'outage',
-  'down',
+  // Never bare 'down' (30 Oct 2026): Rab's down-jacket marketing went urgent on it.
+  'is down',
+  'are down',
+  'went down',
+  'gone down',
+  'site down',
+  'system down',
+  'server down',
   'incident',
   'major incident',
   'sev1',
@@ -129,8 +136,26 @@ function csvEnv(name) {
     .filter(Boolean);
 }
 
+// Whole words, not substrings (30 Oct 2026): 'sla' matched "translate" and
+// "Slack", 'legal' matched "illegal", 'p1' matched "p100". A boundary is only
+// required where the needle itself starts/ends on a word character, so
+// 'introducing ' and 'no-reply' keep meaning what they meant.
+function needleRe(needle) {
+  const n = String(needle).toLowerCase();
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${/^\w/.test(n) ? '\\b' : ''}${esc}${/\w$/.test(n) ? '\\b' : ''}`);
+}
+
 function includesAny(haystack, needles) {
-  return needles.some((needle) => haystack.includes(String(needle).toLowerCase()));
+  return needles.some((needle) => needleRe(needle).test(haystack));
+}
+
+const OWN_DOMAINS = String(process.env.WATCHED_OWN_DOMAINS || 'nurtur.tech')
+  .split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
+
+function isInternal(fromEmail) {
+  const m = /@([^@\s>]+)$/.exec(String(fromEmail || '').trim().toLowerCase());
+  return !!m && OWN_DOMAINS.some((d) => m[1] === d || m[1].endsWith(`.${d}`));
 }
 
 function hasQuestionRequest(subject, preview) {
@@ -196,7 +221,7 @@ function describeSenderBucket(fromName, fromEmail) {
   return null;
 }
 
-function evaluateEmail(email) {
+function judge(email) {
   const fromName = email?.from || '';
   const fromEmail = email?.fromEmail || '';
   const subject = email?.subject || '';
@@ -290,7 +315,13 @@ function evaluateEmail(email) {
     };
   }
 
-  const urgent = score >= 45 || urgentSender || keywordUrgent || distress;
+  // URGENT needs two independent signals (30 Oct 2026). One keyword alone used
+  // to force it, so a ticket thread titled "Forms not working" read as customer
+  // distress and went urgent over a colleague asking a follow-up — work that
+  // needs attention, not an interruption. One signal now lands in `reply`.
+  const urgencySignals = [keywordUrgent, distress, leadership, email?.importance === 'high', email?.isFlagged]
+    .filter(Boolean).length;
+  const urgent = urgentSender || urgencySignals >= 2 || score >= 60;
   if (urgent) {
     return {
       lane: 'urgent',
@@ -311,7 +342,8 @@ function evaluateEmail(email) {
     };
   }
 
-  if (leadership || blocker || explicitReplySignal || email?.isFlagged || email?.importance === 'high') {
+  if (leadership || blocker || explicitReplySignal || email?.isFlagged || email?.importance === 'high'
+    || keywordUrgent || distress) {
     return {
       lane: 'reply',
       category: 'ACTION',
@@ -340,6 +372,20 @@ function evaluateEmail(email) {
   };
 }
 
+// `internal` and `senderKnown` let the blend in email-triage trust the model's
+// IGNORE for marketing from an unknown outside sender — the rules here only see
+// subject + preview, and a newsletter's opening line can say anything.
+function evaluateEmail(email) {
+  const fromName = email?.from || '';
+  const fromEmail = email?.fromEmail || '';
+  return {
+    ...judge(email),
+    internal: isInternal(fromEmail),
+    senderKnown: !!describeSenderBucket(fromName, fromEmail),
+  };
+}
+
 module.exports = {
   evaluateEmail,
+  _internals: { includesAny, isInternal },
 };
