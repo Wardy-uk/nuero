@@ -144,8 +144,87 @@ async function responseOf(eventId) {
   return null;
 }
 
+// ── meeting invites in the Inbox (30 Oct 2026) ───────────────────────────────
+//
+// An invite is a MESSAGE (`eventMessageRequest`) that points at an EVENT in
+// Nick's own calendar. Answering it is an act on the EVENT; the message is only
+// tidied afterwards (read, out of triage). Nick: "meeting invites should allow
+// me to accept/decline", and a leave auto-decline left its invite unread.
+
+const RESPONSES = { accept: 'accept', tentative: 'tentativelyAccept', decline: 'decline' };
+// Graph's responseStatus.response for each verb, for the read-back.
+const RESPONSE_STATE = { accept: 'accepted', tentative: 'tentativelyAccepted', decline: 'declined' };
+
+/**
+ * Accept / tentative / decline an invite. Graph mails the organiser the answer.
+ * On an occurrence it answers that one day, never the series.
+ */
+async function respondEvent(eventId, response, { comment = '' } = {}) {
+  const verb = RESPONSES[response];
+  if (!verb) return { outcome: 'rejected', status: null, category: 'bad-response' };
+  const r = await _req('POST', `/me/events/${encodeURIComponent(eventId)}/${verb}`, {
+    comment: String(comment || '').slice(0, 2000), sendResponse: true,
+  });
+  return { outcome: classify(r), status: r.status, category: r.category || null };
+}
+
+/**
+ * The invite behind a message: `{ isInvite, meetingMessageType, event }`, or
+ * null when the message could not be read. `event` is null when the message is
+ * not an invite or its meeting is gone.
+ */
+async function inviteOf(messageId) {
+  const r = await _req('GET', `/me/messages/${encodeURIComponent(messageId)}`
+    + '?$expand=microsoft.graph.eventMessage/event($select=id,subject,start,end,isOrganizer,isCancelled,responseStatus,organizer)');
+  if (r.status === 404) return { isInvite: false, gone: true, event: null };
+  if (!(r.status >= 200 && r.status < 300) || !r.data) return null;
+  const type = String(r.data['@odata.type'] || '');
+  const ev = r.data.event || null;
+  return {
+    isInvite: /eventMessageRequest$/.test(type) || r.data.meetingMessageType === 'meetingRequest',
+    meetingMessageType: r.data.meetingMessageType || null,
+    isRead: !!r.data.isRead,
+    event: ev ? {
+      id: ev.id,
+      subject: ev.subject || '',
+      start: ev.start && ev.start.dateTime ? String(ev.start.dateTime).slice(0, 16) : null,
+      end: ev.end && ev.end.dateTime ? String(ev.end.dateTime).slice(0, 16) : null,
+      isOrganizer: ev.isOrganizer === true,
+      isCancelled: ev.isCancelled === true,
+      response: (ev.responseStatus && ev.responseStatus.response) || 'none',
+      organizer: ev.organizer && ev.organizer.emailAddress ? (ev.organizer.emailAddress.name || ev.organizer.emailAddress.address) : null,
+    } : null,
+  };
+}
+
+/**
+ * Inbox invites for one event. Matched by subject first (Graph cannot filter
+ * on the linked event), then CONFIRMED by the event id each message points at —
+ * a subject alone is never enough. Returns [] when nothing matched, null when
+ * the Inbox could not be read.
+ */
+async function invitesForEvent(eventId, subject) {
+  const s = String(subject || '').replace(/'/g, "''");
+  if (!eventId || !s) return [];
+  const r = await _req('GET', `/me/mailFolders/Inbox/messages?$filter=${encodeURIComponent(`subject eq '${s}'`)}&$top=10&$select=id,subject,isRead`);
+  if (!(r.status >= 200 && r.status < 300) || !r.data) return null;
+  const out = [];
+  for (const m of r.data.value || []) {
+    const inv = await inviteOf(m.id);
+    if (inv && inv.event && inv.event.id === eventId) out.push({ id: m.id, isRead: !!m.isRead });
+  }
+  return out;
+}
+
+/** Mark a message read. accepted | rejected | uncertain. */
+async function markMessageRead(messageId) {
+  const r = await _req('PATCH', `/me/messages/${encodeURIComponent(messageId)}`, { isRead: true });
+  return { outcome: classify(r), status: r.status, category: r.category || null };
+}
+
 module.exports = {
   MARKER_PROP, TIMEZONE, classify, normaliseEvent, createBody,
   createEvent, findByMarker, readEvent, eventsAt, moveEvent, cancelEvent,
   declineEvent, responseOf,
+  RESPONSES, RESPONSE_STATE, respondEvent, inviteOf, invitesForEvent, markMessageRead,
 };

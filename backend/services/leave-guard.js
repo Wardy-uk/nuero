@@ -210,12 +210,52 @@ async function declineForLeave(ev, { initiatedBy = 'nick', comment = DECLINE_COM
     const n = require('./prepared-actions').withdrawAgendaChase(ev.id, { why: 'you declined it — on leave that day', now });
     if (n) console.log(`[LeaveGuard] withdrew ${n} agenda request(s) for "${ev.subject}"`);
   } catch (e) { console.warn('[LeaveGuard] agenda withdraw failed:', e.message); }
+  // The invite email has nothing left to ask: read in Outlook, out of triage
+  // (30 Oct 2026 — it sat in the panel unread after the decline).
+  await _tidyInvite(key, ev);
   return { ok: true, verified: confirmed };
+}
+
+// Ledger keys whose invite email has been tidied, so the catch-up below asks
+// Outlook about each decline once. Bounded.
+const TIDIED_KEY = 'leave_decline_invites_tidied';
+const TIDY_LOOKBACK_MS = 14 * 86400000;
+
+function _tidiedSet() {
+  try { const v = JSON.parse(require('../db/database').getState(TIDIED_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+async function _tidyInvite(key, ev) {
+  const r = await require('./invite-response').tidyForEvent({ id: ev.id, subject: ev.subject });
+  if (!r.ok) { console.warn(`[LeaveGuard] invite email for "${ev.subject}" not tidied: ${r.reason}`); return r; }
+  const list = _tidiedSet().filter(k => k !== key);
+  list.push(key);
+  try { require('../db/database').setState(TIDIED_KEY, JSON.stringify(list.slice(-200))); } catch { /* next pass asks again */ }
+  if (r.tidied) console.log(`[LeaveGuard] marked ${r.tidied} invite email(s) read for "${ev.subject}"`);
+  return r;
+}
+
+/** Declines made before the tidy existed, or whose tidy could not read the Inbox. */
+async function tidyDeclinedInvites({ now = Date.now() } = {}) {
+  const done = new Set(_tidiedSet());
+  const rows = require('./external-writes').recent({ writer: WRITER, limit: 60 })
+    .filter(r => (r.status === 'confirmed' || r.status === 'applied-unverified')
+      && !done.has(r.key) && r.request && r.request.eventId
+      && Date.parse(r.settledAt || r.requestedAt) > now - TIDY_LOOKBACK_MS);
+  let tidied = 0;
+  for (const r of rows) {
+    const t = await _tidyInvite(r.key, { id: r.request.eventId, subject: r.target });
+    if (t.ok) tidied += t.tidied || 0;
+  }
+  return { checked: rows.length, tidied };
 }
 
 // ── 1. auto-decline ──────────────────────────────────────────────────────────
 
 async function autoDecline({ now = new Date() } = {}) {
+  // Declines already made (by the timer or the card) still get their invite
+  // email tidied, whatever the switch says — that writes nothing outward.
+  try { await tidyDeclinedInvites({ now: new Date(now).getTime() }); } catch (e) { console.warn('[LeaveGuard] invite tidy failed:', e.message); }
   if (!require('./feature-flags').isEnabled(AUTO_FLAG)) return { ok: true, skipped: 'switched off' };
   const leave = myLeave(now);
   if (!leave.known) return { ok: false, skipped: `your leave could not be read — ${leave.reason}` };
@@ -491,7 +531,7 @@ function markDone(ids = []) {
 
 module.exports = {
   AUTO_FLAG, WRITER, DECLINE_COMMENT,
-  analyse, refresh, stored, detectNew, apply, markDone, autoDecline, declineForLeave, myLeave,
+  analyse, refresh, stored, detectNew, apply, markDone, autoDecline, declineForLeave, myLeave, tidyDeclinedInvites,
   // pure
   onLeave, leavePeriods, nextWorkingDay, classifyEvent, freeMinutes, pickTaskDay, slotOnDay, autoDeclineCandidates,
 };

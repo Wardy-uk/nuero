@@ -58,6 +58,7 @@ const CAPABILITIES = Object.freeze({
   'calendar.solo': { authority: 'A2', effect: "events with NO attendees in Nick's own calendar (task blocks, day planner, Plaud admin blocks)", machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.calendar.solo', ledger: false, verification: null, idempotent: 'UNIQUE(date,start) / ledgers' },
   'mail.read-state': { authority: 'A2', effect: 'mark an email read on dismiss', machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.mail.read-state', ledger: false, verification: null, idempotent: true },
   'weather.wu-publish': { authority: 'A2', effect: "upload our own weather station's readings to Weather Underground (ICOALV59)", machine: 'execute', approval: 'none', registry: 'external-writes:wunderground.publish', ledger: false, verification: 'WU answers "success"', idempotent: 'WU folds a repeat dateutc' },
+  'calendar.invite-respond': { authority: 'A3', effect: 'accept, tentatively accept or decline a meeting invite Nick did not organise; the organiser is told', machine: 'refuse', approval: 'Nick pressing the button on the invite card', registry: 'external-writes:microsoft.calendar.respond', ledger: true, verification: 'Graph read-back', idempotent: true },
   'calendar.leave-decline': { authority: 'A3', effect: "decline an invite Nick did not organise, on a day People HR says he is on leave", machine: 'refuse', approval: 'the leave_auto_decline switch, or a tap on the Leave clashes card', registry: 'external-writes:microsoft.calendar.leave-decline', ledger: true, verification: 'Graph read-back', idempotent: true },
   'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
   'gmail.unsubscribe': { authority: 'A3', effect: "POST a mailing list's own one-click unsubscribe, on Nick's press", machine: 'refuse', approval: 'click', registry: 'external-writes:gmail.unsubscribe', ledger: true, verification: 'http status', idempotent: true },
@@ -198,6 +199,8 @@ const ROUTE_RULES = Object.freeze([
   // Email: preparing is allowed, sending is not reachable from a route.
   R('POST', '/api/email/triage/:emailId/reply', 'email.send'),
   R('POST', '/api/email/triage/dismiss/:emailId', 'mail.read-state'),
+  R('GET', '/api/email/triage/:emailId/invite', 'read'),
+  R('POST', '/api/email/triage/:emailId/invite', 'calendar.invite-respond', { machine: 'refuse' }),
   R('POST', '/api/waiting-on/:key/chase', 'email.send'),
   R('POST', '/api/weekly-risk/queue-send', 'email.send'),
   R('POST', '/api/soap/:weekFrom/queue-send', 'email.send'),

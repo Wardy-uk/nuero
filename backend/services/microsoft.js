@@ -632,7 +632,10 @@ async function fetchRecentEmailsDetailed(hoursBack = 24, maxResults = 500) {
           importance: msg.importance,
           isFlagged: msg.flag?.flagStatus === 'flagged',
           preview: (msg.bodyPreview || '').substring(0, 300),
-          hasAttachments: msg.hasAttachments
+          hasAttachments: msg.hasAttachments,
+          // A meeting request is a derived message type; Graph names it in
+          // @odata.type. The card offers Accept / Tentative / Decline on it.
+          isInvite: /eventMessageRequest$/.test(String(msg['@odata.type'] || '')),
         }));
         return { emails, complete: !data.truncated && !capped, source: 'graph' };
       }

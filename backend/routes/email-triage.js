@@ -402,6 +402,33 @@ router.post('/triage/:emailId/reply', async (req, res) => {
   }
 });
 
+// GET /api/email/triage/:emailId/invite — the meeting behind an invite email (accept, decline, tentative, meeting request): subject, times, organiser, Nick's current answer. Read live from Outlook.
+router.get('/triage/:emailId/invite', async (req, res) => {
+  try {
+    const r = await require('../services/invite-response').describe(decodeURIComponent(req.params.emailId));
+    res.status(r.ok ? 200 : 503).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/email/triage/:emailId/invite — answer a meeting invite (accept, decline, tentative, respond to meeting request). Body: { response: accept|tentative|decline, comment? }. Tells the organiser, reads the answer back, marks the email read and closes its card. Nick only — machines refused.
+router.post('/triage/:emailId/invite', async (req, res) => {
+  try {
+    if (req.apiClient || req.get('X-Neuro-Machine-Client')) {
+      return res.status(403).json({ ok: false, error: 'Answering an invite is Nick\'s — machine clients are refused.' });
+    }
+    const r = await require('../services/invite-response').respond(
+      decodeURIComponent(req.params.emailId),
+      String(req.body?.response || ''),
+      { comment: req.body?.comment || '' },
+    );
+    res.status(r.ok ? 200 : (r.status || 400)).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/email/triage/run — trigger a fresh triage cycle.
 // Forced: Nick pressed "Run Triage", and answering that with a cached result
 // because the mail happens to be unchanged is a button that appears broken.

@@ -700,7 +700,9 @@ function isJudged(e) {
     // And the bulk clear. One click is one gesture however many rows it
     // covered; N verdicts out of it would score the classifier on the size of
     // the pile rather than on how often it was wrong.
-    && e.dismissReason !== SECTION_CLEARED;
+    && e.dismissReason !== SECTION_CLEARED
+    // An answered invite says nothing about whether triage ranked it right.
+    && e.dismissReason !== INVITE_ANSWERED;
 }
 
 // Anything judged that is about to leave the blob — pruned by age, or dropped
@@ -1100,6 +1102,32 @@ function getFlaggedItems() {
 const DISMISS_REASONS = new Set(['done', 'not-relevant', 'replied', 'unspecified']);
 const LEFT_INBOX = 'left-inbox';
 
+// ── Invites answered (30 Oct 2026) ──────────────────────────────────────────
+//
+// A meeting request that has been answered — by Nick on the card, or by the
+// leave guard's auto-decline — has nothing left to ask, so it leaves the panel
+// marked read. Like `left-inbox` it is NEURO's own bookkeeping (absent from
+// DISMISS_REASONS, excluded from isJudged): answering an invite is not a
+// verdict on how triage filed it.
+const INVITE_ANSWERED = 'invite-answered';
+
+/**
+ * Close the triage card for an answered invite. Returns whether a live card
+ * was closed (false = not in triage, or already closed — both fine).
+ */
+function closeAnsweredInvite(emailId, { response = null, now = new Date() } = {}) {
+  const all = getStoredTriage();
+  const item = all.find(e => e.id === emailId);
+  if (!item || item.dismissed) return false;
+  const stamp = new Date(now).toISOString();
+  storeTriage(all.map(e => (e.id === emailId
+    ? { ...e, isRead: true, dismissed: true, dismissedAt: stamp, dismissReason: INVITE_ANSWERED, inviteResponse: response }
+    : e)));
+  try { require('./nudges').triggerUrgentEmailNudge(); } catch {}
+  try { db.supersedePendingEmailActions(emailId); } catch {}
+  return true;
+}
+
 const MUTE_KINDS = new Set(['subject', 'sender']);
 
 function dismissEmail(emailId, reason = 'unspecified', { selfAddress = null, mute = null } = {}) {
@@ -1313,6 +1341,8 @@ module.exports = {
   listMutedSubjects,
   purgeAgedInformational,
   clearFyiSection,
+  closeAnsweredInvite,
+  INVITE_ANSWERED,
   TRIAGE_CACHE_TTL,
   _internals: {
     inputFingerprint, storeTriage, DISMISSED_RETAIN_DAYS, CLASSIFY_BATCH,

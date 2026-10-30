@@ -147,6 +147,16 @@ const WRITERS = Object.freeze({
     why: 'Only for invites still unanswered (timer) or ticked on the card (Nick), only on approved leave read from People HR; an accept on a leave day is his and is never overridden.',
     readback: 'Graph re-read: responseStatus declined, or the event gone from the calendar',
   },
+  // 30 Oct 2026: Nick answering a meeting invite from its card in the Inbox.
+  'microsoft.calendar.respond': {
+    target: 'the organiser of a meeting Nick was invited to', authority: 'A3',
+    initiation: 'Nick pressing Accept / Tentative / Decline on an invite card', ledger: true,
+    // Answering the same way twice is harmless — Graph sends the same response.
+    idempotentTarget: true,
+    effect: 'one accept, tentative or decline of one occurrence Nick did not organise, with the response sent to the organiser',
+    why: 'Nick pressed it on an attended screen; machines are refused.',
+    readback: 'Graph re-read: responseStatus matches, or the event gone after a decline',
+  },
   'gmail.unsubscribe': {
     target: "a mailing list's own one-click unsubscribe URL (RFC 8058)", authority: 'A3', initiation: 'Nick pressing Unsubscribe on the Gmail clean-up screen', ledger: true,
     // Unsubscribing twice is harmless, so Nick may re-try an unknown outcome.

@@ -647,3 +647,21 @@
 .inbox-item-selected { background: var(--bg-tertiary); }
 .inbox-item-source-nick, .inbox-item-source-contact { border-color: var(--accent); color: var(--accent); }
 .inbox-section-unsorted { color: var(--warning); }
+
+/* Meeting invite answered from the card (30 Oct 2026) */
+.inbox-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.inbox-invite-when { font-weight: 600; }
+.inbox-invite-state { color: var(--text-muted, #8b8fa3); }
+.inbox-invite-actions { display: flex; gap: 6px; margin-left: auto; }
+.inbox-invite-gap { color: var(--warning); }
+.inbox-invite-done { color: var(--success, #3fb950); }

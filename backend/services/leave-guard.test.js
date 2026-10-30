@@ -53,6 +53,7 @@ function stub(t, { leave, events = [] }) {
   t.mock.method(microsoft, 'getSignedInAddress', async () => 'nick@x.test');
   t.mock.method(detect, 'buildRoster', () => ({ people: [{ name: 'Ann One', email: 'ann@x.test' }] }));
   t.mock.method(require('./webpush'), 'sendToAll', async () => {});
+  t.mock.method(cal, 'invitesForEvent', async () => []);
 }
 
 // ── pure ─────────────────────────────────────────────────────────────────────
@@ -127,6 +128,29 @@ test('auto-decline (switch on): declines once, reads it back, never repeats it',
   const r2 = await guard.autoDecline();
   assert.strictEqual(r2.declined.length, 0, 'the ledger stops a second decline');
   assert.strictEqual(sent.mock.callCount(), 1);
+});
+
+test('a leave decline marks its invite email read and closes its triage card (30 Oct 2026)', async (t) => {
+  const [a] = week();
+  stub(t, { leave: [a], events: [ev('E9', a, '09:00', '10:00', 'Onboarding chat', { isOrganizer: false, responseStatus: 'notResponded' })] });
+  t.mock.method(flags, 'isEnabled', (k) => k === guard.AUTO_FLAG);
+  t.mock.method(cal, 'declineEvent', async () => ({ outcome: 'accepted', status: 202 }));
+  t.mock.method(cal, 'responseOf', async () => 'declined');
+  const found = t.mock.method(cal, 'invitesForEvent', async (id) => (id === 'E9' ? [{ id: 'MSG9', isRead: false }] : []));
+  const read = t.mock.method(cal, 'markMessageRead', async () => ({ outcome: 'accepted', status: 200 }));
+  const triage = require('./email-triage');
+  triage._internals.storeTriage([{ id: 'MSG9', subject: 'Onboarding chat', isInvite: true, isRead: false, category: 'FYI', lane: 'fyi', received: new Date().toISOString() }]);
+
+  await guard.autoDecline();
+  assert.strictEqual(found.mock.calls[0].arguments[0], 'E9');
+  assert.deepStrictEqual(read.mock.calls.map(c => c.arguments[0]), ['MSG9']);
+  const card = triage.getStoredTriage().find(e => e.id === 'MSG9');
+  assert.strictEqual(card.dismissed, true);
+  assert.strictEqual(card.dismissReason, triage.INVITE_ANSWERED);
+
+  // The catch-up does not ask Outlook again about a decline already tidied.
+  await guard.autoDecline();
+  assert.strictEqual(found.mock.callCount(), 1);
 });
 
 test('auto-decline refuses when Nick\'s own leave cannot be read', async (t) => {

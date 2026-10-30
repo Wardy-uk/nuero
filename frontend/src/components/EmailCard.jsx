@@ -64,6 +64,77 @@ export function receivedExact(iso) {
   });
 }
 
+// A meeting invite answers itself from the card (30 Oct 2026). The meeting is
+// read LIVE (the card holds only the email), and the answer goes to the
+// organiser; the server then marks the email read and closes the card.
+const INVITE_SAY = { accepted: 'You accepted', tentativelyAccepted: 'You said maybe', declined: 'You declined', organizer: 'Your meeting', none: 'Not answered', notResponded: 'Not answered' };
+
+function inviteWhen(ev) {
+  if (!ev || !ev.start) return '';
+  // Wall clock from Graph — sliced, never re-parsed (the BST rule).
+  const [d, t] = ev.start.split('T');
+  const day = new Date(`${d}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const end = ev.end && ev.end.slice(0, 10) === d ? `–${ev.end.slice(11, 16)}` : '';
+  return `${day} ${t ? t.slice(0, 5) : ''}${end}`;
+}
+
+export function InviteBar({ base }) {
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [result, setResult] = useState(null);
+
+  React.useEffect(() => {
+    let live = true;
+    fetch(apiUrl(`${base}/invite`))
+      .then(r => r.json())
+      .then(d => { if (live) setInfo(d); })
+      .catch(() => { if (live) setInfo({ ok: false, error: 'Could not read the meeting.' }); });
+    return () => { live = false; };
+  }, [base]);
+
+  const answer = (response) => {
+    setBusy(response);
+    fetch(apiUrl(`${base}/invite`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response }),
+    })
+      .then(r => r.json())
+      .then(d => setResult(d))
+      .catch(() => setResult({ ok: false, error: 'No answer from NEURO — check Outlook before pressing again.' }))
+      .finally(() => setBusy(null));
+  };
+
+  if (!info) return <div className="inbox-invite">Reading the meeting…</div>;
+  if (!info.ok) return <div className="inbox-invite inbox-invite-gap">{info.error}</div>;
+  if (!info.isInvite) return null;
+  if (!info.event) return <div className="inbox-invite inbox-invite-gap">{info.note}</div>;
+  const ev = info.event;
+  if (result && result.ok) return <div className="inbox-invite inbox-invite-done">{result.say}</div>;
+  return (
+    <div className="inbox-invite">
+      <span className="inbox-invite-when">📅 {inviteWhen(ev)}</span>
+      <span className="inbox-invite-state">{ev.isCancelled ? 'Cancelled' : INVITE_SAY[ev.isOrganizer ? 'organizer' : ev.response] || ev.response}</span>
+      {info.canAnswer && (
+        <span className="inbox-invite-actions">
+          {['accept', 'tentative', 'decline'].map(r => (
+            <button
+              key={r}
+              className={`inbox-action-btn ${r === 'decline' ? 'inbox-action-ignore' : 'inbox-action-done'}`}
+              disabled={!!busy}
+              onClick={() => answer(r)}
+              title="Sends your answer to the organiser now"
+            >
+              {busy === r ? '...' : r === 'accept' ? 'Accept' : r === 'tentative' ? 'Tentative' : 'Decline'}
+            </button>
+          ))}
+        </span>
+      )}
+      {result && !result.ok && <div className="inbox-detail-error">{result.error}</div>}
+    </div>
+  );
+}
+
 export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPromote, endpoint = workEndpoint, sourceChip = null, extraActions = null, selected, onSelect = null, readWhere = 'Outlook' }) {
   // mode: null | 'summary' | 'full' | 'reply'
   const [mode, setMode] = useState(null);
@@ -441,6 +512,9 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
       )}
 
       {error && <div className="inbox-detail-error">{error}</div>}
+
+      {/* Work Outlook only: a personal mailbox's invite has no Graph event. */}
+      {email.isInvite && endpoint === workEndpoint && <InviteBar base={base} />}
 
       <div className="inbox-item-actions">
         <button
