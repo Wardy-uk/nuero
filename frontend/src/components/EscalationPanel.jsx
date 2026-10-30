@@ -914,6 +914,8 @@ export function ApprovalBox({ ticketKey, onDecided, initial = null }) {
   const [confirming, setConfirming] = useState(null);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
+  const [reason, setReason] = useState('');
+  const [problem, setProblem] = useState(null);
 
   useEffect(() => {
     if (initial) return undefined;
@@ -926,10 +928,13 @@ export function ApprovalBox({ ticketKey, onDecided, initial = null }) {
   }, [ticketKey, initial]);
 
   const send = async (decision) => {
+    // Never a silently disabled button: an empty reason is said, on the press.
+    if (decision === 'decline' && !reason.trim()) { setProblem('Give a reason — it goes on the ticket as an internal note.'); return; }
+    setProblem(null);
     setSending(true);
     try {
       const r = await fetch(apiUrl(`/api/escalation/approval/${encodeURIComponent(ticketKey)}/decide`), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(decision === 'decline' ? { decision, reason: reason.trim() } : { decision }),
       });
       const j = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
       setResult(j);
@@ -946,6 +951,7 @@ export function ApprovalBox({ ticketKey, onDecided, initial = null }) {
     return (
       <div className="esc-approval esc-approval-done">
         {result.decision === 'approve' ? 'Approved' : 'Declined'} in Jira{result.outcome === 'confirmed' ? ' — confirmed on the ticket.' : '.'}
+        {result.note?.ok && ' Your reason is on the ticket as an internal note.'}
         {result.warning && <div className="esc-warn">{result.warning}</div>}
       </div>
     );
@@ -972,10 +978,20 @@ export function ApprovalBox({ ticketKey, onDecided, initial = null }) {
           <span>{confirming === 'approve'
             ? `Approve “${a.name}” on ${ticketKey} in Jira, as you? Tier 2’s rejection goes ahead.`
             : `Decline “${a.name}” on ${ticketKey} in Jira, as you? The rejection does not go ahead.`} This cannot be undone from NEURO.</span>
+          {confirming === 'decline' && (
+            <label className="esc-approval-reason">
+              <span>Reason (added to the ticket as an internal note)</span>
+              <textarea rows={3} value={reason} maxLength={2000} autoFocus
+                className={problem ? 'esc-approval-reason-bad' : ''}
+                onChange={(e) => { setReason(e.target.value); if (problem) setProblem(null); }}
+                placeholder="Why the rejection should not go ahead" />
+            </label>
+          )}
+          {problem && <div className="esc-error">{problem}</div>}
           <div className="esc-approval-actions">
             <button type="button" className={confirming === 'approve' ? 'esc-approve' : 'esc-decline'} disabled={sending}
               onClick={() => send(confirming)}>{sending ? 'Sending…' : confirming === 'approve' ? 'Yes, approve' : 'Yes, decline'}</button>
-            <button type="button" className="esc-mini" disabled={sending} onClick={() => setConfirming(null)}>Cancel</button>
+            <button type="button" className="esc-mini" disabled={sending} onClick={() => { setConfirming(null); setProblem(null); }}>Cancel</button>
           </div>
         </div>
       )}
@@ -1029,6 +1045,15 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
 
       {open && (
         <div className="esc-trow-body">
+          {item.rej?.rejection && (
+            <blockquote className="esc-watch-reply">
+              <span className="esc-comment-author">
+                Why Tier 2 rejected it{item.rej.rejection.by ? ` · ${item.rej.rejection.by}` : ''}{item.rej.rejection.at ? ` · ${dayMonth(item.rej.rejection.at)}` : ''}
+                {item.rej.rejection.category && <span className="esc-tag">{item.rej.rejection.category}</span>}
+              </span>
+              <span className="esc-watch-reply-text">{item.rej.rejection.stated || 'No reason was written on the ticket.'}</span>
+            </blockquote>
+          )}
           {item.rej && <ApprovalBox ticketKey={item.key} onDecided={onEscalated} />}
           <div className="esc-watch-notes">
             {info && <span>{info.priority || 'No priority'}</span>}

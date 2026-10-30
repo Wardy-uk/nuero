@@ -698,6 +698,11 @@
 .esc-decline { background: transparent; border: 1px solid var(--border); color: var(--text-primary); }
 .esc-decline:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 .esc-approve:disabled, .esc-decline:disabled { opacity: .6; cursor: default; }
+.esc-approval-reason { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.esc-approval-reason textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text-primary);
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); resize: vertical; }
+.esc-approval-reason textarea:focus { outline: none; border-color: var(--accent); }
+.esc-approval-reason-bad { border-color: var(--danger) !important; }
 .esc-approval-done { color: var(--success); font-size: 13px; }
 .esc-pill-mail { color: var(--success, #3fb950); border-color: color-mix(in srgb, var(--success, #3fb950) 35%, transparent); }
 .esc-row-mailed { color: var(--success, #3fb950); }

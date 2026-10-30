@@ -190,10 +190,59 @@ async function fetchActiveEscalations(opts = {}) {
  */
 const PENDING_REJECTION_STATUS = 'Pending Rejection Approval (to CC)';
 
+const TIER2_REJECTION_REASON_FIELD = 'customfield_15286';
+
+/** Plain text of a Jira ADF body (or a string). */
+function adfPlain(body) {
+  if (!body) return '';
+  if (typeof body === 'string') return body;
+  const out = [];
+  const walk = (n) => {
+    if (!n) return;
+    if (n.type === 'text' && n.text) out.push(n.text);
+    if (Array.isArray(n.content)) { n.content.forEach(walk); if (n.type === 'paragraph') out.push('\n'); }
+  };
+  walk(body);
+  return out.join('').replace(/\n+/g, '\n').trim();
+}
+
+/**
+ * PURE: why Tier 2 rejected it (Nick, 30 Oct 2026 — the automation comment
+ * "Issue submitted for rejection. Reason Given:" is often BLANK, because the
+ * reason field says "Other: State reason in comments" and the words are in the
+ * comment posted beside it). Returns { category, stated, by, at } or null.
+ * `stated` = the automation's own "Reason Given:" text when it has one, else
+ * the human comment posted within 5 minutes before that automation comment.
+ * Never invented: no comment found = stated null.
+ */
+function rejectionReason(fields) {
+  const category = fields?.[TIER2_REJECTION_REASON_FIELD]?.value || null;
+  const comments = [...(fields?.comment?.comments || [])].sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
+  let auto = null;
+  for (const c of comments) if (/submitted for rejection/i.test(adfPlain(c.body))) auto = c;
+  let stated = null; let by = null; let at = null;
+  if (auto) {
+    const given = adfPlain(auto.body).split(/Reason Given:/i)[1];
+    if (given && given.trim()) { stated = given.trim(); by = auto.author?.displayName || null; at = auto.created; }
+    else {
+      const t = Date.parse(auto.created);
+      const human = comments.filter((c) => c !== auto && c.author?.accountType !== 'app'
+        && Date.parse(c.created) <= t && t - Date.parse(c.created) <= 5 * 60000).pop();
+      if (human) { stated = adfPlain(human.body) || null; by = human.author?.displayName || null; at = human.created; }
+    }
+  }
+  if (!category && !stated) return null;
+  return { category, stated: stated ? stated.slice(0, 1500) : null, by, at };
+}
+
 async function fetchPendingRejections() {
-  return searchEscalations(
-    `project = ${JIRA_PROJECT_KEY} AND status = "${PENDING_REJECTION_STATUS}" ORDER BY updated DESC`
-  );
+  const jql = `project = ${JIRA_PROJECT_KEY} AND status = "${PENDING_REJECTION_STATUS}" ORDER BY updated DESC`;
+  const result = await jiraRequest('/rest/api/3/search/jql', {
+    method: 'POST',
+    body: { jql, fields: [...ESCALATION_FIELDS, TIER2_REJECTION_REASON_FIELD, 'comment'], maxResults: ESCALATION_PAGE_SIZE },
+  });
+  if (result.isLast === false) console.warn(`[Jira] Pending-rejection search hit the ${ESCALATION_PAGE_SIZE}-issue page — the list is truncated.`);
+  return (result.issues || []).map((issue) => ({ ...mapEscalationIssue(issue), rejection: rejectionReason(issue.fields) }));
 }
 
 /**
@@ -798,6 +847,7 @@ module.exports = {
   markRejectionsSeen,
   getUnseenRejectionCount,
   PENDING_REJECTION_STATUS,
+  rejectionReason,
   fetchOpenIssuesByKey,
   syncEscalations,
   markEscalationsSeen,

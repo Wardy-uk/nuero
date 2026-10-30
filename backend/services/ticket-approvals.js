@@ -15,6 +15,11 @@
  *    ledger BEFORE the call, keyed on the approval id, so one approval is
  *    answered once, ever; an unknown outcome blocks a repeat until he checks.
  *  - Read back: the same approval must now carry the decision asked for.
+ *  - DECLINING NEEDS A REASON (Nick, 30 Oct 2026), posted as an INTERNAL note
+ *    through the existing ledgered `jira.comment` path. Refused before anything
+ *    when missing. Order: the decision first (it is what matters), then the
+ *    note; a note that fails is reported with the reason handed back, never
+ *    silently lost, and the decision is not undone.
  */
 
 const ext = require('./external-writes');
@@ -22,6 +27,12 @@ const ext = require('./external-writes');
 const KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;
 const DECISIONS = ['approve', 'decline'];
 const FINAL = { approve: 'approved', decline: 'declined' };
+const MAX_REASON = 2000;
+
+/** PURE: the internal note a decline leaves on the ticket. */
+function declineNote(approvalName, reason) {
+  return `Declined “${approvalName || 'the approval'}” — reason: ${String(reason).trim()}`;
+}
 
 function normaliseKey(k) {
   const key = String(k || '').trim().toUpperCase();
@@ -33,6 +44,7 @@ function _deps(over = {}) {
   return {
     list: (key) => jira.fetchRequestApprovals(key),
     answer: (key, id, decision) => jira.answerRequestApproval(key, id, decision),
+    note: (key, text) => require('./ticket-replies').post({ key, text, visibility: 'internal' }),
     now: () => Date.now(),
     ...over,
   };
@@ -60,11 +72,14 @@ async function status(rawKey, depsOver) {
   return { ok: true, key, approvals, pending: pick.approval || null, why: pick.why || null };
 }
 
-async function decide({ key: rawKey, decision, initiatedBy = 'nick' }, depsOver) {
+async function decide({ key: rawKey, decision, reason, initiatedBy = 'nick' }, depsOver) {
   const d = _deps(depsOver);
   const key = normaliseKey(rawKey);
   if (!key) return { ok: false, status: 400, error: `"${rawKey}" is not a ticket key` };
   if (!DECISIONS.includes(decision)) return { ok: false, status: 400, error: 'decision must be approve or decline' };
+  const why = String(reason || '').trim();
+  if (decision === 'decline' && !why) return { ok: false, status: 400, error: 'Declining needs a reason — it is added to the ticket as an internal note. Nothing was sent.' };
+  if (why.length > MAX_REASON) return { ok: false, status: 400, error: `The reason is longer than ${MAX_REASON} characters. Nothing was sent.` };
 
   let approvals;
   try { approvals = await d.list(key); } catch (e) { return { ok: false, status: 502, error: `Couldn't read the approvals on ${key}: ${e.message}. Nothing was answered.` }; }
@@ -101,11 +116,27 @@ async function decide({ key: rawKey, decision, initiatedBy = 'nick' }, depsOver)
   const confirmed = readback === FINAL[decision];
   ext.settle(claim.entry.id, { status: confirmed ? 'confirmed' : 'applied-unverified', result: { approvalId: appr.id }, readback, now: d.now() });
 
+  let note = null;
+  if (decision === 'decline') {
+    const text = declineNote(appr.name, why);
+    try {
+      const r = await d.note(key, text);
+      note = r?.ok ? { ok: true, outcome: r.outcome, warning: r.warning || null }
+        : { ok: false, error: r?.error || 'the note was not posted', text };
+    } catch (e) {
+      note = { ok: false, error: e.message, text };
+    }
+  }
+
+  const warnings = [];
+  if (!confirmed) warnings.push(`Jira accepted it but NEURO couldn't confirm the decision (${readback}). Check ${key}.`);
+  if (note && !note.ok) warnings.push(`Declined, but the reason did NOT go on the ticket as a note (${note.error}). Add it in Jira: “${note.text}”`);
+  if (note?.ok && note.warning) warnings.push(note.warning);
   return {
     ok: true, key, decision, approval: { id: appr.id, name: appr.name },
-    outcome: confirmed ? 'confirmed' : 'applied-unverified', readback,
-    warning: confirmed ? null : `Jira accepted it but NEURO couldn't confirm the decision (${readback}). Check ${key}.`,
+    outcome: confirmed ? 'confirmed' : 'applied-unverified', readback, note,
+    warning: warnings.length ? warnings.join(' ') : null,
   };
 }
 
-module.exports = { decide, status, pickPending, DECISIONS };
+module.exports = { decide, status, pickPending, declineNote, DECISIONS };

@@ -419,13 +419,13 @@ router.get('/approval/:key', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
-// POST /api/escalation/approval/:key/decide — approve or decline the pending JSM approval on a ticket as Nick. Body: { decision: 'approve' | 'decline' }. The approval is read live from Jira; ledgered and read back. Human only.
+// POST /api/escalation/approval/:key/decide — approve or decline the pending JSM approval on a ticket as Nick. Body: { decision: 'approve' | 'decline', reason } — reason is required to decline and is added as an internal note. The approval is read live from Jira; ledgered and read back. Human only.
 router.post('/approval/:key/decide', async (req, res) => {
   if (req.apiClient) {
     return res.status(403).json({ ok: false, error: 'Answering a Jira approval is Nick deciding as himself — a machine client cannot do it on his behalf.' });
   }
-  const { decision } = req.body || {};
-  const r = await require('../services/ticket-approvals').decide({ key: req.params.key, decision });
+  const { decision, reason } = req.body || {};
+  const r = await require('../services/ticket-approvals').decide({ key: req.params.key, decision, reason });
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
