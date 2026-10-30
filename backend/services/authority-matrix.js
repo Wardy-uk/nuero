@@ -482,7 +482,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   // credentials, accounts, switches
   pin: 'config.security', auth: 'config.security', 'capture-links': 'config.security', ai: 'config.security', 'feature-flags': 'config.security',
   // local vault
-  vault: 'vault.write', 'vault-dnd': 'vault.write', 'vault-hygiene': 'vault.write', obsidian: 'vault.write', capture: 'vault.write', journal: 'vault.write',
+  vault: 'vault.write', 'vault-dnd': 'vault.write', 'vault-hygiene': 'vault.write', obsidian: 'vault.write', capture: 'vault.write', 'capture-hub': 'vault.write', journal: 'vault.write',
   profile: 'vault.write', evidence: 'vault.write', 'development-plan': 'vault.write', 'kb-article': 'vault.write', 'person-profile': 'vault.write',
   catalogues: 'vault.write', 'knowledge-memory': 'vault.write', imports: 'vault.write', 'people-gap': 'vault.write', standup: 'vault.write',
   plaud: 'plaud.pull',

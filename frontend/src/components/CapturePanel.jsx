@@ -61,40 +61,161 @@ function useCapturedFeatures(active) {
   return { ...state, reload: load };
 }
 
-// Auto-detect if text looks like a todo
-function looksLikeTodo(text) {
+// ── The single way in (30 Oct 2026) ─────────────────────────────────────────
+// Nick: "rebuild the capture box to be able to capture everything that NEURO
+// captures everywhere — single way in". One box, a row of chips saying where it
+// goes. NEURO GUESSES the chip (rules first, the model only when unsure) and
+// Nick confirms: nothing is filed on a guess he has not seen. The chips and the
+// fields each needs come from the server (GET /api/capture-hub/kinds) so the
+// box and the routes cannot disagree about what exists.
+
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const json = (body) => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/** PURE. Kind + text + fields → the request that files it, or an error message. */
+export function buildRequest(kind, text, f = {}) {
   const t = text.trim();
-  return /^-?\s*\[.\]/.test(t) ||              // checkbox syntax
-    /^(todo|task|action|reminder):/i.test(t) || // explicit prefix
-    /^(buy|call|email|book|send|fix|update|check|schedule|remind)\s/i.test(t); // action verbs
+  const first = t.split('\n')[0].trim();
+  const rest = t.split('\n').slice(1).join('\n').trim();
+  const need = (cond, msg) => (cond ? null : msg);
+  const num = (v) => (v === '' || v === undefined || v === null ? undefined : Number(v));
+  switch (kind) {
+    case 'task': return { url: '/api/capture/todo', ...json({ text: t, priority: 'normal' }) };
+    case 'done': return { url: '/api/tasks/quick-log', ...json({ text: t }) };
+    case 'note': return { url: '/api/capture/note', ...json({ title: null, content: t }) };
+    case 'chris': return { url: '/api/weekly-risk/chris-agenda', ...json({ text: t }) };
+    case 'feature': return { url: '/api/capture/feature', ...json({ title: first, notes: rest || undefined, system: f.system || 'NEURO', source: 'NEURO Capture' }) };
+    case 'journal': return { url: '/api/journal/save', ...json({ entries: [{ prompt: 'Captured', response: t }] }) };
+    case 'catalogue': {
+      const err = need(f.slug, 'Pick a catalogue') || need(f.section, 'Pick a section');
+      return err ? { error: err } : { url: `/api/catalogues/${encodeURIComponent(f.slug)}/add`, ...json({ section: f.section, name: t }) };
+    }
+    case 'mgmt-log': return { url: '/api/weekly-risk/log', ...json({ summary: t, type: f.type || 'action', person: f.person || null, dueDate: f.dueDate || null, owner: 'Nick' }) };
+    case 'report-fix': {
+      const impact = f.impact || [];
+      const err = need(f.system, 'Pick the system') || need((f.problem || '').trim(), 'Say what was wrong') || need(impact.length, 'Pick at least one impact') || need(f.deployedOn, 'When was it deployed?')
+        || (impact.includes('figures') ? need(f.measure && f.from && f.to, 'Name the figure affected and the dates') : null);
+      if (err) return { error: err };
+      const affects = impact.includes('figures') ? [{ measure: f.measure, from: f.from, to: f.to }] : [];
+      return { url: '/api/report-fixes/manual', ...json({ system: f.system, title: first, problem: f.problem, impact, affects, deployedOn: f.deployedOn }) };
+    }
+    case 'blocker': return f.projectId ? { url: `/api/projects/${encodeURIComponent(f.projectId)}/blockers`, ...json({ what: t, unblock: f.unblock || null }) } : { error: 'Pick the project' };
+    case 'date': {
+      const err = need(f.entity, 'Whose date is it?') || need(f.date, 'Pick the date');
+      return err ? { error: err } : { url: '/api/loops/personal-dates/declared', ...json({ entity: f.entity, kind: f.kind || 'birthday', date: f.date }) };
+    }
+    case 'care': {
+      const err = need(f.companionId, 'Who is it for?') || need(f.kind, 'Pick the kind of care');
+      return err ? { error: err } : { url: `/api/canonical/companions/${encodeURIComponent(f.companionId)}/care`, ...json({ kind: f.kind, title: t, dueDate: f.dueDate || null }) };
+    }
+    case 'finance': {
+      const err = need(f.kind, 'Pick the kind') || need(f.dueDate, 'When is it due?');
+      const pence = num(f.amount) !== undefined ? Math.round(num(f.amount) * 100) : undefined;
+      return err ? { error: err } : { url: '/api/finance/obligations', ...json({ kind: f.kind, title: t, dueDate: f.dueDate, expectedAmountPence: pence }) };
+    }
+    case 'mileage': {
+      const err = need(f.vehicleId, 'Pick the vehicle') || need(num(f.value), 'Enter the miles');
+      return err ? { error: err } : { url: `/api/vehicle/${encodeURIComponent(f.vehicleId)}/mileage`, ...json({ value: num(f.value), observedOn: f.observedOn || todayKey(), note: t || undefined }) };
+    }
+    case 'fuel': {
+      const err = need(f.vehicleId, 'Pick the vehicle') || need(num(f.litres), 'Enter the litres') || need(num(f.odometer), 'Enter the odometer');
+      return err ? { error: err } : { url: `/api/vehicle/${encodeURIComponent(f.vehicleId)}/fuel`, ...json({ filledOn: f.filledOn || todayKey(), litres: num(f.litres), odometer: num(f.odometer), fullTank: f.fullTank !== false, note: t || undefined }) };
+    }
+    case 'leisure': return f.kind ? { url: '/api/leisure/items', ...json({ kind: f.kind, title: t, creator: f.creator || undefined, state: f.state || 'saved' }) } : { error: 'Pick the kind' };
+    case 'goal': return { url: '/api/canonical/goals', ...json({ title: t, reviewDate: f.reviewDate || undefined }) };
+    default: return { url: '/api/capture-hub/file', ...json({ kind, text: t, fields: f }) };
+  }
 }
 
-// Feature ideas go to the NEURO Feature Tracker, not the task list — but only on an
-// EXPLICIT prefix. Everything here is guessed from prose, and guessing "that's a
-// feature" from a note would file thinking as backlog, which is the harder mistake
-// to notice. "feature: X", "idea: X", or "neuro:/saim:/nova: X" (which also picks
-// the system).
-const FEATURE_RE = /^(feature|idea|neuro|saim|nova)\s*:\s*/i;
-// `sara:` is kept as an alias for `saim:` — the prefix is something Nick TYPES
-// from muscle memory, and a prefix that silently stops routing files the
-// thought as a plain capture instead of into the feature tracker.
-const FEATURE_SYSTEMS = { neuro: 'NEURO', saim: 'SAiM', sara: 'SAiM', nova: 'NOVA' };
+/** PURE. Which kinds need no words of their own (the fields carry it). */
+const TEXTLESS = new Set(['date', 'mileage', 'fuel']);
 
-function parseFeature(text) {
-  const t = text.trim();
-  const m = t.match(FEATURE_RE);
-  if (!m) return null;
-  const body = t.slice(m[0].length).trim();
-  const [title, ...rest] = body.split('\n');
-  // Just the prefix and nothing after it isn't a feature yet — let it fall through
-  // to a note rather than POSTing a title the server will reject.
-  if (!title.trim()) return null;
-  return {
-    title: title.trim(),
-    notes: rest.join('\n').trim() || undefined,
-    system: FEATURE_SYSTEMS[m[1].toLowerCase()] || 'NEURO',
-    source: 'NEURO Capture',
-  };
+function defaultsFor(kind, kinds) {
+  const k = kinds.find((x) => x.id === kind);
+  const out = {};
+  for (const fd of k?.fields || []) {
+    if (fd.default === 'today') out[fd.name] = todayKey();
+    else if (fd.default !== undefined) out[fd.name] = fd.default;
+  }
+  return out;
+}
+
+function useCaptureHub() {
+  const [kinds, setKinds] = useState(null);
+  const [options, setOptions] = useState(null);
+  useEffect(() => {
+    fetch(apiUrl('/api/capture-hub/kinds')).then((r) => r.json()).then((d) => setKinds(d.kinds || [])).catch(() => setKinds([]));
+  }, []);
+  const loadOptions = useCallback(() => {
+    if (options) return;
+    fetch(apiUrl('/api/capture-hub/options')).then((r) => r.json()).then(setOptions).catch(() => setOptions({ failed: true }));
+  }, [options]);
+  return { kinds, options, loadOptions };
+}
+
+function FieldInput({ field, value, onChange, options, kindFields }) {
+  const id = `cap-${field.name}`;
+  let list = field.options ? field.options.map((o) => ({ value: o, label: o.replace(/_/g, ' ') })) : null;
+  if (field.optionsFrom) {
+    if (field.optionsFrom === 'catalogueSections') {
+      const cat = (options?.catalogues || []).find((c) => c.value === kindFields.slug);
+      list = (cat?.sections || []).map((s) => ({ value: s, label: s }));
+    } else {
+      const src = options?.[field.optionsFrom];
+      list = src === undefined ? [] : src === null ? null : src.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+    }
+  }
+  const label = <label htmlFor={id} className="capture-field-label">{field.label}{field.required ? ' *' : ''}</label>;
+  if (field.type === 'checkbox') {
+    return (
+      <div className="capture-field capture-field--check">
+        <label className="capture-field-label"><input id={id} type="checkbox" checked={value !== false} onChange={(e) => onChange(e.target.checked)} /> {field.label}</label>
+      </div>
+    );
+  }
+  if (field.type === 'multi') {
+    const vals = value || [];
+    return (
+      <div className="capture-field">
+        <span className="capture-field-label">{field.label}{field.required ? ' *' : ''}</span>
+        <div className="capture-field-multi">
+          {field.options.map((o) => (
+            <label key={o}><input type="checkbox" checked={vals.includes(o)} onChange={(e) => onChange(e.target.checked ? [...vals, o] : vals.filter((v) => v !== o))} /> {o}</label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (field.type === 'textarea') {
+    return <div className="capture-field capture-field--wide">{label}<textarea id={id} className="capture-input" rows={2} value={value || ''} onChange={(e) => onChange(e.target.value)} /></div>;
+  }
+  if (field.type === 'select' || (list && !field.free)) {
+    return (
+      <div className="capture-field">
+        {label}
+        {list === null
+          ? <span className="capture-field-gap">Couldn't load the list</span>
+          : (
+            <select id={id} className="capture-input" value={value || ''} onChange={(e) => onChange(e.target.value)}>
+              <option value="">—</option>
+              {list.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
+      </div>
+    );
+  }
+  return (
+    <div className="capture-field">
+      {label}
+      <input id={id} className="capture-input" type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
+        list={list ? `${id}-list` : undefined} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      {list && <datalist id={`${id}-list`}>{list.map((o) => <option key={o.value} value={o.value} />)}</datalist>}
+    </div>
+  );
 }
 
 export default function CapturePanel() {
@@ -106,20 +227,52 @@ export default function CapturePanel() {
   const [recent, setRecent] = useState([]);
   const [queueCount, setQueueCount] = useState(getQueue().length);
   const [showAttach, setShowAttach] = useState(false);
+  const [guess, setGuess] = useState(null);       // what NEURO thinks
+  const [picked, setPicked] = useState(null);     // what Nick chose — wins over the guess
+  const [fields, setFields] = useState({});
   const fileRef = useRef(null);
   const textRef = useRef(null);
+  const asked = useRef('');
+  const { kinds, options, loadOptions } = useCaptureHub();
 
-  // Loads when a feature is being typed or has just been filed — never on every
-  // note capture, which would read the vault for nothing on the common path.
-  const featureInPlay = result?.type === 'feature' || FEATURE_RE.test(content.trim());
-  const captured = useCapturedFeatures(featureInPlay);
+  const kind = picked || guess?.kind || null;
+  const kindDef = (kinds || []).find((k) => k.id === kind) || null;
+
+  const captured = useCapturedFeatures(kind === 'feature' || result?.kind === 'feature');
+
+  // The guess. Debounced, asked once per wording, and only while Nick has not
+  // chosen a chip himself — his choice is never overwritten by a later guess.
+  useEffect(() => {
+    if (picked || file) return undefined;
+    const text = content.trim();
+    if (!text) { setGuess(null); return undefined; }
+    const timer = setTimeout(async () => {
+      if (asked.current === text) return;
+      asked.current = text;
+      try {
+        const res = await fetch(apiUrl('/api/capture-hub/classify'), { method: 'POST', ...json({ text }) });
+        const d = await res.json();
+        if (asked.current !== text || !d.ok) return;
+        setGuess({ kind: d.kind, by: d.by, confidence: d.confidence, prefill: d.prefill || {}, prefixed: d.by === 'prefix', clean: d.text });
+      } catch {
+        if (asked.current === text) setGuess({ kind: 'note', by: 'offline', confidence: 'default', prefill: {} });
+      }
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [content, picked, file]);
+
+  // Defaults + what the guess lifted out of the words, without overwriting
+  // anything Nick has already typed into a field.
+  useEffect(() => {
+    if (!kind || !kinds) return;
+    const base = { ...defaultsFor(kind, kinds), ...(picked ? {} : guess?.prefill || {}) };
+    setFields((cur) => ({ ...base, ...Object.fromEntries(Object.entries(cur).filter(([k, v]) => v !== '' && v !== undefined && (kindDef?.fields || []).some((f) => f.name === k))) }));
+    if (kindDef?.fields?.some((f) => f.optionsFrom)) loadOptions();
+  }, [kind, kinds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resetForm = () => {
-    setContent('');
-    setFile(null);
-    setPreview(null);
-    setResult(null);
-    setShowAttach(false);
+    setContent(''); setFile(null); setPreview(null); setResult(null); setShowAttach(false);
+    setGuess(null); setPicked(null); setFields({}); asked.current = '';
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -147,181 +300,96 @@ export default function CapturePanel() {
   const handleFileSelect = (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    if (f.size > MAX_SIZE) {
-      setResult({ error: 'File too large — 10MB maximum' });
-      return;
-    }
+    if (f.size > MAX_SIZE) { setResult({ error: 'File too large — 10MB maximum' }); return; }
     setFile(f);
     setResult(null);
     if (f.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (ev) => setPreview(ev.target.result);
       reader.readAsDataURL(f);
-    } else {
-      setPreview(null);
-    }
+    } else setPreview(null);
   };
+
+  // A prefix ("chris: …") is an instruction, not part of the thing — file the
+  // words after it. Typed prose with no prefix is filed exactly as typed.
+  const textToFile = () => (!picked && guess?.prefixed && guess.clean ? guess.clean : content.trim());
 
   const submit = async () => {
     setSubmitting(true);
     setResult(null);
-
-    const feature = file ? null : parseFeature(content);
-
     try {
-      let res;
-
-      if (feature) {
-        res = await fetch(apiUrl('/api/capture/feature'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(feature)
-        });
-      } else if (file) {
-        // File/photo upload
+      if (file) {
         const formData = new FormData();
         formData.append('file', file);
         const endpoint = file.type.startsWith('image/') ? '/api/capture/photo' : '/api/capture/file';
-        res = await fetch(apiUrl(endpoint), { method: 'POST', body: formData });
-      } else if (looksLikeTodo(content)) {
-        // Auto-detected as todo
-        const text = content.trim()
-          .replace(/^-?\s*\[.\]\s*/, '')  // strip checkbox if present
-          .replace(/^(todo|task|action|reminder):\s*/i, ''); // strip prefix
-        res = await fetch(apiUrl('/api/capture/todo'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, priority: 'normal' })
-        });
-      } else {
-        // Default: note capture
-        res = await fetch(apiUrl('/api/capture/note'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: null, content: content.trim() })
-        });
+        const res = await fetch(apiUrl(endpoint), { method: 'POST', body: formData });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) setResult({ error: data.error || `Capture failed (${res.status})` });
+        else { setResult({ success: true, kind: 'file', where: 'Saved to the vault.' }); fetchRecent(); setTimeout(resetForm, 3000); }
+        return;
       }
-
-      const data = await res.json();
-      // ⚠ 207 is a PARTIAL, not a failure: the vault record landed and the task
-      // row did not. Treating it as an error would tell Nick to retype a thought
-      // that is already safely on disk.
+      const req = buildRequest(kind, textToFile(), fields);
+      if (req.error) { setResult({ error: req.error }); return; }
+      let res;
+      try {
+        res = await fetch(apiUrl(req.url), { method: 'POST', headers: req.headers, body: req.body });
+      } catch {
+        // Offline: queued on this device and said so. It has not reached NEURO.
+        addToQueue({ url: apiUrl(req.url), headers: req.headers, body: req.body });
+        setQueueCount(getQueue().length);
+        setResult({ queued: true });
+        setTimeout(resetForm, 2500);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
       if (res.status === 207) {
-        setResult({
-          partial: true,
-          type: 'todo',
-          vault: data.vault,
-          error: data.error,
-        });
-        try { navigator.vibrate?.([100, 60, 100]); } catch {}
-      } else if (!res.ok) {
-        const errorMsg = res.status === 401
-          ? 'Not logged in — open Settings and re-enter your PIN'
-          : data.error || `Capture failed (${res.status})`;
-        setResult({ error: errorMsg });
-        // Vibrate on error
-        try { navigator.vibrate?.([200, 100, 200, 100, 200]); } catch {}
+        // The words are on disk; the task row is not. Never "failed".
+        setResult({ partial: true, kind, vault: data.vault, error: data.error });
+      } else if (!res.ok || data.ok === false) {
+        setResult({ error: res.status === 401 ? 'Not logged in — open Settings and re-enter your PIN' : (data.error || data.message || `Capture failed (${res.status})`) });
+        try { navigator.vibrate?.([200, 100, 200]); } catch {}
       } else {
-        const isTodo = !file && !feature && looksLikeTodo(content);
-        setResult({
-          success: true,
-          type: feature ? 'feature' : isTodo ? 'todo' : file ? 'file' : 'note',
-          number: data.number,
-          // Reported, never assumed. The two halves of a todo capture fail
-          // independently and the banner says which one did.
-          vault: data.vault,
-          created: data.created,
-        });
-        // Haptic success
+        setResult({ success: true, kind, where: savedLine(kind, kindDef, data) });
         try { navigator.vibrate?.(100); } catch {}
         fetchRecent();
-        // Re-read the tracker so the row just written is in the list, rather
-        // than showing the state from before the capture (#114).
-        if (feature) captured.reload();
+        if (kind === 'feature') captured.reload();
         setTimeout(resetForm, 3000);
       }
-    } catch (err) {
-      // Offline — queue text captures
-      if (!file && content.trim()) {
-        const isTodo = !feature && looksLikeTodo(content);
-        const text = content.trim();
-        if (feature) {
-          addToQueue({
-            url: apiUrl('/api/capture/feature'),
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(feature)
-          });
-        } else if (isTodo) {
-          const cleanText = text.replace(/^-?\s*\[.\]\s*/, '').replace(/^(todo|task|action|reminder):\s*/i, '');
-          addToQueue({
-            url: apiUrl('/api/capture/todo'),
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: cleanText, priority: 'normal' })
-          });
-        } else {
-          addToQueue({
-            url: apiUrl('/api/capture/note'),
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: null, content: text })
-          });
-        }
-        setQueueCount(getQueue().length);
-        setResult({ success: true, queued: true });
-        setTimeout(resetForm, 2000);
-      } else {
-        setResult({ error: 'Offline — files cannot be queued' });
-      }
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
-  const canSubmit = content.trim().length > 0 || !!file;
-  const detectedFeature = file ? null : parseFeature(content);
-  const detectedType = file ? (file.type.startsWith('image/') ? 'photo' : 'file')
-    : detectedFeature ? 'feature'
-    : content.trim() && looksLikeTodo(content) ? 'todo' : 'note';
-  const showCaptured = detectedType === 'feature' || result?.type === 'feature';
+  const needsText = !TEXTLESS.has(kind);
+  const canSubmit = !!file || (!!kind && (!needsText || content.trim().length > 0));
+  const quick = (kinds || []).filter((k) => k.group === 'quick');
+  const forms = (kinds || []).filter((k) => k.group === 'form');
+
+  const chip = (k) => (
+    <button key={k.id} type="button"
+      className={`capture-chip${kind === k.id ? ' capture-chip--on' : ''}${!picked && guess?.kind === k.id ? ' capture-chip--guess' : ''}`}
+      onClick={() => { setPicked(picked === k.id ? null : k.id); setResult(null); }}
+      title={k.hint}
+      disabled={!!file}>
+      {k.label}
+    </button>
+  );
 
   return (
     <div className="capture-panel">
-      {/* ⚠ "I'll route it" was a promise about work that had not happened.
-          Classification, entity extraction and action-candidate detection all
-          run AFTER the write and can all fail, and a note landing on disk says
-          nothing about whether any of them did. The line now claims only the
-          thing that is actually guaranteed — it reaches the vault — and the
-          result banner reports each step it can genuinely observe. */}
       <div className="capture-saim">
         <span className="capture-saim-label">SAiM</span>
-        <span className="capture-saim-line">Get it out of your head. It goes to the vault.</span>
+        <span className="capture-saim-line">Get it out of your head. Everything comes in here — I'll suggest where it goes.</span>
       </div>
 
-      {/* Honest progress, per step. A capture is two or three writes that can
-          fail independently — the vault record, the task row, and whatever
-          processing runs afterwards — and one word covering all of them is how
-          "captured" comes to mean "we tried". */}
-      {result && (
-        <div className={`capture-result-banner ${result.error ? 'capture-result-error' : result.partial ? 'capture-result-partial' : result.queued ? 'capture-result-queued' : 'capture-result-ok'}`}>
-          <span className="capture-result-icon">{result.error ? '✗' : result.partial ? '!' : result.queued ? '⏳' : '✓'}</span>
+      {result && !result.partial && (
+        <div className={`capture-result-banner ${result.error ? 'capture-result-error' : result.queued ? 'capture-result-queued' : 'capture-result-ok'}`}>
+          <span className="capture-result-icon">{result.error ? '✗' : result.queued ? '⏳' : '✓'}</span>
           <span className="capture-result-text">
-            {result.error || (result.queued ? 'Queued on this device. It has NOT reached the vault yet — it will send when you are back online.'
-              : result.type === 'todo' ? (
-                result.vault?.written
-                  ? `Saved to the vault${result.created === false ? ' · folded into a task already on your list' : ' · task created'}.`
-                  // ⚠ Never presented as a plain success. The task exists in the
-                  // DB, which is the projection; the durable half did not land.
-                  : `Task created, but NOT written to the vault — ${result.vault?.why || 'reason unknown'}.`
-                )
-              : result.type === 'feature' ? `Added to the feature tracker${result.number ? ` as #${result.number}` : ''}.`
-              : result.type === 'note' ? 'Saved to the vault. Indexing and entity extraction run after this and are not confirmed here.'
-              : 'Saved to the vault.')}
+            {result.error || (result.queued ? 'Queued on this device. It has NOT reached NEURO yet — it will send when you are back online.' : result.where)}
           </span>
         </div>
       )}
-
-      {/* A partial: the words are safe, the projection is not. Said plainly,
-          because "failed" over a thought that IS on disk sends Nick to retype
-          something already saved. */}
       {result?.partial && (
         <div className="capture-result-banner capture-result-partial">
           <span className="capture-result-icon">!</span>
@@ -336,27 +404,42 @@ export default function CapturePanel() {
         <textarea
           ref={textRef}
           className="capture-textarea"
-          placeholder="Type it. Plain text is fine."
+          placeholder="Type it. Plain text is fine — or start with a word like chris:, done:, wait:, buy:"
           value={content}
-          onChange={e => setContent(e.target.value)}
+          onChange={(e) => { setContent(e.target.value); setResult(null); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canSubmit && !submitting) submit(); }}
           rows={4}
           autoFocus
           disabled={!!file}
         />
 
-        {/* Type indicator */}
+        {kinds === null ? <div className="capture-type-hint">Loading where things can go…</div> : (
+          <>
+            <div className="capture-chips" role="group" aria-label="Where it goes">{quick.map(chip)}</div>
+            <div className="capture-chips capture-chips--forms" role="group" aria-label="Records">
+              <span className="capture-chips-label">Record</span>{forms.map(chip)}
+            </div>
+          </>
+        )}
+
         {content.trim() && !file && (
           <div className="capture-type-hint">
-            {detectedType === 'feature' ? `Will go to the feature tracker (${detectedFeature.system})`
-              : detectedType === 'todo' ? 'Will go to the vault capture log, then onto your task list'
-                : 'Will save as a note in the vault'}
+            {kindDef
+              ? <>{picked ? 'Going to' : guess?.by === 'ai' ? 'NEURO thinks this is' : guess?.by === 'default' || guess?.by === 'offline' ? 'Not sure — defaulting to' : 'Looks like'} <strong>{kindDef.label}</strong> — {kindDef.hint}.{!picked && ' Pick another chip to change it.'}</>
+              : 'Working out where it goes…'}
           </div>
         )}
 
-        {/* #114 — what has actually landed in the tracker. Shown while a feature
-            is being typed as well as after one is filed, so it answers "did that
-            thing last week land" and not only "did this one". */}
-        {showCaptured && (
+        {kindDef?.fields?.length > 0 && !file && (
+          <div className="capture-fields">
+            {kindDef.fields.map((fd) => (
+              <FieldInput key={fd.name} field={fd} value={fields[fd.name]} options={options} kindFields={fields}
+                onChange={(v) => setFields((cur) => ({ ...cur, [fd.name]: v, ...(fd.name === 'slug' ? { section: '' } : {}) }))} />
+            ))}
+          </div>
+        )}
+
+        {kind === 'feature' && (
           <div className="capture-captured">
             <div className="capture-captured-head">
               {captured.status === 'error' ? 'Recently captured — couldn’t reach the tracker'
@@ -364,7 +447,7 @@ export default function CapturePanel() {
                 : captured.total === 0 ? 'Nothing captured yet — this would be the first'
                 : `Recently captured (${captured.total})`}
             </div>
-            {captured.items.map(item => (
+            {captured.items.map((item) => (
               <div key={`${item.number}-${item.title}`} className="capture-captured-row">
                 <span className="capture-captured-num">#{item.number}</span>
                 <span className="capture-captured-title">{item.title}</span>
@@ -374,15 +457,9 @@ export default function CapturePanel() {
           </div>
         )}
 
-        {/* File attachment area */}
         {showAttach && (
           <div className="capture-attach-area">
-            <input
-              ref={fileRef}
-              type="file"
-              onChange={handleFileSelect}
-              className="capture-file-input"
-            />
+            <input ref={fileRef} type="file" onChange={handleFileSelect} className="capture-file-input" />
             {preview && <img src={preview} alt="Preview" className="capture-preview-img" />}
             {file && !preview && (
               <div className="capture-file-info">
@@ -395,25 +472,13 @@ export default function CapturePanel() {
       </div>
 
       <div className="capture-actions">
-        <button
-          className="capture-attach-btn"
-          onClick={() => setShowAttach(o => !o)}
-          title="Attach file or photo"
-        >
+        <button className="capture-attach-btn" onClick={() => setShowAttach((o) => !o)} title="Attach file or photo">
           {showAttach ? 'Cancel' : 'Attach'}
         </button>
-
-        <button
-          className="capture-submit"
-          onClick={submit}
-          disabled={!canSubmit || submitting}
-        >
-          {submitting ? 'Saving...' : 'Capture'}
+        <button className="capture-submit" onClick={submit} disabled={!canSubmit || submitting}>
+          {submitting ? 'Saving…' : kindDef && !file ? `Capture → ${kindDef.label}` : 'Capture'}
         </button>
       </div>
-
-      {/* Location capture */}
-      <LocationCapture />
 
       {queueCount > 0 && (
         <div className="capture-queue-notice">
@@ -423,16 +488,14 @@ export default function CapturePanel() {
 
       {recent.length > 0 && (
         <div className="capture-recent">
-          <div className="capture-recent-header">Recent ({recent.length})</div>
+          <div className="capture-recent-header">Recent notes ({recent.length})</div>
           <div className="capture-recent-list">
             {recent.slice(0, 8).map((item, i) => (
               <div key={i} className="capture-recent-item">
                 <span className="capture-recent-name">
                   {item.title || item.filename.replace(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-/, '').replace('.md', '')}
                 </span>
-                {item.preview && (
-                  <span className="capture-recent-preview">{item.preview}</span>
-                )}
+                {item.preview && <span className="capture-recent-preview">{item.preview}</span>}
               </div>
             ))}
           </div>
@@ -442,104 +505,15 @@ export default function CapturePanel() {
   );
 }
 
-// ── Location capture ──────────────────────────────────────────────────────
-
-function LocationCapture() {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [places, setPlaces] = useState([]);
-  const [gettingLoc, setGettingLoc] = useState(false);
-
-  useEffect(() => {
-    fetch(apiUrl('/api/location/places'))
-      .then(r => r.json())
-      .then(d => setPlaces(d.places || []))
-      .catch(() => {});
-  }, []);
-
-  const savePlace = async () => {
-    if (!name.trim()) return;
-    setGettingLoc(true);
-
-    // Get current position from browser
-    if (!navigator.geolocation) {
-      setGettingLoc(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        setGettingLoc(false);
-        setSaving(true);
-        try {
-          const res = await fetch(apiUrl('/api/location/places'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: name.trim(),
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude
-            })
-          });
-          const data = await res.json();
-          if (data.ok) {
-            setPlaces(data.places);
-            setSaved(true);
-            setName('');
-            setTimeout(() => setSaved(false), 3000);
-          }
-        } catch {}
-        setSaving(false);
-      },
-      () => { setGettingLoc(false); },
-      { timeout: 10000 }
-    );
-  };
-
-  const deletePlace = async (placeName) => {
-    try {
-      const res = await fetch(apiUrl(`/api/location/places/${encodeURIComponent(placeName)}`), { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) setPlaces(data.places);
-    } catch {}
-  };
-
-  return (
-    <div className="capture-collapsible">
-      <button className="capture-collapsible-toggle" onClick={() => setOpen(o => !o)}>
-        {open ? '▾' : '▸'} Save Location
-      </button>
-      {open && (
-        <div className="capture-collapsible-form">
-          <div className="capture-location-hint">Save your current GPS position with a name</div>
-          <input
-            className="capture-input"
-            type="text"
-            placeholder="e.g. Work, Home, Gym"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && savePlace()}
-          />
-          {saved && <div className="capture-collapsible-ok">Saved</div>}
-          <button className="review-action-btn" onClick={savePlace} disabled={saving || gettingLoc || !name.trim()}>
-            {gettingLoc ? 'Getting location...' : saving ? 'Saving...' : 'Save this location'}
-          </button>
-
-          {places.length > 0 && (
-            <div className="capture-location-places">
-              <div className="capture-location-places-label">Saved places</div>
-              {places.map(p => (
-                <div key={p.name} className="capture-location-place">
-                  <span className="capture-location-place-name">{p.name}</span>
-                  <button className="capture-location-place-del" onClick={() => deletePlace(p.name)} title="Remove">×</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+/** What the confirmation says — the server's own words where it gave any. */
+function savedLine(kind, def, data) {
+  if (kind === 'task') {
+    if (data.vault && data.vault.written === false) return `Task created, but NOT written to the vault — ${data.vault.why || 'reason unknown'}.`;
+    return `Saved to the vault${data.created === false ? ' · folded into a task already on your list' : ' · task created'}.`;
+  }
+  if (kind === 'feature') return `Added to the feature tracker${data.number ? ` as #${data.number}` : ''}.`;
+  if (kind === 'chris' && data.already) return 'Already on the list for Chris.';
+  if (data.saved) return `Saved — ${data.saved}.`;
+  if (kind === 'note') return 'Saved to the vault. Indexing and entity extraction run after this and are not confirmed here.';
+  return `Saved — ${def?.label || 'done'}.`;
 }

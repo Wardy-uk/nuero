@@ -126,6 +126,7 @@ app.use('/api/context', contextRoutes);
 // /api/qa retired (Build 10M): its upstream webhook answers 404; QA is departmental (VANTAGE).
 app.use('/api/push', pushRoutes);
 app.use('/api/imports', importsRoutes);
+app.use('/api/capture-hub', require('./routes/capture-hub'));
 app.use('/api/capture', captureRoutes);
 // The public write-only capture door (exempt above) and its admin half (not).
 app.use('/api/c', require('./routes/capture-link'));
