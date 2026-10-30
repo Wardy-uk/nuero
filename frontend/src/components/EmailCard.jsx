@@ -248,7 +248,8 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
           setDraftQuestions(d.questions);
         } else if (d.ok) {
           setDraftQuestions(null);
-          setReplyText(d.draft);
+          if (typeof d.draft === 'string' && d.draft) setReplyText(d.draft);
+          else setError('No draft came back');
         } else setError(d.error || 'Could not draft a reply');
       })
       .catch(() => setError('Could not draft a reply'))
