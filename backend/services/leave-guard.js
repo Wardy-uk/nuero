@@ -205,6 +205,11 @@ async function declineForLeave(ev, { initiatedBy = 'nick', comment = DECLINE_COM
   const back = await cal.responseOf(ev.id).catch(() => null);
   const confirmed = back === 'declined' || back === 'gone';
   ext.settle(claim.entry.id, { status: confirmed ? 'confirmed' : 'applied-unverified', readback: back || 'unreadable' });
+  // A declined meeting needs no "what is it for?" email: withdraw any unsent one.
+  try {
+    const n = require('./prepared-actions').withdrawAgendaChase(ev.id, { why: 'you declined it — on leave that day', now });
+    if (n) console.log(`[LeaveGuard] withdrew ${n} agenda request(s) for "${ev.subject}"`);
+  } catch (e) { console.warn('[LeaveGuard] agenda withdraw failed:', e.message); }
   return { ok: true, verified: confirmed };
 }
 

@@ -95,3 +95,12 @@ test('boilerplate stripping leaves real words behind', () => {
   assert.match(stripped, /Review the numbers/);
   assert.doesNotMatch(stripped, /teams\.microsoft\.com|Meeting ID/);
 });
+
+test('a meeting on a leave day is never chased — leave-guard declines it instead', () => {
+  const day = IN_3_DAYS.slice(0, 10);
+  const v = triage.assess(meeting(), { now: NOW, leaveDates: new Set([day]) });
+  assert.equal(v.chase, false);
+  assert.match(v.reason, /leave/);
+  // positive control: another day off does not stop it
+  assert.equal(triage.assess(meeting(), { now: NOW, leaveDates: new Set(['2026-12-25']) }).chase, true);
+});

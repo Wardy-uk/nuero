@@ -1297,6 +1297,19 @@ function agendaAsked(eventId) {
   return !!_liveFor('chase_agenda', `meeting:${eventId}`, { andSent: true });
 }
 
+/**
+ * Withdraw an unsent agenda request for a meeting Nick has declined (leave-guard).
+ * Only `prepared`/`approved` rows move — anything already sending is the
+ * executor's to settle (its preflight refuses once he has responded).
+ */
+function withdrawAgendaChase(eventId, { why = 'you declined the meeting', now = Date.now() } = {}) {
+  let n = 0;
+  for (const r of db.all(`SELECT action_id FROM prepared_actions WHERE action_type = 'chase_agenda' AND commitment_id = ? AND status IN ('prepared','approved')`, [`meeting:${eventId}`])) {
+    if (transition(r.action_id, 'cancelled', { note: why, now, allowedFrom: ['prepared', 'approved'] }).ok) n += 1;
+  }
+  return n;
+}
+
 /** Chases the pre-Build-7 queue sent: recorded, never verified. */
 function legacyHistory() {
   try {
@@ -1417,7 +1430,7 @@ module.exports = {
   MIN_CONFIDENCE, RECENT_CHASE_DAYS, EXPIRY_HOURS, STATUSES, TERMINAL, LIVE,
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
-  prepareReply, prepareCompose, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, prepareSoapReport, soapReportFor, agendaAsked,
+  prepareReply, prepareCompose, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, prepareSoapReport, soapReportFor, agendaAsked, withdrawAgendaChase,
   prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,

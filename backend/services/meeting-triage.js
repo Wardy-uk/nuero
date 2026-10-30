@@ -57,9 +57,15 @@ function stripBoilerplate(text) {
  * Returns { chase: boolean, reason: string }. The reason is recorded on the
  * queued action so a wrong call can be diagnosed rather than guessed at.
  */
-function assess(event, { now = new Date() } = {}) {
+function assess(event, { now = new Date(), leaveDates = null } = {}) {
   if (!event) return { chase: false, reason: 'no event' };
   if (event.isCancelled) return { chase: false, reason: 'cancelled' };
+
+  // On a day Nick is on leave the invite gets declined (leave-guard), so asking
+  // the organiser what it is for is a second, contradictory email.
+  if (leaveDates && event.start && leaveDates.has(String(event.start).slice(0, 10))) {
+    return { chase: false, reason: 'you are on leave that day' };
+  }
 
   // Nick's own meetings are his problem, not the sender's.
   if (event.isOrganizer) return { chase: false, reason: 'you organised it' };
@@ -157,6 +163,14 @@ async function checkEvents(eventIds, { dryRun = false, now = new Date() } = {}) 
     );
   } catch {}
 
+  // Nick's leave, read once. Unreadable leave → null: the check is skipped (the
+  // executor's own "already responded" preflight still stops a send after a decline).
+  let leaveDates = null;
+  try {
+    const l = require('./leave-guard').myLeave(now);
+    if (l.known) leaveDates = l.dates;
+  } catch {}
+
   const skipped = [];
   let queued = 0;
   let scanned = 0;
@@ -170,7 +184,7 @@ async function checkEvents(eventIds, { dryRun = false, now = new Date() } = {}) 
     if (!event) { skipped.push({ eventId, reason: 'could not fetch detail' }); continue; }
     scanned++;
 
-    const verdict = assess(event, { now });
+    const verdict = assess(event, { now, leaveDates });
     if (!verdict.chase) { skipped.push({ eventId, subject: event.subject, reason: verdict.reason }); continue; }
 
     if (dryRun) { queued++; continue; }
