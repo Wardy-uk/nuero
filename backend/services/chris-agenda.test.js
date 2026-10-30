@@ -11,7 +11,6 @@ process.env.NEURO_DB_PATH = DB_PATH;
 
 const db = require('../db/database');
 const agenda = require('./chris-agenda');
-const weeklyRisk = require('./weekly-risk');
 
 test.before(async () => { await db.init(); });
 
@@ -40,17 +39,4 @@ test('an unreadable store refuses writes rather than wiping the list', () => {
   db.setState(agenda.KEY, before);
 });
 
-test('open items render under their own section, apart from escalations', () => {
-  const { render } = weeklyRisk;
-  const base = {
-    week: '2026-11-02', sources: [], findings: [], rag: { measuredDays: 0 }, trend: [], ageing: [],
-    manual: { ...weeklyRisk.emptyManual(), escalateToChris: [] },
-  };
-  const withItems = render({ ...base, chrisAgenda: { known: true, open: [{ text: 'Ask about the TOM timeline' }] } });
-  assert.match(withItems, /## To discuss with Chris\n\n1\. Ask about the TOM timeline/);
-  assert.match(withItems, /Nothing to escalate this week/);
-  const empty = render({ ...base, chrisAgenda: { known: true, open: [] } });
-  assert.doesNotMatch(empty, /To discuss with Chris/);
-  const unread = render({ ...base, chrisAgenda: { known: false, open: [] } });
-  assert.match(unread, /could not be read/);
-});
+// The report half lives in weekly-risk.test.js, against its full fixture.

@@ -1764,3 +1764,21 @@ test('ping-pong counts bounces, not moves: the long way round is not escalated',
   assert.match(f.title, /3 tickets bounced back to a queue they had already left/);
   assert.doesNotMatch(f.title, /crossed queues/);
 });
+
+// ── To discuss with Chris (30 Oct 2026) ──────────────────────────────────────
+
+test('open "discuss with Chris" items reach the report in their own section, apart from escalations', () => {
+  const manual = weeklyRisk.emptyManual();
+  manual.escalateToChris = [];
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    manual, chrisAgenda: { known: true, open: [{ text: 'Ask about the TOM timeline' }] },
+  })));
+  assert.match(md, /## To discuss with Chris\n\n1\. Ask about the TOM timeline/);
+  assert.match(md, /Nothing to escalate this week/);
+
+  const empty = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ manual, chrisAgenda: { known: true, open: [] } })));
+  assert.doesNotMatch(empty, /To discuss with Chris/);
+
+  const unread = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ manual, chrisAgenda: { known: false, open: [] } })));
+  assert.match(unread, /discussion list could not be read/);
+});
