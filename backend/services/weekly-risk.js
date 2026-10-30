@@ -648,6 +648,11 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       try { return overtime.status(); } catch { return { available: false, reason: 'overtime log unreadable' }; }
     })(),
     manual: getManual(week),
+    // Open "speak to Chris about" items (services/chris-agenda.js). Never
+    // allowed to fail the report; an unreadable list is said, not empty.
+    chrisAgenda: (() => {
+      try { return require('./chris-agenda').list(); } catch { return { known: false, open: [] }; }
+    })(),
     // Fixes Nick included for the reports (services/report-fixes.js).
     fixes: require('./report-fixes').logForReports(),
   };
@@ -1409,6 +1414,7 @@ function assess(snap) {
     myEscalations: snap.myEscalations || null,
     sources: snap.sources,
     manual: snap.manual,
+    chrisAgenda: snap.chrisAgenda || null,
     fixes: reportWeek
       ? require('./report-fixes').forReport(snap.fixes || null, { from: reportWeek, to: addDays(reportWeek, 6), shownFrom: previousWeek(reportWeek) })
       : { fixed: [], corrections: [], rowNotes: {}, unreadable: null },
@@ -1816,6 +1822,21 @@ function render(a) {
     lines.push('**Nothing to escalate this week** — reviewed and confirmed.');
   }
   lines.push('');
+
+  // The running "speak to Chris about" list. Its own section, never folded into
+  // the escalations: a question is not an escalation, and reading one as such
+  // misstates it. Absent when the list is empty and readable.
+  const agenda = a.chrisAgenda;
+  if (agenda && (!agenda.known || (agenda.open || []).length)) {
+    lines.push('## To discuss with Chris');
+    lines.push('');
+    if (!agenda.known) {
+      lines.push('_The discussion list could not be read this week — this is not "nothing to discuss"._');
+    } else {
+      lines.push(agenda.open.map((x, i) => `${i + 1}. ${x.text}`).join('\n'));
+    }
+    lines.push('');
+  }
 
   lines.push('## 1. Week-on-week trend');
   lines.push('');

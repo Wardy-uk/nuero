@@ -158,6 +158,94 @@ function DeliverableTracker({ data, onMarkSent, busy }) {
 }
 
 /** A delta that says which way is good. Compliance is higher-is-better. */
+/**
+ * The running "speak to Chris about" list. Not part of the weekly draft: it
+ * outlives the week, so every add and tick saves at once. Open items go into
+ * the report under "To discuss with Chris"; a tick takes one off (with Undo).
+ */
+function ChrisAgenda({ onChanged }) {
+  const [data, setData] = useState(null);
+  const [text, setText] = useState('');
+  const [error, setError] = useState(null);
+  const [lastTicked, setLastTicked] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(apiUrl('/api/weekly-risk/chris-agenda')).then(res => res.json());
+      if (r.error) throw new Error(r.error);
+      setData(r);
+    } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function call(path, body) {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch(apiUrl(path), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error || 'Failed');
+      await load();
+      onChanged?.();
+      return r;
+    } catch (e) { setError(e.message); return null; } finally { setBusy(false); }
+  }
+
+  async function add(e) {
+    e.preventDefault();
+    if (!text.trim()) return;
+    if (await call('/api/weekly-risk/chris-agenda', { text })) setText('');
+  }
+
+  async function tick(item) {
+    if (await call(`/api/weekly-risk/chris-agenda/${encodeURIComponent(item.id)}/done`)) setLastTicked(item);
+  }
+
+  async function undo() {
+    if (lastTicked && await call(`/api/weekly-risk/chris-agenda/${encodeURIComponent(lastTicked.id)}/restore`)) setLastTicked(null);
+  }
+
+  return (
+    <div className="wr-field wr-agenda">
+      <div className="wr-agenda-head">To discuss with Chris</div>
+      <p className="wr-hint">
+        A running list — it stays until you tick an item off, and everything open goes into the report.
+        Saved as you go; it is not part of this week&rsquo;s draft.
+      </p>
+      {data && !data.known && <p className="wr-hint wr-bad">The list could not be read — this is not an empty list.</p>}
+      {data?.known && data.open.length === 0 && <p className="wr-hint">Nothing on the list.</p>}
+      {data?.known && data.open.length > 0 && (
+        <ul className="wr-agenda-list">
+          {data.open.map(item => (
+            <li key={item.id}>
+              <label className="wr-check">
+                <input type="checkbox" checked={false} disabled={busy} onChange={() => tick(item)} title="Tick to remove it from the list" />
+                <span>{item.text}</span>
+              </label>
+              <span className="wr-agenda-date">added {new Date(item.addedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {lastTicked && (
+        <p className="wr-hint">
+          Removed &ldquo;{lastTicked.text}&rdquo;. <button type="button" className="wr-use" onClick={undo} disabled={busy}>Undo</button>
+        </p>
+      )}
+      <form className="wr-agenda-add" onSubmit={add}>
+        <input
+          type="text" placeholder="Something to speak to Chris about…" maxLength={500}
+          value={text} onChange={e => setText(e.target.value)}
+        />
+        <button type="submit" disabled={busy || !text.trim()}>Add</button>
+      </form>
+      {error && <p className="wr-hint wr-bad">{error}</p>}
+    </div>
+  );
+}
+
 function Delta({ value }) {
   if (value === null || value === undefined) return <span className="wr-delta wr-delta-none">—</span>;
   if (value === 0) return <span className="wr-delta wr-delta-flat">no change</span>;
@@ -567,6 +655,8 @@ export default function WeeklyRiskPanel({ onNavigate }) {
             </details>
           )}
         </div>
+
+        <ChrisAgenda />
 
         <div className="wr-field">
           <label className="wr-check">

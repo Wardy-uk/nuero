@@ -17,6 +17,7 @@ const weeklyRisk = require('../services/weekly-risk');
 const managementLog = require('../services/management-log');
 const pipDeliverables = require('../services/pip-deliverables');
 const logSuggest = require('../services/management-log-suggest');
+const chrisAgenda = require('../services/chris-agenda');
 const db = require('../db/database');
 
 function fail(res, err, code = 500) {
@@ -221,6 +222,41 @@ router.post('/reopen', (req, res) => {
     if (!result.ok) return res.status(409).json({ error: 'That week has not been sent, so there is nothing to reopen' });
     res.json({ ok: true, week, sent: weeklyRisk.sentSummary(result.record), already: Boolean(result.already) });
   } catch (err) { fail(res, err); }
+});
+
+// ── To discuss with Chris ────────────────────────────────────────────────────
+
+// GET /api/weekly-risk/chris-agenda — things to speak to Chris about next time
+// (agenda, discuss, raise with Chris). Open items go into the Monday report.
+router.get('/chris-agenda', (req, res) => {
+  try {
+    res.json(chrisAgenda.list({ includeDone: req.query.done === '1' }));
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/weekly-risk/chris-agenda — add something to speak to Chris about
+// next time (agenda item, discuss with Chris). Body: { text }.
+router.post('/chris-agenda', (req, res) => {
+  try {
+    const { text } = req.body || {};
+    const result = chrisAgenda.add(text, { source: req.apiClient ? `machine:${req.apiClient}` : 'nick' });
+    res.status(result.already ? 200 : 201).json({ ok: true, ...result });
+  } catch (err) { fail(res, err, err.status || 400); }
+});
+
+// POST /api/weekly-risk/chris-agenda/:id/done — ticked off: off the list and
+// out of every report built after. Kept, with a way back.
+router.post('/chris-agenda/:id/done', (req, res) => {
+  try {
+    res.json({ ok: true, item: chrisAgenda.tick(req.params.id) });
+  } catch (err) { fail(res, err, err.status || 400); }
+});
+
+// POST /api/weekly-risk/chris-agenda/:id/restore — undo a tick.
+router.post('/chris-agenda/:id/restore', (req, res) => {
+  try {
+    res.json({ ok: true, item: chrisAgenda.restore(req.params.id) });
+  } catch (err) { fail(res, err, err.status || 400); }
 });
 
 // ── Deliverables ─────────────────────────────────────────────────────────────
