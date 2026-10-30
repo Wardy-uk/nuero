@@ -52,7 +52,7 @@ test('refusals touch nothing: bad decision, bad key, nothing pending', async () 
   const j = fakeJira([pending({ id: '5000', finalDecision: 'declined' })]);
   assert.equal((await ta.decide({ key: 'NT-1', decision: 'maybe' }, j)).status, 400);
   assert.equal((await ta.decide({ key: 'nope', decision: 'approve' }, j)).status, 400);
-  const r = await ta.decide({ key: 'NT-2', decision: 'decline' }, j);
+  const r = await ta.decide({ key: 'NT-2', decision: 'decline', reason: 'x' }, j);
   assert.equal(r.status, 409);
   assert.equal(j.calls.length, 0);
 });

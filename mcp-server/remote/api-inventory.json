@@ -10244,13 +10244,14 @@
     "domain": "escalation",
     "source": "routes/escalation.js",
     "line": 423,
-    "description": "POST /api/escalation/approval/:key/decide. approve or decline the pending JSM approval on a ticket as Nick. Body: { decision: 'approve' | 'decline' }. The approval is read live from Jira; ledgered and read back. Human only.",
+    "description": "POST /api/escalation/approval/:key/decide. approve or decline the pending JSM approval on a ticket as Nick. Body: { decision: 'approve' | 'decline', reason } — reason is required to decline and is added as an internal note. The approval is read live from Jira; ledgered and read back. Human only.",
     "params": [
       "key"
     ],
     "query": [],
     "body": [
-      "decision"
+      "decision",
+      "reason"
     ],
     "queryOpen": false,
     "bodyOpen": true,
