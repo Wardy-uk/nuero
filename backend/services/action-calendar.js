@@ -179,7 +179,9 @@ async function inviteOf(messageId) {
   if (r.status === 404) return { isInvite: false, gone: true, event: null };
   if (!(r.status >= 200 && r.status < 300) || !r.data) return null;
   const type = String(r.data['@odata.type'] || '');
-  const ev = r.data.event || null;
+  // A declined meeting is removed from the calendar, and the expand then comes
+  // back as an EMPTY object rather than null — no id means no meeting.
+  const ev = r.data.event && r.data.event.id ? r.data.event : null;
   return {
     isInvite: /eventMessageRequest$/.test(type) || r.data.meetingMessageType === 'meetingRequest',
     meetingMessageType: r.data.meetingMessageType || null,
@@ -199,9 +201,11 @@ async function inviteOf(messageId) {
 
 /**
  * Inbox invites for one event. Matched by subject first (Graph cannot filter
- * on the linked event), then CONFIRMED by the event id each message points at —
- * a subject alone is never enough. Returns [] when nothing matched, null when
- * the Inbox could not be read.
+ * on the linked event), then by the event each message points at: the same id,
+ * or NO event at all — Outlook removes a declined meeting, so after a decline
+ * its invite links to nothing (measured live, 30 Oct 2026). An invite whose
+ * meeting is a DIFFERENT live event is never matched. Returns [] when nothing
+ * matched, null when the Inbox could not be read.
  */
 async function invitesForEvent(eventId, subject) {
   const s = String(subject || '').replace(/'/g, "''");
@@ -211,7 +215,7 @@ async function invitesForEvent(eventId, subject) {
   const out = [];
   for (const m of r.data.value || []) {
     const inv = await inviteOf(m.id);
-    if (inv && inv.event && inv.event.id === eventId) out.push({ id: m.id, isRead: !!m.isRead });
+    if (inv && inv.isInvite && (!inv.event || inv.event.id === eventId)) out.push({ id: m.id, isRead: !!m.isRead });
   }
   return out;
 }

@@ -218,7 +218,7 @@ async function declineForLeave(ev, { initiatedBy = 'nick', comment = DECLINE_COM
 
 // Ledger keys whose invite email has been tidied, so the catch-up below asks
 // Outlook about each decline once. Bounded.
-const TIDIED_KEY = 'leave_decline_invites_tidied';
+const TIDIED_KEY = 'leave_decline_invites_tidied_v2';
 const TIDY_LOOKBACK_MS = 14 * 86400000;
 
 function _tidiedSet() {
@@ -228,6 +228,9 @@ function _tidiedSet() {
 async function _tidyInvite(key, ev) {
   const r = await require('./invite-response').tidyForEvent({ id: ev.id, subject: ev.subject });
   if (!r.ok) { console.warn(`[LeaveGuard] invite email for "${ev.subject}" not tidied: ${r.reason}`); return r; }
+  // Nothing found is not "done": the invite may not have synced yet. The
+  // 14-day lookback bounds how long a decline with no email keeps being asked.
+  if (!r.found) return r;
   const list = _tidiedSet().filter(k => k !== key);
   list.push(key);
   try { require('../db/database').setState(TIDIED_KEY, JSON.stringify(list.slice(-200))); } catch { /* next pass asks again */ }
