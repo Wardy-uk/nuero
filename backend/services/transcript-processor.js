@@ -76,6 +76,17 @@ async function processTranscript(filePath) {
     console.warn(`[TranscriptProcessor] ${path.basename(filePath)} is ${body.length} chars — reading the first ${MAX_CHARS}; later actions are not read`);
   }
   const meetingDate = meetingDateOf(content);
+
+  // A transcript is read ONCE per body. PLAUD sync rewrites the file on every
+  // pass (frontmatter, speaker naming), and each rewrite used to buy a fresh model
+  // read — the same 1-2-1 was read 49 times in a day. Frontmatter is excluded from
+  // the hash; a real change to the words (speakers named) is read again.
+  const db = require('../db/database');
+  const hashKey = `transcript_hash:${path.basename(filePath, '.md')}`;
+  const bodyHash = require('crypto').createHash('sha256').update(body).digest('hex');
+  if (db.getState(hashKey) === bodyHash) {
+    return getLastResult(path.basename(filePath));
+  }
   console.log(`[TranscriptProcessor] Processing ${path.basename(filePath)}...`);
 
   try {
@@ -144,8 +155,9 @@ async function processTranscript(filePath) {
     };
 
     try {
-      const db = require('../db/database');
       db.setState(`transcript_${path.basename(filePath, '.md')}`, JSON.stringify(output));
+      // Stamped only after a readable answer, so a failed read is retried.
+      db.setState(hashKey, bodyHash);
     } catch (e) {
       console.warn('[TranscriptProcessor] Failed to persist result:', e.message);
     }

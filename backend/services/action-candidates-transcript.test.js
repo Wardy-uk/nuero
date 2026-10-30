@@ -133,6 +133,30 @@ test('processTranscript reads the model\'s owners and feeds the queue', async ()
   assert.deepEqual(pending(rel).map((a) => a.payload.text), ['Check the failed jobs from yesterday']);
 });
 
+test('an unchanged transcript is not read again; a changed one is', async () => {
+  const rel = 'Plaud/Transcripts/2026-10-30 once.md';
+  const file = path.join(vault, rel);
+  fs.writeFileSync(file, transcript('f_once'));
+  let calls = 0;
+  const provider = require.cache[require.resolve('./ai-provider')].exports;
+  const real = provider.processTranscript;
+  provider.processTranscript = async (...a) => { calls += 1; return real(...a); };
+  modelAnswer = JSON.stringify({ is121: false, actions: [] });
+  try {
+    await tp.processTranscript(file);
+    // A sync rewrite that only touches frontmatter.
+    fs.writeFileSync(file, transcript('f_once').replace('note_type: transcript', 'note_type: transcript\nsynced: yes'));
+    const again = await tp.processTranscript(file);
+    assert.equal(calls, 1);
+    assert.ok(again, 'the stored result comes back');
+    fs.writeFileSync(file, transcript('f_once') + '[00:00:09] Nick Ward: One more thing.\n');
+    await tp.processTranscript(file);
+    assert.equal(calls, 2);
+  } finally {
+    provider.processTranscript = real;
+  }
+});
+
 test('a 1-2-1 is left to NOVA, and an unreadable answer claims nothing', async () => {
   const rel121 = 'Plaud/Transcripts/2026-10-30 one.md';
   fs.writeFileSync(path.join(vault, rel121), transcript('f_ggg'));
