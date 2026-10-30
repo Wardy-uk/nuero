@@ -73,3 +73,25 @@ test('a NOVA without the overtime bridge is named as such, not as "Not authentic
     assert.strictEqual((await ot.check(9)).error, 'claim not found', 'a real 404 keeps its own words');
   } finally { nova.call = original; }
 });
+
+test('a manual line is refused before NOVA is asked, and goes to NOVA as Nick with the fields as given', async () => {
+  const calls = [];
+  const orig = nova.call;
+  nova.call = async (path, opts) => { calls.push({ path, opts }); return { id: 9, agentName: 'Abdi Example' }; };
+  try {
+    for (const bad of [
+      { date: '2026-09-30', start: '17:30', end: '19:00', reason: 'x' },
+      { agentEmail: 'a@x', date: '30/09/2026', start: '17:30', end: '19:00', reason: 'x' },
+      { agentEmail: 'a@x', date: '2026-09-30', start: '5pm', end: '19:00', reason: 'x' },
+      { agentEmail: 'a@x', date: '2026-09-30', start: '17:30', end: '19:00', reason: '  ' },
+    ]) assert.strictEqual((await ot.addManual(bad)).ok, false);
+    assert.strictEqual(calls.length, 0);
+    const r = await ot.addManual({ agentEmail: 'a@x', date: '2026-09-30', start: '17:30', end: '19:00', reason: 'Missed from September' });
+    assert.ok(r.ok);
+    assert.strictEqual(calls[0].path, '/api/neuro-bridge/overtime/claims/manual');
+    assert.strictEqual(calls[0].opts.method, 'POST');
+    assert.deepStrictEqual(
+      { ...calls[0].opts.body, decidedBy: calls[0].opts.body.decidedBy.name },
+      { agentEmail: 'a@x', date: '2026-09-30', start: '17:30', end: '19:00', reason: 'Missed from September', overrideReason: null, decidedBy: 'Nick Ward' });
+  } finally { nova.call = orig; }
+});

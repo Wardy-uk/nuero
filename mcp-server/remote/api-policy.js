@@ -223,6 +223,7 @@ export const interactive = {
   post_uat_tick: 'The UAT round timer runs on its own; Nick can run it in NEURO.',
   // Overtime claims (29 Oct 2026): deciding a claim, opt-outs and the payroll send are Nick's.
   post_overtime_claims_by_id_decide: 'Approving or rejecting overtime is Nick\'s decision, in NEURO → People → Overtime.',
+  post_overtime_claims_manual: 'Adding an approved overtime line for an agent is Nick\'s, in NEURO → People → Overtime.',
   post_overtime_claims_optouts: 'Recording a Working Time opt-out is Nick\'s, in NEURO → People → Overtime.',
   post_overtime_claims_optouts_by_id_withdraw: 'Recording a Working Time opt-out withdrawal is Nick\'s, in NEURO → People → Overtime.',
   post_overtime_claims_payroll_prepare: 'Overtime goes to payroll on Nick\'s press, in NEURO → People → Overtime.',

@@ -181,6 +181,73 @@ function Approvals() {
   return <div>{claims.map((c) => <ApprovalCard key={c.id} claim={c} onDone={load} />)}</div>;
 }
 
+/**
+ * A missed line: work nobody claimed. NOVA creates it as a claim already approved by Nick,
+ * runs and freezes the same activity + Working Time check, and it goes in the next payroll
+ * file flagged "worked in an earlier month" and "added by".
+ */
+function ManualLine({ onAdded }) {
+  const [open, setOpen] = useState(false);
+  const [agents, setAgents] = useState(null);
+  const [agentsErr, setAgentsErr] = useState(null);
+  const [f, setF] = useState({ agentEmail: '', date: '', start: '17:30', end: '', reason: '', overrideReason: '' });
+  const [needOverride, setNeedOverride] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    if (!open || agents) return;
+    getJson('/api/overtime-claims/agents').then((j) => setAgents(j.agents)).catch((e) => setAgentsErr(e.message));
+  }, [open, agents]);
+
+  const add = async () => {
+    setBusy(true); setMsg(null);
+    const r = await postJson('/api/overtime-claims/manual', { ...f, overrideReason: f.overrideReason || null });
+    setBusy(false);
+    if (!r.ok) {
+      if (/Working Time warnings/.test(r.error || '')) setNeedOverride(true);
+      setMsg({ tone: 'bad', text: r.error || 'Not saved' });
+      return;
+    }
+    const c = r.claim;
+    setMsg({ tone: 'ok', text: `Added and approved: ${c.agentName}, ${dayLabel(c.date)} ${c.start}–${c.end} (${hours(c.minutes)}). It goes in the next payroll file.` });
+    setF({ ...f, date: '', end: '', reason: '', overrideReason: '' });
+    setNeedOverride(false);
+    onAdded();
+  };
+
+  if (!open) return <button className="ot__quiet" onClick={() => setOpen(true)}>+ Add a missed overtime line</button>;
+  const ready = f.agentEmail && f.date && f.start && f.end && f.reason.trim() && (!needOverride || f.overrideReason.trim());
+  return (
+    <div className="ot__card">
+      <div className="ot__label">Add a missed overtime line</div>
+      <p className="ot__muted">For work nobody claimed, such as overtime missed from last month. It's saved in NOVA as a claim approved by you, with the activity and Working Time check recorded, and it goes in the next payroll file marked "added by you".</p>
+      {agentsErr && <div className="ot__bad">Could not read the agent list from NOVA: {agentsErr}</div>}
+      <div className="ot__form">
+        <select value={f.agentEmail} onChange={(e) => setF({ ...f, agentEmail: e.target.value })} disabled={!agents}>
+          <option value="">{agents ? 'Choose the agent' : 'Loading agents…'}</option>
+          {(agents || []).map((a) => <option key={a.email} value={a.email}>{a.name}</option>)}
+        </select>
+        <input type="date" value={f.date} max={ukToday()} onChange={(e) => setF({ ...f, date: e.target.value })} />
+        <input type="time" value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} aria-label="From" />
+        <input type="time" value={f.end} onChange={(e) => setF({ ...f, end: e.target.value })} aria-label="To" />
+        <input className="ot__grow" placeholder="Reason (payroll sees this)" maxLength={1000} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} />
+      </div>
+      {needOverride && (
+        <div className="ot__form">
+          <input className="ot__grow" placeholder="Why approve past the Working Time warning (recorded)" maxLength={1000}
+            value={f.overrideReason} onChange={(e) => setF({ ...f, overrideReason: e.target.value })} />
+        </div>
+      )}
+      <div className="ot__actions">
+        <button className="ot__primary" disabled={busy || !ready} onClick={add}>{busy ? 'Checking and adding…' : 'Add and approve'}</button>
+        <button className="ot__quiet" disabled={busy} onClick={() => { setOpen(false); setMsg(null); }}>Close</button>
+      </div>
+      {msg && <div className={`ot__note ot__note--${msg.tone}`}>{msg.text}</div>}
+    </div>
+  );
+}
+
 function Month() {
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState(null);
@@ -238,6 +305,7 @@ function Month() {
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         {exp && <span className="ot__muted">{exp.rows.length} approved claims to send · {exp.totalHours} hours{exp.alreadySent ? ` · ${exp.alreadySent} already sent` : ''}</span>}
       </div>
+      <ManualLine onAdded={load} />
       {err && <div className="ot__bad">Could not read the month from NOVA: {err}</div>}
       {!data && !err && <div className="ot__muted">Loading…</div>}
       {data && (
@@ -257,7 +325,7 @@ function Month() {
               <summary>Every claim in the file</summary>
               <table className="ot__table"><tbody>
                 {exp.rows.map((r) => (
-                  <tr key={r.claimId}><td>{r.agentName}</td><td>{dayLabel(r.date)}</td><td>{r.start}–{r.end}</td><td>{r.hours}h</td><td>{r.reason}{r.lateFromEarlierMonth ? ' (earlier month)' : ''}</td></tr>
+                  <tr key={r.claimId}><td>{r.agentName}</td><td>{dayLabel(r.date)}</td><td>{r.start}–{r.end}</td><td>{r.hours}h</td><td>{r.reason}{r.lateFromEarlierMonth ? ' (earlier month)' : ''}{r.enteredBy ? ` (added by ${r.enteredBy})` : ''}</td></tr>
                 ))}
               </tbody></table>
             </details>

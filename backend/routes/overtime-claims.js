@@ -19,6 +19,15 @@ router.get('/', wrap(async (req, res) => {
   send(res, await ot.claims({ status: status || undefined, month: month || undefined }));
 }));
 
+// GET /api/overtime-claims/agents — NOVA's active agents, to pick who a manual overtime line is for.
+router.get('/agents', wrap(async (req, res) => send(res, await ot.agents())));
+
+// POST /api/overtime-claims/manual — add a missed overtime line for an agent (agentEmail, date, start, end, reason, overrideReason); created approved in NOVA, goes in the next payroll file.
+router.post('/manual', wrap(async (req, res) => {
+  const { agentEmail, date, start, end, reason, overrideReason } = req.body;
+  send(res, await ot.addManual({ agentEmail, date, start, end, reason, overrideReason }));
+}));
+
 // GET /api/overtime-claims/optouts — recorded 48-hour Working Time opt-outs.
 router.get('/optouts', wrap(async (req, res) => send(res, await ot.optOuts())));
 

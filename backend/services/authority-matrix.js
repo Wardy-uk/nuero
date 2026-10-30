@@ -478,6 +478,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/u/:token', 'internal.state', { machine: 'refuse' }),
   // Overtime claims from NOVA (29 Oct 2026). Approving, opt-outs and the payroll send are Nick's.
   R('POST', '/api/overtime-claims/:id/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/overtime-claims/manual', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/optouts', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/optouts/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/payroll/prepare', 'internal.state', { machine: 'refuse' }),

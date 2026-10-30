@@ -1950,7 +1950,7 @@
     "route": "/api/email/triage/:emailId/invite",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 406,
+    "line": 399,
     "description": "GET /api/email/triage/:emailId/invite. the meeting behind an invite email (accept, decline, tentative, meeting request): subject, times, organiser, Nick's current answer. Read live from Outlook.",
     "params": [
       "emailId"
@@ -4538,12 +4538,28 @@
     "stream": false
   },
   {
+    "id": "get_overtime_claims_agents",
+    "method": "GET",
+    "route": "/api/overtime-claims/agents",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 23,
+    "description": "GET /api/overtime-claims/agents. NOVA's active agents, to pick who a manual overtime line is for.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_overtime_claims_by_id_check",
     "method": "GET",
     "route": "/api/overtime-claims/:id/check",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 62,
+    "line": 71,
     "description": "GET /api/overtime-claims/:id/check. live: the agent's Jira/NOVA activity in the window and the Working Time read.",
     "params": [
       "id"
@@ -4561,7 +4577,7 @@
     "route": "/api/overtime-claims/optouts",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 23,
+    "line": 32,
     "description": "GET /api/overtime-claims/optouts. recorded 48-hour Working Time opt-outs.",
     "params": [],
     "query": [],
@@ -4577,7 +4593,7 @@
     "route": "/api/overtime-claims/payroll",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 38,
+    "line": 47,
     "description": "GET /api/overtime-claims/payroll. ?month=YYYY-MM — the month's approved, unsent claims and past sends.",
     "params": [],
     "query": [
@@ -4595,7 +4611,7 @@
     "route": "/api/overtime-claims/payroll/file",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 41,
+    "line": 50,
     "description": "GET /api/overtime-claims/payroll/file. ?month=YYYY-MM — download the payroll spreadsheet.",
     "params": [],
     "query": [
@@ -9921,7 +9937,7 @@
     "route": "/api/email/triage/:emailId/invite",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 416,
+    "line": 409,
     "description": "POST /api/email/triage/:emailId/invite. answer a meeting invite (accept, decline, tentative, respond to meeting request). Body: { response: accept|tentative|decline, comment? }. Tells the organiser, reads the answer back, marks the email read and closes its card. Nick only — machines refused.",
     "params": [
       "emailId"
@@ -9942,7 +9958,7 @@
     "route": "/api/email/triage/:emailId/reply",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 372,
+    "line": 365,
     "description": "POST /api/email/triage/:emailId/reply. PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll?, attachments? }",
     "params": [
       "emailId"
@@ -9984,7 +10000,7 @@
     "route": "/api/email/triage/clear",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 516,
+    "line": 509,
     "description": "POST /api/email/triage/clear. clear all cached triage data and re-scan",
     "params": [],
     "query": [],
@@ -10018,7 +10034,7 @@
     "route": "/api/email/triage/dismiss/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 448,
+    "line": 441,
     "description": "POST /api/email/triage/dismiss/:emailId. dismiss an email from triage.",
     "params": [
       "emailId"
@@ -10058,7 +10074,7 @@
     "route": "/api/email/triage/promote/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 502,
+    "line": 495,
     "description": "POST /api/email/triage/promote/:emailId. \"this should have been an action\".",
     "params": [
       "emailId"
@@ -10095,7 +10111,7 @@
     "route": "/api/email/triage/run",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 435,
+    "line": 428,
     "description": "POST /api/email/triage/run. trigger a fresh triage cycle.",
     "params": [],
     "query": [],
@@ -12669,7 +12685,7 @@
     "route": "/api/overtime-claims/:id/decide",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 65,
+    "line": 74,
     "description": "POST /api/overtime-claims/:id/decide. approve or reject a claim (decision, note, overrideReason).",
     "params": [
       "id"
@@ -12686,12 +12702,35 @@
     "stream": false
   },
   {
+    "id": "post_overtime_claims_manual",
+    "method": "POST",
+    "route": "/api/overtime-claims/manual",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 26,
+    "description": "POST /api/overtime-claims/manual. add a missed overtime line for an agent (agentEmail, date, start, end, reason, overrideReason); created approved in NOVA, goes in the next payroll file.",
+    "params": [],
+    "query": [],
+    "body": [
+      "agentEmail",
+      "date",
+      "end",
+      "overrideReason",
+      "reason",
+      "start"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_overtime_claims_optouts",
     "method": "POST",
     "route": "/api/overtime-claims/optouts",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 26,
+    "line": 35,
     "description": "POST /api/overtime-claims/optouts. record a signed 48-hour opt-out (agentEmail, agentName, optedOutOn, documentRef).",
     "params": [],
     "query": [],
@@ -12712,7 +12751,7 @@
     "route": "/api/overtime-claims/optouts/:id/withdraw",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 32,
+    "line": 41,
     "description": "POST /api/overtime-claims/optouts/:id/withdraw. the agent withdrew their opt-out (withdrawnOn).",
     "params": [
       "id"
@@ -12732,7 +12771,7 @@
     "route": "/api/overtime-claims/payroll/prepare",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 50,
+    "line": 59,
     "description": "POST /api/overtime-claims/payroll/prepare. prepare the email to payroll with the month's file (month); the screen sends it with one press.",
     "params": [],
     "query": [],
@@ -12750,7 +12789,7 @@
     "route": "/api/overtime-claims/payroll/test-send",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 56,
+    "line": 65,
     "description": "POST /api/overtime-claims/payroll/test-send. email Nick (and only Nick) a [TEST] copy of the month's payroll email with the file (month); payroll gets nothing and no claim is marked.",
     "params": [],
     "query": [],
@@ -13223,7 +13262,7 @@
     "route": "/api/personal-inbox/triage/:id/reply",
     "domain": "personal-inbox",
     "source": "routes/personal-inbox.js",
-    "line": 339,
+    "line": 337,
     "description": "POST /api/personal-inbox/triage/:id/reply. prepare a reply from the SAME personal mailbox with the recipients chosen on the card (governed reply_email; nothing is sent here — it goes on Nick's click). Nick only. Body: { body, to, cc, attachments }",
     "params": [
       "id"

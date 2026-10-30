@@ -89,6 +89,33 @@ async function decide(id, { decision, note, overrideReason } = {}) {
   } catch (e) { return novaFail(e); }
 }
 
+// ── Manual line (30 Oct 2026) ──
+// Work nobody claimed, usually missed from last month. Nick's call: a REAL claim in NOVA,
+// approved at once by him, with NOVA's activity + Working Time check frozen onto it like any
+// decision (past a warning he gives a reason). It goes into the next payroll file, flagged as
+// worked in an earlier month and added by him.
+
+async function agents() {
+  try { return { ok: true, agents: await nova.call('/api/neuro-bridge/overtime/agents') }; } catch (e) { return novaFail(e); }
+}
+
+async function addManual({ agentEmail, date, start, end, reason, overrideReason } = {}) {
+  if (!agentEmail || !String(agentEmail).includes('@')) return bad('choose the agent');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return bad('date must be YYYY-MM-DD');
+  if (!/^\d{2}:\d{2}$/.test(String(start || '')) || !/^\d{2}:\d{2}$/.test(String(end || ''))) return bad('from and to must be HH:MM');
+  if (!String(reason || '').trim()) return bad('a reason is required');
+  try {
+    const claim = await nova.call('/api/neuro-bridge/overtime/claims/manual', {
+      method: 'POST', timeoutMs: READ_TIMEOUT,
+      body: {
+        agentEmail: String(agentEmail).trim(), date, start, end, reason: String(reason).slice(0, 1000),
+        overrideReason: overrideReason ? String(overrideReason).slice(0, 1000) : null, decidedBy: DECIDER(),
+      },
+    });
+    return { ok: true, claim };
+  } catch (e) { return novaFail(e); }
+}
+
 // ── Opt-outs ──
 
 async function optOuts() {
@@ -252,6 +279,6 @@ async function payrollFile(month) {
 }
 
 module.exports = {
-  claims, check, decide, optOuts, recordOptOut, withdrawOptOut,
+  claims, check, decide, agents, addManual, optOuts, recordOptOut, withdrawOptOut,
   payrollMonth, preparePayroll, testPayroll, reconcile, payrollFile, payrollEmail, monthLabel, ensureTable,
 };
