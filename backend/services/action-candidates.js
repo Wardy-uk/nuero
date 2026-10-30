@@ -649,7 +649,33 @@ function syncNoteActionCandidates(relativePath) {
     return { created: 0, autoPromoted: 0, pending: 0, superseded: 0, candidates: [], unchanged: true };
   }
 
-  const candidates = candidatesFor(content, relativePath);
+  let candidates = candidatesFor(content, relativePath);
+  // A recording whose TRANSCRIPT has been read for actions raises them from the
+  // transcript (syncTranscriptActions). Reading PLAUD's summary as well would put
+  // the same commitment in the queue twice, in two wordings the fold cannot match.
+  // The extraction above still ran, because it also records what other people owe
+  // Nick (waiting-on); only its candidates are dropped. Without a transcript read
+  // — model down, recording older than this — the summary stays the source.
+  if (isMeetingNote(relativePath) && transcriptOwnsRecording(recordingId)) {
+    candidates = [];
+  }
+  const counts = storeCandidates(relativePath, candidates, reviewState);
+
+  writeReviewState(relativePath, {
+    ...readReviewState(relativePath),
+    contentHash,
+    reviewedAt: new Date().toISOString(),
+  });
+
+  return { ...counts, candidates };
+}
+
+/**
+ * Supersede what a path no longer raises, then queue the rest — unless it is
+ * already tracked, folds into a twin, was decided before, or is already a task.
+ * Shared by the note scan and the transcript read so both obey one set of rules.
+ */
+function storeCandidates(relativePath, candidates, reviewState) {
   const activeIds = new Set(candidates.map((candidate) => candidate.focusItemId));
   // Every capture_todo ever raised FOR THIS NOTE, not the newest 500 rows in
   // the table filtered down to it. That filter was the whole duplication bug:
@@ -760,13 +786,106 @@ function syncNoteActionCandidates(relativePath) {
     crossPool.add(db.getSaimAction(actionId));
   }
 
-  writeReviewState(relativePath, {
-    ...readReviewState(relativePath),
-    contentHash,
-    reviewedAt: new Date().toISOString(),
-  });
+  return { created, autoPromoted, pending, superseded, folded };
+}
 
-  return { created, autoPromoted, pending, superseded, folded, candidates };
+// ── Actions read from the TRANSCRIPT ────────────────────────────────────────
+//
+// PLAUD's summary layout depends on whichever template its auto-summary picked,
+// and it changed at least three times in 2026; the extractor above silently lost
+// tasks each time. transcript-processor asks a model for the actions with their
+// owners from the whole transcript, and they land here.
+
+function transcriptStateKey(recordingId) {
+  return `transcript_actions_rec:${recordingId}`;
+}
+
+function transcriptOwnsRecording(recordingId) {
+  if (!recordingId) return false;
+  try { return Boolean(db.getState(transcriptStateKey(recordingId))); } catch { return false; }
+}
+
+// "Nick Ward and Josh Mills" is Nick's too. Anyone else, or an unnamed speaker,
+// is not.
+function ownerIsNick(owner) {
+  return String(owner || '')
+    .split(/\s*(?:,|&|\band\b)\s*/i)
+    .map((part) => part.replace(/^@/, '').trim())
+    .some((part) => NICK_RE.test(part));
+}
+
+function transcriptCandidates(actions, relativePath, today) {
+  const todoIntelligence = require('./todo-intelligence');
+  const out = [];
+  const seen = new Set();
+  for (const action of Array.isArray(actions) ? actions : []) {
+    if (!action || !ownerIsNick(action.owner)) continue;
+    const raw = cleanCandidateText(action.task);
+    if (!raw || raw.length < 8 || raw.length > 220) continue;
+    const focusItemId = buildFocusItemId(relativePath, raw);
+    if (seen.has(focusItemId)) continue;
+    seen.add(focusItemId);
+    // Only a real date that has not passed — a task born overdue is a broken
+    // promise in the weekly report. Anything else falls to commitment-due's rules.
+    const due = typeof action.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(action.due) && action.due >= today
+      ? action.due : null;
+    out.push({
+      type: 'capture_todo',
+      text: raw,
+      confidence: 0.8,
+      reason: `You took this on in ${path.basename(relativePath, '.md')}`,
+      sourcePath: relativePath,
+      sourceLine: null,
+      focusItemId,
+      semanticSignature: buildSemanticSignature(raw),
+      autoPromote: false,
+      owner: 'mine',
+      payload: {
+        text: raw,
+        sourcePath: relativePath,
+        sourceLine: null,
+        semanticSignature: buildSemanticSignature(raw),
+        extractedFrom: 'transcript-action',
+        origin: 'meeting-candidate',
+        owner: 'mine',
+        ...(due ? { dueDate: due } : {}),
+        metadata: todoIntelligence.triageTodo({ text: raw, sourcePath: relativePath, dueDate: due, mustdo: false }),
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * Queue Nick's actions from a transcript the model has read.
+ *
+ * `actions` is [{ owner, task, due }]. Only actions owned by Nick are offered; what
+ * others owe him is still recorded from the summary (waiting-on). Once this has run
+ * for a recording, candidates the summary note raised for it are superseded and the
+ * note scan stops raising them.
+ */
+function syncTranscriptActions(relativePath, content, actions, { now = new Date() } = {}) {
+  const recordingId = recordingIdFromContent(content);
+  recordingIdCache.set(relativePath, recordingId);
+  const reviewState = readReviewState(relativePath, recordingId);
+  const today = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+  const candidates = transcriptCandidates(actions, relativePath, today);
+
+  let supersededFromNotes = 0;
+  if (recordingId) {
+    for (const action of db.getPendingSaimActionsByType('capture_todo', 10000)) {
+      const p = action.payload || {};
+      if (p.extractedFrom !== 'meeting-action' || !p.sourcePath) continue;
+      if (!sameRecording(recordingIdForPath(p.sourcePath), recordingId)) continue;
+      db.updateSaimActionStatus(action.id, 'superseded');
+      supersededFromNotes += 1;
+    }
+  }
+
+  const counts = storeCandidates(relativePath, candidates, reviewState);
+  writeReviewState(relativePath, { ...readReviewState(relativePath), reviewedAt: now.toISOString() });
+  if (recordingId) db.setState(transcriptStateKey(recordingId), now.toISOString());
+  return { ...counts, supersededFromNotes, candidates };
 }
 
 // ── Cross-note duplicate folding ─────────────────────────────────────────────
@@ -1394,6 +1513,9 @@ module.exports = {
   DECISION_MEMORY_DAYS,
   syncNoteActionCandidates,
   syncNoteActionCandidatesUnlessNova,
+  syncTranscriptActions,
+  transcriptOwnsRecording,
+  ownerIsNick,
   novaClaimedCached,
   shouldSkipPath,
 };

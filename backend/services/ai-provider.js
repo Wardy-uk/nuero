@@ -382,13 +382,14 @@ async function triageEmails(prompt) {
   });
 }
 
-async function processTranscript(systemPrompt, content) {
+async function processTranscript(systemPrompt, content, { maxTokens = 1024 } = {}) {
   return aiRouting.runTask('transcript_processing', {
     systemPrompt,
     messages: [{ role: 'user', content }],
-    maxTokens: 1024,
+    maxTokens,
     temperature: 0.3,
-  }, { confidence: 0.3 });
+  // A whole transcript is up to ~30k tokens in; the 30s default timed out on long meetings.
+  }, { confidence: 0.3, timeout: 120000 });
 }
 
 async function generateJournalPrompts(prompt) {

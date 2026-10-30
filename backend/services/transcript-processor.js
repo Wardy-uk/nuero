@@ -4,29 +4,54 @@ const fs = require('fs');
 const path = require('path');
 const obsidian = require('./obsidian');
 
-// Phase 3: Anthropic removed. Uses AI routing layer.
+// One model call per PLAUD transcript. It reads the WHOLE transcript and returns
+// the meeting's actions with their owners, which feed Nick's review queue
+// (action-candidates.syncTranscriptActions). PLAUD's own summary changes layout
+// with whichever template its auto-summary picks, so the transcript is the stable
+// source. Until 30 Oct 2026 this read only the first 8,000 characters and stored
+// owner-less actions where nothing read them.
 
-const EXTRACT_PROMPT = `You are Nick's meeting transcript processor. Nick is Head of Technical Support at Nurtur Limited. He manages 15 direct reports.
+// ~30k tokens. A two-hour meeting fits; anything longer is cut and SAID.
+const MAX_CHARS = 120000;
 
-Analyze this PLAUD transcript and extract structured information. Return a JSON object with:
+const EXTRACT_PROMPT = `You read meeting transcripts for Nick Ward, Head of Technical Support at Nurtur Limited.
+
+The transcript has speaker labels. Return ONLY a JSON object:
 
 {
   "summary": "2-3 sentence summary of the meeting",
-  "meetingDate": "YYYY-MM-DD if detectable, null otherwise",
-  "is121": true/false — whether this appears to be a 1-2-1 meeting,
-  "peopleNames": ["First Last", ...] — names of people mentioned or participating,
-  "actionItems": ["action item text", ...] — tasks, follow-ups, or commitments made,
-  "keyTopics": ["topic", ...] — main topics discussed (max 5)
+  "is121": true/false — a one-to-one between Nick and one other person,
+  "peopleNames": ["Full Name", ...] — people who SPOKE in the meeting,
+  "actions": [
+    { "owner": "Full Name", "task": "what they will do", "due": "YYYY-MM-DD or null" }
+  ],
+  "keyTopics": ["topic", ...] — at most 5
 }
 
-RULES:
-- Only include real people names, not generic references
-- Action items should be concise and actionable
-- If the transcript is unclear or very short, return minimal data rather than guessing
-- Return ONLY the JSON object, no markdown or explanation`;
+Rules for actions:
+- An action is something a person agreed or was asked to do after the meeting. Not a fact, not a discussion point.
+- "owner" is the ONE person who will do it, by full name as in the speaker labels. Nick is "Nick Ward".
+- If an action is shared, give one entry per person.
+- If you cannot tell who owns it, use "unknown". Never guess Nick.
+- "Speak with Nick about X" belongs to the person who will speak, not Nick.
+- Write "task" as a short instruction starting with a verb, in the meeting's words.
+- "due" only when a date or day is stated; convert relative days using the meeting date. Otherwise null.
+- If the transcript is short or unclear, return fewer actions rather than guessing.`;
+
+function relativeToVault(filePath) {
+  const vault = process.env.OBSIDIAN_VAULT_PATH;
+  if (!vault) return null;
+  const rel = path.relative(vault, filePath);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return rel.split(path.sep).join('/');
+}
+
+function meetingDateOf(content) {
+  const m = content.match(/^(?:start_at|date|created_at):\s*"?(\d{4}-\d{2}-\d{2})/m);
+  return m ? m[1] : null;
+}
 
 async function processTranscript(filePath) {
-  // Phase 3: Requires AI routing (Ollama or OpenAI), not Anthropic
   const aiRouting = require('./ai-routing');
   if (aiRouting.getAIMode() === 'off') {
     console.log('[TranscriptProcessor] AI mode is off — skipping');
@@ -46,61 +71,62 @@ async function processTranscript(filePath) {
     return null;
   }
 
+  const truncated = body.length > MAX_CHARS;
+  if (truncated) {
+    console.warn(`[TranscriptProcessor] ${path.basename(filePath)} is ${body.length} chars — reading the first ${MAX_CHARS}; later actions are not read`);
+  }
+  const meetingDate = meetingDateOf(content);
   console.log(`[TranscriptProcessor] Processing ${path.basename(filePath)}...`);
 
   try {
     const aiProvider = require('./ai-provider');
     const result = await aiProvider.processTranscript(
       EXTRACT_PROMPT,
-      `Transcript (${path.basename(filePath)}):\n\n${body.slice(0, 8000)}`
+      `Meeting date: ${meetingDate || 'unknown'}\nTranscript (${path.basename(filePath)}):\n\n${body.slice(0, MAX_CHARS)}`,
+      { maxTokens: 3000 }
     );
 
-    if (!result.text || result.provider === 'none') {
+    if (!result || !result.text || result.provider === 'none') {
       console.log('[TranscriptProcessor] No AI response — skipping');
       return null;
     }
 
-    const text = result.text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const extracted = JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    let extracted;
+    try {
+      extracted = JSON.parse(jsonMatch ? jsonMatch[0] : '');
+    } catch {
+      // An unreadable answer queues NOTHING and claims nothing, so PLAUD's summary
+      // stays the source for this recording.
+      console.warn('[TranscriptProcessor] Answer was not readable JSON — no actions taken from it');
+      return null;
+    }
     console.log(`[TranscriptProcessor] Processed via ${result.provider}`);
 
-    console.log(`[TranscriptProcessor] Extracted: ${extracted.peopleNames?.length || 0} people, ${extracted.actionItems?.length || 0} actions`);
+    const actions = Array.isArray(extracted.actions)
+      ? extracted.actions.filter((a) => a && typeof a.task === 'string')
+      : null;
+    console.log(`[TranscriptProcessor] Extracted: ${extracted.peopleNames?.length || 0} people, ${actions ? actions.length : 0} actions`);
 
-    // Match people against vault People notes
+    // People are matched for routing hints only. A 1-2-1 date is NOT stamped from
+    // the model's guess: 1-2-1s are detected from the written-up note.
     const knownPeople = obsidian.listPeopleNotes();
-    const matchedPeople = [];
+    const matchedPeople = (extracted.peopleNames || []).map((name) => {
+      const nameLower = String(name).toLowerCase();
+      const match = knownPeople.find((known) => known.toLowerCase() === nameLower);
+      return { mentioned: name, vaultMatch: match || null };
+    });
 
-    for (const name of (extracted.peopleNames || [])) {
-      const match = knownPeople.find(known => {
-        const nameLower = name.toLowerCase();
-        const knownLower = known.toLowerCase();
-        // Exact match or first/last name match
-        if (nameLower === knownLower) return true;
-        const nameParts = nameLower.split(' ');
-        const knownParts = knownLower.split(' ');
-        return nameParts.some(p => p.length > 2 && knownParts.includes(p));
-      });
-      matchedPeople.push({
-        mentioned: name,
-        vaultMatch: match || null
-      });
-    }
-
-    // If it's a 1-2-1, update the matched person's note with last-1-2-1 date
-    const meetingDate = extracted.meetingDate || obsidian.todayDateString();
-    if (extracted.is121 && matchedPeople.length > 0) {
-      const personMatch = matchedPeople.find(p => p.vaultMatch);
-      if (personMatch) {
-        try {
-          obsidian.updatePersonNote(personMatch.vaultMatch, {
-            last121: meetingDate
-          });
-          personMatch.updated121 = true;
-          console.log(`[TranscriptProcessor] Updated ${personMatch.vaultMatch} last-1-2-1 to ${meetingDate}`);
-        } catch (e) {
-          console.error(`[TranscriptProcessor] Failed to update person note:`, e.message);
-        }
+    // Feed the queue. A 1-2-1 is NOVA's — it extracts and tracks those actions
+    // itself, so they are left to the summary path, which already excludes them.
+    let queued = null;
+    const relativePath = relativeToVault(filePath);
+    if (actions && relativePath && !extracted.is121) {
+      try {
+        queued = require('./action-candidates').syncTranscriptActions(relativePath, content, actions);
+        console.log(`[TranscriptProcessor] Queue: ${queued.created} new, ${queued.folded || 0} folded, ${queued.supersededFromNotes} summary candidates superseded`);
+      } catch (e) {
+        console.warn('[TranscriptProcessor] Could not queue actions:', e.message);
       }
     }
 
@@ -109,16 +135,17 @@ async function processTranscript(filePath) {
       meetingDate,
       is121: extracted.is121 || false,
       people: matchedPeople,
-      actionItems: extracted.actionItems || [],
+      actionItems: (actions || []).map((a) => `${a.owner || 'unknown'}: ${a.task}`),
+      actions: actions || [],
+      queued: queued ? { created: queued.created, folded: queued.folded || 0 } : null,
+      truncated,
       keyTopics: extracted.keyTopics || [],
-      sourceFile: path.basename(filePath)
+      sourceFile: path.basename(filePath),
     };
 
-    // Persist result to agent_state for display in ImportsPanel
     try {
       const db = require('../db/database');
-      const stateKey = `transcript_${path.basename(filePath, '.md')}`;
-      db.setState(stateKey, JSON.stringify(output));
+      db.setState(`transcript_${path.basename(filePath, '.md')}`, JSON.stringify(output));
     } catch (e) {
       console.warn('[TranscriptProcessor] Failed to persist result:', e.message);
     }
@@ -142,4 +169,4 @@ function getLastResult(fileName) {
   }
 }
 
-module.exports = { processTranscript, getLastResult };
+module.exports = { processTranscript, getLastResult, EXTRACT_PROMPT, MAX_CHARS };
