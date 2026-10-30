@@ -57,6 +57,7 @@ test('the guard: personal terms, other colleagues and direct-report names never 
     { from: 'Hope Goodall', said: 'Hope said Nick should share the rota sooner.', stance: 'against' },
     { from: 'Liam Sims', said: 'Liam thought the escalation guide Nick wrote saved the team time.', stance: 'for' },
     { from: 'Chris Middleton', said: 'ok', stance: 'for' },
+    { from: 'Nick Ward', said: 'Nick suggested adopting the ITIL framework for the service desk.', stance: 'for' },
   ] }, ctx);
   assert.deepEqual(out.map((o) => o.said.slice(0, 20)), [
     'Chris was pleased wi', 'Chris wants Nick to ', 'The call coaching fr', 'Liam thought the esc',

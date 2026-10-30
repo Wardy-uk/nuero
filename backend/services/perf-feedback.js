@@ -127,7 +127,8 @@ function noteText(body) {
 
 function roleOf(name, ctx) {
   const n = norm(name);
-  if (!n || /^speaker\s*\d+$/.test(n)) return 'unknown';
+  if (!n || /^\s*(speaker\s*\d*|unknown)\s*$/i.test(String(name))) return 'unknown';
+  if (ctx.self && n === norm(ctx.self)) return 'self';
   if (ctx.manager && n === norm(ctx.manager)) return 'manager';
   if (ctx.directReports.some((d) => norm(d) === n)) return 'direct-report';
   if (ctx.seniors.some((s) => norm(s) === n)) return 'senior';
@@ -164,9 +165,11 @@ function guardItems(raw, ctx) {
     });
     if (named) continue;
     const role = roleOf(giver, ctx);
+    // Nick's own words are not feedback about him.
+    if (role === 'self') continue;
     if (role === 'direct-report' && word(first(giver), all)) continue;
     const stance = ['for', 'against'].includes(f?.stance) ? f.stance : null;
-    out.push({ from: role === 'direct-report' ? null : (giver || null), role, stance, said, about });
+    out.push({ from: role === 'direct-report' || role === 'unknown' ? null : (giver || null), role, stance, said, about });
     if (out.length >= 12) break;
   }
   return out;
@@ -178,7 +181,8 @@ WHAT COUNTS
 - Something a person in the meeting said that judges, praises, criticises, questions or sets an expectation about NICK'S OWN work, decisions, behaviour or management: "Chris was pleased with the KPI pack", "Ricky wants Nick to escalate earlier", "a team member said Nick's coaching on calls helped".
 - A request for Nick to change or improve something counts (stance against or neutral). Praise is "for".
 WHAT DOES NOT COUNT
-- Tasks handed out, status updates, general discussion, decisions not about Nick's performance.
+- Tasks or action items handed to Nick ("Nick to do X", "Nick is tasked with Y") — unless the person also judged how he is doing.
+- Anything Nick himself said. Status updates, general discussion, decisions not about Nick's performance.
 - Anything about another person's performance, health, personal life or circumstances — never include it, even in passing.
 RULES
 - said: one or two sentences, in plain words, about Nick's work only. Name nobody except the person giving the feedback; never mention any other colleague.
@@ -289,7 +293,13 @@ async function run({ limit = PER_RUN, deps = {} } = {}) {
   for (const { n, note } of todo.slice(0, room)) {
     try {
       const items = await extractOne(n, note, ctx, deps);
-      up.run(n.rel, note.hash, note.day, note.tier, note.title, JSON.stringify(items), null, new Date().toISOString());
+      // A note's attendee list can be short (22 May: frontmatter said Chris and
+      // Nick; Ricky spoke). Anyone named who gave feedback was in the room.
+      const givers = items.map((i) => i.from).filter(Boolean);
+      const tier = givers.length
+        ? Math.max(note.tier, tierOf({ title: note.title, names: [...note.participants.names, ...givers], unnamed: note.participants.unnamed }, ctx))
+        : note.tier;
+      up.run(n.rel, note.hash, note.day, tier, note.title, JSON.stringify(items), null, new Date().toISOString());
       found += items.length;
     } catch (e) {
       up.run(n.rel, note.hash, note.day, note.tier, note.title, null, String(e.message).slice(0, 300), new Date().toISOString());
