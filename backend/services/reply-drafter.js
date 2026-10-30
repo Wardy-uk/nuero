@@ -74,7 +74,7 @@ Rules:
 - Read who wrote to whom. Never reply as if Nick were the addressee when he is not, and never answer a request that was made of someone else as though Nick had been asked.
 - Never commit Nick to an action, a date, a deadline or a fact he has not given you in his steer. No "I'll chase", "I'll get back to you by…", "I've spoken to…" unless his steer says so.
 - If you cannot write a reply Nick could send as-is — because he is not the addressee and has not said what he wants to say, or because the reply needs a fact or decision only he has — do NOT draft. Instead output exactly the word QUESTIONS on the first line, then 1-${MAX_QUESTIONS} short questions to Nick, one per line, each starting "- ". Ask only what you need; the first question may be whether he wants to reply at all.
-${mustAsk ? '- In this case Nick has given no steer and is not the addressee, so you MUST output QUESTIONS.\n' : ''}- Otherwise output only the reply body: no subject line, no commentary. Sign off "Nick".${steer ? `
+${mustAsk ? '- In this case Nick has given no steer and is not the addressee, so you MUST output QUESTIONS.\n' : ''}${steer ? '- Nick has given a steer: DRAFT from it. Ask again only if the steer leaves out something the reply literally cannot be written without — never to confirm what he has already said.\n' : ''}- Otherwise output only the reply body: no subject line, no commentary. Sign off "Nick".${steer ? `
 
 Nick's steer (his own words — follow it, and treat it as his answers to any questions): ${steer}` : ''}
 
