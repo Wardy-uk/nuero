@@ -71,7 +71,7 @@ export const interactive = {
   // what is on the ticket, which an agent cannot know.
   post_escalation: 'Escalating a Jira ticket is Nick\'s decision. He escalates it in NEURO → Escalation, where the ticket is shown first.',
   post_escalation_reply_post: 'Posting on a Jira ticket is Nick writing to a customer (or his team) as himself. He posts it in NEURO → Escalations, after reading the preview.',
-  post_escalation_approval_by_key_decide: 'Approving or declining a Jira approval is Nick's decision, made as himself. He does it in NEURO → Escalations → Rejected by Tier 2.',
+  post_escalation_approval_by_key_decide: 'Approving or declining a Jira approval is Nick’s decision, made as himself. He does it in NEURO → Escalations → Rejected by Tier 2.',
   post_escalation_email: 'Escalating a ticket by email is Nick writing to a colleague as himself. He sends it in NEURO → Escalations → Escalate to…',
   post_escalation_people_address: 'Filing an address in a People note is Nick’s call, offered after he sends an escalation email in NEURO → Escalations.',
   post_escalation_ledger_resolve: 'Only Nick can say what is on the ticket after an unknown escalation outcome.',

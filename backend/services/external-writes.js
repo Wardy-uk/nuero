@@ -50,7 +50,7 @@ const WRITERS = Object.freeze({
   'jira.approval': {
     target: 'Jira Service Management (request approval)', authority: 'A3', initiation: 'human-only', ledger: true,
     effect: 'answer one pending JSM approval as Nick — approve or decline (e.g. a Tier 2 rejection awaiting approval)',
-    why: 'Nick presses Approve or Decline and then confirms, on a card showing the ticket and the approval's own name, so the confirm IS the decision; the approval id is read live from Jira, never taken from the browser; machine clients are refused. An approval cannot be re-answered, so one decision per approval, ever.',
+    why: 'Nick presses Approve or Decline and then confirms, on a card showing the ticket and the approval’s own name, so the confirm IS the decision; the approval id is read live from Jira, never taken from the browser; machine clients are refused. An approval cannot be re-answered, so one decision per approval, ever.',
     readback: 'approvals re-read: the same approval now carries the decision asked for',
   },
   'microsoft.task.complete': {
