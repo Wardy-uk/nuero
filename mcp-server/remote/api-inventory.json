@@ -1524,6 +1524,38 @@
     "stream": false
   },
   {
+    "id": "get_capture_hub_kinds",
+    "method": "GET",
+    "route": "/api/capture-hub/kinds",
+    "domain": "capture-hub",
+    "source": "routes/capture-hub.js",
+    "line": 17,
+    "description": "GET /api/capture-hub/kinds. the capture box's chips (where a capture can go) and the fields each needs. Keywords: capture kinds, destinations.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_capture_hub_options",
+    "method": "GET",
+    "route": "/api/capture-hub/options",
+    "domain": "capture-hub",
+    "source": "routes/capture-hub.js",
+    "line": 22,
+    "description": "GET /api/capture-hub/options. picker lists for the capture forms: people, vehicles, companions, projects, catalogues. An unreadable list is null, never [].",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_capture_links",
     "method": "GET",
     "route": "/api/capture-links",
@@ -6027,7 +6059,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 293,
+    "line": 294,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -9270,6 +9302,45 @@
     "queryOpen": false,
     "bodyOpen": false,
     "multipart": true,
+    "stream": false
+  },
+  {
+    "id": "post_capture_hub_classify",
+    "method": "POST",
+    "route": "/api/capture-hub/classify",
+    "domain": "capture-hub",
+    "source": "routes/capture-hub.js",
+    "line": 27,
+    "description": "POST /api/capture-hub/classify. guess which chip a capture belongs to (rules, then AI when unsure; Note is the floor). Body: { text, ai }. Files nothing. Keywords: capture guess, classify.",
+    "params": [],
+    "query": [],
+    "body": [
+      "ai",
+      "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_capture_hub_file",
+    "method": "POST",
+    "route": "/api/capture-hub/file",
+    "domain": "capture-hub",
+    "source": "routes/capture-hub.js",
+    "line": 35,
+    "description": "POST /api/capture-hub/file. file a capture whose chip has no other door: waiting (person), decision, memory, household job, shopping, tea (date), wall note. Body: { kind, text, fields }. Keywords: capture, waiting on, decision log, remember, household, shopping, tea, wall note.",
+    "params": [],
+    "query": [],
+    "body": [
+      "fields",
+      "kind",
+      "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
     "stream": false
   },
   {
