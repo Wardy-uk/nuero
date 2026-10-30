@@ -46,6 +46,7 @@ const SENIORS_DEFAULT = ['Chris Middleton', 'Ricky Bostock', 'Damon Bullimore'];
 const BACKFILL_DAYS = 400;
 const PER_RUN = 12;
 const DAILY_DEFAULT = 150;
+const RETRY_AFTER_MS = 2 * 60 * 60_000;
 const PERSONAL = /\b(medical|medication|medicine|diagnos\w*|surgery|surgical|hospital|GP\b|doctor|dentist|dental|sick(ness)?|ill(ness)?\b|injur\w*|cyst|tumou?r|cancer|pregnan\w*|maternity|paternity|miscarri\w*|bereave\w*|funeral|passed away|mental health|anxiety|depress\w*|stress(ed)? leave|counsell?ing|therapy|therapist|assault\w*|police|divorce|disabilit\w*|fit note|occupational health|OH report|accommodation(s)?|carer|caring responsibilit\w*|childcare|condition|wellbeing|welfare|absence|disciplinary|grievance|probation)\b/i;
 
 // First names that are also ordinary words — never treated as naming someone.
@@ -275,7 +276,8 @@ async function run({ limit = PER_RUN, deps = {} } = {}) {
   const room = Math.max(0, Math.min(limit, dailyCap - readToday));
   if (!room) return { ok: true, read: 0, stopped: 'daily-cap' };
   const since = new Date(Date.now() - BACKFILL_DAYS * 864e5).toISOString().slice(0, 10);
-  const known = new Map(d.prepare('SELECT path, hash, error FROM perf_feedback').all().map((r) => [r.path, r]));
+  const known = new Map(d.prepare('SELECT path, hash, error, read_at FROM perf_feedback').all().map((r) => [r.path, r]));
+  const retryAfter = Date.now() - RETRY_AFTER_MS;
   const todo = [];
   for (const n of listNotes(ctx.vaultRoot, since)) {
     let note;
@@ -283,6 +285,9 @@ async function run({ limit = PER_RUN, deps = {} } = {}) {
     if (!note) continue;
     const k = known.get(n.rel);
     if (k && k.hash === note.hash && !k.error) continue;
+    // A failed read waits before it is tried again — a refused provider must not
+    // be asked again within the same minute (it was, 30 Oct 2026, in a tight loop).
+    if (k && k.hash === note.hash && k.error && Date.parse(k.read_at) > retryAfter) continue;
     todo.push({ n, note });
   }
   todo.sort((a, b) => a.note.tier - b.note.tier || String(b.note.day || '').localeCompare(String(a.note.day || '')));
