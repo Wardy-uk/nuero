@@ -25,6 +25,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const fb = require('./perf-feedback');
+
+test.before(async () => { await require('../db/database').init(); });
 const { participantsOf, tierOf, guardItems, noteText } = fb._internals;
 
 const ctx = {
