@@ -69,7 +69,7 @@ test('blocks switch owner, and only Nick\'s survive', () => {
     '### **@Speaker 1**',
     '- [ ] Raise a support ticket regarding the newsletter duplicate send incident',
   ].join('\n');
-  assert.deepEqual(texts(md), ['Forward the incident guidance Chris sends to his team.']);
+  assert.deepEqual(texts(md), ['Forward the incident guidance Chris sends to his team']);
 });
 
 test('a heading after the blocks ends the owner', () => {
