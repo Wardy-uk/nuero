@@ -141,16 +141,19 @@ test('a leave decline marks its invite email read and closes its triage card (30
   const triage = require('./email-triage');
   triage._internals.storeTriage([{ id: 'MSG9', subject: 'Onboarding chat', isInvite: true, isRead: false, category: 'FYI', lane: 'fyi', received: new Date().toISOString() }]);
 
+  const askedE9 = () => found.mock.calls.filter(c => c.arguments[0] === 'E9').length;
   await guard.autoDecline();
-  assert.strictEqual(found.mock.calls[0].arguments[0], 'E9');
+  assert.strictEqual(askedE9(), 1);
   assert.deepStrictEqual(read.mock.calls.map(c => c.arguments[0]), ['MSG9']);
   const card = triage.getStoredTriage().find(e => e.id === 'MSG9');
   assert.strictEqual(card.dismissed, true);
   assert.strictEqual(card.dismissReason, triage.INVITE_ANSWERED);
 
-  // The catch-up does not ask Outlook again about a decline already tidied.
+  // The catch-up does not ask Outlook again about a decline already tidied —
+  // but does re-ask one whose email was never found (E2 from the test above).
   await guard.autoDecline();
-  assert.strictEqual(found.mock.callCount(), 1);
+  assert.strictEqual(askedE9(), 1);
+  assert.ok(found.mock.calls.some(c => c.arguments[0] === 'E2'), 'no email found yet → asked again');
 });
 
 test('auto-decline refuses when Nick\'s own leave cannot be read', async (t) => {
