@@ -245,6 +245,15 @@ function start() {
     require('./drink-profiles').lookupPending().catch((e) => console.warn('[Scheduler] drink lookup failed:', e.message));
   });
 
+  // Every 20 min, 07:00–22:00: feedback about Nick read out of meeting notes for
+  // VANTAGE's Performance Evidence (perf-feedback.js). A few notes a pass,
+  // highest-weight meetings first, each note paid for once; daily cap.
+  cron.schedule('11,31,51 7-22 * * *', () => {
+    require('./perf-feedback').run()
+      .then((r) => { if (r.read || r.failed) console.log(`[Scheduler] perf feedback: read ${r.read}, found ${r.found}, failed ${r.failed}, ${r.remaining} left`); })
+      .catch((e) => console.warn('[Scheduler] perf feedback failed:', e.message));
+  });
+
   cron.schedule('35 * * * *', () => {
     try {
       const result = require('./attention-learning').sweep();

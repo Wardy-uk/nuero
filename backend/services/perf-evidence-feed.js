@@ -221,7 +221,9 @@ function meetingText(body) {
   const at = plain.search(/^#{1,4}\s*(Summary|Overview|Meeting Notes|Key Points|Discussion|Conclusions?)\b/im);
   const from = at >= 0 ? plain.slice(at) : plain;
   return from.split('\n')
-    .filter((l) => !/Plaud ID|^\s*Recording\b|^\s*Transcript:/i.test(l))
+    // Plaud's recording block (Created / Started / Duration / Device) sits UNDER
+    // the first '# Summary' heading, so it led every excerpt (30 Oct 2026).
+    .filter((l) => !/Plaud ID|^\s*Recording\b|^\s*Transcript:|^\s*-?\s*(Created|Started|Duration|Device)\s*:|^\s*(Date|Location):.*(Calculated|Insert)/i.test(l))
     .map((l) => l.replace(/^#+\s*/, '').trim())
     .filter((l) => l && !/^(Summary|Overview|Meeting Notes)$/i.test(l))
     .join('\n');
@@ -296,6 +298,9 @@ const SOURCES = [
     if (!fs.existsSync(path.join(ctx.vaultRoot, 'Meetings'))) throw new Error('Meetings/ not found in the vault');
     return meetings(ctx.vaultRoot, ctx.w);
   }],
+  // What others said about Nick's work, read from meetings inside NEURO by
+  // perf-feedback.js (the cache only — never a model call on this read path).
+  ['feedback', (ctx) => require('./perf-feedback').itemsFor(ctx.w)],
 ];
 
 /** What the feed deliberately does not carry yet, so nobody reads it as the whole picture. */

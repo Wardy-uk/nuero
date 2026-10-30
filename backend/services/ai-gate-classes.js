@@ -37,6 +37,7 @@ const REGISTRY = {
   knowledge_consolidation: text(), knowledge_enrichment: text(),
   capability_suggestions: text(), event_parse: text(), drink_lookup: text(), task_short_title: text(),
   watched_reply_judge: text(), ticket_reply_draft: text(), uat_request_extract: text(),
+  perf_feedback_extract: text(),
   // ── SAiM prepared moves (drafting only) ────────────────────────────────
   saim_move_reply: text(), saim_move_prep: text(), saim_move_note: text(),
   // ── "Do this" task agent (Anthropic tool loop, cloud only; one ticket per

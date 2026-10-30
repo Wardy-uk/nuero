@@ -19,4 +19,14 @@ router.get('/candidates', (req, res) => {
   }
 });
 
+// GET /api/perf-evidence/feedback/status — how far the feedback read of meeting
+// notes has got (notes read, failed, feedback lines found). Read-only.
+router.get('/feedback/status', (req, res) => {
+  try {
+    res.json({ ok: true, ...require('../services/perf-feedback').status() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
