@@ -214,6 +214,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/soap/:weekFrom/queue-send', 'email.send'),
   // Meeting promises (21 Oct 2026): drafting the email that delivers a promise is Nick's press; sending still needs his approval code.
   R('POST', '/api/promises/:key/prepare', 'email.send', { machine: 'refuse' }),
+  // The Task workflow screen's read (31 Oct 2026).
+  R('GET', '/api/promises/workflow', 'read'),
   R('POST', '/api/soap/:weekFrom/test-send', 'email.self'),
   R('POST', '/api/soap/recipients', 'config.security'),
   // 23 Oct 2026: a session PROPOSES a fix for the reports (domain default,

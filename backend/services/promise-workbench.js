@@ -116,7 +116,7 @@ function preparationFor(p, { due, progress, booked }) {
   return { state: 'needs-a-block', why: PREP_SAY['needs-a-block'] };
 }
 
-const TIER_SAY = ['overdue', 'due today', 'due within two days', 'due this week'];
+const TIER_SAY = ['overdue', 'due today', 'due within two days', 'due this week', 'not due yet'];
 
 /**
  * PURE. The bench.
@@ -126,7 +126,10 @@ const TIER_SAY = ['overdue', 'due today', 'due within two days', 'due this week'
  *   progress   Map key → { state, reasons } | null  (progress-evidence, per lead task's commitment)
  *   freshness  { readAt, progressScannedAt }
  */
-function select({ promises = [], proofs = new Map(), dueBases = new Map(), progress = new Map(), freshness = {}, gaps = [], now }) {
+// `onlyKey` (31 Oct 2026, the task workflow screen): the bench for ONE promise,
+// composed the same way whether or not it made the top two — a promise beyond the
+// horizon is shown as "not due yet" rather than skipped. Withheld stays withheld.
+function select({ promises = [], proofs = new Map(), dueBases = new Map(), progress = new Map(), freshness = {}, gaps = [], now, onlyKey = null }) {
   const nowMs = msOf(now);
   const out = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), items: [], withheld: { ambiguous: 0, unreadable: 0, undated: 0 }, considered: 0, state: 'ok', why: null };
   if (gaps.some((g) => g.input === 'tasks')) return { ...out, state: 'not-safe-to-prepare', why: 'NEURO couldn’t read the task list, so nothing is offered as at risk.' };
@@ -139,6 +142,7 @@ function select({ promises = [], proofs = new Map(), dueBases = new Map(), progr
 
   const candidates = [];
   for (const p of promises) {
+    if (onlyKey && p.key !== onlyKey) continue;
     if (!p.open || proofs.has(p.key)) continue;
     const due = score.duePoint(p, dueBases.get(p.key) || null);
     const held = withholdReason(p, due);
@@ -147,7 +151,7 @@ function select({ promises = [], proofs = new Map(), dueBases = new Map(), progr
       if (held === 'undated' || (due.date && dueTier(due, nowMs) !== null)) out.withheld[held] += 1;
       continue;
     }
-    const tier = dueTier(due, nowMs);
+    const tier = dueTier(due, nowMs) ?? (onlyKey ? 4 : null);
     const meeting = relevantMeeting(p, due, nowMs);
     if (tier === null && !meeting) continue;
     const pr = progress.get(p.key) || null;
@@ -184,7 +188,7 @@ function select({ promises = [], proofs = new Map(), dueBases = new Map(), progr
       owedTo: c.p.owedTo.resolved || c.p.owedTo.group || null,
       owedToSaidBy: c.p.owedTo.stated ? { by: c.p.owedTo.stated.by, at: c.p.owedTo.stated.at, text: c.p.owedTo.stated.text } : null,
       owedToSelf: Boolean(c.p.owedTo.self),
-      due: { date: c.due.date, basis: c.due.basis, endsAt: new Date(c.due.endsMs).toISOString(), tier: ['overdue', 'today', 'soon', 'this-week'][c.tier], say: TIER_SAY[c.tier] },
+      due: { date: c.due.date, basis: c.due.basis, endsAt: new Date(c.due.endsMs).toISOString(), tier: ['overdue', 'today', 'soon', 'this-week', 'later'][c.tier], say: TIER_SAY[c.tier] },
       nextMeeting: c.meeting ? { title: c.meeting.title, start: c.meeting.start } : null,
       booked: c.booked,
       progress: c.prog ? { state: c.prog.state, stale: c.prog.stale } : null,
@@ -218,7 +222,7 @@ function _progressFor(promises) {
 }
 
 /** The bench for `now`. Reads only. */
-function read({ now = Date.now(), ledger = null, proofs = null } = {}) {
+function read({ now = Date.now(), ledger = null, proofs = null, onlyKey = null } = {}) {
   const nowMs = msOf(now);
   const raw = ledger || require('./promise-ledger').read({ now: nowMs });
   // Who it is owed to, where only Nick could say: his answer, read at this moment.
@@ -226,7 +230,7 @@ function read({ now = Date.now(), ledger = null, proofs = null } = {}) {
   const pr = proofs || score.readProofs().proofs;
   const dueBases = score.readDueBases(facts.promises);
   const { map, scannedAt } = _progressFor(facts.promises);
-  return select({ promises: facts.promises, proofs: pr, dueBases, progress: map, freshness: { readAt: facts.readAt, progressScannedAt: scannedAt }, gaps: facts.gaps, now: nowMs });
+  return select({ promises: facts.promises, proofs: pr, dueBases, progress: map, freshness: { readAt: facts.readAt, progressScannedAt: scannedAt }, gaps: facts.gaps, now: nowMs, onlyKey });
 }
 
 module.exports = { CONTRACT, MESSAGE_ACT, MAX_ITEMS, HORIZON_DAYS, READ_STALE_MS, PROGRESS_STALE_MS, dueTier, withholdReason, preparationFor, relevantMeeting, select, read };
