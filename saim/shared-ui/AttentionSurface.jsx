@@ -175,22 +175,17 @@ export default function AttentionSurface({
   // What kind of prepared moment is showing (PreparedMove.momentOf) — so the
   // situation never calls the day quiet over an actionable move.
   preparedMoment = null,
-  // Keep my word (21 Oct 2026): passed straight to Situation; null = no control.
-  onPrepareDelivery = null,
-  // Keep my word: take a held promise forward as a prepared move (ask / answer). null = no control.
-  onPromiseMove = null,
+  // Keep my word (31 Oct 2026): "Start this task" on the promise card — passed straight to Situation; null = no button.
+  onStartTask = null,
   // Holding the week (22 Oct 2026): perform a card target (→ { ok, say }) and the kinds this shell can. Null → records only.
   onCardOpen = null,
   cardKinds = null,
-  // Keep my word: the shell's governed save step for a private draft, drawn IN the card. null = none.
-  renderPromiseSave = null, renderTaskTools = null,
   // "I'm not attending" for the meeting on screen (22 Oct 2026): the shell records it on
   // the existing route ({ key }) → { ok, error }. Null (the kiosk, the watch) → no control.
   onNotAttending = null,
   // Would the shell's onOpen do anything for this card? Unset = yes (the old behaviour).
   // A button that does nothing is not drawn — "Open State of Play" on a phone (25 Oct 2026).
   canOpen = null,
-  onOpenActions = null,
   footAside = null,
   footExtra = null,
   // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
@@ -679,12 +674,9 @@ export default function AttentionSurface({
           note={footAside}
           prepared={prepared}
           preparedMoment={preparedMoment}
-          onPrepareDelivery={onPrepareDelivery}
-          onPromiseMove={onPromiseMove}
+          onStartTask={onStartTask}
           onCardOpen={onCardOpen}
           cardKinds={cardKinds}
-          onOpenActions={onOpenActions}
-          renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />
       </div>

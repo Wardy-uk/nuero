@@ -216,20 +216,15 @@ export default function Situation({
   // What kind of prepared moment is showing: { kind: 'actionable', headline }
   // or { kind: 'held' } (PreparedMove.momentOf), or null.
   preparedMoment = null,
-  // Keep my word: the shell's call to POST /api/promises/:key/prepare (only
-  // PREPARES the governed draft) and its hand-off to Actions. Absent → no control.
-  onPrepareDelivery = null,
-  // Keep my word: take a held promise forward as a prepared move. Absent → no control.
-  onPromiseMove = null,
-  onOpenActions = null,
+  // Keep my word (31 Oct 2026): the card's ONE control — start a focus session on the
+  // promise's task and open the Task workflow screen ({ taskId, key, title, force } →
+  // { ok } | { conflict } | { ok:false, error }). Absent (and always on the kiosk) → no button.
+  onStartTask = null,
   // Holding the week (22 Oct 2026): the shell performs a card target (→ { ok, say }) and says which kinds it can.
   onCardOpen = null,
   cardKinds = null,
   // A control after a row's normal action — the shell's, for THAT item only ("Make this ready"). Null → none.
   renderItemExtra = null,
-  // Keep my word: the shell's governed save step for a private draft, drawn IN the card
-  // ({ recordId } → element). Absent (the SAiM shells) → the card points nowhere else.
-  renderPromiseSave = null, renderTaskTools = null,
   // NEURO's Now page (22 Oct 2026): the scene in a working surface — the readout earns its space,
   // and `kmwJoinsLead` (the shell checked the lead card IS this promise's task) puts the promise
   // under the lead as its WHY instead of a folded line repeating its title.
@@ -319,10 +314,12 @@ export default function Situation({
   // recognisably, beneath the last lead. Never on the watch.
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
+  // Never a Start button on the wall (31 Oct 2026): the kiosk performs nothing.
+  const kmwStart = plan.profile === 'kiosk' ? null : onStartTask;
   const kmwFolded = kmw && !kmwLeads && kmwJoinsLead && kmw.thread && !kmw.receipt
-    ? <KmwWhy key="kmw-why" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
+    ? <KmwWhy key="kmw-why" kmw={kmw} onOpen={onOpen} actions={plan.actions} onStartTask={kmwStart} />
     : kmw && !kmwLeads && (kmw.receipt || kmw.thread)
-    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
+    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onStartTask={kmwStart} />
     : null;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
@@ -353,7 +350,7 @@ export default function Situation({
               return [
                 kmwLeads ? (
                   <header key={i} className={`sit__situation sit__situation--kmw sit__situation--kmw-${kmw.state}`}>
-                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
+                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onStartTask={kmwStart} />
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>
                 ) : (

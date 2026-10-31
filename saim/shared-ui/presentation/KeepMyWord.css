@@ -252,3 +252,11 @@
 .kmw__sheet .kmw__card-go { display: block; min-height: 40px; }
 /* The task's own tools under the promise (31 Oct 2026): Do this, Claude handoff, linked notes. */
 .kmw__tools { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--kmw-line); display: grid; gap: 12px; font-family: system-ui, sans-serif; }
+
+/* The lean promise card (31 Oct 2026): the task, one why, one control. */
+.kmw__why-line { margin: 10px 0 0; font: 14px/1.5 Georgia, serif; color: var(--kmw-dim); }
+.kmw__held-line { color: #d5d1c7; }
+.kmw__actions--start { flex-wrap: wrap; gap: 12px; }
+.kmw__start { font-size: 13px; padding: 12px 18px; }
+.kmw__switch { margin-top: 16px; }
+.kmw__switch .kmw__actions { margin-top: 10px; }

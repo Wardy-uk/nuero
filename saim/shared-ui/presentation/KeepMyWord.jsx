@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { promiseMoveResult } from './promiseMove.mjs';
+import StartTaskControl from './StartTask.jsx';
 import './KeepMyWord.css';
 
 // Keep my word — the locked SAiM home scene (timefield.html, 21 Oct 2026).
@@ -13,14 +14,13 @@ import './KeepMyWord.css';
 //     where it lives) or the promise SAiM is holding as a THREAD.
 //
 // ⚠ IT DECIDES NOTHING. State, order, wording and the lead rule are the
-//   server's. Its controls are hand-offs the SHELL supplies: `onOpen` (the
-//   task) and, for a promise that is a message, `onPrepareDelivery` — which
-//   only PREPARES the governed draft (POST /api/promises/:key/prepare) and
-//   shows what came back; and `onPromiseMove`, which takes a held promise
-//   forward as a prepared move — asking, in place, the one thing SAiM needs
-//   (who it is owed to) and storing a PROPOSAL. Never a confirm, an approval
-//   or a send: a held thread NAMES what is missing and offers no way round it. No URL lives here, so a
-//   shell without a credential path (the kiosk) simply passes no handler.
+//   server's. The promise card only PRESENTS the task (31 Oct 2026) and offers
+//   ONE control the SHELL supplies: `onStartTask`, which starts a focus session
+//   on it and opens the Task workflow screen (saim/shared-ui/TaskWorkflow.jsx),
+//   where the prepared move, the delivery note, the evidence and the task's tools
+//   now live. `KmwMove` / `KmwDelivery` are exported for that screen. No URL lives
+//   here, so a shell without a credential path (the kiosk) passes no handler and
+//   the card has no button.
 
 /**
  * NEURO's Now page (22 Oct 2026, restored the same day): the readout as THREE
@@ -433,7 +433,7 @@ export function KmwReceipt({ receipt }) {
 }
 
 /** The draft the route handed back — read-only. Approval happens in Actions, never here. */
-function DraftResult({ result, draft, onOpenActions }) {
+export function DraftResult({ result, draft, onOpenActions }) {
   if (result.error) return <p className="kmw__rowline kmw__draft-error" role="status">Not drafted — {result.error}</p>;
   const a = result.action || {};
   const d = a.draft || {};
@@ -578,12 +578,17 @@ export function KmwThread(props) {
   return <KmwThreadOne key={shown.key} {...props} thread={shown} more={more} />;
 }
 
-export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null, asWhy = false, more = null }) {
+/**
+ * The delivery note for a promise that is a message (moved off the card onto the
+ * Task workflow screen, 31 Oct 2026): what NEURO can draft, the one control, and
+ * what came back. It only PREPARES the governed draft — nothing is sent.
+ */
+export function KmwDelivery({ thread, actions = false, onPrepareDelivery = null, onOpenActions = null }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
-  if (!thread) return null;
-  const draft = thread.draft || null;
-  const canDraft = Boolean(actions && draft && draft.control && onPrepareDelivery);
+  const draft = (thread && thread.draft) || null;
+  if (!draft) return null;
+  const canDraft = Boolean(actions && draft.control && onPrepareDelivery);
   const prepare = async () => {
     if (drafting) return;
     setDrafting(true);
@@ -596,17 +601,43 @@ export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepare
       setDrafting(false);
     }
   };
-  // One control per state: where a delivery can be drafted, that IS the control.
-  // A HELD thread offers none: opening the task resolves nothing it names (the
-  // missing address or authority), so the held sentence stands alone.
-  // Where SAiM can take the promise forward, that IS the control — opening the
-  // task stays only where nothing else can move it (24 Oct 2026).
-  const moving = Boolean(thread.move);
-  // Open the task is always offered on Nick's own surfaces (31 Oct 2026): the card is a
-  // task card too, and opening it resolves nothing a move or a hold is waiting on.
-  const open = actions && onOpen && thread.taskId
-    ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
-    : null;
+  return (
+    <div className="kmw__row kmw__row--draft">
+      <span className="kmw__rowlabel">Delivery</span>
+      <div>
+        <p className="kmw__rowline kmw__draft-say">{draft.say}</p>
+        {draft.sendingOff && !result && <p className="kmw__rowline">{draft.sendingOff}</p>}
+        {canDraft && !(result && result.ok) && (
+          <div className="kmw__actions">
+            <button type="button" className="kmw__open" disabled={drafting} onClick={prepare}>{drafting ? 'Drafting…' : draft.control}</button>
+          </div>
+        )}
+        {result && <DraftResult result={result} draft={draft} onOpenActions={onOpenActions} />}
+      </div>
+    </div>
+  );
+}
+
+/** PURE. The card's ONE why line: the preparation's reason, else the most useful `because`. */
+export function whyLine(thread) {
+  if (!thread) return null;
+  if (thread.preparation && thread.preparation.why) return thread.preparation.why;
+  const b = (thread.because || []).filter(Boolean);
+  return b.length ? b[b.length > 1 ? 1 : 0] : null;
+}
+
+/**
+ * The promise card (31 Oct 2026, Nick: "too busy"): it only PRESENTS the task —
+ * label, title, the due line, ONE why, the held line if it is held, the other
+ * promises at risk — and offers ONE control, "Start this task", when the shell
+ * supplies `onStartTask` and actions are allowed (never on the kiosk). The
+ * prepared move, its save step, the delivery note, the evidence and the task's
+ * tools live on the Task workflow screen the shell opens.
+ */
+export function KmwThreadOne({ thread, actions = false, onStartTask = null, asWhy = false, more = null }) {
+  if (!thread) return null;
+  const why = whyLine(thread);
+  const canStart = Boolean(actions && onStartTask && thread.taskId);
   return (
     <section className={`kmw__thread kmw__thread--${thread.preparation.state}${thread.held ? ' kmw__thread--held' : ''}${asWhy ? ' kmw__thread--why' : ''}`} aria-label={asWhy ? 'Why it matters' : 'Keeping your word'} data-promise-ref={thread.move ? thread.move.ref : undefined}>
       {/* As the WHY of the lead (22 Oct 2026) the title is the lead's — never said twice. */}
@@ -617,54 +648,19 @@ export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepare
         {thread.owedTo && <span> · owed to {thread.owedTo}</span>}
         <span> · {thread.due.say}</span>
       </p>
-      <div className="kmw__rows">
-        <div className="kmw__row">
-          <span className="kmw__rowlabel">{thread.preparation.label}</span>
-          <div><p className="kmw__rowline">{thread.preparation.why}</p></div>
-        </div>
-        {draft && (
-          <div className="kmw__row kmw__row--draft">
-            <span className="kmw__rowlabel">Delivery</span>
-            <div>
-              <p className="kmw__rowline kmw__draft-say">{draft.say}</p>
-              {draft.sendingOff && !result && <p className="kmw__rowline">{draft.sendingOff}</p>}
-              {canDraft && !(result && result.ok) && (
-                <div className="kmw__actions">
-                  <button type="button" className="kmw__open" disabled={drafting} onClick={prepare}>{drafting ? 'Drafting…' : draft.control}</button>
-                </div>
-              )}
-              {result && <DraftResult result={result} draft={draft} onOpenActions={onOpenActions} />}
-            </div>
-          </div>
-        )}
-        {moving && <KmwMove move={thread.move} onPromiseMove={actions ? onPromiseMove : null} readOnly={!actions} renderSave={actions ? renderPromiseSave : null} />}
-        {thread.held && (
-          <div className="kmw__row kmw__row--held">
-            <span className="kmw__rowlabel">Held</span>
-            <div><p className="kmw__rowline">{thread.held.say}</p></div>
-          </div>
-        )}
-        <div className="kmw__row">
-          <span className="kmw__rowlabel">Evidence</span>
-          <div>{thread.evidence.map((e, i) => <p key={i} className="kmw__rowline">{e.fact}</p>)}</div>
-        </div>
-      </div>
-      {/* The task's own tools (31 Oct 2026): Do this, Claude on the laptop, its linked notes —
-          the SAME components the Tasks card mounts, supplied by the shell. */}
-      {actions && renderTaskTools && thread.taskId && <div className="kmw__tools">{renderTaskTools({ taskId: thread.taskId })}</div>}
+      {why && <p className="kmw__why-line">{why}</p>}
+      {thread.held && <p className="kmw__why-line kmw__held-line">{thread.held.say}</p>}
       {more}
-      {open && (
-        <div className="kmw__actions">
-          <button type="button" className="kmw__open" onClick={open}>Open the task</button>
-        </div>
+      {canStart && (
+        <StartTaskControl onStart={({ force }) => onStartTask({ taskId: thread.taskId, key: thread.key, title: thread.title, force })} />
       )}
     </section>
   );
 }
 
 /** The main surface: the receipt when there is one (the thread, if any, folded under it), else the thread. */
-export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null }) {
-  const t = { onOpen, actions, onPrepareDelivery, onPromiseMove, onOpenActions, renderPromiseSave, renderTaskTools };
+export function KmwMain({ kmw, onOpen = null, actions = false, onStartTask = null }) {
+  const t = { onOpen, actions, onStartTask };
   if (!kmw) return null;
   if (kmw.receipt) {
     return (
@@ -687,18 +683,18 @@ export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery
  * promise's task, its Keep my word state (the question, the draft, the save)
  * sits directly under it instead of a folded line repeating its title.
  */
-export function KmwWhy({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null }) {
+export function KmwWhy({ kmw, onOpen = null, actions = false, onStartTask = null }) {
   if (!kmw || !kmw.thread) return null;
-  return <div className="kmw__main kmw__why"><KmwThread thread={kmw.thread} asWhy onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} /></div>;
+  return <div className="kmw__main kmw__why"><KmwThread thread={kmw.thread} asWhy onOpen={onOpen} actions={actions} onStartTask={onStartTask} /></div>;
 }
 
 /** The folded entry beneath an urgent lead: recognisable by its title, opened on demand. */
-export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null }) {
+export function KmwFolded({ kmw, onOpen = null, actions = false, onStartTask = null }) {
   if (!kmw || !kmw.entry) return null;
   return (
     <details className="kmw__fold kmw__fold--entry">
       <summary>{kmw.entry}</summary>
-      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
+      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onStartTask={onStartTask} />
     </details>
   );
 }
