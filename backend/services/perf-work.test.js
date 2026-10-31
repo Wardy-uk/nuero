@@ -52,7 +52,7 @@ test('tickets, workforce and people', () => {
   const d = db.getDb();
   d.exec(`CREATE TABLE IF NOT EXISTS watched_ticket_commitments (id INTEGER PRIMARY KEY, ticket_key TEXT, due_at TEXT, source TEXT, state TEXT, phrase TEXT, comment_id TEXT, made_at TEXT, confirmed_at TEXT, reminded_at TEXT, missed_at TEXT, closed_at TEXT, closed_by TEXT, kept_late INTEGER)`);
   d.prepare(`INSERT INTO watched_ticket_commitments (source, ticket_key, due_at, state, made_at, closed_at, kept_late) VALUES ('detected','NT-35291','2026-10-23T16:00:00Z','kept','2026-10-23T14:00:00Z','2026-10-23T15:40:00Z',0)`).run();
-  d.prepare(`INSERT INTO watched_ticket_commitments (source, ticket_key, due_at, state, made_at, missed_at) VALUES ('detected','NT-2','2026-10-24T16:00:00Z','missed','2026-10-24T10:00:00Z','2026-10-24T16:00:00Z')`).run();
+  d.prepare(`INSERT INTO watched_ticket_commitments (source, ticket_key, due_at, state, made_at, missed_at) VALUES ('detected','NT-2','2026-10-24T16:00:00Z','open','2026-10-24T10:00:00Z','2026-10-24T16:00:00Z')`).run();
   const led = d.prepare(`INSERT INTO external_write_ledger (writer, idempotency_key, target, authority, initiated_by, status, attempts, request_json, requested_at, settled_at)
     VALUES (?, ?, ?, 'A3', 'nick', 'confirmed', 1, ?, '2026-10-30T11:47:00Z', '2026-10-30T11:47:57Z')`);
   led.run('jira.approval', 'k1', 'NT-34482', JSON.stringify({ key: 'NT-34482', name: 'Pending Rejection Approval (to CC)', decision: 'decline' }));

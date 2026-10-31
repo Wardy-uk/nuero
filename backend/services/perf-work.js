@@ -121,8 +121,12 @@ function tableExists(db, name) {
 function tickets(db, w) {
   const out = [];
   if (tableExists(db, 'watched_ticket_commitments')) {
-    for (const r of db.prepare(`SELECT id, ticket_key, due_at, state, made_at, closed_at, missed_at, kept_late FROM watched_ticket_commitments WHERE state IN ('kept','missed')`).all()) {
-      const at = r.state === 'kept' ? r.closed_at : (r.missed_at || r.due_at);
+    // A missed promise is not a state of its own: it stays open (or is later
+    // dismissed) with missed_at set, and one kept after its time is kept_late.
+    for (const raw of db.prepare(`SELECT id, ticket_key, due_at, state, made_at, closed_at, missed_at, kept_late FROM watched_ticket_commitments
+                                 WHERE state = 'kept' OR missed_at IS NOT NULL`).all()) {
+      const r = { ...raw, state: raw.state === 'kept' ? 'kept' : 'missed' };
+      const at = r.state === 'kept' ? r.closed_at : r.missed_at;
       if (!at || !inWindow(at, w)) continue;
       const due = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(r.due_at));
       out.push({
