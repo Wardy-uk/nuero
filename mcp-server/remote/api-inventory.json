@@ -5424,6 +5424,25 @@
     "stream": false
   },
   {
+    "id": "get_promises_workflow",
+    "method": "GET",
+    "route": "/api/promises/workflow",
+    "domain": "promises",
+    "source": "routes/promise-delivery.js",
+    "line": 15,
+    "description": "GET /api/promises/workflow. the Task workflow screen's read (31 Oct 2026): a task row and, if it is a promise, the same Keep my word thread Now composes (delivery note, prepared move, evidence). Read-only. ?taskId=N and/or ?key=promise:N.",
+    "params": [],
+    "query": [
+      "key",
+      "taskId"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_push_apns_status",
     "method": "GET",
     "route": "/api/push/apns/status",
@@ -14185,7 +14204,7 @@
     "route": "/api/promises/:key/prepare",
     "domain": "promises",
     "source": "routes/promise-delivery.js",
-    "line": 15,
+    "line": 28,
     "description": "POST /api/promises/:key/prepare. prepare the governed email that delivers one meeting promise (needs approval in Actions; never sends).",
     "params": [
       "key"
