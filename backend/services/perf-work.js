@@ -20,11 +20,8 @@
  *               him — COUNTS per day only, never what was owed.
  *  - work-notes: notes he wrote in the work project folders of the vault, by
  *               the dates in their own frontmatter (never file mtime — sync
- *               rewrites it). An allow-list, so Projects/PIP (his OH report)
- *               and personal projects can never be read.
- *
- * The feed's employment screen runs over every source here except `people`,
- * which carries no content.
+ *               rewrites it). An allow-list of work project folders, so
+ *               personal projects are never read.
  */
 
 const fs = require('fs');
@@ -268,7 +265,7 @@ function people(db, w) {
 
 // ── work notes ───────────────────────────────────────────────────────────────
 
-/** Work project folders whose notes can be evidence. An allow-list: PIP and personal projects are never read. */
+/** Work project folders whose notes can be evidence. An allow-list: personal projects are never read. */
 const WORK_FOLDERS = ['Support Improvement Plan', 'TOM', 'Jira Support Unification', 'KPI revision', '90 Day Plan', 'Fixes Log', 'NOVA'];
 const SKIP_TYPES = /claude-code-brief|build-brief|handoff/i;
 
