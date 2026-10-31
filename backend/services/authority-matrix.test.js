@@ -63,7 +63,7 @@ test('the MCP gateway does not offer what the matrix refuses — and refuses not
   const STRICTER = {
     post_actions_by_id_approve: 'local MCP approves internal suggestions (bounded); the remote gateway does not offer it',
     post_escalation_email: 'Escalate to… records the email as typed by Nick on the Escalations screen; an agent wanting to email someone prepares it through the personal-inbox composer instead',
-    post_task_agent_tasks_by_taskId_claude_result: '31 Oct 2026: Claude on Nick's laptop returns task work through the LOCAL MCP server (machine: execute); remote agents (ChatGPT) are not offered it — Nick asked only for Claude Desktop',
+    post_task_agent_tasks_by_taskId_claude_result: '31 Oct 2026: Claude on Nick’s laptop returns task work through the LOCAL MCP server (machine: execute); remote agents (ChatGPT) are not offered it — Nick asked only for Claude Desktop',
     post_projects_github_snapshot: 'Build 24: the reporter on Nick\'s machine posts GitHub metadata directly with the API token; an agent through the gateway must never supply repo evidence',
   };
   const extra = Object.keys(interactive).filter((id) => {
