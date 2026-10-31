@@ -133,11 +133,14 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
  */
 function duePoint(promise, dueBasis = null) {
   const stated = promise.statedDate && DATE_ONLY.test(promise.statedDate.date) ? promise.statedDate.date : null;
-  if (stated) return { date: stated, basis: 'stated-in-wording', endsMs: londonInstant(addDays(stated, 1)) };
   const due = promise.due && DATE_ONLY.test(String(promise.due).slice(0, 10)) ? String(promise.due).slice(0, 10) : null;
+  // The date on the task wins over a date in its wording (31 Oct 2026): when
+  // Nick moves the due date, the promise moves with it. Only the 10-day
+  // placeholder gives way to the wording.
+  if (due && dueBasis !== 'default') return { date: due, basis: dueBasis === 'stated' || dueBasis === 'set' ? dueBasis : 'task-due-date', endsMs: londonInstant(addDays(due, 1)) };
+  if (stated) return { date: stated, basis: 'stated-in-wording', endsMs: londonInstant(addDays(stated, 1)) };
   if (!due) return { date: null, basis: null, undatedWhy: 'no date stated or set' };
-  if (dueBasis === 'default') return { date: null, basis: 'default', undatedWhy: 'only the 10-day placeholder date — no date was promised' };
-  return { date: due, basis: dueBasis === 'stated' || dueBasis === 'set' ? dueBasis : 'task-due-date', endsMs: londonInstant(addDays(due, 1)) };
+  return { date: null, basis: 'default', undatedWhy: 'only the 10-day placeholder date — no date was promised' };
 }
 
 // ── Classification (PURE) ────────────────────────────────────────────────────

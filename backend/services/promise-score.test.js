@@ -120,10 +120,13 @@ test('only promises due in THIS London week are counted', () => {
   assert.equal(r.entries.length, 0);
 });
 
-test('the date in the promise’s own wording beats the task due date', () => {
+test('the task due date beats a date in the wording — moving the due date moves the promise (31 Oct 2026)', () => {
   const due = s.duePoint(promise({ due: '2026-10-30', statedDate: { date: '2026-10-22', phrase: 'by Thursday' } }), 'set');
-  assert.equal(due.date, '2026-10-22');
-  assert.equal(due.basis, 'stated-in-wording');
+  assert.equal(due.date, '2026-10-30');
+  assert.equal(due.basis, 'set');
+  const placeholder = s.duePoint(promise({ due: '2026-10-30', statedDate: { date: '2026-10-22', phrase: 'by Thursday' } }), 'default');
+  assert.equal(placeholder.date, '2026-10-22', 'the 10-day placeholder gives way to the wording');
+  assert.equal(placeholder.basis, 'stated-in-wording');
 });
 
 test('the 10-day placeholder is not a promised date: undated, never due', () => {

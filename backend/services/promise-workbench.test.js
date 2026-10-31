@@ -140,7 +140,7 @@ test('a stale progress scan marks each selected item not-safe-to-prepare (it can
 });
 
 test('every selected item carries its due point and the evidence behind it, truthfully', () => {
-  const p = promise({ id: 1101, due: '2026-10-30', statedDate: { date: '2026-10-22', phrase: 'by Thursday' } });
+  const p = promise({ id: 1101, due: null, statedDate: { date: '2026-10-22', phrase: 'by Thursday' } }); // no task date, so the wording's date is the due point
   const it = sel([p]).items[0];
   assert.equal(it.due.date, '2026-10-22');
   assert.equal(it.due.basis, 'stated-in-wording');
