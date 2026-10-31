@@ -62,6 +62,9 @@ function db() {
     const cols = d.prepare('PRAGMA table_info(perf_mail_items)').all().map((c) => c.name);
     // What each attached document says (JSON [{name, how, text|why}]); NULL = not read yet.
     if (!cols.includes('doc_text')) d.exec('ALTER TABLE perf_mail_items ADD COLUMN doc_text TEXT');
+    // Files already read while the message as a whole is not finished (JSON {attachmentId: result}),
+    // so a pass that runs out of model reads never pays for the same file twice.
+    if (!cols.includes('doc_partial')) d.exec('ALTER TABLE perf_mail_items ADD COLUMN doc_partial TEXT');
     ready = true;
   }
   return d;
@@ -185,7 +188,9 @@ async function aiRead(name, buf, deps) {
 /**
  * Read the attached documents of kept messages not read yet. At most
  * DOCS_PER_RUN messages and AI_PER_RUN model reads a pass. A message whose
- * files could not be fetched stays unread and is tried again.
+ * files could not be fetched stays unread and is tried again. Files read so far
+ * are kept (doc_partial), and a file identical to one already read in the same
+ * message is never read twice.
  */
 async function readDocs(deps = {}) {
   const ms = deps.microsoft || require('./microsoft');
@@ -195,41 +200,53 @@ async function readDocs(deps = {}) {
   const token = await ms.getAccessToken();
   if (!token) return { ...report, error: 'Microsoft sign-in needed' };
   const d = db();
-  const rows = d.prepare("SELECT id FROM perf_mail_items WHERE kind = 'mail-document' AND doc_text IS NULL ORDER BY at DESC LIMIT ?").all(deps.perRun || DOCS_PER_RUN);
-  const save = d.prepare('UPDATE perf_mail_items SET doc_text = ? WHERE id = ?');
+  const rows = d.prepare("SELECT id, doc_partial FROM perf_mail_items WHERE kind = 'mail-document' AND doc_text IS NULL ORDER BY at DESC LIMIT ?").all(deps.perRun || DOCS_PER_RUN);
+  const save = d.prepare('UPDATE perf_mail_items SET doc_text = ?, doc_partial = NULL WHERE id = ?');
+  const savePartial = d.prepare('UPDATE perf_mail_items SET doc_partial = ? WHERE id = ?');
+  const hash = (b) => require('crypto').createHash('sha256').update(b).digest('hex');
   let aiLeft = deps.aiPerRun !== undefined ? deps.aiPerRun : AI_PER_RUN;
   for (const row of rows) {
+    let partial = {};
+    try { partial = JSON.parse(row.doc_partial || '{}') || {}; } catch { partial = {}; }
     try {
       const list = await ms.graphFetch(`/me/messages/${encodeURIComponent(row.id)}/attachments?$select=id,name,size,isInline`, token);
       if (!list || !Array.isArray(list.value)) throw new Error('attachments could not be listed');
       const out = [];
+      const byHash = {};
+      let outOfBudget = false;
       for (const a of list.value.filter((x) => !x.isInline && x.name && DOC_EXT.test(x.name))) {
         report.files += 1;
-        if (a.size > MAX_DOC_BYTES) { out.push({ name: a.name, how: 'none', why: 'too big to read' }); report.unreadable += 1; continue; }
+        if (partial[a.id]) { out.push(partial[a.id]); continue; }
+        const keep = (res) => { out.push(res); partial[a.id] = res; };
+        if (a.size > MAX_DOC_BYTES) { keep({ name: a.name, how: 'none', why: 'too big to read' }); report.unreadable += 1; continue; }
         const full = await ms.graphFetch(`/me/messages/${encodeURIComponent(row.id)}/attachments/${encodeURIComponent(a.id)}`, token);
-        if (!full || !full.contentBytes) { out.push({ name: a.name, how: 'none', why: 'not a file' }); report.unreadable += 1; continue; }
+        if (!full || !full.contentBytes) { keep({ name: a.name, how: 'none', why: 'not a file' }); report.unreadable += 1; continue; }
         const buf = Buffer.from(full.contentBytes, 'base64');
+        const h = hash(buf);
+        if (byHash[h]) { keep({ ...byHash[h], name: a.name }); continue; }
         const x = await extract(a.name, buf);
         if (x.ok && x.text.length >= THIN_TEXT) {
-          out.push({ name: a.name, how: 'text', text: x.text.slice(0, DOC_TEXT) });
+          keep(byHash[h] = { name: a.name, how: 'text', text: x.text.slice(0, DOC_TEXT) });
           report.text += 1;
           continue;
         }
         // Option 2: Claude reads the PDF itself. Only a PDF, only up to the page cap.
         const pdfOk = /\.pdf$/i.test(a.name) && (!x.pages || x.pages <= maxPages);
-        if (pdfOk && aiLeft <= 0) throw Object.assign(new Error('model reads used up this pass'), { retry: true });
+        if (pdfOk && aiLeft <= 0) { outOfBudget = true; continue; }
         if (pdfOk) {
           aiLeft -= 1;
           const said = await aiRead(a.name, buf, deps).catch(() => null);
-          if (said) { out.push({ name: a.name, how: 'ai', text: said }); report.ai += 1; continue; }
+          if (said) { keep(byHash[h] = { name: a.name, how: 'ai', text: said }); report.ai += 1; continue; }
         }
-        out.push({ name: a.name, how: 'none', why: x.ok ? 'almost no text in it' : x.why });
+        keep(byHash[h] = { name: a.name, how: 'none', why: x.ok ? 'almost no text in it' : x.why });
         report.unreadable += 1;
       }
+      // Out of model reads: keep what was read and finish this message on a later pass.
+      if (outOfBudget) { savePartial.run(JSON.stringify(partial), row.id); report.waiting = (report.waiting || 0) + 1; continue; }
       save.run(JSON.stringify(out), row.id);
       report.read += 1;
     } catch (e) {
-      if (e.retry) break;
+      savePartial.run(JSON.stringify(partial), row.id);
       report.failed += 1;
     }
   }
