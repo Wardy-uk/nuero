@@ -55,7 +55,7 @@ test('a promise task: header, Next (delivery + move with the save slot), tools s
   assert.match(h, /<h1 class="twf__title">Send Hope the onboarding checklist<\/h1>/);
   assert.match(h, /Due Tuesday 3 November/);
   assert.match(h, /owed to Hope Goodall/);
-  assert.match(h, />Back</);
+  assert.match(h, /> Back<\/button>/);
   assert.match(h, />Open in Tasks</);
   assert.match(h, />Draft the delivery note<\/button>/, 'the delivery offer moved here');
   assert.match(h, /SAVE pm_9/, 'the prepared move’s save slot');

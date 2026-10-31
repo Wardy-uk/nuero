@@ -115,7 +115,7 @@ export function TaskWorkflowView({
 
       {thread && (thread.move || thread.draft) && (
         <section className="twf__card twf__next kmw__main" aria-label="Next for this promise">
-          <h2 className="twf__h">Next</h2>
+          <h2 className="twf__h">For this promise</h2>
           <div className="kmw__rows">
             {thread.draft && <KmwDelivery thread={thread} actions={actions} onPrepareDelivery={onPrepareDelivery} onOpenActions={onOpenActions} />}
             {thread.move && <KmwMove move={thread.move} onPromiseMove={actions ? onPromiseMove : null} readOnly={!actions} renderSave={actions ? renderPromiseSave : null} />}
