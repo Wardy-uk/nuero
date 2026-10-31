@@ -555,7 +555,29 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false, renderSa
   );
 }
 
-export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, asWhy = false }) {
+/**
+ * The promise SAiM is holding, plus a way to switch to any other one at risk
+ * (31 Oct 2026): "One more at risk" names each by title, and a tap shows it here.
+ */
+export function KmwThread(props) {
+  const { thread } = props;
+  const [pick, setPick] = useState(null);
+  if (!thread) return null;
+  const all = [thread, ...(thread.others || [])];
+  const shown = all.find((x) => x.key === pick) || thread;
+  const rest = all.filter((x) => x.key !== shown.key);
+  const more = rest.length ? (
+    <p className="kmw__more">
+      {rest.length === 1 ? 'One more' : `${rest.length} more`} at risk:{' '}
+      {rest.map((x, i) => (
+        <span key={x.key}>{i ? '; ' : ''}<button type="button" className="kmw__morelink" onClick={() => setPick(x.key)}>{x.title}</button></span>
+      ))}
+    </p>
+  ) : null;
+  return <KmwThreadOne key={shown.key} {...props} thread={shown} more={more} />;
+}
+
+function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, asWhy = false, more = null }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
   if (!thread) return null;
@@ -624,7 +646,7 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
           <div>{thread.evidence.map((e, i) => <p key={i} className="kmw__rowline">{e.fact}</p>)}</div>
         </div>
       </div>
-      {thread.more && <p className="kmw__more">{thread.more.count === 1 ? 'One more' : `${thread.more.count} more`} at risk: {thread.more.titles.join('; ')}</p>}
+      {more}
       {open && (
         <div className="kmw__actions">
           <button type="button" className="kmw__open" onClick={open}>Open the task</button>

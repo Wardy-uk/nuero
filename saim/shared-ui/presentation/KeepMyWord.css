@@ -38,6 +38,8 @@
 .kmw__path { font-family: ui-monospace, Consolas, monospace; font-size: 10px; word-break: break-word; }
 .kmw__checked { margin: 12px 0 0; font-size: 11px; color: var(--kmw-dim); letter-spacing: .04em; }
 .kmw__more { margin: 12px 0 0; font: 12px/1.5 Georgia, serif; color: var(--kmw-dim); }
+.kmw__morelink { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.kmw__morelink:hover, .kmw__morelink:focus-visible { color: var(--kmw-ink); }
 .kmw__actions { margin-top: 20px; display: flex; gap: 18px; align-items: center; }
 .kmw__open { border: 0; background: var(--kmw-gold); color: #22170d; padding: 11px 15px; font-size: 12px; font-weight: 800; cursor: pointer; }
 

@@ -481,3 +481,13 @@ test('AttentionSurface makes the scene the default situation home and gives her 
   const tabs = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'tabs.jsx'), 'utf-8');
   assert.match(tabs, /export const DEFAULT_TAB = 'surface';/, 'the app opens on the Surface — no flag, no navigation');
 });
+
+test('two promises at risk: the second is named as a tappable link, and the thread carries it whole (31 Oct 2026)', () => {
+  const second = { ...DRAFT_ITEM, key: 'promise:other', title: 'Evaluate a business WhatsApp account' };
+  const kmw = k.compose({ score: SCORE, workbench: { ...BENCH, items: [THREAD_ITEM, second] }, authority: OPEN, presentation: CALM, now: NOW });
+  assert.equal(kmw.thread.others.length, 1, 'the other promise travels with the thread');
+  assert.equal(kmw.thread.others[0].title, 'Evaluate a business WhatsApp account');
+  assert.deepEqual(kmw.thread.others[0].more.titles, [THREAD_ITEM.title], 'switched, the first one becomes the "more"');
+  const out = html(presentationWith(kmw, CALM), 'desktop');
+  assert.match(out, /class="kmw__morelink"[^>]*>Evaluate a business WhatsApp account<\/button>/, 'the title is a button');
+});

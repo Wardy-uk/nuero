@@ -294,7 +294,13 @@ function moveView(m) {
 function threadFrom(workbench, authority, delivery = null, moves = null) {
   const items = (workbench && workbench.items) || [];
   if (!items.length) return null;
-  const it = items[0];
+  const all = items.map((it) => oneThread(it, items, authority, delivery, moves));
+  // The other promises at risk, whole, so the scene can switch to one when
+  // Nick taps it (31 Oct 2026) — the order stays the workbench's.
+  return { ...all[0], others: all.slice(1) };
+}
+
+function oneThread(it, items, authority, delivery, moves) {
   const move = moveView(moves ? moves[it.key] : null);
   // A needs-a-block promise SAiM can PREPARE is not held: the allowance only
   // matters when a prepared move is confirmed, and that confirm names it.
@@ -312,7 +318,7 @@ function threadFrom(workbench, authority, delivery = null, moves = null) {
     held: held ? { say: held } : null,
     draft,
     move,
-    more: items.length > 1 ? { count: items.length - 1, titles: items.slice(1).map((x) => x.title) } : null,
+    more: items.length > 1 ? { count: items.length - 1, titles: items.filter((x) => x !== it).map((x) => x.title) } : null,
   };
 }
 
