@@ -185,6 +185,60 @@ test('discovery once; the next Monday it is still "waiting", never raised twice'
   assert.equal((await shadow.tick({ now: london(MON, '07:35'), readNow: STEADY })).idle, true, 'each moment once');
 });
 
+test('context unknown: silent, and the suppression and its reason are logged', async () => {
+  await shadow.tick({ now: london(TUE, '12:30'), readNow: async () => { throw new Error('HA unreachable'); } });
+  const s = rows('moment = ?', [`window:${TUE}:1`]);
+  assert.equal(s.length, 1); assert.equal(s[0].kind, 'suppression');
+  assert.match(s[0].reason, /no SAiM decision — staying quiet/);
+  const p0 = JSON.parse(s[0].payload_json);
+  assert.equal(p0.contextUnknown, true);
+  assert.deepEqual(p0.read, { ok: false, error: 'HA unreachable' });
+  await shadow.tick({ now: london(TUE, '17:30'), readNow: async () => nowPayload({ activity: 'unknown' }) });
+  const u = rows('moment = ?', [`window:${TUE}:2`])[0];
+  assert.match(u.reason, /context unknown — staying quiet/);
+  assert.equal(JSON.parse(u.payload_json).gate.reason, u.reason, 'the row records the gate’s own reason');
+});
+
+test('a pre-meeting moment: one would-be prompt for that person’s promise, once per meeting', async () => {
+  const day = lday(d0 + 3 * DAY);
+  db.run(`INSERT INTO calendar_cache (event_id, subject, start_time, end_time, is_all_day, attendees_other) VALUES (?, ?, ?, ?, 0, 1)`,
+    ['evt-1to1', '1-2-1 Nick / Alex Reed', `${day}T15:30:00`, `${day}T16:00:00`]);
+  await shadow.tick({ now: london(day, '15:10'), readNow: STEADY });
+  const m = rows("moment LIKE 'meeting:%'");
+  assert.equal(m.length, 1);
+  assert.equal(m[0].kind, 'prompt');
+  assert.ok([`promise:${T.alex}`, `promise:${T.rubric}`].includes(m[0].promise_key));
+  await shadow.tick({ now: london(day, '15:15'), readNow: STEADY });
+  assert.equal(rows("moment LIKE 'meeting:%'").length, 1);
+  db.run("DELETE FROM calendar_cache WHERE event_id = 'evt-1to1'");
+});
+
+test('heartbeats: one per hour the pass ran', () => {
+  const hb = rows("kind = 'heartbeat'").map((r) => r.moment);
+  assert.equal(new Set(hb).size, hb.length);
+  assert.ok(hb.length >= 3);
+});
+
+test('a moved checkout is recorded as stale, rows attributed to the commit actually running', async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'pshadow-repo-'));
+  const git = (...a) => execFileSync('git', a, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  git('init', '-q'); git('config', 'user.email', 't@t'); git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'a'), '1'); git('add', 'a'); git('commit', '-qm', 'one');
+  const first = git('rev-parse', 'HEAD');
+  shadow._resetIdentity();
+  shadow.registerPromiseShadow({ PROMISE_SHADOW_ENABLED: 'true' }, { schedule: fakeSchedule, repoDir: repo });
+  fs.writeFileSync(path.join(repo, 'a'), '2'); git('commit', '-qam', 'two');
+  const day = lday(d0 + 4 * DAY);
+  await shadow.tick({ now: london(day, '07:30'), readNow: STEADY, repoDir: repo });
+  const b = JSON.parse(rows('moment = ?', [`window:${day}:0`])[0].build_json);
+  assert.equal(b.runningSha, first);
+  assert.equal(b.checkoutSha, git('rev-parse', 'HEAD'));
+  assert.equal(b.stale, true);
+  fs.writeFileSync(path.join(repo, 'a'), 'dirty');
+  assert.equal(shadow.captureIdentity({ repoDir: repo }).dirty, true, 'an uncommitted change is reported as dirty');
+  shadow._resetIdentity();
+});
+
 // ── 4. Review ────────────────────────────────────────────────────────────────
 
 test('review: labels, a missed promise, and the report', () => {
