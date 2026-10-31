@@ -6196,7 +6196,7 @@
     "domain": "task-agent",
     "source": "routes/task-agent.js",
     "line": 45,
-    "description": "GET /api/task-agent/tasks/:taskId/drafts. the drafts \"Do this\" saved for a task (id, kind, title, full markdown), so Claude desktop or another agent can read the working draft over MCP. Read only. A people matter's drafts are refused (403) and stay in NEURO. Keywords: task agent drafts, do this draf",
+    "description": "GET /api/task-agent/tasks/:taskId/drafts. the drafts \"Do this\" saved for a task (id, kind, title, full markdown), so Claude desktop or another agent can read the working draft over MCP. Read only. Keywords: task agent drafts, do this draft, saved draft, working draft.",
     "params": [
       "taskId"
     ],

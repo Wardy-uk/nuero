@@ -33,8 +33,8 @@ export const interactive = {
   post_prepared_moves_drafts_outcome: 'Abandoning or restoring a saved draft is Nick’s decision about his own work, in NEURO → Drafts.',
   post_task_context_activate: 'Turning on automatic context linking runs the backfill over the whole vault. Only Nick can do it, in NEURO → Settings, after the vault cleanup. Read get_task_context_status instead.',
   post_task_context_deactivate: 'Turning automatic context linking off is Nick’s decision, in NEURO → Settings.',
-  // 23 Oct 2026: "Do this" — the task agent. Neither the control nor its working
-  // output reaches an agent: the output can quote a restricted note Nick alone may see.
+  // 23 Oct 2026: "Do this" — the task agent. Its routes are Nick-only on the server
+  // (it spends his own Anthropic key and acts with his authority), so they are refused here too.
   get_task_agent_tasks_by_taskId: 'A task’s “Do this” workspace is Nick’s alone, in NEURO on his desktop or phone. It is not available to agents.',
   get_task_agent_active: 'The list of “Do this” work in progress is Nick’s alone, in NEURO → Drafts. It is not available to agents.',
   post_task_agent_tasks_by_taskId_start: 'Only Nick can press “Do this” on a task, in NEURO. An agent cannot start NEURO’s task agent.',
@@ -283,7 +283,7 @@ const SESSION_NOTE = 'Opens a standup conversation driven by NEURO\'s own AI (st
 const RECORD_NOTE = 'THE canonical way to complete this ritual when you have already run it with the user in conversation. Do not use capture_note / post_capture_note for a standup or EOD: that files prose the ritual system cannot see. This writes NEURO\'s own daily-note format (the same one its native standup writes), preserves everything else already in the note, and is idempotent — calling it again replaces today\'s ritual rather than duplicating it.';
 export const notes = {
   // Task context (22 Oct 2026). Literal keywords, for the same substring-match reason as below.
-  get_task_context_tasks_by_taskId: 'task-context.read. Search keywords: task context, pinned context, related notes, linked notes, project for task, why is this linked. Returns pinned items (title, type note|project|area, one-line reason, automatic or linked-by-you), suggestions, stale links and any open question. Restricted notes come back by title only (preview withheld) — do not try to read their content.',
+  get_task_context_tasks_by_taskId: 'task-context.read. Search keywords: task context, pinned context, related notes, linked notes, project for task, why is this linked. Returns pinned items (title, type note|project|area, one-line reason, automatic or linked-by-you), suggestions, stale links and any open question.',
   get_task_context_search: 'task-context.search. Search keywords: find context, search notes for task, link note candidates. query.q (2+ chars) matches note titles/paths and project/area names; pass query.taskId to mark what is already linked.',
   get_task_context_suggestions: 'task-context.suggestions. Search keywords: context suggestions, unpinned matches, scan questions. Suggestions are NOT pinned — show them to the user; pin one only when they say so.',
   post_task_context_tasks_by_taskId_links: 'task-context.link. Search keywords: add context, link note to task, attach note, link project, link area, pin context. Link exactly ONE item, and only when the user explicitly asks for that item to be linked — never in bulk, never on your own initiative. body.type is note|project|area; body.ref a vault path or a name. HTTP 409 with needsChoice means more than one thing fits: ask the user which, then call again with the exact ref. Never writes the vault.',
