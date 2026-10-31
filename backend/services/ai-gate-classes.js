@@ -48,6 +48,8 @@ const REGISTRY = {
   // ── vision (Anthropic, cloud only) ─────────────────────────────────────
   vesta_photo: text({ local: false, maxOutputTokens: 8000 }),
   medical_scan: text({ local: false, maxOutputTokens: 8000 }),
+  // A sent PDF whose text could not be pulled out, read by Claude (perf-mail.js; ≤20 pages).
+  perf_doc_read: text({ local: false, maxInputTokens: 70000, maxOutputTokens: 1000 }),
   // ── embeddings (Voyage): input only, batch of ≤128 chunks × ≤32k tokens ─
   embeddings_index: { local: false, noOutput: true, maxInputTokens: 128 * 32000, maxConcurrent: 2 },
   embeddings_query: { local: false, noOutput: true, maxInputTokens: 32000 },

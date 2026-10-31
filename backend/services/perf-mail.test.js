@@ -65,3 +65,49 @@ test('documents and broadcasts are kept; the rest is not', async () => {
   await mail.run({ microsoft: { ...fake, graphFetch: async (url) => { calls.push(url); return { value: [] }; } } });
   assert.match(decodeURIComponent(calls[calls.length - 1]), /sentDateTime gt 2026-09-23T09:00:00Z/);
 });
+
+test('documents: text first, Claude only for a near-empty PDF, unread waits for the next pass', async () => {
+  const atts = {
+    m1: [{ id: 'a1', name: 'Support Standards & Routing Guide.pdf', size: 1000, isInline: false }, { id: 'a0', name: 'logo.png', size: 10, isInline: true }],
+  };
+  const fake = {
+    getAccessToken: async () => 'tok',
+    graphFetch: async (url) => {
+      const one = url.match(/messages\/([^/]+)\/attachments\/([^/?]+)/);
+      if (one) return { contentBytes: Buffer.from('pdf-bytes').toString('base64') };
+      const list = url.match(/messages\/([^/]+)\/attachments/);
+      if (list) return { value: atts[decodeURIComponent(list[1])] || [] };
+      return null;
+    },
+  };
+  const visionCalls = [];
+  const provider = { isConfigured: () => true, vision: async (sys, input) => { visionCalls.push(input); return { text: 'Defines who owns a ticket and how it is routed.', usage: {}, model: 'm' }; } };
+  const aiRouting = { isCloudAllowed: () => true, recordUsage: () => {} };
+
+  // Text came out: carried as is, no model call.
+  let r = await mail.readDocs({ microsoft: fake, provider, aiRouting, maxPages: 20,
+    extract: async () => ({ ok: true, text: 'Ticket ownership. '.repeat(30) }) });
+  assert.equal(r.text, 1);
+  assert.equal(visionCalls.length, 0);
+  let item = mail.itemsFor({ from: '2026-09-01', to: '2026-09-30' }).find((i) => i.kind === 'mail-document');
+  assert.match(item.detail, /Attachment "Support Standards & Routing Guide.pdf" begins: Ticket ownership/);
+
+  // A scanned PDF (no text): Claude reads it — but only within the pass's budget.
+  require('../db/database').getDb().prepare('UPDATE perf_mail_items SET doc_text = NULL').run();
+  const scanned = async () => ({ ok: true, text: '', pages: 3 });
+  r = await mail.readDocs({ microsoft: fake, provider, aiRouting, maxPages: 20, extract: scanned, aiPerRun: 0 });
+  assert.equal(r.read, 0, 'no budget: left for the next pass');
+  r = await mail.readDocs({ microsoft: fake, provider, aiRouting, maxPages: 20, extract: scanned });
+  assert.equal(r.ai, 1);
+  assert.ok(visionCalls[0].pdfBase64);
+  item = mail.itemsFor({ from: '2026-09-01', to: '2026-09-30' }).find((i) => i.kind === 'mail-document');
+  assert.match(item.detail, /\(read by AI\): Defines who owns a ticket/);
+
+  // Too many pages for the model: said, not guessed.
+  require('../db/database').getDb().prepare('UPDATE perf_mail_items SET doc_text = NULL').run();
+  r = await mail.readDocs({ microsoft: fake, provider, aiRouting, maxPages: 20, extract: async () => ({ ok: true, text: '', pages: 80 }) });
+  assert.equal(r.unreadable, 1);
+  assert.equal(visionCalls.length, 1);
+  item = mail.itemsFor({ from: '2026-09-01', to: '2026-09-30' }).find((i) => i.kind === 'mail-document');
+  assert.match(item.detail, /could not be read \(almost no text in it\)/);
+});

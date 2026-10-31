@@ -263,6 +263,8 @@ function start() {
   // Documents and team-wide mail Nick sent from Outlook (perf-mail.js), hourly, GET only.
   cron.schedule('17 * * * *', () => require('./perf-mail').run()
     .then((r) => { if (!r.ok) console.warn('[PerfMail]', r.error); else if (r.kept) console.log('[PerfMail]', JSON.stringify(r)); })
+    .then(() => require('./perf-mail').readDocs())
+    .then((r) => { if (r && (r.read || r.failed || r.error)) console.log('[PerfMail] docs', JSON.stringify(r)); })
     .catch((e) => console.warn('[PerfMail]', e.message)));
 
   cron.schedule('35 * * * *', () => {
