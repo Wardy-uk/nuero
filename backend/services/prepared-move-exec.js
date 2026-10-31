@@ -90,7 +90,7 @@ const refuse = (reasons, extra = {}) => ({ ok: false, refused: true, reasons: []
 
 /**
  * PURE. The exact writes one option of a packet would make, and their hash —
- * or why there are none. Scope and sensitivity are judged here; anything that
+ * or why there are none. Scope is judged here; anything that
  * depends on the clock or the world is a fresh check, below.
  */
 function writesFor(packet, option) {
@@ -139,24 +139,24 @@ function writesFor(packet, option) {
 /**
  * Where a v2 note may be saved, by kind — EXISTING folders only (the writer
  * refuses to create one): a project note inside an existing Projects/<Folder>
- * (never Archive or PIP), a meeting prep beside the meeting notes it belongs
+ * (never Archive), a meeting prep beside the meeting notes it belongs
  * with (Meetings/YYYY/MM, the convention the vault's prep notes already use).
  */
 const V2_NOTE_RULES = Object.freeze({
-  'project-note': (p) => { const m = /^Projects\/([^/]+)\/[^/]+\.md$/.exec(p); return Boolean(m) && !['Archive', 'PIP'].includes(m[1]); },
+  'project-note': (p) => { const m = /^Projects\/([^/]+)\/[^/]+\.md$/.exec(p); return Boolean(m) && m[1] !== 'Archive'; },
   'meeting-prep': (p) => /^Meetings\/\d{4}\/\d\d\/[^/]+ Prep\.md$/.test(p),
 });
 /**
- * Where a PRIVATE working draft may be saved (26 Oct 2026): a project folder,
- * or the fixed holding place Projects/Working — NEVER beside a meeting (the
- * meeting note is evidence, not a destination).
+ * Where a LEGACY private working draft (records made before 31 Oct 2026, when
+ * private drafts were retired) may be saved: a project folder, or the fixed
+ * holding place Projects/Working.
  */
-const PRIVATE_NOTE_RULE = (p) => /^Projects\/(?!Archive\/|PIP\/)[^/]+\/[^/]+ \(private draft\)\.md$/.test(p);
+const PRIVATE_NOTE_RULE = (p) => /^Projects\/(?!Archive\/)[^/]+\/[^/]+ \(private draft\)\.md$/.test(p);
 
-/** PURE. Where a private draft's path puts it, in words — read from the PATH, so the confirmation and the receipt cannot claim more than the write. */
+/** PURE. Where a draft's path puts it, in words — read from the PATH, so the confirmation and the receipt cannot claim more than the write. */
 function destinationOf(p) {
   const folder = path.posix.dirname(String(p || ''));
-  if (folder === require('./private-brief').WORKING_FOLDER) return { folder, project: null, say: 'Working drafts' };
+  if (folder === require('./prepared-move-planner').WORKING_FOLDER) return { folder, project: null, say: 'Working drafts' };
   const m = /^Projects\/([^/]+)$/.exec(folder);
   return { folder, project: m ? m[1] : null, say: m ? `Linked to project: ${m[1]}` : folder };
 }
@@ -164,17 +164,19 @@ function destinationOf(p) {
 /** PURE. Questions of a private draft's interview that are neither answered nor parked. */
 function openQuestions(s) { return (((s && s.interview) || {}).questions || []).filter((q) => q.state === 'open'); }
 
+/** The label every legacy private draft carried. */
+const LEGACY_PRIVATE_LABEL = 'Private draft for Nick — no decision made, nothing sent.';
+
 /**
- * PURE. Is this v2 packet a PRIVATE working draft that may be carried out
- * despite its employment-sensitive source (25 Oct 2026)? Only a project-note
- * the planner marked private-draft, whose draft carries the private label,
- * whose writes are a note and/or a solo block (never a reply), and whose note
- * path is a private-draft path. Anything else stays routing only.
+ * PURE. Is this v2 packet a LEGACY private working draft (made before
+ * 31 Oct 2026, when private drafts were retired)? Kept only so a record still
+ * in the store renders and confirms as it was prepared: its interview and its
+ * "save unfinished" option. No new private drafts are ever planned.
  */
 function privateDraftAllowed(s, draft) {
   const sc = (s && s.screens) || {};
   if (!sc.employment || sc.employment.mode !== 'private-draft' || s.kind !== 'project-note') return false;
-  if (!require('./private-brief').isPrivateDraft(draft)) return false;
+  if (!String(draft || '').includes(LEGACY_PRIVATE_LABEL)) return false;
   const writes = ((s.decision || {}).proposedWrites || []);
   if (!writes.length || writes.some((w) => !['vault.note', 'calendar.solo'].includes(w.kind))) return false;
   const note = writes.find((w) => w.kind === 'vault.note');
@@ -224,7 +226,7 @@ function writesForV2(packet, option) {
     const p = String(note.path || '');
     const rule = privateDraft ? PRIVATE_NOTE_RULE : V2_NOTE_RULES[s.kind];
     if (!rule || p.includes('..') || p.includes('\0') || !rule(p)) return refuse('the note path is not one a prepared move may save into');
-    const content = ['---', 'type: draft', ...(privateDraft ? ['private: true'] : []), ...(unfinished ? ['unfinished: true'] : []), 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
+    const content = ['---', 'type: draft', ...(unfinished ? ['unfinished: true'] : []), 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
     steps.push({ step: 'note', writer: WRITER.note, path: p, content, contentSha: sha(content) });
     if (privateDraft) {
       destination = destinationOf(p);
@@ -400,9 +402,9 @@ function liveAdapters() {
         const p = guard(rel);
         if (!fs.existsSync(path.dirname(p))) {
           // The ONE folder a save may create (26 Oct 2026): Projects/Working, the fixed
-          // holding place for private drafts with no project home. Never a folder named
+          // holding place for drafts with no project home. Never a folder named
           // by a move, an answer or anyone's words — and only inside an existing Projects/.
-          const working = guard(require('./private-brief').WORKING_FOLDER);
+          const working = guard(require('./prepared-move-planner').WORKING_FOLDER);
           if (path.dirname(p) !== working || !fs.existsSync(path.dirname(working))) throw new Error('HTTP 400 the project folder does not exist — not creating folders');
           fs.mkdirSync(working);
         }
@@ -781,7 +783,7 @@ async function requestForMove({ option = 'approve', recordId = null, surface = '
   }
   // Off duty or on leave: the move stays held. Nothing stored, nothing minted.
   // A packet that does not say is treated as off duty (fail closed).
-  // (An out-of-scope or employment move is refused as THAT first — never as held.)
+  // (An out-of-scope move is refused as THAT first — never as held.)
   const w0 = writesFor(packet, option);
   if (!w0.ok) return { ...w0, code: 409 };
   if (!packet.duty || packet.duty.onDuty !== true) return refuse(HELD, { code: 409, held: true });

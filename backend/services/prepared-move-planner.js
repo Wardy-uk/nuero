@@ -44,7 +44,7 @@ const KINDS = Object.freeze(['email-reply', 'meeting-prep', 'project-note']);
 /** Completing adapters (step 1). Deliberately empty in the MVP — see header. */
 const DO_ADAPTERS = Object.freeze([]);
 /** Project folders never written into, whatever a task's source says. */
-const DENY_FOLDERS = Object.freeze(['Archive', 'PIP', '_about.md']);
+const DENY_FOLDERS = Object.freeze(['Archive', '_about.md']);
 /** A meeting this soon cannot be prepared for in time; one already started is not prepared at all. */
 const MIN_MEETING_LEAD_MIN = 15;
 const BLOCK_MINUTES = 30;
@@ -245,8 +245,7 @@ function normalise(c, deps) {
   if (!item) return { withhold: 'unresolvable', why: 'The item behind this could not be read.' };
   const q = quickEligible(item);
   if (!q) {
-    if (item.type === 'weekly_risk') return { withhold: 'employment-route', why: 'A deliverable of your own performance plan — routing only.' };
-    if (item.type === 'meeting' && ONE_TO_ONE.test(String(item.title || ''))) return { withhold: 'employment-route', why: '1-2-1 preparation is NOVA’s, and a 1-2-1 is an employment conversation — SAiM does not draft it.' };
+    if (item.type === 'meeting' && ONE_TO_ONE.test(String(item.title || ''))) return { withhold: 'nova-owned', why: '1-2-1 preparation is NOVA’s — SAiM does not draft it.' };
     if (item.type === 'meeting' && item.meta && item.meta.withOthers !== true) return { withhold: 'not-a-commitment', why: 'A block with nobody else in it has nothing to prepare for others.' };
     if (item.type === 'meeting') return { withhold: 'too-soon', why: `It starts in under ${MIN_MEETING_LEAD_MIN} minutes — too soon to prepare well.` };
     return { withhold: 'unsupported-kind', why: `SAiM has no safe way to take “${item.type}” items forward yet — it can draft email replies, meeting preparation and project notes.` };
@@ -273,36 +272,20 @@ function normalise(c, deps) {
  * Reads only. `evidenceHash` identifies the inputs, so an unchanged candidate
  * can be recognised BEFORE paying for a model call.
  */
-/**
- * READ-ONLY. Is this task's promise for a PRIVATE DRAFT only? True when its
- * own wording is ordinary but the meeting/project note it came from discusses
- * people's employment (prepared-move.employmentScreen over the source note).
- * → { privateDraft, categories, sourceText }
- */
-function promiseMode(task, roster) {
-  if (!task || !task.origin_path) return { privateDraft: false, categories: [], sourceText: null };
-  const note = _read(task.origin_path);
-  const emp = require('./prepared-move').employmentScreen({ wording: task.text, sourceTitle: path.basename(task.origin_path, '.md'), sourceText: note || '', roster });
-  return { privateDraft: emp.sensitive && !emp.categories.includes('hr-wording') && !emp.categories.includes('pip-deliverable'), categories: emp.categories, sourceText: note };
-}
+/** Where a draft with no single evidenced project is kept. */
+const WORKING_FOLDER = 'Projects/Working';
 
 /**
- * READ-ONLY. The gather result for a private working brief: a deterministic
- * draft (private-brief.compose — no model, nothing invented), saved beside its
- * source note, with the decisions as the things only Nick can supply.
- */
-/**
- * READ-ONLY. Where a private draft is kept (26 Oct 2026, Nick's rule). Never
+ * READ-ONLY. Where a draft is kept (26 Oct 2026, Nick's rule). Never
  * asked, never guessed, never beside the source meeting: the meeting note is
  * EVIDENCE, not a destination. A project's folder ONLY when exactly one
  * existing project is demonstrated — the task's own origin is inside that
  * project's folder, and/or Nick explicitly linked the task to it — and no
  * evidence points anywhere else. Otherwise the fixed holding place
- * Projects/Working (private-brief.WORKING_FOLDER).
+ * Projects/Working (WORKING_FOLDER).
  *   → { folder, project|null, basis: 'task-origin'|'project-link'|'none'|'conflict', candidates }
  */
 function destinationFor(task, deps) {
-  const brief = require('./private-brief');
   const folders = projectFolders();
   const found = new Map(); // project folder → basis
   const origin = /^Projects\/([^/]+)\//.exec(String((task && task.origin_path) || ''));
@@ -314,54 +297,11 @@ function destinationFor(task, deps) {
     if (m && folders.includes(m[1]) && !found.has(m[1])) found.set(m[1], 'project-link');
   }
   if (found.size === 1) { const [project, basis] = [...found][0]; return { folder: `Projects/${project}`, project, basis, candidates: [project] }; }
-  return { folder: brief.WORKING_FOLDER, project: null, basis: found.size ? 'conflict' : 'none', candidates: [...found.keys()] };
-}
-
-/** Bumped whenever what a private draft IS changes (26 Oct 2026: the interview + where it is kept). */
-const PRIVATE_DRAFT_RULE = 'interview-1';
-
-function privateBriefGather({ n, p, task, mode, roster, answers, said, observed, freshness, nowMs, deps }) {
-  const brief = require('./private-brief');
-  const origin = String(task.origin_path || '');
-  const t = safeTitle(task.text);
-  if (!t) return { ok: false, withhold: 'unresolvable', why: 'The task’s wording cannot be made into a note name.' };
-  const dest = destinationFor(task, deps);
-  const notePath = `${dest.folder}/${t} (private draft).md`;
-  const employment = { sensitive: true, categories: mode.categories, mode: 'private-draft' };
-  observed.push({ fact: `Task #${task.id} is open: “${task.text}”${task.due_date ? `, due ${dayLong(task.due_date)}` : ''}.`, source: { kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString() } });
-  observed.push({ fact: 'Its source note discusses people’s employment, so SAiM only prepares a private draft for you — no decision, no contact, nothing sent.', source: { kind: 'note', ref: origin || 'the promise', observedAt: new Date(nowMs).toISOString() } });
-  observed.push({ fact: dest.project
-    ? `It belongs to one project, ${dest.project} (${dest.basis === 'task-origin' ? 'the task came from that project’s notes' : 'you linked the task to it'}), so the draft is kept there.`
-    : `No single project is evidenced${dest.basis === 'conflict' ? ` (it points at ${dest.candidates.join(' and ')})` : ''}, so the draft is kept in your working drafts.`, source: { kind: 'note', ref: dest.folder, observedAt: new Date(nowMs).toISOString() } });
-  const src = brief.sourceLines(mode.sourceText || '', p.text || task.text, roster);
-  const purpose = said('purpose');
-  if (!src.lines.length && !purpose) {
-    return { ok: true, plan: 'ask', title: task.text, observed, facts: [], freshness, questions: [{ id: 'purpose', question: 'What should this private draft help you decide?', why: 'Your notes say nothing SAiM can use about it beyond the task’s wording, so a draft would have nothing to stand on.', choices: [] }], employment, privateDraft: true, evidenceHash: sha(JSON.stringify([n.sourceKey, 'private-ask-purpose', answers || []])) };
-  }
-  if (_exists(notePath)) return { ok: false, withhold: 'already-in-progress', why: `Your private draft already exists: ${notePath}.` };
-  // The interview's own answers and parks are placed by compose(); anything else Nick said (what it is for) is quoted as-is.
-  const ivIds = new Set(brief.interviewFor(p.text || task.text).map((q) => q.id));
-  const youSaid = (answers || []).filter((a) => !['owed', 'withdraw', 'folder', brief.PARK_ID].includes(a.questionId) && !ivIds.has(a.questionId)).map((a) => ({ text: a.text }));
-  const todayYmd = new Date(nowMs).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10);
-  const out = brief.compose({
-    title: task.text, promiseText: p.text || task.text, dueLabel: task.due_date ? `Due ${dayLong(task.due_date)}` : null,
-    source: { path: origin, title: path.basename(origin, '.md') }, lines: src.lines, leftOut: src.leftOut, said: youSaid, answers: answers || [], todayYmd,
-  });
-  return {
-    ok: true, plan: 'draft', needsDraft: false, privateDraft: { text: out.text, gaps: out.gaps, leftOut: src.leftOut, interview: out.interview },
-    title: task.text, task: { id: task.id, text: task.text, due: task.due_date || null },
-    // Projects/Working is created by the governed save itself if it is not there yet.
-    notePath, folder: dest.folder, destination: dest, folderExists: dest.folder === brief.WORKING_FOLDER ? true : _exists(dest.folder), observed, facts: out.facts, freshness,
-    // The RULE is part of the evidence: a draft planned under an older rule (no interview, another place) must never match a fresh one.
-    evidenceHash: sha(JSON.stringify([n.sourceKey, 'private-draft', PRIVATE_DRAFT_RULE, dest.folder, task.text, src.lines.map((l) => l.line + l.text), src.leftOut, answers || []])),
-    employment,
-  };
+  return { folder: WORKING_FOLDER, project: null, basis: found.size ? 'conflict' : 'none', candidates: [...found.keys()] };
 }
 
 async function gather(n, ctx) {
   const { deps, roster, nowMs, answers } = ctx;
-  const pm = require('./prepared-move');
-  const ledger = require('./promise-ledger');
   const said = (id) => { const a = (answers || []).filter((x) => x.questionId === id).pop(); return a ? a.text : null; };
   const facts = []; // { text, cite, kind:'source'|'you' }
   const observed = [];
@@ -378,7 +318,6 @@ async function gather(n, ctx) {
     if (live) return { ok: false, withhold: 'already-in-progress', why: `A reply to it is already ${live.status} in Actions.` };
     const body = await deps.emailBody(n.source.emailId);
     if (!body || body.trim().length < 20) return { ok: false, withhold: 'unreadable', why: 'SAiM could not read the email itself, so it will not guess at a reply. Open it in your inbox.' };
-    const emp = pm.employmentScreen({ wording: `${e.subject || ''}\n${body}`, sourceTitle: e.subject || '', sourceText: body, roster });
     const receivedAt = e.received || e.receivedAt || null;
     const triagedAt = e.triagedAt || null;
     freshness.push({ kind: 'triage', ref: 'email triage', observedAt: triagedAt, maxHours: 26 });
@@ -392,7 +331,6 @@ async function gather(n, ctx) {
       email: { id: n.source.emailId, subject: e.subject || '', from, fromName: e.from || null, body: body.slice(0, 6000) },
       observed, facts, freshness,
       evidenceHash: sha(JSON.stringify([n.sourceKey, sha(body), e.subject, answers || []])),
-      employment: emp,
     };
   }
 
@@ -402,7 +340,7 @@ async function gather(n, ctx) {
     if (ev.show_as === 'cancelled') return { ok: false, withhold: 'gone', why: 'That meeting has been cancelled.' };
     if (require('./meeting-finish').skippedNow(ev)) return { ok: false, withhold: 'gone', why: 'You said you’re not going to that meeting.' };
     if (ev.attendees_other !== 1) return { ok: false, withhold: 'not-a-commitment', why: 'Nobody else is in it.' };
-    if (ONE_TO_ONE.test(ev.subject || '')) return { ok: false, withhold: 'employment-route', why: '1-2-1 preparation is NOVA’s.' };
+    if (ONE_TO_ONE.test(ev.subject || '')) return { ok: false, withhold: 'nova-owned', why: '1-2-1 preparation is NOVA’s.' };
     const startLocal = String(ev.start_time).slice(0, 16);
     const startMs = require('./prepared-move-exec').londonMs(startLocal.slice(0, 10), startLocal.slice(11, 16));
     if (startMs - nowMs < MIN_MEETING_LEAD_MIN * 60000) return { ok: false, withhold: 'too-soon', why: 'It starts too soon to prepare for.' };
@@ -432,7 +370,6 @@ async function gather(n, ctx) {
       notePath: `${folder}/${startLocal.slice(0, 10)} – ${t} Prep.md`, folderExists: _exists(folder),
       observed, facts, freshness,
       evidenceHash: sha(JSON.stringify([n.sourceKey, facts.map((f) => f.text), answers || []])),
-      employment: { sensitive: false, categories: [] },
     };
   }
 
@@ -467,7 +404,7 @@ async function gather(n, ctx) {
   if (!folder) {
     return { ok: true, plan: 'ask', title: task.text, observed, facts, freshness, questions: [questionFor('no-folder', { folders })], evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask-folder', answers || []])) };
   }
-  if (DENY_FOLDERS.includes(folder)) return { ok: false, withhold: 'employment-route', why: 'That folder is never written into.' };
+  if (DENY_FOLDERS.includes(folder)) return { ok: false, withhold: 'no-location', why: 'That folder is never written into.' };
   const lines = deps.evidenceLines(task.text, { roster, folder });
   for (const l of lines) facts.push({ text: l.text, cite: l.cite, kind: 'source' });
   if (!lines.length && !said('purpose')) {
@@ -481,7 +418,6 @@ async function gather(n, ctx) {
     ok: true, plan: 'draft', needsDraft: true, title: task.text, task: { id: task.id, text: task.text, due: task.due_date || null },
     notePath, folder, folderExists: _exists(`Projects/${folder}`), observed, facts, freshness,
     evidenceHash: sha(JSON.stringify([n.sourceKey, task.text, lines.map((l) => l.cite + l.text), answers || []])),
-    employment: { sensitive: false, categories: [] },
   };
 }
 
@@ -506,22 +442,20 @@ function composeV2({ n, g, draft, slot, alternatives = [], decision, duty, nowMs
   const base = {
     ref: n.ref, title: g.title || n.title, kind, sourceKey: n.sourceKey, source: n.source, moveKey,
     evidenceHash: g.evidenceHash, observed: g.observed || [], freshness: fresh.rows,
-    screens: { employment: g.employment || { sensitive: false, categories: [] }, freshnessOk: fresh.ok, recordUnique: true },
-    ...(g.privateDraft ? { privateDraft: privateDraftView() } : {}),
+    screens: { freshnessOk: fresh.ok, recordUnique: true },
     do: { considered: DO_ADAPTERS.length ? DO_ADAPTERS : [], why: 'Nothing NEURO can do today completes this without inventing a fact or committing you to something, so SAiM goes as far as a draft.' },
   };
   if (g.plan === 'ask') {
     return {
       ...base, plan: 'ask',
-      headline: g.privateDraft ? 'I can prepare a private draft for you — I need one thing first.'
-        : ((g.questions || [])[0] || {}).id === 'owed' ? 'I can take this forward — I need to know who it is owed to.'
+      headline: ((g.questions || [])[0] || {}).id === 'owed' ? 'I can take this forward — I need to know who it is owed to.'
         : kind === 'project-note' ? 'I can start this — I need one thing from you first.' : kind === 'meeting-prep' ? `I can prepare for ${g.title} — tell me what you want from it.` : 'I need one thing from you before I can draft this.',
       outcome: { goal: kind === 'meeting-prep' ? `Walk into ${g.title} prepared.` : `Get “${g.title}” started.`, firstStep: 'Answer the question below.' },
       ask: { questions: g.questions },
       deliverable: { kind, title: g.title, sourceFacts: g.facts || [], suggested: null, gaps: [] },
       preparation: [{ did: 'Screened it and gathered what your notes say.', sideEffect: 'none' }],
       decision: { slots: [], proposedWrites: [] },
-      authority: { needsApproval: [], mustNot: g.privateDraft ? MUST_NOT_PRIVATE : MUST_NOT[kind] },
+      authority: { needsApproval: [], mustNot: MUST_NOT[kind] },
       verification: { checks: [] },
     };
   }
@@ -538,35 +472,23 @@ function composeV2({ n, g, draft, slot, alternatives = [], decision, duty, nowMs
     writes.push({ kind: 'governed.reply', emailId: g.email.id, mode: 'reply', to: g.email.from, toName: g.email.fromName, subject: g.email.subject, body: draft.text });
   } else {
     const isPrep = kind === 'meeting-prep';
-    headline = isPrep ? `I made the prep for ${g.title} ready.` : g.privateDraft ? `I prepared a private draft for you — ${require('./private-brief').LABEL.replace(/^Private draft for Nick — /, '')}` : `I drafted “${safeTitle(g.title)}”.`;
+    headline = isPrep ? `I made the prep for ${g.title} ready.` : `I drafted “${safeTitle(g.title)}”.`;
     goal = isPrep ? `Walk into ${g.title} on ${dayLong(g.meeting.start)} ${g.meeting.start.slice(11, 16)} with what is open in front of you.` : `Get “${g.title}” from a task to a first draft.`;
     firstStep = gaps.length ? `Fill in what only you know: ${gaps[0]}` : 'Read the draft and save it.';
     doneWhen = isPrep ? 'The prep note is saved and the meeting happens with it to hand.' : 'The draft is saved and your own words go past what SAiM wrote.';
-    deliverableTitle = isPrep ? `${g.title} — prep` : g.privateDraft ? `${safeTitle(g.title)} — private draft` : `${safeTitle(g.title)} (draft)`;
-    if (g.privateDraft) {
-      goal = `Think “${g.title}” through yourself, with what your notes say in one place.`;
-      firstStep = 'Read the decisions in the draft — they are yours to make.';
-      doneWhen = 'You have made the decisions yourself. SAiM makes none and sends nothing.';
-    }
-    noteContent = g.privateDraft ? draft.text : noteMarkdown({ title: deliverableTitle, kind, sourceFacts, suggested: draft.text, gaps, why: isPrep ? `Prepared for ${g.title}, ${dayLong(g.meeting.start)} ${g.meeting.start.slice(11, 16)}.` : `Prepared from task #${g.task.id}: “${g.task.text}”.` });
+    deliverableTitle = isPrep ? `${g.title} — prep` : `${safeTitle(g.title)} (draft)`;
+    noteContent = noteMarkdown({ title: deliverableTitle, kind, sourceFacts, suggested: draft.text, gaps, why: isPrep ? `Prepared for ${g.title}, ${dayLong(g.meeting.start)} ${g.meeting.start.slice(11, 16)}.` : `Prepared from task #${g.task.id}: “${g.task.text}”.` });
     writes.push({ kind: 'vault.note', path: g.notePath });
   }
   const slots = [{ id: 'approve', ...(slot ? { date: slot.date, start: slot.startTime, end: slot.endTime } : {}) },
     ...alternatives.map((a, i) => ({ id: `slot-${i + 1}`, date: a.date, start: a.startTime, end: a.endTime }))];
-  // A private draft whose interview still has open questions (26 Oct 2026):
-  // the ONLY thing that can be confirmed is saving it UNFINISHED, which books
-  // no time. "Save it and protect the time" (approve) is refused by the
-  // executor until every question is answered or parked.
-  const interview = g.privateDraft && draft && draft.interview ? draft.interview : null;
-  if (interview && interview.open > 0) slots.unshift({ id: 'unfinished' });
   if (slot) writes.push({ kind: 'calendar.solo', title: blockTitle(deliverableTitle), attendees: [], body: `Prepared by SAiM. Finish: ${g.notePath || deliverableTitle}` });
   return {
     ...base, plan: 'draft', headline,
-    ...(interview ? { interview } : {}),
     outcome: { goal, firstStep, doneWhen },
     deliverable: {
       kind, title: deliverableTitle, sourceFacts,
-      suggested: { label: g.privateDraft ? require('./private-brief').LABEL : 'Suggested wording — SAiM wrote this from the sources above; check it before you use it.', text: draft.text },
+      suggested: { label: 'Suggested wording — SAiM wrote this from the sources above; check it before you use it.', text: draft.text },
       gaps, path: g.notePath || null, ...(g.destination ? { destination: g.destination } : {}), to: g.email ? { email: g.email.from, name: g.email.fromName } : null,
     },
     forum: kind === 'meeting-prep' ? { title: g.title, start: g.meeting.start } : null,
@@ -574,7 +496,7 @@ function composeV2({ n, g, draft, slot, alternatives = [], decision, duty, nowMs
     decision: { slots, proposedWrites: writes, forum: kind === 'meeting-prep' ? { title: g.title, start: g.meeting.start } : null },
     why: slot ? `A block is proposed because the draft leaves ${gaps.length} thing${gaps.length === 1 ? '' : 's'} only you can supply.` : (g.noTimeBecause || null),
     noTimeBecause: g.noTimeBecause || null,
-    authority: { needsApproval: writes.map((w) => w.kind), mustNot: g.privateDraft ? MUST_NOT_PRIVATE : MUST_NOT[kind] },
+    authority: { needsApproval: writes.map((w) => w.kind), mustNot: MUST_NOT[kind] },
     verification: { checks: writes.map((w) => ({ what: w.kind === 'governed.reply' ? 'The reply waits in Actions, not sent' : w.kind === 'vault.note' ? 'The note exists with exactly the confirmed text' : 'The block exists, just you', how: 'read back after writing' })) },
     origin,
   };
@@ -585,20 +507,6 @@ const MUST_NOT = Object.freeze({
   'meeting-prep': ['Message, invite or email anyone in the meeting', 'Accept, decline or move the meeting', 'Create a task or change a commitment'],
   'project-note': ['Overwrite an existing note', 'Email, invite or message anyone', 'Create a task, move a deadline or tick the task'],
 });
-
-/** What a private working draft can never do (25 Oct 2026). */
-const MUST_NOT_PRIVATE = Object.freeze([
-  'Make an employment decision, or present anything as one',
-  'Set targets, terms or rewards for anyone, or judge anyone’s work',
-  'Contact, invite or send anything to anyone',
-  'Change a People note, assign a task, or publish anything',
-]);
-
-/** PURE. How a private draft is labelled wherever it is shown. */
-function privateDraftView() {
-  const b = require('./private-brief');
-  return { label: b.LABEL, cannot: b.CANNOT, can: b.CAN, promise: b.PROMISE };
-}
 
 function blockTitle(t) {
   const s = `Finish ${String(t).replace(/[^A-Za-z0-9 ,'&()–-]+/g, ' ').replace(/\s+/g, ' ').trim()}`;
@@ -710,7 +618,6 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
     let p;
     try { p = deps.promise(key, nowMs); } catch (e) { return { ok: false, outcome: 'withheld', why: `NEURO couldn’t read your promises (${e.message}), so nothing is prepared.`, withheld }; }
     if (!p) return { ok: false, outcome: 'none', why: 'That promise is no longer in what NEURO holds.', withheld };
-    if (p.sensitivity && p.sensitivity.sensitive) return { ok: false, outcome: 'withheld', reason: 'employment-route', why: require('../../saim/policy/promises.cjs').ROUTING_TEXT, withheld };
     if (!p.open) return { ok: false, outcome: 'withheld', reason: 'gone', why: 'That promise is closed — there is nothing left to prepare.', withheld };
     if (deps.promiseDelivered(key)) return { ok: false, outcome: 'withheld', reason: 'delivered', why: 'That promise was already delivered and read back.', withheld };
     const lead = p.leadTaskId || (p.taskIds || [])[0];
@@ -757,8 +664,7 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
     if (ref && !source) {
       const prior = deps.latest(moveKey);
       // A stored QUESTION is never handed back unexamined (25 Oct 2026): what
-      // SAiM needs may have changed (a promise that only allows a private draft
-      // no longer needs "who is it owed to?"). Re-gathering an ask is cheap —
+      // SAiM needs may have changed. Re-gathering an ask is cheap —
       // no model call — and an unchanged one comes back as 'existing' below.
       const live = prior && prior.packet && prior.packet.contract === CONTRACT && Date.parse(prior.evidenceExpiresAt) > nowMs
         && prior.packet.selected && prior.packet.selected.plan !== 'ask'
@@ -803,24 +709,21 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
         continue;
       }
       const sourcesText = [g.title, ...(g.facts || []).map((f) => f.text), g.email ? g.email.body : '', g.email ? g.email.fromName || '' : '', g.meeting ? (g.meeting.people || []).join(' ') : ''].join('\n');
-      // A private working draft is composed, not generated (private-brief.js):
-      // no model is asked, so there is nothing to ground-check.
-      const d = g.privateDraft ? { ok: true, text: g.privateDraft.text, gaps: g.privateDraft.gaps, interview: g.privateDraft.interview, composed: true }
-        : await deps.draft(n.kind, { title: g.title, facts: g.facts, email: g.email || null, meeting: g.meeting || null, task: g.task || null });
+      const d = await deps.draft(n.kind, { title: g.title, facts: g.facts, email: g.email || null, meeting: g.meeting || null, task: g.task || null });
       if (!d || !d.ok || !String(d.text || '').trim()) {
         const why = `SAiM could not draft it just now${d && d.why ? ` (${d.why})` : ''} — it will try again later.`;
         withheld.push({ ref: n.ref, title: n.title, reason: 'no-draft', why });
         if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
         continue;
       }
-      const bad = d.composed ? [] : ungrounded([d.text, ...(d.gaps || [])].join('\n'), sourcesText);
+      const bad = ungrounded([d.text, ...(d.gaps || [])].join('\n'), sourcesText);
       if (bad.length) {
         const why = `The draft brought in things your sources do not say (${bad.slice(0, 3).join(', ')}), so SAiM did not keep it.`;
         withheld.push({ ref: n.ref, title: n.title, reason: 'ungrounded', why });
         if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
         continue;
       }
-      draft = { text: String(d.text).trim(), gaps: (d.gaps || []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 5), ...(d.interview ? { interview: d.interview } : {}) };
+      draft = { text: String(d.text).trim(), gaps: (d.gaps || []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 5) };
       // SCHEDULE — only when the draft needs Nick's own authorship to finish.
       if (n.kind === 'project-note' && draft.gaps.length) {
         const s = _slotFor(deps, nowMs);
@@ -866,7 +769,6 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
  * screen still runs when he presses it.
  */
 function prescreen(n, deps, nowMs) {
-  const ledger = require('./promise-ledger');
   if (n.kind === 'email-reply') {
     const e = deps.triageEntry(n.source.emailId);
     if (!e || e.dismissed) return 'gone';
@@ -879,7 +781,7 @@ function prescreen(n, deps, nowMs) {
     const ev = deps.meetingEvent(n.source.eventId);
     if (!ev || ev.show_as === 'cancelled' || ev.attendees_other !== 1) return 'not-a-commitment';
     if (require('./meeting-finish').skippedNow(ev)) return 'gone';
-    if (ONE_TO_ONE.test(ev.subject || '')) return 'employment-route';
+    if (ONE_TO_ONE.test(ev.subject || '')) return 'nova-owned';
     const st = String(ev.start_time).slice(0, 16);
     if (require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16)) - nowMs < MIN_MEETING_LEAD_MIN * 60000) return 'too-soon';
     return null;
@@ -902,7 +804,7 @@ function rowIdsFor(c, n) {
 /**
  * The Now items SAiM can genuinely take forward right now, each with its EXACT
  * production ref (what /prepare takes) and the Now row ids it is drawn as.
- * READ-ONLY — runs inside a read-only pass. Held, personal, employment, gone,
+ * READ-ONLY — runs inside a read-only pass. Held, personal, NOVA-owned, gone,
  * deferred, declined, done and already-prepared-elsewhere items are left out:
  * no dead buttons.
  */
@@ -943,11 +845,6 @@ async function recheck(packet, { deps: over = {} } = {}) {
   const deps = { ...DEFAULT_DEPS, ...over };
   const s = packet && packet.selected;
   if (!s) return { ok: false, why: 'there is no prepared move' };
-  const ledger = require('./promise-ledger');
-  const draft0 = ((s.preparation || []).find((p) => p.draft) || {}).draft || '';
-  const isPrivate = s.screens && s.screens.employment && s.screens.employment.mode === 'private-draft';
-  // A private draft's "You said" section is Nick's own words in his own note — screened as SAiM's text it would end the interview the moment he wrote "pay".
-  const draft = isPrivate ? require('./private-brief').samText(draft0) : draft0;
   if (s.kind === 'email-reply') {
     const e = deps.triageEntry(s.source.emailId);
     if (!e || e.dismissed) return { ok: false, why: 'the email is no longer waiting in triage — it may already be answered' };
@@ -968,13 +865,6 @@ async function recheck(packet, { deps: over = {} } = {}) {
     if (meetingStarted(s)) return { ok: false, why: 'the meeting has already started' };
     return { ok: true };
   }
-  if (s.screens && s.screens.employment && s.screens.employment.mode === 'private-draft' && s.plan === 'draft') {
-    if (!require('./private-brief').isPrivateDraft(draft0)) return { ok: false, why: 'the draft is no longer marked as your private draft' };
-    // Planned under the 25 Oct rule (no interview; kept beside the meeting): never handed back or confirmed — prepared again.
-    const note = ((s.decision || {}).proposedWrites || []).find((w) => w.kind === 'vault.note');
-    if (!s.interview || !note || !require('./prepared-move-exec').PRIVATE_NOTE_RULE(String(note.path || ''))) return { ok: false, why: 'it was prepared under an older rule — prepare it again' };
-    if (((s.decision || {}).proposedWrites || []).some((w) => !['vault.note', 'calendar.solo'].includes(w.kind))) return { ok: false, why: 'a private draft may only save a note and hold your own time' };
-  }
   const t = deps.task(s.source.taskId);
   if (!t || !['open', 'in-progress'].includes(t.status)) return { ok: false, why: 'the task is no longer open' };
   if (t.text !== s.title) return { ok: false, why: 'the task’s wording has changed since this was prepared' };
@@ -994,8 +884,7 @@ async function recheck(packet, { deps: over = {} } = {}) {
  * Projects/Working), note shape, optional solo block (only when the run left
  * work only Nick can do, through the same slot finder and leave checks),
  * request / confirm / executor and receipts. Nothing new can be confirmed here:
- * this only STORES a proposal. An employment matter is refused, as the
- * executor would refuse it.
+ * this only STORES a proposal.
  *   → { ok, outcome: 'stored'|'unchanged'|'withheld', record?, why? }
  */
 async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [], now = Date.now(), deps: over = {} } = {}) {
@@ -1008,9 +897,8 @@ async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [
   const t = safeTitle(task.text);
   if (!t) return { ok: false, outcome: 'withheld', why: 'The task’s wording cannot be made into a note name.' };
   const dest = destinationFor(task, deps);
-  const brief = require('./private-brief');
   const notePath = `${dest.folder}/${t} (draft).md`;
-  if (dest.folder !== brief.WORKING_FOLDER && !_exists(dest.folder)) return { ok: false, outcome: 'withheld', why: `The folder ${dest.folder} does not exist, and NEURO never creates folders.` };
+  if (dest.folder !== WORKING_FOLDER && !_exists(dest.folder)) return { ok: false, outcome: 'withheld', why: `The folder ${dest.folder} does not exist, and NEURO never creates folders.` };
   const n = { kind: 'project-note', sourceKey: `task:${task.id}`, source: { taskId: task.id }, ref: `task-agent:${task.id}:${output.id}`, title: task.text };
   const moveKey = moveKeyFor(n.kind, n.sourceKey);
   const prior = deps.latest(moveKey);
@@ -1027,7 +915,7 @@ async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [
     notePath, folder: dest.folder, destination: dest, folderExists: true,
     observed: [{ fact: `Task #${task.id} is open: “${task.text}”.`, source: { kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString() } }],
     facts: sourceFacts.slice(0, 12), freshness: [{ kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString(), maxHours: 2 }],
-    evidenceHash, employment: { sensitive: false, categories: [] },
+    evidenceHash,
   };
   let slot = null;
   if (gaps.length) {
@@ -1048,5 +936,5 @@ async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [
 module.exports = { meetingStarted, planAgentOutput,
   CONTRACT, KINDS, DO_ADAPTERS, DENY_FOLDERS, BLOCK_MINUTES, ANSWER_MAX, MIN_MEETING_LEAD_MIN,
   moveKeyFor, quickEligible, safeTitle, ungrounded, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
-  planAndStore, recheck, prescreen, promiseMode, destinationFor, MUST_NOT_PRIVATE, eligibleNow, rowIdsFor, projectFolders, nextSlot, SLOT_WORKING_DAYS, DEFAULT_DEPS,
+  planAndStore, recheck, prescreen, destinationFor, WORKING_FOLDER, eligibleNow, rowIdsFor, projectFolders, nextSlot, SLOT_WORKING_DAYS, DEFAULT_DEPS,
 };

@@ -51,9 +51,6 @@
  * ── The Monday report is NOT a promise ──────────────────────────────────────
  * The Weekly Risk report owed to Chris by midday on the week's first working
  * day has its own status (`mondayReport`) and never enters the counts.
- *
- * ⚠ An employment matter is counted and NEVER described: its entry carries the
- *   key, task ids, outcome and a rule category only (promise-observe's rule).
  */
 
 const CONTRACT = 'promise-score-v1';
@@ -187,18 +184,11 @@ function classify(promise, due, proof, nowMs) {
   return { outcome: 'kept-on-time', rule: doneDay ? 'ticked on or before its due day' : 'ticked (the day was not recorded)', evidence };
 }
 
-/** PURE. The category of an employment matter — never its words (promise-observe's rule). */
-function sensitiveCategory(s) {
-  try { return require('./promise-observe').sensitiveRule(s); } catch { return 'hr-other'; }
-}
-
-/** PURE. A promise as the score shows it: identity and evidence, or — for an employment matter — the key and a category only. */
+/** PURE. A promise as the score shows it: identity and evidence. */
 function entryFor(promise, due, verdict) {
-  const sensitive = Boolean(promise.sensitivity && promise.sensitivity.sensitive);
   const base = { key: promise.key, taskIds: promise.taskIds, outcome: verdict.outcome, rule: verdict.rule };
-  if (sensitive) return { ...base, sensitive: true, sensitiveRule: sensitiveCategory(promise.sensitivity), text: null, due: null, owedTo: null, evidence: verdict.evidence.map((e) => ({ kind: e.kind })) };
   return {
-    ...base, sensitive: false, text: promise.text,
+    ...base, text: promise.text,
     due: due.date ? { date: due.date, basis: due.basis, endsAt: new Date(due.endsMs).toISOString() } : null,
     owedTo: promise.owedTo ? promise.owedTo.resolved || null : null,
     source: promise.source ? { title: promise.source.title || null, path: promise.source.path || null } : null,
@@ -232,10 +222,9 @@ function scoreWeek({ promises = [], proofs = new Map(), dueBases = new Map(), pr
     const rd = reDatesIn(p, wk);
     if (rd.moved || rd.recommitted) {
       counts.reDated += 1; reDated.moved += rd.moved; reDated.recommitted += rd.recommitted;
-      const sensitive = Boolean(p.sensitivity && p.sensitivity.sensitive);
       reDatedEntries.push({ key: p.key, taskIds: p.taskIds, moved: rd.moved, recommitted: rd.recommitted,
         rule: rd.recommitted && !rd.moved ? 're-committed by you to a date you chose' : 'its due date was moved this week',
-        ...(sensitive ? { sensitive: true, sensitiveRule: sensitiveCategory(p.sensitivity), text: null } : { sensitive: false, text: p.text }) });
+        text: p.text });
     }
     const due = duePoint(p, dueBases.get(p.key) || null);
     if (!due.date) {

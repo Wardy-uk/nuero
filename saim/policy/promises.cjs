@@ -7,8 +7,6 @@
  *   1. DISCOVERY — the pattern-derived proposal "Promises made in meetings close
  *      within 7 days", raised only when the evidence threshold is met.
  *   2. JUDGEMENT — for one promise: its state and the moves SAiM may prepare.
- *      HR-sensitive promises get a ROUTING NOTE and nothing else: never a
- *      decision, never a draft to the employee, never a one-tap action.
  *   3. BUDGET — when SAiM may raise a proposal or prompt about a promise.
  *
  * PURE: facts in, judgement out. No I/O, no clock (`now` is passed), nothing
@@ -67,8 +65,7 @@ function discover(ledger, { now }) {
 function proposalFor(ledger, occ, named, { nowMs, firstSeen }) {
   const moves = occ.reduce((n, p) => n + p.slips.dueMoves, 0);
   const lapsed = occ.reduce((n, p) => n + p.slips.lapsedBlocks, 0);
-  const sensitive = occ.filter((p) => p.sensitivity.sensitive).length;
-  const examples = occ.filter((p) => !p.sensitivity.sensitive).slice(0, 3).map((p) => ({
+  const examples = occ.slice(0, 3).map((p) => ({
     key: p.key, text: p.text, slips: p.slips.dueMoves + p.slips.lapsedBlocks, firstSeen: p.firstSeen,
   }));
   const observedAt = ledger.readAt;
@@ -76,7 +73,6 @@ function proposalFor(ledger, occ, named, { nowMs, firstSeen }) {
     { kind: 'observed', fact: `${occ.length} promises made in meetings slipped in the last 4 weeks: their dates were moved ${moves} times and ${lapsed} focus blocks for them lapsed.`, source: 'tasks, activity log, task blocks', observedAt },
     { kind: 'observed', fact: `${named.length} of them are owed to a named person.`, source: 'meeting notes, People notes', observedAt },
     { kind: 'observed', fact: `The oldest still open first surfaced on ${firstSeen}.`, source: 'tasks', observedAt },
-    ...(sensitive ? [{ kind: 'observed', fact: `${sensitive} involve an employment matter — details are withheld here and they would only ever be routed for review.`, source: 'meeting notes', observedAt }] : []),
     { kind: 'interpretation', fact: 'Booking a block has been standing in for keeping the promise: the date moves with each booking, so nothing ever says it is late.' },
   ];
   const snapshot = { occurrences: occ.map((p) => ({ key: p.key, dueMoves: p.slips.dueMoves, lapsedBlocks: p.slips.lapsedBlocks, statedDatePassed: p.slips.statedDatePassed })), readAt: observedAt };
@@ -113,10 +109,8 @@ function materiallyNew(prevSnapshot, nextSnapshot) {
 
 // ── 2. Judgement per promise ─────────────────────────────────────────────────
 
-const ROUTING_TEXT = 'This involves someone’s employment. I won’t draft a decision or write to them. It needs a decision from you with your HR reviewer — I can list what the notes say, for that conversation.';
-
 /**
- * State and allowed moves for one promise. HR-sensitive → routing note only.
+ * State and allowed moves for one promise.
  * `closed` comes from the loop's own record (delivery evidence or Nick's word).
  */
 function judge(p, { now, closed = null, recommits = [] } = {}) {
@@ -125,15 +119,12 @@ function judge(p, { now, closed = null, recommits = [] } = {}) {
   if (closed) return { key: p.key, state: 'closed', closedBy: closed.kind, moves: [], routing: null };
   if (!p.open && !closed) {
     // Ticked with no delivery evidence: a tick is not delivery (task 149).
-    return { key: p.key, state: 'ticked-no-evidence', moves: p.sensitivity.sensitive ? ['routing-note'] : ['delivered', 'reopen'], routing: p.sensitivity.sensitive ? ROUTING_TEXT : null };
+    return { key: p.key, state: 'ticked-no-evidence', moves: ['delivered', 'reopen'], routing: null };
   }
   const lastRecommit = recommits.slice().sort((a, b) => a.at.localeCompare(b.at)).pop() || null;
   const date = lastRecommit ? lastRecommit.to : (p.statedDate && p.statedDate.date) || p.due;
   const late = Boolean(date && date < today);
   const state = late ? 'late' : slipped(p) ? 'slipped' : 'open';
-  if (p.sensitivity.sensitive) {
-    return { key: p.key, state, date, moves: ['routing-note'], routing: ROUTING_TEXT, sensitiveBecause: p.sensitivity.matched };
-  }
   const moves = [];
   const recipient = p.owedTo.resolved || null;
   // Delivering is the promise itself; a chase is only for a dependency the wording names.
@@ -299,7 +290,7 @@ function sponsorshipGate({ rule = null, offDay = false, decided = true, feed = n
   return { shown: true, reason: sponsorship.promise ? `shown: ${feed.promiseWhy || 'a promise prompt'}` : 'shown: the goal proposal', rule, sponsorship };
 }
 
-/** The words. An employment matter is refused here too, whatever the feed says. */
+/** The words. */
 function _sponsorship(feed) {
   const proposal = feed.proposal && feed.proposal.status === 'open' ? {
     id: feed.proposal.id,
@@ -309,7 +300,7 @@ function _sponsorship(feed) {
   } : null;
   const p = feed.promise;
   let promise = null;
-  if (p && !p.sensitive && p.text && Array.isArray(p.moves) && !p.moves.includes('routing-note')) {
+  if (p && p.text && Array.isArray(p.moves)) {
     const who = p.owedTo || 'someone in a meeting';
     const when = p.date ? dayLabel(p.date) : null;
     const tail = p.state === 'late' && when ? ` It was due ${when}.` : p.state === 'ticked-no-evidence' ? ' It was ticked, but nothing shows it was delivered.' : ' Its date keeps moving.';
@@ -320,6 +311,6 @@ function _sponsorship(feed) {
 
 module.exports = {
   POLICY_VERSION, PROPOSAL_FINGERPRINT, PROPOSAL_CLASS, MIN_OCCURRENCES, MIN_SPAN_DAYS, RECENT_DAYS,
-  WINDOWS, BEFORE_MEETING_MINUTES, MAX_PROMISE_PROMPTS_PER_DAY, ROUTING_TEXT, ALREADY_OFFERED, localDateOf,
+  WINDOWS, BEFORE_MEETING_MINUTES, MAX_PROMISE_PROMPTS_PER_DAY, ALREADY_OFFERED, localDateOf,
   slipped, discover, materiallyNew, judge, mayRaiseProposal, mayPromptPromise, isoWeek, sponsorshipGate, gateInputs, NO_SPONSORSHIP, windowIndex,
 };

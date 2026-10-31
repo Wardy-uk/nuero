@@ -18,13 +18,11 @@
  * WHERE THE CANDIDATE COMES FROM: production's own decision, never a second
  * ranking. `canonical-read.now({ readOnly: true })` gives the lead and what it
  * held; each is screened in THAT order and the first one that is a real,
- * readable, non-sensitive commitment SAiM can safely prepare is chosen.
+ * readable commitment SAiM can safely prepare is chosen.
  * Everything screened out is returned with the reason and the evidence that is
  * missing — "withheld" is an answer, not an absence.
  *
- * WITHHELD, ALWAYS: an employment / HR matter (routing only — never a draft,
- * never a proposed action, and its wording is not repeated: a task id and a
- * rule CATEGORY, the promise shadow's rule); a stale or unreadable source; a
+ * WITHHELD, ALWAYS: a stale or unreadable source; a
  * card that cannot be tied to exactly one record; anything whose preparation
  * would need a network call (this slice makes none); personal-domain items.
  *
@@ -48,8 +46,8 @@ const MAX_AGE_HOURS = Object.freeze({
   'planner-mirror': 26, // Tasks/Microsoft Tasks.md (synced from Graph)
 });
 
-/** Notes never quoted as evidence: people, 1-2-1s, PIP, personal, transcripts, archive. */
-const EVIDENCE_EXCLUDE = [/^People\//, /^Personal\//, /^Archive\//, /\/Archive\//, /^Plaud\//, /1-2-1/i, /\bPIP\b/, /^Daily\//, /^Tasks\//, /^Documents\/System\//];
+/** Notes never quoted as evidence: transcripts, archive, daily notes, tasks, system reports. */
+const EVIDENCE_EXCLUDE = [/^Archive\//, /\/Archive\//, /^Plaud\//, /^Daily\//, /^Tasks\//, /^Documents\/System\//];
 
 const STOP = new Set('a an and the to of for in on with by every each from what is are be that this it as at or not stating'.split(' '));
 // A word's stem never changes, so it is remembered per word — a pure function
@@ -70,64 +68,6 @@ const dayLabel = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00
 const hm = (s) => String(s || '').slice(11, 16);
 
 // ── Screens (PURE) ───────────────────────────────────────────────────────────
-
-/**
- * PURE. Is this an employment matter? Three tests, any one is enough:
- *   wording — the item's own words (promise-ledger's HR rules);
- *   note    — its SOURCE NOTE discusses named people's employment (sickness,
- *             fit notes, flexible working, absence…) on 2+ lines. The ledger
- *             only checks people the promise's own wording names, so a promise
- *             that names nobody sails through from a note that is, in fact, an
- *             employee-cases discussion — this closes that;
- *   kind    — the item is a PIP deliverable (Nick's own performance plan).
- * Returns categories only — never the matched words, names or lines.
- */
-/**
- * The ledger's topic patterns as two combined expressions — the case-insensitive
- * ones and the case-sensitive ones, kept apart so each keeps its own flags.
- * Same answer as `patterns.some((re) => re.test(line))`, one pass instead of 59.
- */
-let _ctx = null;
-function _contextTest(patterns) {
-  if (_ctx && _ctx.src === patterns) return _ctx.test;
-  // Any flag other than `i` (g, y, m, s, u…) could change the answer when joined — keep them separate.
-  if (patterns.some((re) => re.flags.replace('i', '') !== '')) { const t = (s) => patterns.some((re) => re.test(s)); _ctx = { src: patterns, test: t }; return t; }
-  const join = (list, flags) => (list.length ? new RegExp(list.map((re) => `(?:${re.source})`).join('|'), flags) : null);
-  const ci = join(patterns.filter((re) => re.flags.includes('i')), 'i');
-  const cs = join(patterns.filter((re) => !re.flags.includes('i')), '');
-  const test = (s) => Boolean((ci && ci.test(s)) || (cs && cs.test(s)));
-  // With no ^/$ anchors, a line that matches means the WHOLE note matches, so a
-  // note that does not match anywhere has no line to check — same verdict.
-  const bare = (src) => src.replace(/\\./g, '').replace(/\[[^\]]*\]/g, '');
-  test.wholeTextSafe = !patterns.some((re) => /[\^$]/.test(bare(re.source)));
-  _ctx = { src: patterns, test };
-  return test;
-}
-
-function employmentScreen({ wording = '', sourceTitle = '', sourceText = '', roster = null, kind = null } = {}) {
-  const ledger = require('./promise-ledger');
-  const categories = [];
-  if (kind === 'weekly_risk' || kind === 'pip') categories.push('pip-deliverable');
-  if (ledger.hrSensitivity(wording, sourceTitle).sensitive) categories.push('hr-wording');
-  if (sourceText && roster && roster.full && roster.full.length) {
-    let personLines = 0;
-    const ctx = _contextTest(ledger.CONTEXT_PATTERNS);
-    const lines = ctx.wholeTextSafe && !ctx(String(sourceText)) ? [] : String(sourceText).replace(/\r\n/g, '\n').split('\n');
-    for (const raw of lines) {
-      if (!raw.trim()) continue;
-      // Both conditions are needed; the cheap topic test runs FIRST, so the
-      // per-name scan only runs on the rare line about sickness, absence… (19 Oct
-      // 2026: name-first made a single prepare take ~25 s over the vault).
-      if (!_contextTest(ledger.CONTEXT_PATTERNS)(raw)) continue;
-      const named = ledger.namesIn(raw, roster);
-      if (!named.people.length && !named.ambiguous.length) continue;
-      personLines += 1;
-      if (personLines >= 2) break; // the verdict cannot change after the second line
-    }
-    if (personLines >= 2) categories.push('employee-cases-note');
-  }
-  return { sensitive: categories.length > 0, categories };
-}
 
 /** PURE. Freshness of every source a claim rests on; any stale/unknown one withholds. */
 function freshnessScreen(sources, nowMs) {
@@ -212,7 +152,7 @@ function findRegisterRow(msId) {
 /**
  * Lines elsewhere in the vault that already say something about this action:
  * a line counts when it shares 3+ of the action's distinctive words. Ranked by
- * overlap, at most 2 a file, never from excluded or employment-sensitive notes.
+ * overlap, at most 2 a file, never from excluded notes.
  */
 /** Thrown when a preparation runs past its deadline — the caller offers nothing. */
 class BudgetExceeded extends Error {}
@@ -224,21 +164,20 @@ const _overBudget = (deadline) => { if (deadline && Date.now() > deadline) throw
  * stored, so nothing can go stale between calls.
  */
 /**
- * Derived facts about each evidence note — its text, token set, cleaned lines
- * and employment verdict — remembered IN MEMORY, keyed on the note's path,
- * size and modification time (and, for the verdict, on the roster). Every call
+ * Derived facts about each evidence note — its text, token set and cleaned
+ * lines — remembered IN MEMORY, keyed on the note's path, size and
+ * modification time. Every call
  * re-stats every note, so an edited note is always re-read: nothing derived
  * from an old version of a note is ever used. Never written anywhere.
  */
 const _noteIndex = new Map();
-const _rosterSig = (roster) => (roster && roster.full ? roster.full.join('|') : '');
 function _noteEntry(rel) {
   let st = null;
   try { st = fs.statSync(path.join(vaultRoot(), rel)); } catch { _noteIndex.delete(rel); return null; }
   const id = `${st.size}:${st.mtimeMs}`;
   let e = _noteIndex.get(rel);
   if (!e || e.id !== id) {
-    e = { id, text: _read(rel), mtimeIso: st.mtime.toISOString(), toks: null, lines: null, screen: null };
+    e = { id, text: _read(rel), mtimeIso: st.mtime.toISOString(), toks: null, lines: null };
     _noteIndex.set(rel, e);
   }
   return e;
@@ -261,11 +200,6 @@ function makeCorpus({ deadline = null } = {}) {
     },
     read(rel) { const e = entry(rel); return e ? e.text : null; },
     mtime(rel) { const e = entry(rel); return e ? e.mtimeIso : null; },
-    sensitive(rel, roster) {
-      const e = entry(rel); const sig = _rosterSig(roster);
-      if (!e.screen || e.screen.sig !== sig) e.screen = { sig, verdict: employmentScreen({ sourceText: e.text, roster, sourceTitle: path.basename(rel, '.md') }).sensitive };
-      return e.screen.verdict;
-    },
     fileTokens(rel) { const e = entry(rel); if (!e.toks) e.toks = tokens(e.text); return e.toks; },
     lines(rel) {
       const e = entry(rel);
@@ -289,19 +223,16 @@ function makeCorpus({ deadline = null } = {}) {
  * so it never holds up a request, and a second call joins the first.
  */
 let _warming = null;
-function warmEvidenceIndex({ yieldEvery = 20, roster = null } = {}) {
+function warmEvidenceIndex({ yieldEvery = 20 } = {}) {
   if (_warming) return _warming;
   _warming = require('./read-only-scope').run(async () => {
     const t0 = Date.now();
-    let r = roster;
-    if (!r) { try { r = require('./entities').getRoster(); } catch { r = null; } }
     const c = makeCorpus();
     let notes = 0;
     for (const rel of c.files()) {
       if (EVIDENCE_EXCLUDE.some((re) => re.test(rel))) continue;
       if (!c.read(rel)) continue;
       c.fileTokens(rel); c.lines(rel);
-      if (r && r.full && r.full.length) c.sensitive(rel, r);
       notes += 1;
       if (notes % yieldEvery === 0) await new Promise((res) => setImmediate(res));
     }
@@ -323,10 +254,6 @@ function findEvidenceLines(actionText, { roster, excludePath = null, limit = 30,
     // count of notes left out still covers every note that WOULD have counted.
     const couldCount = patterns || corpus.fileTokens(rel).filter((w) => want.has(w)).length >= min;
     if (!couldCount) continue;
-    if (corpus.sensitive(rel, roster)) {
-      if (stats) { stats.sensitive = stats.sensitive || new Set(); stats.sensitive.add(rel); }
-      continue;
-    }
     const perFile = [];
     for (const ln of corpus.lines(rel)) {
       if (!ln.usable) continue;
@@ -506,8 +433,7 @@ function composePacket(ev, nowMs) {
 
   const preparation = [
     { did: `Tied the held card to exactly one record — Planner id ${ev.record.msId} — and to register row ${ev.register.id} by that same id.`, sideEffect: 'none' },
-    { did: `Screened it for employment sensitivity: wording, source and the notes its evidence came from — clear (${ev.screens.employment.categories.length ? ev.screens.employment.categories.join(', ') : 'no rule matched'}).`, sideEffect: 'none' },
-    { did: `Searched the vault for what is already written about this action (${ev.evidence.length} matching lines in ${new Set(ev.evidence.map((l) => l.path)).size} notes) and arranged the ${ev.draft.cites.length} that state it directly into a draft (below), each part citing its line.${ev.draft.gaps.length ? ` Could not find: ${ev.draft.gaps.join('; ')}.` : ''}${ev.leftOut ? ` Left out ${ev.leftOut} relevant-looking note${ev.leftOut === 1 ? '' : 's'} because ${ev.leftOut === 1 ? 'it discusses' : 'they discuss'} named people's employment.` : ''}`, sideEffect: 'none — the draft exists only in this packet', draft: ev.draft.markdown },
+    { did: `Searched the vault for what is already written about this action (${ev.evidence.length} matching lines in ${new Set(ev.evidence.map((l) => l.path)).size} notes) and arranged the ${ev.draft.cites.length} that state it directly into a draft (below), each part citing its line.${ev.draft.gaps.length ? ` Could not find: ${ev.draft.gaps.join('; ')}.` : ''}`, sideEffect: 'none — the draft exists only in this packet', draft: ev.draft.markdown },
     ev.forum ? { did: `Checked ${ev.forum.title}: who is in it and that you haven't answered the invite.`, sideEffect: 'none — the invite is untouched' } : null,
     ev.leaveUnknown ? { did: 'Could not check People HR for leave, so the times below assume you are working.', sideEffect: 'none' } : null,
     ev.slot && ev.slot.date ? { did: `Found the first ${ev.slot.minutes}-minute gap in your diary before it: ${dayLabel(ev.slot.date)} ${ev.slot.startTime}–${ev.slot.endTime}${ev.slot.assumed ? ` (${ev.slot.minutes} minutes is NEURO's default for a task with no estimate — the content is already drafted)` : ''}. Skipped ${ev.leave ? 'today (leave), ' : ''}bank holidays, weekends, and meetings you hold that are marked free (your standups).`, sideEffect: 'none — nothing booked' } : { did: `Looked for a gap before the meeting: ${ev.slot ? ev.slot.reason : 'diary unreadable'}.`, sideEffect: 'none' },
@@ -683,7 +609,7 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     if (!item) { withheld.push({ ref: c.ref, title: c.title, reason: 'unresolvable', why: 'Production held it, but the item behind the reference could not be read.', missing: ['the pool item for this reference'] }); continue; }
 
     if (item.type === 'weekly_risk') {
-      withheld.push({ ref: c.ref, title: item.title, reason: 'employment-route', categories: ['pip-deliverable'], why: 'A deliverable of your own performance plan. Routing only: no draft, no proposed action.', alsoOutsideAuthority: 'Preparing it reads NOVA KPIs over the network — this slice makes no requests.' });
+      withheld.push({ ref: c.ref, title: item.title, reason: 'unsupported-kind', why: 'Preparing the weekly report reads NOVA KPIs over the network — this slice makes no requests.' });
       continue;
     }
     if (item.type === 'capacity' && item.meta && item.meta.taskId) {
@@ -705,8 +631,6 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     const r = register.row;
     const reg = { id: r.id || register.cells[0], action: r.action || register.cells[1], source: r.source || '', owner: r.owner || '', due: r.due || '', notes: r.notes || '', path: register.path, line: register.line, observedAt: register.observedAt, project: register.project, addedNote: (/Added (\d\d\/\d\d)/.exec(r.notes || '') || [])[1] };
     reg.ownerNames = reg.owner.split(/,\s*/).map((s) => s.trim()).filter(Boolean);
-    const regText = _read(register.path) || '';
-    const employment = employmentScreen({ wording: `${item.title} ${reg.action}`, sourceTitle: path.basename(register.path, '.md'), sourceText: regText.split('\n').slice(register.line - 1, register.line).join('\n'), roster });
 
     const diary = readDiary(today, 14);
     const fresh = freshnessScreen([
@@ -729,7 +653,7 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     // What the notes already say about the action, plus how rejections are recorded today.
     // Three passes: lines about the action itself; how rejections are recorded today; and the
     // requirement statements the drafter looks for (what an escalation must carry, what a
-    // rejection must say). Notes about named people's employment are left out of all three.
+    // rejection must say).
     const stats = {};
     const evidence = [
       ...findEvidenceLines(reg.action, { roster, excludePath: register.path, stats, corpus }),
@@ -795,9 +719,9 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     const daysLate = Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${record.due}T12:00:00Z`)) / DAY);
     const packet = composePacket({
       card: { ref: c.ref, title: item.title, reason: item.reason }, decision, record, register: reg, evidence, observedLines, consolidation,
-      leftOut: stats.sensitive ? stats.sensitive.size : 0, forum, diary,
+      forum, diary,
       leave: leave ? { ...leave } : null, leaveUnknown: !leaveToday.known, today, coOwner, draft, draftSearch, slot, alternatives, daysLate,
-      screens: { employment, freshness: fresh },
+      screens: { freshness: fresh },
     }, nowMs);
     selected = {
       ref: c.ref, title: item.title, record: { system: 'planner', msId: record.msId, plan: record.plan },
@@ -806,7 +730,7 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
       subject: { id: reg.id, action: reg.action, project: reg.project },
       presentAt: duty.onDuty ? 'now' : 'your next working morning',
       freshness: fresh.rows,
-      screens: { employment, freshnessOk: fresh.ok, recordUnique: true },
+      screens: { freshnessOk: fresh.ok, recordUnique: true },
       ...packet,
     };
   }
@@ -828,4 +752,4 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
   };
 }
 
-module.exports = { CONTRACT, MAX_AGE_HOURS, blockTitleFor, notePathFor, resolveTodoCard, employmentScreen, freshnessScreen, composePacket, draftFromEvidence, productionOrder, resolveOwner, tokens, prepare, dutyFor, readDuty, HELD_SAY, BudgetExceeded, warmEvidenceIndex, _test: { makeCorpus, noteIndex: _noteIndex } };
+module.exports = { CONTRACT, MAX_AGE_HOURS, blockTitleFor, notePathFor, resolveTodoCard, freshnessScreen, composePacket, draftFromEvidence, productionOrder, resolveOwner, tokens, prepare, dutyFor, readDuty, HELD_SAY, BudgetExceeded, warmEvidenceIndex, _test: { makeCorpus, noteIndex: _noteIndex } };

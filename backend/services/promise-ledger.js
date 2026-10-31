@@ -15,7 +15,6 @@
  *     events), lapsed task blocks (released / dropped), and a stated date in its
  *     own wording that has passed;
  *   - the next meeting with the person it is owed to;
- *   - whether it is HR / employment SENSITIVE (classified here, by rule);
  *   - duplicate task records that are the SAME promise, grouped (read-time,
  *     deterministic; an explicit "not the same" from Nick is honoured).
  *
@@ -35,90 +34,6 @@ const SAME_PROMISE_SCORE = 0.55;
 const MEETING_AHEAD_DAYS = 14;
 
 const _db = () => require('../db/database');
-
-// ── HR / employment sensitivity ──────────────────────────────────────────────
-
-/**
- * A promise is HR-SENSITIVE when its wording (or its source note's title) is
- * about an individual's employment. Deliberately broad: a false positive costs a
- * routing note instead of a draft; a false negative drafts an employee message.
- */
-const HR_PATTERNS = Object.freeze([
-  /\bflexible[- ]working\b/i, /\bflexi(ble)?[- ]?work(ing)? request\b/i,
-  /\bend date\b/i, /\bnotice period\b/i, /\bresign/i, /\bredundan/i, /\bdismiss/i, /\bdisciplinary\b/i,
-  /\bgrievance\b/i, /\bprobation/i, /\bperformance improvement plan\b/i, /\bperformance (review|intervention|warning)\b/i,
-  /\bcapability (meeting|process|hearing)\b/i, /\babsence\b/i, /\bsick(ness)?\b/i, /\breturn[- ]to[- ]work\b/i, /\bRTW\b/,
-  /\boccupational health\b/i, /\breasonable adjustment/i, /\bfit (to work|note)\b/i,
-  /\bcontract(ual)? (change|hours|terms)\b/i, /\bsalary\b/i, /\bpay (rise|review|increase)\b/i,
-  /\bmaternity\b/i, /\bpaternity\b/i, /\bparental leave\b/i, /\bretention\b/i, /\bexit interview\b/i,
-  /\bHR\b/, /\blegal risk\b/i, /\btribunal\b/i, /\bwarning letter\b/i,
-  // Added from the live snapshot (18 Oct 2026): wording about one person's
-  // employment that the first list missed. Erring sensitive costs a routing
-  // note instead of a draft; erring the other way drafts to an employee.
-  /\bhearing\b/i, /\blight duties\b/i, /\brole viability\b/i, /\bviability of (his|her|their) role\b/i,
-  /\bmonitor\b[^.]*\bproductivity\b/i, /\bphased return\b/i, /\bwelfare\b/i,
-]);
-
-/** PURE. Which rule (if any) makes this HR-sensitive. */
-function hrSensitivity(text, sourceTitle = '') {
-  for (const s of [String(text || ''), String(sourceTitle || '')]) {
-    for (const re of HR_PATTERNS) {
-      const m = re.exec(s);
-      if (m) return { sensitive: true, rule: re.source, matched: m[0], where: s === text ? 'wording' : 'source-note' };
-    }
-  }
-  return { sensitive: false, rule: null, matched: null, where: null };
-}
-
-// ── Source context: ordinary wording about a person in an employment situation ──
-
-// Terms that make a line about a PERSON an employment matter: their circumstances,
-// adjustments, capability, absence, monitoring, performance, wellbeing or status.
-const CONTEXT_PATTERNS = Object.freeze([
-  ...HR_PATTERNS,
-  /\bfit note\b/i, /\baccommodations?\b/i, /\badjustments?\b/i, /\bcapabilit/i, /\babsen(t|ce)\b/i,
-  /\bmedical(ly)?\b/i, /\bsurger(y|ies)\b/i, /\billness\b/i, /\binfection\b/i, /\brecovery\b/i, /\bhealth\b/i,
-  /\bmonitor(ing|ed)?\b/i, /\bperformance\b/i, /\bwell-?being\b/i, /\bemployment\b/i, /\bcontract\b/i,
-  /\bleave\b/i, /\bunderperform/i, /\bconduct\b/i, /\bpersonal (circumstances|situation|matter)\b/i,
-]);
-// A note whose title says it is about employee cases makes every named person in it a case.
-const EMPLOYEE_TITLE = /\bemployee (cases?|accommodations?|adjustments?|relations|matters?)\b|\baccommodations?\b|\bwelfare\b|\babsence\b/i;
-
-/**
- * PURE. Is a promise whose own wording is ordinary still an employment matter,
- * because its SOURCE NOTE discusses a person it names in those terms?
- * Conservative by design: any other line naming the same person with a context
- * term, or a note titled as employee cases, is enough.
- */
-function contextSensitivity(noteText, taskText, title, roster) {
-  const subjects = namesIn(taskText, roster).people.map((p) => p.name);
-  if (!subjects.length || !noteText) return { sensitive: false };
-  if (EMPLOYEE_TITLE.test(String(title || ''))) {
-    return { sensitive: true, rule: 'employee-title', matched: String(title).match(EMPLOYEE_TITLE)[0], where: 'source-context', about: subjects };
-  }
-  const want = norm(taskText);
-  // ⚠ A line can only name a subject if it CONTAINS one of that subject's words
-  // (first name — a full name contains it — or an alias they own). Checking that
-  // with `includes` first skips the regex matcher on almost every line; it is an
-  // exact pre-filter, not a heuristic, because every `word()` match implies the
-  // substring. Without it this ran the whole roster's regexes per line of every
-  // source note and blocked the event loop for ~4s a minute (23 Oct 2026).
-  const needles = new Set(subjects.map((s) => s.split(/\s+/)[0].toLowerCase()));
-  for (const [alias, owner] of roster.aliases || new Map()) if (subjects.includes(owner)) needles.add(String(alias).toLowerCase());
-  for (const raw of String(noteText).replace(/\r\n/g, '\n').split('\n')) {
-    if (!raw.trim()) continue;
-    const lowerRaw = raw.toLowerCase();
-    let mentions = false;
-    for (const n of needles) if (lowerRaw.includes(n)) { mentions = true; break; }
-    if (!mentions) continue;
-    if (norm(raw).includes(want.slice(0, 50))) continue; // the promise's own line is judged by its wording
-    const named = namesIn(raw, roster).people.map((p) => p.name).filter((n) => subjects.includes(n));
-    if (!named.length) continue;
-    const hit = CONTEXT_PATTERNS.map((re) => re.exec(raw)).find(Boolean);
-    if (hit) return { sensitive: true, rule: 'person-context', matched: hit[0], where: 'source-context', about: named };
-  }
-  return { sensitive: false };
-}
 
 // ── Names → people (exactly one, or say so) ──────────────────────────────────
 
@@ -313,9 +228,6 @@ function read({ now = Date.now() } = {}) {
     }
   } catch (e) { gaps.push({ input: 'task-blocks', why: e.message }); }
 
-  // Nick's explicit "this one is safe" — lifts ONLY context-derived sensitivity, never wording or title.
-  let safeOverride = new Set();
-  try { safeOverride = new Set(JSON.parse(db.getState('promise_safe_override') || '[]').map(Number)); } catch { safeOverride = new Set(); }
   let notSame = new Set();
   try { notSame = new Set(JSON.parse(db.getState('promise_not_same') || '[]')); } catch { notSame = new Set(); }
 
@@ -347,7 +259,6 @@ function read({ now = Date.now() } = {}) {
         lapsedBlocks: b.filter((x) => x.status === 'released' || x.status === 'dropped').length,
         lapsedBlockDates: b.filter((x) => x.status === 'released' || x.status === 'dropped').map((x) => x.date),
       },
-      sensitivity: _sensitivity(t, note, title, roster, safeOverride),
     };
   });
 
@@ -361,7 +272,6 @@ function read({ now = Date.now() } = {}) {
     const people = [...new Map(recs.flatMap((r) => r.owedTo.people).map((p) => [p.name, p])).values()];
     const fromNote = people.length ? null : recs.map((r) => r.owedToFromNote).find((x) => x && (x.people.length || x.ambiguous.length)) || null;
     const ambiguous = recs.flatMap((r) => r.owedTo.ambiguous);
-    const sensitive = recs.map((r) => r.sensitivity).find((s) => s.sensitive) || { sensitive: false };
     const firstSeen = recs.map((r) => r.createdAt).sort()[0];
     const stated = recs.map((r) => r.statedDate).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
     const next = people.length === 1 ? _nextMeeting(db, people[0].name, nowMs) : null;
@@ -394,25 +304,10 @@ function read({ now = Date.now() } = {}) {
       records: recs.map((r) => ({ taskId: r.taskId, status: r.status, completedAt: r.completedAt })),
       booked: recs.flatMap((r) => r.slips.booked).sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`)),
       nextMeeting: next,
-      sensitivity: sensitive,
     };
   });
 
   return { contract: CONTRACT, readAt: new Date(nowMs).toISOString(), promises, gaps };
-}
-
-// Nick, 31 Oct 2026: the HR filters are removed — no promise is held back,
-// withheld or routed-only because of its wording or its source note.
-function _sensitivity() {
-  return { sensitive: false };
-}
-
-function _sensitivityRetired(t, note, title, roster, safeOverride) {
-  const own = hrSensitivity(t.text, title);
-  if (own.sensitive) return own;
-  const ctx = contextSensitivity(note, t.text, title, roster);
-  if (ctx.sensitive && safeOverride.has(Number(t.id))) return { sensitive: false, overridden: ctx };
-  return ctx.sensitive ? ctx : own;
 }
 
 /** A stable hash of the facts a proposal rests on (which promises, how many slips). */
@@ -422,7 +317,7 @@ function evidenceHash(items) {
 }
 
 module.exports = {
-  CONTRACT, LOOKBACK_DAYS, SAME_PROMISE_SCORE, HR_PATTERNS,
-  hrSensitivity, contextSensitivity, CONTEXT_PATTERNS, namesIn, sourceSentence, groupDuplicates, evidenceHash, personId,
+  CONTRACT, LOOKBACK_DAYS, SAME_PROMISE_SCORE,
+  namesIn, sourceSentence, groupDuplicates, evidenceHash, personId,
   read,
 };

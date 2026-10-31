@@ -66,10 +66,10 @@ function evidenceLine(e) {
 }
 
 /** PURE. The next valid action for one promise — a delivery note when one can be drafted, else its task. */
-function nextActionFor({ key, taskId, sensitive }, bench, delivery) {
+function nextActionFor({ key, taskId }, bench, delivery) {
   const it = bench.get(key);
   const r = delivery && delivery.items ? delivery.items[key] : null;
-  if (!sensitive && it && it.preparation && it.preparation.state === 'needs-a-draft' && r && r.addressable && !r.live) {
+  if (it && it.preparation && it.preparation.state === 'needs-a-draft' && r && r.addressable && !r.live) {
     return { label: 'Draft the delivery note — nothing is sent', open: { kind: 'prepare-delivery', key } };
   }
   return taskId ? { label: 'Open the task', open: { kind: 'task', taskId } } : null;
@@ -94,20 +94,20 @@ function keptCard({ sc, bench, delivery }) {
     const it = bench.get(e.key);
     const atRisk = e.outcome === 'late' || e.outcome === 'unverified' || (e.outcome === 'pending' && Boolean(it));
     promises.push({
-      key: e.key, taskId, sensitive: Boolean(e.sensitive), title: e.sensitive ? null : (e.text || null),
+      key: e.key, taskId, title: e.text || null,
       outcome: e.outcome, outcomeSay: OUTCOME_SAY[e.outcome] || e.outcome, rule: e.rule || null,
       due: e.due && e.due.date ? { date: e.due.date, say: `Due ${score.dayLabel(e.due.date)}` } : null,
-      evidence: e.sensitive ? [] : (e.evidence || []).map(evidenceLine).filter(Boolean),
+      evidence: (e.evidence || []).map(evidenceLine).filter(Boolean),
       preparation: it && it.preparation ? it.preparation.why || null : null,
       atRisk,
-      action: e.outcome === 'kept-on-time' || e.outcome === 'dropped' ? null : nextActionFor({ key: e.key, taskId, sensitive: e.sensitive }, bench, delivery),
+      action: e.outcome === 'kept-on-time' || e.outcome === 'dropped' ? null : nextActionFor({ key: e.key, taskId }, bench, delivery),
     });
   }
   // At-risk promises the bench holds but the week's entries do not (due soon, not this week).
   for (const it of bench.values()) {
     if (seen.has(it.key)) continue;
     promises.push({
-      key: it.key, taskId: it.leadTaskId || (it.taskIds && it.taskIds[0]) || null, sensitive: false, title: it.title || null,
+      key: it.key, taskId: it.leadTaskId || (it.taskIds && it.taskIds[0]) || null, title: it.title || null,
       outcome: 'pending', outcomeSay: OUTCOME_SAY.pending, rule: null,
       due: it.due && it.due.date ? { date: it.due.date, say: `Due ${score.dayLabel(it.due.date)}` } : null,
       evidence: (it.evidence || []).map(evidenceLine).filter(Boolean),
@@ -264,10 +264,10 @@ function judgementCard({ sc, bench, delivery }) {
     keys.add(e.key);
     const taskId = (e.taskIds && e.taskIds[0]) || null;
     items.push({
-      key: e.key, taskId, sensitive: Boolean(e.sensitive), title: e.sensitive ? null : (e.text || null),
+      key: e.key, taskId, title: e.text || null,
       why: 'Delivered, but NEURO can’t tell if it was on time.',
-      evidence: e.sensitive ? [] : [e.rule ? `Rule: ${e.rule}.` : null, e.due && e.due.date ? `Due ${score.dayLabel(e.due.date)}.` : null, ...(e.evidence || []).map(evidenceLine)].filter(Boolean),
-      choices: [nextActionFor({ key: e.key, taskId, sensitive: e.sensitive }, bench, delivery)].filter(Boolean),
+      evidence: [e.rule ? `Rule: ${e.rule}.` : null, e.due && e.due.date ? `Due ${score.dayLabel(e.due.date)}.` : null, ...(e.evidence || []).map(evidenceLine)].filter(Boolean),
+      choices: [nextActionFor({ key: e.key, taskId }, bench, delivery)].filter(Boolean),
     });
   }
   for (const it of bench.values()) {
@@ -275,7 +275,7 @@ function judgementCard({ sc, bench, delivery }) {
     keys.add(it.key);
     const taskId = it.leadTaskId || (it.taskIds && it.taskIds[0]) || null;
     items.push({
-      key: it.key, taskId, sensitive: false, title: it.title || null,
+      key: it.key, taskId, title: it.title || null,
       why: 'Waiting for your answer.',
       evidence: [it.preparation.why || null, it.due && it.due.date ? `Due ${score.dayLabel(it.due.date)}.` : null, ...(it.evidence || []).map(evidenceLine)].filter(Boolean),
       choices: [taskId ? { label: 'Open the task', open: { kind: 'task', taskId } } : null].filter(Boolean),

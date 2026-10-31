@@ -25,7 +25,6 @@
  *                       (progress unreadable or stale) — fails closed
  *
  * ── Withheld, never ranked ──────────────────────────────────────────────────
- *   sensitive   an employment matter — counted by CATEGORY only, never named
  *   ambiguous   the person it is owed to is a first name several people share,
  *               or more than one person
  *   unreadable  its source note could not be read
@@ -87,9 +86,8 @@ function relevantMeeting(promise, due, nowMs) {
   return at < due.endsMs || at - nowMs <= MEETING_SOON_MS ? { title: m.title, start: m.start, basis: m.basis || null, at } : null;
 }
 
-/** PURE. Why a promise is withheld, or null. Order matters: sensitivity first, so an employment matter is never described by any later reason. */
+/** PURE. Why a promise is withheld, or null. */
 function withholdReason(p, due) {
-  if (p.sensitivity && p.sensitivity.sensitive) return 'sensitive';
   const people = (p.owedTo && p.owedTo.people) || [];
   if ((p.owedTo && (p.owedTo.ambiguous || []).length) || people.length > 1) return 'ambiguous';
   if (!p.source || p.source.readable === false) return 'unreadable';
@@ -130,7 +128,7 @@ const TIER_SAY = ['overdue', 'due today', 'due within two days', 'due this week'
  */
 function select({ promises = [], proofs = new Map(), dueBases = new Map(), progress = new Map(), freshness = {}, gaps = [], now }) {
   const nowMs = msOf(now);
-  const out = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), items: [], withheld: { sensitive: 0, ambiguous: 0, unreadable: 0, undated: 0 }, considered: 0, state: 'ok', why: null };
+  const out = { contract: CONTRACT, generatedAt: new Date(nowMs).toISOString(), items: [], withheld: { ambiguous: 0, unreadable: 0, undated: 0 }, considered: 0, state: 'ok', why: null };
   if (gaps.some((g) => g.input === 'tasks')) return { ...out, state: 'not-safe-to-prepare', why: 'NEURO couldn’t read the task list, so nothing is offered as at risk.' };
   const readAt = Date.parse(freshness.readAt || '');
   if (!Number.isFinite(readAt) || nowMs - readAt > READ_STALE_MS) {

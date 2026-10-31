@@ -206,19 +206,18 @@ function readoutFrom({ score: sc, workbench, receipt, now }) {
   if (future.length) out.next = { label: 'Next', strong: shortWhen(future[0].date, future[0].start), line: `${future[0].title}. Protected time.` };
 
   // What only Nick can say: ticked with no delivery evidence, or waiting for him.
-  // Each one carries its task, so the card can open it (22 Oct 2026); an employment
-  // matter is counted and routed but never named (promise-score already withholds its text).
+  // Each one carries its task, so the card can open it (22 Oct 2026).
   const keys = new Set();
   const items = [];
   for (const e of (sc && sc.entries) || []) {
     if (e.outcome !== 'unverified' || keys.has(e.key)) continue;
     keys.add(e.key);
-    items.push({ key: e.key, taskId: (e.taskIds && e.taskIds[0]) || null, title: e.sensitive ? null : (e.text || null), sensitive: Boolean(e.sensitive), why: 'Delivered, but NEURO can’t tell if it was on time.' });
+    items.push({ key: e.key, taskId: (e.taskIds && e.taskIds[0]) || null, title: e.text || null, why: 'Delivered, but NEURO can’t tell if it was on time.' });
   }
   for (const it of (workbench && workbench.items) || []) {
     if (!(it.preparation && it.preparation.state === 'waiting-for-Nick') || keys.has(it.key)) continue;
     keys.add(it.key);
-    items.push({ key: it.key, taskId: it.leadTaskId || (it.taskIds && it.taskIds[0]) || null, title: it.title || null, sensitive: false, why: 'Waiting for your answer.' });
+    items.push({ key: it.key, taskId: it.leadTaskId || (it.taskIds && it.taskIds[0]) || null, title: it.title || null, why: 'Waiting for your answer.' });
   }
   if (keys.size) out.judgement = { label: 'Needs your judgement', strong: `${num(keys.size)} promise${keys.size === 1 ? '' : 's'}`, line: 'Only you can say whether they were on time.', items: items.slice(0, 5), more: Math.max(0, items.length - 5) };
   return out;
@@ -282,7 +281,7 @@ function moveView(m) {
   if (!m) return null;
   return {
     state: m.state, ref: m.ref, control: m.control || null, say: m.say || null,
-    privateDraft: m.privateDraft || null, owedAnswer: m.owedAnswer || null, focusRef: m.focusRef || null, interview: m.interview || null,
+    owedAnswer: m.owedAnswer || null, focusRef: m.focusRef || null, interview: m.interview || null,
     // The SAME fields /prepare and /answer return as `promiseMove` (26 Oct 2026) — a field dropped here is a
     // control that exists on one path and not the other (Park vanished on the desktop after a refresh).
     question: m.question ? { id: m.question.id, question: m.question.question, why: m.question.why || null, choices: m.question.choices || [], canPark: Boolean(m.question.canPark) } : null,
@@ -299,29 +298,21 @@ function threadFrom(workbench, authority, delivery = null, moves = null) {
   const move = moveView(moves ? moves[it.key] : null);
   // A needs-a-block promise SAiM can PREPARE is not held: the allowance only
   // matters when a prepared move is confirmed, and that confirm names it.
-  // A promise SAiM can only take forward as a PRIVATE draft is not held either:
-  // the card says what SAiM can't do and what it can, and offers the draft —
-  // never a delivery note, never "who is it owed to?" (25 Oct 2026).
-  const privateDraft = Boolean(move && move.privateDraft);
-  const held = move && (privateDraft || it.preparation.state === 'needs-a-block') ? null : heldFor(it, authority, delivery);
-  const draft = held || privateDraft ? null : draftFor(it, delivery);
-  const sensitiveWithheld = (workbench.withheld && workbench.withheld.sensitive) || 0;
+  const held = move && it.preparation.state === 'needs-a-block' ? null : heldFor(it, authority, delivery);
+  const draft = held ? null : draftFor(it, delivery);
   return {
     key: it.key, taskIds: it.taskIds, taskId: it.leadTaskId,
     label: 'Keeping your word',
     title: it.title,
-    owedTo: privateDraft || it.owedToSelf ? null : it.owedTo,
+    owedTo: it.owedToSelf ? null : it.owedTo,
     due: { say: it.due.say, label: `Due ${score.dayLabel(it.due.date)}`, date: it.due.date, endsAt: it.due.endsAt },
-    preparation: privateDraft
-      ? { state: 'private-draft', label: 'Private draft', why: `${move.privateDraft.cannot} ${move.privateDraft.can}` }
-      : { state: it.preparation.state, label: PREP_LABEL[it.preparation.state], why: it.preparation.why },
+    preparation: { state: it.preparation.state, label: PREP_LABEL[it.preparation.state], why: it.preparation.why },
     evidence: it.evidence,
     because: it.because,
     held: held ? { say: held } : null,
     draft,
     move,
     more: items.length > 1 ? { count: items.length - 1, titles: items.slice(1).map((x) => x.title) } : null,
-    withheld: sensitiveWithheld ? `${num(sensitiveWithheld)} more involve${sensitiveWithheld === 1 ? 's' : ''} someone’s employment — not shown here.` : null,
   };
 }
 
