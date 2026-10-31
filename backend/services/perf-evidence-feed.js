@@ -314,11 +314,13 @@ const SOURCES = [
   ['workforce', (ctx) => require('./perf-work').workforce(ctx.db, ctx.w)],
   ['people', (ctx) => require('./perf-work').people(ctx.db, ctx.w)],
   ['work-notes', (ctx) => require('./perf-work').workNotes(ctx.vaultRoot, ctx.w)],
+  // Documents and team-wide mail Nick sent from Outlook (perf-mail.js; cache only).
+  ['mail', (ctx) => require('./perf-mail').itemsFor(ctx.w)],
 ];
 
 /** What the feed deliberately does not carry yet, so nobody reads it as the whole picture. */
 const NOT_INCLUDED = [
-  'Outlook Sent Items not sent through NEURO (only mail NEURO sent for you is here)',
+  'Ordinary one-to-one Outlook mail (only documents you sent and new messages to four or more people are here)',
   'Jira ticket work and escalations raised (NOVA owns those)',
   'Personal-domain tasks (never — work only)',
   'Microsoft To Do / Planner completions (the wins ledger cannot tell work from personal for those)',
