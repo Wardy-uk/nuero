@@ -2,16 +2,12 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import AttentionCard from './AttentionCard';
 import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
-import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs';
 import { performCardTarget, kindsFor } from '../../../saim/shared-ui/presentation/cardOpen.mjs';
-import PromiseSave from '../../../saim/app/src/components/PromiseSave.jsx';
-import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
-import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
-import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
 import MakeReady from '../../../saim/app/src/components/MakeReady.jsx';
 import { loadEligible } from '../../../saim/app/src/makeReady.mjs';
 import { openInVault } from '../openVault';
 import { desktopCall } from '../desktopCall';
+import { startTaskSession } from '../../../saim/shared-ui/startTask.mjs';
 
 // ONE desktop rendering of the canonical presentation (Build Brief 003,
 // 23 Oct 2026): the presentation-v1 `Situation` scene and every governed
@@ -19,8 +15,8 @@ import { desktopCall } from '../desktopCall';
 // workspace render the same scene from the same code. It decides nothing:
 // order, wording and eligibility are the server's; each callback only invokes
 // the route that already governs it (attention act, focus session, life
-// declare, promise prepare, prepared-move prepare/answer, the prepared-move
-// confirm path inside PromiseSave). There is no second ranker here.
+// declare, and "Start this task" — the focus-session route, then the Task
+// workflow screen, which holds the promise's own controls). There is no second ranker here.
 
 /**
  * PURE. Is the lead card this promise's own task? Only by an id the server gave both —
@@ -111,37 +107,16 @@ export default function NowScene({ attention, onNavigate, onStarted, blockTasks 
         try { await postJson('/api/signals/life/not-now'); } catch { /* stays */ }
         attention.refresh();
       }}
-      // Keep my word: only PREPARES the governed delivery note — it waits in Actions for the approval code.
-      onPrepareDelivery={async (key) => {
-        try {
-          const res = await apiFetch(`/api/promises/${encodeURIComponent(key)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-          const body = await res.json().catch(() => null);
-          return body && typeof body === 'object' ? (res.ok ? body : { ...body, ok: false }) : { ok: false, error: `NEURO answered ${res.status}, so nothing was drafted.` };
-        } catch { return { ok: false, error: 'NEURO didn’t answer, so nothing was drafted.' }; }
-      }}
-      // Keep my word: take a held promise forward as a prepared move — asks, in place,
-      // the one thing SAiM needs (who it is owed to); stores a proposal or the answer only.
-      onPromiseMove={async (op) => {
-        const req = promiseMoveRequest(op);
-        if (!req) return { ok: false, error: 'That isn’t something this card can do.' };
-        const { path, body } = req;
-        try {
-          const res = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          const b = await res.json().catch(() => null);
-          const out = b && typeof b === 'object' ? (res.ok ? b : { ...b, ok: false }) : { ok: false, error: `NEURO answered ${res.status}.` };
-          if (out.ok) attention.refresh();
-          return out;
-        } catch { return { ok: false, error: 'NEURO didn’t answer.' }; }
-      }}
-      onOpenActions={onNavigate ? () => onNavigate('actions') : null}
-      renderTaskTools={({ taskId }) => (
-        <>
-          <TaskContext taskId={taskId} call={desktopCall} onOpen={openInVault} editable />
-          <TaskAgent taskId={taskId} call={desktopCall} onOpenNote={(x) => x.path && openInVault(x.path)} onOpenActions={onNavigate ? () => onNavigate('actions') : null}
-            renderSave={(recordId, done) => <PreparedMove call={desktopCall} recordId={recordId} embedded onChanged={done} />} />
-        </>
-      )}
-      renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} hideContextFor={focusTaskId} onOpenContext={openInVault} onOpenNote={(n) => openInVault(n.path)} />}
+      // Keep my word (31 Oct 2026): the card's ONE control. Start a focus session on the
+      // promise's task (asking first when another one runs) and open its Task workflow
+      // screen; a start NEURO refuses for any other reason still opens it, saying why.
+      onStartTask={onNavigate ? async ({ taskId, key, title, force }) => {
+        const r = await startTaskSession(desktopCall, { taskId, text: title, force });
+        if (r.conflict) return r;
+        attention.refresh();
+        onNavigate('task', { taskId, key, startError: r.ok ? null : r.error });
+        return { ok: true };
+      } : null}
       renderItemExtra={(it) => {
         const e = eligibleFor(it);
         return e ? <MakeReady item={e} call={desktopCall} onOpenDraft={onNavigate ? (recordId) => onNavigate('drafts', recordId ? { recordId } : null) : null} /> : null;

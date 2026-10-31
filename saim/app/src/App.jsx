@@ -23,7 +23,7 @@ const fetchWhereabouts = () => apiFetch('/api/signals/room');
 // dictation (the Pi, the laptop's Electron window) it was a tab that did nothing.
 // Hidden from the menu only — the id stays valid, so a notification routed to it
 // still lands on Capture rather than falling through.
-const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
+const canShowTab = (t) => t.menu !== false && (t.id !== 'voice' || Boolean(speechRecognitionCtor()));
 import DeploymentGuard from './components/DeploymentGuard';
 import UpdateChip from '../../shared-ui/UpdateChip';
 import { readRuntime } from './runtime';
@@ -402,7 +402,7 @@ export default function App() {
             sitting on the Ritual tab re-opens it as EOD instead of being
             ignored by the view's mount-time default. */}
         <ActiveView
-          key={`${active}:${intentKind || ''}:${navContext ? (navContext.recordId || navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
+          key={`${active}:${intentKind || ''}:${navContext ? (navContext.recordId || navContext.taskId || navContext.key || navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
           autoRecord={active === 'voice'}
           context={navContext}
           intentKind={intentKind}

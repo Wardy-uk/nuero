@@ -18,10 +18,7 @@ import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import AskDock from '../../../shared-ui/presentation/AskDock';
 import PreparedMove from '../components/PreparedMove';
-import PromiseSave from '../components/PromiseSave.jsx';
-import TaskAgent from '../../../shared-ui/TaskAgent.jsx';
-import TaskContext from '../../../shared-ui/TaskContext.jsx';
-import { prepareDelivery, promiseMove } from '../promiseDelivery.mjs';
+import { startTaskSession } from '../../../shared-ui/startTask.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
 import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
@@ -440,8 +437,10 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     if (o && o.kind === 'promise') {
       // "Open the draft" goes to THAT record in Drafts — the one place prepared work waits (22 Oct 2026).
       if (o.recordId && o.show === 'draft') { onNavigate?.('drafts', { context: { recordId: o.recordId } }); return; }
-      const el = typeof document !== 'undefined' && o.ref ? document.querySelector(`[data-promise-ref="${String(o.ref).replace(/"/g, '')}"]`) : null;
-      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
+      // SAiM's question now lives on the Task workflow screen (31 Oct 2026), not on the card.
+      const key = o.ref ? String(o.ref).replace(/^promise:/, '') : null;
+      const taskId = card.meta && card.meta.taskId != null ? card.meta.taskId : null;
+      if (key || taskId != null) { onNavigate?.('task', { context: { taskId, key } }); return; }
       return;
     }
     const tab = tabFor(card);
@@ -706,8 +705,16 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       // A press on the offer prepares THAT item and opens its exact Drafts entry (22 Oct 2026).
       prepared={<PreparedMove onMoment={setPreparedMoment} onOpenAuthority={() => onNavigate?.('authority')} show={showMove} onPrepared={(recordId) => onNavigate?.('drafts', { context: { recordId } })} />}
       preparedMoment={preparedMoment}
-      // Keep my word: prepare the governed delivery note; approval stays in Actions on the desktop.
-      onPrepareDelivery={(key) => prepareDelivery(key)}
+      // Keep my word (31 Oct 2026): "Start this task" — a focus session on the promise's task
+      // (asking first if another runs), then its Task workflow screen, pushed with Back. The
+      // prepared move, delivery note, evidence and Do this live there now. Never on the kiosk.
+      onStartTask={platformNow() === 'kiosk' ? null : async ({ taskId, key, title, force }) => {
+        const call = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+        const r = await startTaskSession(call, { taskId, text: title, force });
+        if (r.conflict) return r;
+        onNavigate?.('task', { context: { taskId, key, startError: r.ok ? null : r.error } });
+        return { ok: true };
+      }}
       // Holding the week (22 Oct 2026): the phone opens each card's record and performs what it
       // can — the draft in Obsidian, the block in Outlook, starting the block, drafting a delivery
       // note (nothing sent). A NEURO screen or an exact task is NAMED, never opened as a guess.
@@ -723,12 +730,6 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         if (r) load({ quiet: true });
         return r;
       }}
-      // Keep my word: take a held promise forward — asks, in place, what SAiM needs; stores a proposal only.
-      onPromiseMove={async (op) => {
-        // The interview AND the governed save happen ON the promise card (26 Oct 2026):
-        // nothing here depends on this press's answer to show the save later.
-        return promiseMove(op);
-      }}
       // "I'm not attending" (22 Oct 2026): the SAME route the spoken command uses, for the exact
       // meeting on screen. Nothing is declined, sent, or written to any calendar; Undo resumes it.
       onNotAttending={async (m, { undo = false } = {}) => {
@@ -740,19 +741,6 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
           const inBody = String(e.message || '').match(/"error"\s*:\s*"([^"]+)"/);
           return { ok: false, error: inBody ? inBody[1] : String(e.message || 'NEURO didn’t answer') };
         }
-      }}
-      // The private draft's save step, pinned to its record — shown on every load.
-      renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} onChanged={() => load({ quiet: true })} />}
-      // The promise card's task tools (31 Oct 2026): the same Do this / Claude handoff and
-      // linked notes the Tasks screen mounts. Never on the kiosk.
-      renderTaskTools={platformNow() === 'kiosk' ? null : ({ taskId }) => {
-        const call = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
-        return (
-          <>
-            <TaskContext taskId={taskId} call={call} />
-            <TaskAgent taskId={taskId} call={call} renderSave={(recordId, done) => <PreparedMove call={call} recordId={recordId} embedded onChanged={done} />} />
-          </>
-        );
       }}
       canOpen={canOpen}
       crownExtra={(

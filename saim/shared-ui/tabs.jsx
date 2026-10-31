@@ -39,6 +39,7 @@ import Controls from '../app/src/views/Controls';
 import Household from '../app/src/views/Household';
 import Authority from '../app/src/views/Authority';
 import Drafts from '../app/src/views/Drafts';
+import TaskScreen from '../app/src/views/TaskScreen';
 
 export const PRIMARY = [
   { id: 'capture', label: 'Capture', icon: '➕', Component: Capture },
@@ -66,6 +67,9 @@ export const SECONDARY = [
   // What SAiM may do (20 Oct 2026): the two gates, today's allowance and the
   // stop. Its own screen — never a setting inside Controls.
   { id: 'authority', label: 'What SAiM may do', icon: '⛉', Component: Authority },
+  // The Task workflow screen (31 Oct 2026): pushed by "Start this task" on the
+  // Keep my word card, with its Back. `menu: false` — never offered in More.
+  { id: 'task', label: 'Task', icon: '▸', Component: TaskScreen, menu: false },
 ];
 
 export const TABS = [...PRIMARY, ...SECONDARY];

@@ -59,6 +59,7 @@ const lazyLoad = (load) => lazy(() => load().then((m) => {
 const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
 const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
+const TaskWorkflowPage = lazyLoad(() => import('./components/TaskWorkflowPage'));
 // The SAiM workspace (Brief 003): only mounted when its switch is on.
 const SaimWorkspace = lazyLoad(() => import('./components/SaimWorkspace'));
 const PeopleBoard = lazyLoad(() => import('./components/PeopleBoard'));
@@ -142,6 +143,8 @@ function readNueroLaunchIntent() {
   // intent from a notification still wins, so tapping a card lands on the thing
   // that pinged him rather than on the general screen.
   if (!view) return { view: 'today', context: null };
+  // The Task workflow screen (31 Oct 2026): ?view=task&taskId=N&key=promise:N.
+  if (view === 'task') return { view: 'task', context: { taskId: params.get('taskId') || null, key: params.get('key') || null } };
   return {
     view: canonicalView(view),
     context: filter ? { filter } : null,
@@ -155,6 +158,10 @@ function syncNueroLaunchIntent(view, context = null) {
   else next.searchParams.delete('filter');
   if (view === 'item' && context?.item) next.searchParams.set('item', context.item);
   else next.searchParams.delete('item');
+  if (view === 'task' && context?.taskId != null) next.searchParams.set('taskId', String(context.taskId));
+  else next.searchParams.delete('taskId');
+  if (view === 'task' && context?.key) next.searchParams.set('key', context.key);
+  else next.searchParams.delete('key');
   window.history.replaceState({}, '', `${next.pathname}${next.search}${next.hash}`);
 }
 
@@ -428,6 +435,8 @@ function AuthenticatedApp() {
       // Off (or unreadable), ?view=saim lands on Now: the fallback is the old home.
       case 'saim': return saimOn ? <SaimWorkspace onNavigate={handleNavigate} /> : <AdhdPanel onNavigate={handleNavigate} />;
       case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
+      // Not in the sidebar: opened by "Start this task" on the promise card (31 Oct 2026).
+      case 'task': return <TaskWorkflowPage key={`${navContext?.taskId || ''}:${navContext?.key || ''}`} context={navContext} onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
       // EOD is the same screen with the end-of-day half already open. It had no

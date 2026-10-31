@@ -9,7 +9,7 @@ import { speechRecognitionCtor } from '../../app/src/speechRecognition';
 // still lands on Capture rather than falling through.
 // May do (authority) is changed from Nick's own phone or desk, never the wall: the
 // kiosk proxy deliberately has no door for it, so the tab would only say it cannot read.
-const canShowTab = (t) => t.id !== 'authority' && (t.id !== 'voice' || Boolean(speechRecognitionCtor()));
+const canShowTab = (t) => t.menu !== false && t.id !== 'authority' && (t.id !== 'voice' || Boolean(speechRecognitionCtor()));
 import Field from '../../shared-ui/Field';
 import { FieldCover } from '../../shared-ui/FieldCover';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
