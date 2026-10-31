@@ -170,17 +170,20 @@ test('a watchdog recovery closes the alert it recovers from', async () => {
 test('a router still down is re-announced every 4 hours, until Nick answers', async () => {
   resetGovernor();
   await post(sample());
-  await post(sample({ shellOk: false }));
-  assert.equal(lastPush('router_health').outcome, PASSED);
-
+  const routerHealth = require('../services/router-health');
   const backdate = (hours) => {
     const s = JSON.parse(db.getState('router_health'));
     s.episodeStartedAt = new Date(Date.now() - hours * 3600000).toISOString();
     db.setState('router_health', JSON.stringify(s));
+    return s.episodeStartedAt;
   };
   const pushes = () => db.getPushLog(500).filter((r) => r.type === 'router_health' && r.outcome === PASSED).length;
 
-  backdate(5);
+  // The wedge began five hours ago and its first alert went out then.
+  const started = backdate(5);
+  await webpush.sendToAll('SAiM — Router', 'down', { type: 'router_health', key: routerHealth.alertKey(started, 'down') });
+  assert.equal(openRouterRecords().length, 1);
+
   let n = pushes();
   const r = await post(sample({ shellOk: false }));
   assert.equal(r.announced, true);
@@ -190,13 +193,25 @@ test('a router still down is re-announced every 4 hours, until Nick answers', as
   await post(sample({ shellOk: false }));
   assert.equal(lastPush('router_health').reason, 'already notified, nothing changed', 'once per round');
 
-  // Nick acknowledges it: the next round stays quiet.
-  lifecycle.act(openRouterRecords()[0].id, 'acknowledge');
-  backdate(9);
-  n = pushes();
-  await post(sample({ shellOk: false }));
-  assert.equal(pushes(), n, 'acknowledged: no further reminders this episode');
+  await post(sample());
+  assert.equal(openRouterRecords().length, 0, 'recovery closes every round');
+});
 
+test('once Nick acknowledges a router alert, its later rounds stay quiet', async () => {
+  resetGovernor();
+  await post(sample());
+  const routerHealth = require('../services/router-health');
+  const st = JSON.parse(db.getState('router_health'));
+  st.episodeStartedAt = new Date(Date.now() - 9 * 3600000).toISOString();
+  db.setState('router_health', JSON.stringify(st));
+  // Round 1 went out at the 4-hour mark, and Nick said "seen it".
+  await webpush.sendToAll('SAiM — Router', 'still down', { type: 'router_health', key: routerHealth.alertKey(st.episodeStartedAt, 'down', 1) });
+  lifecycle.act(openRouterRecords()[0].id, 'acknowledge');
+
+  const before = db.getPushLog(500).length;
+  const r = await post(sample({ shellOk: false }));
+  assert.equal(r.announced, false, 'round 2 is not announced');
+  assert.equal(db.getPushLog(500).length, before, 'nothing pushed, nothing logged');
   await post(sample());
   assert.equal(openRouterRecords().length, 0, 'recovery closes every round');
 });
