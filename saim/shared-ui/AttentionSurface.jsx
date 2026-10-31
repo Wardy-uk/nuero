@@ -183,7 +183,7 @@ export default function AttentionSurface({
   onCardOpen = null,
   cardKinds = null,
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card. null = none.
-  renderPromiseSave = null,
+  renderPromiseSave = null, renderTaskTools = null,
   // "I'm not attending" for the meeting on screen (22 Oct 2026): the shell records it on
   // the existing route ({ key }) → { ok, error }. Null (the kiosk, the watch) → no control.
   onNotAttending = null,
@@ -684,7 +684,7 @@ export default function AttentionSurface({
           onCardOpen={onCardOpen}
           cardKinds={cardKinds}
           onOpenActions={onOpenActions}
-          renderPromiseSave={renderPromiseSave}
+          renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />
       </div>

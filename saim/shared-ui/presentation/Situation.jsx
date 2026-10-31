@@ -229,7 +229,7 @@ export default function Situation({
   renderItemExtra = null,
   // Keep my word: the shell's governed save step for a private draft, drawn IN the card
   // ({ recordId } → element). Absent (the SAiM shells) → the card points nowhere else.
-  renderPromiseSave = null,
+  renderPromiseSave = null, renderTaskTools = null,
   // NEURO's Now page (22 Oct 2026): the scene in a working surface — the readout earns its space,
   // and `kmwJoinsLead` (the shell checked the lead card IS this promise's task) puts the promise
   // under the lead as its WHY instead of a folded line repeating its title.
@@ -320,9 +320,9 @@ export default function Situation({
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
   const kmwFolded = kmw && !kmwLeads && kmwJoinsLead && kmw.thread && !kmw.receipt
-    ? <KmwWhy key="kmw-why" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
+    ? <KmwWhy key="kmw-why" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
     : kmw && !kmwLeads && (kmw.receipt || kmw.thread)
-    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
+    ? <KmwFolded key="kmw-folded" kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
     : null;
   // On an ambient surface the item the summary is about carries its hand-off
   // ("Review in Actions, in NEURO on the desktop.") as a second line.
@@ -353,7 +353,7 @@ export default function Situation({
               return [
                 kmwLeads ? (
                   <header key={i} className={`sit__situation sit__situation--kmw sit__situation--kmw-${kmw.state}`}>
-                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
+                    <KmwMain kmw={kmw} onOpen={onOpen} actions={plan.actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
                     {lead && <div className="sit__lead">{lead}</div>}
                   </header>
                 ) : (

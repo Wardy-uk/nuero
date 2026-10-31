@@ -19,6 +19,8 @@ import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import AskDock from '../../../shared-ui/presentation/AskDock';
 import PreparedMove from '../components/PreparedMove';
 import PromiseSave from '../components/PromiseSave.jsx';
+import TaskAgent from '../../../shared-ui/TaskAgent.jsx';
+import TaskContext from '../../../shared-ui/TaskContext.jsx';
 import { prepareDelivery, promiseMove } from '../promiseDelivery.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
@@ -741,6 +743,17 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       }}
       // The private draft's save step, pinned to its record — shown on every load.
       renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} onChanged={() => load({ quiet: true })} />}
+      // The promise card's task tools (31 Oct 2026): the same Do this / Claude handoff and
+      // linked notes the Tasks screen mounts. Never on the kiosk.
+      renderTaskTools={platformNow() === 'kiosk' ? null : ({ taskId }) => {
+        const call = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+        return (
+          <>
+            <TaskContext taskId={taskId} call={call} />
+            <TaskAgent taskId={taskId} call={call} renderSave={(recordId, done) => <PreparedMove call={call} recordId={recordId} embedded onChanged={done} />} />
+          </>
+        );
+      }}
       canOpen={canOpen}
       crownExtra={(
         <button

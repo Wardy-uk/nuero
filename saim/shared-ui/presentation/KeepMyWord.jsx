@@ -578,7 +578,7 @@ export function KmwThread(props) {
   return <KmwThreadOne key={shown.key} {...props} thread={shown} more={more} />;
 }
 
-export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, asWhy = false, more = null }) {
+export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null, asWhy = false, more = null }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
   if (!thread) return null;
@@ -602,7 +602,9 @@ export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepare
   // Where SAiM can take the promise forward, that IS the control — opening the
   // task stays only where nothing else can move it (24 Oct 2026).
   const moving = Boolean(thread.move);
-  const open = actions && onOpen && !canDraft && !thread.held && !moving
+  // Open the task is always offered on Nick's own surfaces (31 Oct 2026): the card is a
+  // task card too, and opening it resolves nothing a move or a hold is waiting on.
+  const open = actions && onOpen && thread.taskId
     ? () => onOpen({ kind: 'task', id: thread.key, title: thread.title, taskId: thread.taskId })
     : null;
   return (
@@ -647,6 +649,9 @@ export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepare
           <div>{thread.evidence.map((e, i) => <p key={i} className="kmw__rowline">{e.fact}</p>)}</div>
         </div>
       </div>
+      {/* The task's own tools (31 Oct 2026): Do this, Claude on the laptop, its linked notes —
+          the SAME components the Tasks card mounts, supplied by the shell. */}
+      {actions && renderTaskTools && thread.taskId && <div className="kmw__tools">{renderTaskTools({ taskId: thread.taskId })}</div>}
       {more}
       {open && (
         <div className="kmw__actions">
@@ -658,8 +663,8 @@ export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepare
 }
 
 /** The main surface: the receipt when there is one (the thread, if any, folded under it), else the thread. */
-export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
-  const t = { onOpen, actions, onPrepareDelivery, onPromiseMove, onOpenActions, renderPromiseSave };
+export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null }) {
+  const t = { onOpen, actions, onPrepareDelivery, onPromiseMove, onOpenActions, renderPromiseSave, renderTaskTools };
   if (!kmw) return null;
   if (kmw.receipt) {
     return (
@@ -682,18 +687,18 @@ export function KmwMain({ kmw, onOpen = null, actions = false, onPrepareDelivery
  * promise's task, its Keep my word state (the question, the draft, the save)
  * sits directly under it instead of a folded line repeating its title.
  */
-export function KmwWhy({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
+export function KmwWhy({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null }) {
   if (!kmw || !kmw.thread) return null;
-  return <div className="kmw__main kmw__why"><KmwThread thread={kmw.thread} asWhy onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} /></div>;
+  return <div className="kmw__main kmw__why"><KmwThread thread={kmw.thread} asWhy onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} /></div>;
 }
 
 /** The folded entry beneath an urgent lead: recognisable by its title, opened on demand. */
-export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null }) {
+export function KmwFolded({ kmw, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, renderTaskTools = null }) {
   if (!kmw || !kmw.entry) return null;
   return (
     <details className="kmw__fold kmw__fold--entry">
       <summary>{kmw.entry}</summary>
-      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} />
+      <KmwMain kmw={kmw} onOpen={onOpen} actions={actions} onPrepareDelivery={onPrepareDelivery} onPromiseMove={onPromiseMove} onOpenActions={onOpenActions} renderPromiseSave={renderPromiseSave} renderTaskTools={renderTaskTools} />
     </details>
   );
 }

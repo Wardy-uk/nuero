@@ -250,3 +250,5 @@
 .kmw__card-go + .kmw__card-link { margin-left: 14px; }
 .kmw__sheet .kmw__card-title { margin: 0; font: 700 10px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--kmw-amber); }
 .kmw__sheet .kmw__card-go { display: block; min-height: 40px; }
+/* The task's own tools under the promise (31 Oct 2026): Do this, Claude handoff, linked notes. */
+.kmw__tools { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--kmw-line); display: grid; gap: 12px; font-family: system-ui, sans-serif; }

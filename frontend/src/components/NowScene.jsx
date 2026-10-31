@@ -5,6 +5,9 @@ import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
 import { promiseMoveRequest } from '../../../saim/app/src/promiseMoveRequest.mjs';
 import { performCardTarget, kindsFor } from '../../../saim/shared-ui/presentation/cardOpen.mjs';
 import PromiseSave from '../../../saim/app/src/components/PromiseSave.jsx';
+import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
+import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
+import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
 import MakeReady from '../../../saim/app/src/components/MakeReady.jsx';
 import { loadEligible } from '../../../saim/app/src/makeReady.mjs';
 import { openInVault } from '../openVault';
@@ -131,6 +134,13 @@ export default function NowScene({ attention, onNavigate, onStarted, blockTasks 
         } catch { return { ok: false, error: 'NEURO didn’t answer.' }; }
       }}
       onOpenActions={onNavigate ? () => onNavigate('actions') : null}
+      renderTaskTools={({ taskId }) => (
+        <>
+          <TaskContext taskId={taskId} call={desktopCall} onOpen={openInVault} editable />
+          <TaskAgent taskId={taskId} call={desktopCall} onOpenNote={(x) => x.path && openInVault(x.path)} onOpenActions={onNavigate ? () => onNavigate('actions') : null}
+            renderSave={(recordId, done) => <PreparedMove call={desktopCall} recordId={recordId} embedded onChanged={done} />} />
+        </>
+      )}
       renderPromiseSave={({ recordId }) => <PromiseSave recordId={recordId} call={desktopCall} onChanged={() => attention.refresh()} hideContextFor={focusTaskId} onOpenContext={openInVault} onOpenNote={(n) => openInVault(n.path)} />}
       renderItemExtra={(it) => {
         const e = eligibleFor(it);
