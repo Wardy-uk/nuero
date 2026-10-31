@@ -87,13 +87,19 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
  * and already saved into the task's draft note — and, folded away, a box to paste
  * an answer from a Claude chat that could not call return_task_result itself.
  */
-export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null, busy = false, error = null, done = null }) {
+export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null, busy = false, error = null, done = null, leading = null, inline = false }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
-  if (!results.length && !onReturn) return null;
+  if (!results.length && !onReturn && !leading) return null;
   const when = (at) => new Date(at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   return (
-    <div className="tagent__section" data-tagent-claude-return>
+    <div className={inline ? 'tagent__return' : 'tagent__section'} data-tagent-claude-return>
+      {(leading || (onReturn && !open)) && (
+        <div className="tagent__row">
+          {leading}
+          {onReturn && !open && <button type="button" className="tagent__quiet" onClick={() => setOpen(true)}>Paste Claude’s answer…</button>}
+        </div>
+      )}
       {results.map((o) => (
         <details className="tagent__out" key={o.id} open={o === results[0]} data-tagent-output="claude">
           <summary><span className="tagent__badge">From Claude</span> {when(o.at)}</summary>
@@ -103,7 +109,6 @@ export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null,
           </p>
         </details>
       ))}
-      {onReturn && !open && <button type="button" className="tagent__quiet" onClick={() => setOpen(true)}>Paste Claude’s answer…</button>}
       {onReturn && open && (
         <form className="tagent__q" data-tagent-claude-paste onSubmit={async (e) => { e.preventDefault(); if (!text.trim()) return; const ok = await onReturn(text); if (ok) { setText(''); setOpen(false); } }}>
           <p className="tagent__h">Paste Claude’s answer</p>
@@ -277,25 +282,25 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
         </div>
       )}
 
-      {canHandOff && onClaudeOpen && (
-        <div className="tagent__section" data-tagent-claude-offer={run.claude && run.claude.recommended ? 'recommended' : 'available'}>
+      {canHandOff && onClaudeOpen ? (
+        <div className="tagent__section tagent__panel" data-tagent-claude-offer={run.claude && run.claude.recommended ? 'recommended' : 'available'}>
+          <p className="tagent__h">Claude on desktop</p>
           {run.claude && run.claude.recommended && <p className="tagent__note"><strong>Better with Claude on desktop:</strong> {run.claude.why}</p>}
-          {!claude && <button type="button" className={run.claude && run.claude.recommended ? '' : 'tagent__quiet'} onClick={onClaudeOpen}>Hand off to Claude on desktop…</button>}
           {claude && (
             <>
               <ClaudeHandoff {...claude} />
-              <button type="button" className="tagent__quiet" onClick={onClaudeClose}>Close the handoff</button>
+              <div className="tagent__row"><button type="button" className="tagent__quiet" onClick={onClaudeClose}>Close the handoff</button></div>
             </>
           )}
           {handoffs.length > 0 && (
-            <ul className="tagent__list">
+            <ul className="tagent__list tagent__handed">
               {handoffs.map((h) => <li key={h.id} data-tagent-claude-handoff={h.status} className="tagent__meta">Handed to Claude {new Date(h.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} — prompt copied{h.desk ? `; laptop: ${h.desk.status}` : ''}.</li>)}
             </ul>
           )}
+          <ClaudeReturn {...(claudeReturn || {})} inline onOpenNote={onOpenNote}
+            leading={!claude ? <button type="button" className={run.claude && run.claude.recommended ? '' : 'tagent__quiet'} onClick={onClaudeOpen}>Hand off to Claude on desktop…</button> : null} />
         </div>
-      )}
-
-      {claudeReturn && <ClaudeReturn {...claudeReturn} onOpenNote={onOpenNote} />}
+      ) : (claudeReturn && <ClaudeReturn {...claudeReturn} onOpenNote={onOpenNote} />)}
 
       {/* The trace — closed by default; the full record stays for audit. */}
       <details className="tagent__fold tagent__trace" data-tagent-trace>
@@ -324,7 +329,7 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
 
       {error && <p className="tagent__err" role="alert">{error}</p>}
 
-      <div className="tagent__row">
+      <div className="tagent__row tagent__footer">
         {(run.status === 'interrupted' || run.status === 'failed') && <button type="button" onClick={() => onStart(false)} disabled={busy}>Do this — continue</button>}
         {run.status !== 'running' && run.status !== 'stopped' && <button type="button" className="tagent__quiet" onClick={onStop} disabled={busy}>Stop</button>}
         {settled && <button type="button" className="tagent__quiet" onClick={() => onStart(true)} disabled={busy}>Start a fresh attempt</button>}

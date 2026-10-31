@@ -52,3 +52,52 @@
 .tagent__section .tagent__link { margin-left: 2px; }
 .tagent__next .tagent__h { margin-top: 10px; }
 .tagent__nextq { font-size: 14px; font-weight: 600; }
+
+/* ── Visual pass (31 Oct 2026, "make it look nicer") ─────────────────────────
+   Calmer rhythm: one gap scale, sections as quiet cards, the status as a pill,
+   Claude's hand-off and its way back together in one panel, the stop controls
+   tucked into a footer. Still colour-neutral (inherit + alpha). */
+.tagent { font-size: 14px; line-height: 1.5; display: grid; gap: 14px; padding-top: 14px; }
+.tagent > * { margin-top: 0 !important; }
+.tagent p { margin: 0; }
+.tagent__h { margin: 0 0 6px; font-size: 10.5px; letter-spacing: 0.16em; opacity: 0.6; }
+.tagent__section, .tagent__q, .tagent__statusblock { padding: 14px 16px; border: 1px solid rgba(127, 127, 127, 0.22); border-radius: 12px; background: rgba(127, 127, 127, 0.05); }
+.tagent__q { border-width: 1px; border-color: rgba(127, 127, 127, 0.45); background: rgba(127, 127, 127, 0.08); }
+.tagent__statusblock { min-height: 0; display: grid; gap: 4px; }
+.tagent__statusline { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; margin: 0; }
+.tagent__statusline::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.55; flex: none; }
+.tagent--ready .tagent__statusline::before { background: #5fb784; opacity: 1; }
+.tagent--running .tagent__statusline::before { background: #e0b860; opacity: 1; animation: tagent-pulse 1.4s ease-in-out infinite; }
+.tagent--needs-answer .tagent__statusline::before, .tagent--needs-manual .tagent__statusline::before, .tagent--needs-decision .tagent__statusline::before { background: #e0b860; opacity: 1; }
+.tagent--failed .tagent__statusline::before, .tagent--blocked .tagent__statusline::before { background: #d9725f; opacity: 1; }
+@keyframes tagent-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .tagent--running .tagent__statusline::before { animation: none; } }
+.tagent__wont, .tagent__meta, .tagent__hint { font-size: 12.5px; opacity: 0.7; }
+.tagent__bul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.tagent__bul li::marker { opacity: 0.5; }
+.tagent__nextq { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.tagent__row { margin-top: 10px; gap: 8px; align-items: center; }
+.tagent button { font-size: 13px; padding: 7px 14px; border-radius: 8px; min-height: 34px; transition: background 0.15s, border-color 0.15s; }
+.tagent button:not(:disabled):hover { background: rgba(127, 127, 127, 0.2); border-color: rgba(127, 127, 127, 0.6); }
+.tagent .tagent__quiet { border-color: rgba(127, 127, 127, 0.32); }
+.tagent .tagent__link { padding: 0; min-height: 0; border: 0; background: none; }
+.tagent .tagent__link:hover { background: none; text-decoration-color: currentColor; }
+.tagent__out { margin-top: 8px; border-color: rgba(127, 127, 127, 0.26); border-radius: 10px; padding: 0; overflow: hidden; background: rgba(127, 127, 127, 0.04); }
+.tagent__out summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 11px 14px; font-weight: 600; }
+.tagent__out summary::-webkit-details-marker { display: none; }
+.tagent__out summary::before { content: '›'; font-size: 18px; line-height: 1; opacity: 0.55; transition: transform 0.15s; }
+.tagent__out[open] summary::before { transform: rotate(90deg); }
+.tagent__out[open] summary { border-bottom: 1px solid rgba(127, 127, 127, 0.18); }
+.tagent__out > :not(summary) { margin-left: 14px; margin-right: 14px; }
+.tagent__out > :last-child { margin-bottom: 12px; }
+.tagent__md { font-size: 13.5px; line-height: 1.6; margin-top: 12px; }
+.tagent__badge { margin: 0; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; }
+.tagent__panel .tagent__row { margin-top: 0; }
+.tagent__return { display: grid; gap: 8px; }
+.tagent__handed { margin: 0 0 10px; }
+.tagent__handed li { display: flex; align-items: center; gap: 8px; }
+.tagent__handed li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.5; flex: none; }
+.tagent__trace { padding: 0 2px; }
+.tagent__trace summary { font-size: 12.5px; }
+.tagent__footer { margin-top: 0; padding-top: 12px; border-top: 1px solid rgba(127, 127, 127, 0.18); justify-content: flex-end; }
+.tagent__footer button { font-size: 12px; min-height: 30px; padding: 5px 12px; }
