@@ -385,6 +385,16 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     return { state: 'live', ageMinutes: a.ageMinutes, detail: [up, t].filter(Boolean).join(' · ') || null };
   });
 
+  // ── Who's in the house ────────────────────────────────────────────────────
+  //
+  // Judged in household-sense (the FEED, not just the answer — 31 Oct 2026 the
+  // sensor read fine while the router reported every device away). Cached
+  // states only: no network call on a status render.
+  guard('household', "Who's in the house", 'who else is home — what SAiM may do in a room, and the wall', () => {
+    const ha = require('./ha');
+    return require('./household-sense').assess(ha.cachedStates(), { cachedAt: ha.cachedStatesAt(), now });
+  });
+
   // ── RescueTime ────────────────────────────────────────────────────────────
   //
   // ⚠ This row does NOT ask whether the API answered. That is what every

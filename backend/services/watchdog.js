@@ -600,7 +600,12 @@ function integrationNotifications(current, previous, { quiet = false, now = new 
  * never raised.
  */
 const SENSE_CRITICAL_HOURS = Number(process.env.SENSE_CRITICAL_HOURS) || 12;
-const CORE_SENSES = new Set(['phone', 'watch', 'laptop', 'calendar', 'health', 'router']);
+const CORE_SENSES = new Set(['phone', 'watch', 'laptop', 'calendar', 'health', 'router', 'household']);
+// A sense that cannot wait twelve hours. "Who's in the house" decides whether
+// SAiM may act in a room and what the family wall says (Nick, 31 Oct 2026:
+// alert after 30 minutes). The watchdog runs every 30, so the push lands 30–60
+// minutes after the house goes blind.
+const SENSE_CRITICAL_MINUTES = { household: 30 };
 
 async function checkSenses(previous = {}, now = new Date()) {
   let rooms = { ok: false, why: 'the room sensors were not read', sensors: [] };
@@ -616,9 +621,10 @@ async function checkSenses(previous = {}, now = new Date()) {
     const since = (previous[key] && previous[key].since) || now.toISOString();
     const hours = (now.getTime() - Date.parse(since)) / 3600000;
     const core = CORE_SENSES.has(sig.id) || String(sig.id).startsWith('room-');
+    const threshold = SENSE_CRITICAL_MINUTES[sig.id] != null ? SENSE_CRITICAL_MINUTES[sig.id] / 60 : SENSE_CRITICAL_HOURS;
     out.push({
       key,
-      level: core && hours >= SENSE_CRITICAL_HOURS ? 'critical' : 'warn',
+      level: core && hours >= threshold ? 'critical' : 'warn',
       title: `${sig.label || sig.id} has ${sig.state === 'error' ? 'stopped working' : 'gone quiet'}`,
       detail: [sig.why, sig.what ? `SAiM loses: ${sig.what}` : null].filter(Boolean).join(' — '),
       since,
