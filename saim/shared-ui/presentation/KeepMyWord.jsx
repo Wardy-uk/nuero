@@ -577,7 +577,7 @@ export function KmwThread(props) {
   return <KmwThreadOne key={shown.key} {...props} thread={shown} more={more} />;
 }
 
-function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, asWhy = false, more = null }) {
+export function KmwThreadOne({ thread, onOpen = null, actions = false, onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null, renderPromiseSave = null, asWhy = false, more = null }) {
   const [drafting, setDrafting] = useState(false);
   const [result, setResult] = useState(null);
   if (!thread) return null;

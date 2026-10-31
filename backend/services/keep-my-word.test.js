@@ -357,7 +357,7 @@ test('render: urgent lead first; the delivery control lives in the folded thread
 });
 
 test('the click calls ONLY the prepare handler with the promise key, reveals the route’s draft, repeats idempotently, and shows a refusal whole', async () => {
-  const { KmwThread } = await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'));
+  const { KmwThreadOne: KmwThread } = await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx')); // the thread body, called directly
   const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY(), presentation: CALM, now: NOW });
   const R = require('react');
   const realUseState = R.useState;
