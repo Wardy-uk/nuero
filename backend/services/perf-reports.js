@@ -9,9 +9,11 @@
  * A built or published report that was never sent is not an item — producing
  * a draft is not delivering it.
  *
- * Read-only and judging nothing. The send time and the deadline are stated as
- * FACTS ("sent 20 Oct 13:56; due midday Mon 19 Oct") and `hint` stays null:
- * a late report is a fact, not a verdict (perf-evidence-feed's rule).
+ * Read-only and judging nothing. The send time is stated as a fact and `hint`
+ * stays null. ⚠ There is NO deadline in it (31 Oct 2026, Nick: "the midday
+ * Monday deadline for the weekly report is an arbitrary one I set") — a target
+ * he chose for himself is not a commitment to anyone, so measuring the send
+ * against it would manufacture lateness.
  *
  * The detail carries the sections that say what Nick found and did — headline,
  * escalations, positives, actions (Weekly Risk); success, star, amber, red
@@ -42,7 +44,6 @@ function niceDay(key) {
   const d = new Date(`${key}T12:00:00Z`);
   return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
-const dayDiff = (a, b) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000);
 
 /** The named `## ` sections of a markdown report, in report order. Pure. */
 function sections(markdown, wanted) {
@@ -67,33 +68,12 @@ function sections(markdown, wanted) {
 const WR_SECTIONS = [/^Headline/i, /^To escalate/i, /^Positives/i, /^Actions this week/i];
 const SOAP_SECTIONS = [/Success/i, /Star of the week/i, /Turning amber/i, /^\W*Red\b/i];
 
-/**
- * Midday on the first working day of the report's week, London time. Pure
- * apart from the holiday set it is handed.
- */
-function weeklyDue(week, nonWorking) {
-  const first = require('./pip-deliverables').firstWorkingDay(week, nonWorking);
-  return `${first} 12:00`;
-}
-
-/** Timing fact for a send against a deadline. Pure. */
-function timing(sentStamp, dueStamp, dueLabel) {
-  if (!sentStamp) return 'Send time not recorded.';
-  const [sd, st] = sentStamp.split(' ');
-  const base = `Sent ${niceDay(sd)} ${st}; due ${dueLabel}.`;
-  if (sentStamp <= dueStamp) return `${base} On time.`;
-  const days = dayDiff(sd, dueStamp.slice(0, 10));
-  return days > 0 ? `${base} ${days} day(s) after.` : `${base} Later the same day.`;
-}
-
-function weeklyRiskItem(rec, nonWorking) {
+function weeklyRiskItem(rec) {
   const week = rec.week;
   const sent = londonStamp(rec.sentAt);
-  const due = weeklyDue(week, nonWorking);
-  const dueLabel = `midday ${niceDay(due.slice(0, 10))}`;
   const to = (rec.recipients || []).map((r) => r.name || r.email).filter(Boolean);
   const head = [
-    timing(sent, due, dueLabel),
+    sent ? `Sent ${niceDay(sent.slice(0, 10))} ${sent.slice(11)}.` : 'Send time not recorded.',
     to.length ? `To ${to.join(', ')}.` : null,
     rec.reportedByNick ? 'Recorded by Nick as sent by hand.' : null,
   ].filter(Boolean).join(' ');
@@ -133,9 +113,7 @@ function soapItem(rec) {
 }
 
 /** Sent reports whose send falls in the window (London days). */
-function itemsFor(db, w, { nonWorking } = {}) {
-  let holidays = nonWorking;
-  if (!holidays) { try { holidays = require('./working-days').holidaySet(); } catch { holidays = undefined; } }
+function itemsFor(db, w) {
   const rows = db.prepare(`SELECT key, value FROM agent_state WHERE key LIKE 'weekly_risk_sent_%' OR key LIKE 'soap_sent:%'`).all();
   const out = [];
   for (const r of rows) {
@@ -146,7 +124,7 @@ function itemsFor(db, w, { nonWorking } = {}) {
     if (!day || day < w.from || day > w.to) continue;
     if (r.key.startsWith('weekly_risk_sent_')) {
       if (!rec.week) rec.week = r.key.slice('weekly_risk_sent_'.length);
-      out.push(weeklyRiskItem(rec, holidays));
+      out.push(weeklyRiskItem(rec));
     } else {
       if (!rec.weekFrom) rec.weekFrom = r.key.slice('soap_sent:'.length);
       out.push(soapItem(rec));
@@ -155,4 +133,4 @@ function itemsFor(db, w, { nonWorking } = {}) {
   return out;
 }
 
-module.exports = { itemsFor, _internals: { sections, timing, londonStamp, weeklyDue, WR_SECTIONS, SOAP_SECTIONS } };
+module.exports = { itemsFor, _internals: { sections, londonStamp, WR_SECTIONS, SOAP_SECTIONS } };

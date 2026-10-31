@@ -20,6 +20,7 @@ process.env.NEURO_DB_PATH = path.join(scratch, 'scratch.db');
 const vault = path.join(scratch, 'vault');
 process.env.OBSIDIAN_VAULT_PATH = vault;
 fs.mkdirSync(path.join(vault, 'Meetings', '2026', '10'), { recursive: true });
+fs.mkdirSync(path.join(vault, 'Projects'), { recursive: true });
 
 const express = require('express');
 const db = require('../db/database');

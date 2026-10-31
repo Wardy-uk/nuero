@@ -308,11 +308,17 @@ const SOURCES = [
   ['confluence', (ctx) => require('./perf-confluence').itemsFor(ctx.w)],
   // The Weekly Risk and SOAP reports Nick SENT (perf-reports.js; sent records only).
   ['reports', (ctx) => require('./perf-reports').itemsFor(ctx.db, ctx.w)],
+  // The evidence audit's additions (31 Oct 2026; perf-work.js).
+  ['sends', (ctx) => require('./perf-work').sends(ctx.db, ctx.w)],
+  ['tickets', (ctx) => require('./perf-work').tickets(ctx.db, ctx.w)],
+  ['workforce', (ctx) => require('./perf-work').workforce(ctx.db, ctx.w)],
+  ['people', (ctx) => require('./perf-work').people(ctx.db, ctx.w)],
+  ['work-notes', (ctx) => require('./perf-work').workNotes(ctx.vaultRoot, ctx.w)],
 ];
 
 /** What the feed deliberately does not carry yet, so nobody reads it as the whole picture. */
 const NOT_INCLUDED = [
-  'Outlook Sent Items not sent through NEURO (only replies NEURO sent are here)',
+  'Outlook Sent Items not sent through NEURO (only mail NEURO sent for you is here)',
   'Jira ticket work and escalations raised (NOVA owns those)',
   'Personal-domain tasks (never — work only)',
   'Microsoft To Do / Planner completions (the wins ledger cannot tell work from personal for those)',
@@ -368,7 +374,7 @@ function candidates({ from, to } = {}, deps = {}) {
   for (const it of items) {
     const text = it._screenText || it.detail || '';
     delete it._screenText;
-    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence', 'reports', 'wins'].includes(it.source)) continue;
+    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence', 'reports', 'wins', 'sends', 'tickets', 'workforce', 'work-notes'].includes(it.source)) continue;
     // The blunt personal screen ALWAYS runs, injected screen or not.
     let verdict = personalScreen({ title: it.title, text });
     if (!verdict.sensitive) {
