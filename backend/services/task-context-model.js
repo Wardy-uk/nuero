@@ -19,12 +19,9 @@
  *    vocabulary almost completely (support, ticket, team, customer…), which is
  *    why `task-dedupe`'s thresholds could not be inherited; here a token that
  *    appears in more than COMMON_DF_SHARE of notes carries no evidence at all.
- *  - A note that is restricted, employment-sensitive, personal (to a work
- *    task), machine-generated, a duplicate, ambiguous or unreadable is SKIPPED
- *    by the scan with a reason; it is never pinned or suggested. The only
- *    exception is the note a task was RAISED in — it is that task's own
- *    source, not an unrelated one — and even then a sensitive one is pinned
- *    `restricted`: title only, no preview.
+ *  - A note that is excluded (Security review/, archived, generated), opted
+ *    out, machine-generated, a duplicate, ambiguous or unreadable is SKIPPED
+ *    by the scan with a reason; it is never pinned or suggested.
  */
 
 const path = require('path');
@@ -51,8 +48,7 @@ const RECENT_DAYS = 30;
 const SCAN_SKIP_PREFIXES = [
   { prefix: 'Documents/System/', reason: 'generated', refuseManual: true },
   { prefix: 'Scripts/', reason: 'generated', refuseManual: true },
-  // Weekly reviews (generated) beside hand-written journals, a carer's statement and an
-  // HR review — personal by nature, so never pulled in automatically. Nick may link one.
+  // Weekly reviews (generated) beside hand-written journals — never pulled in automatically. Nick may link one.
   { prefix: 'Reflections/', reason: 'reflection' },
   { prefix: 'Tasks/', reason: 'generated' },          // the export, the capture log, the drop-box
   { prefix: 'Notion/', reason: 'generated' },         // a pulled mirror; the vault copy elsewhere is the source
@@ -75,9 +71,6 @@ const SKIP_SAY = {
   excluded: 'excluded from NEURO’s index (retired, infrastructure or generated)',
   security: 'in Security review/ (never used, never linked)',
   'opted-out': 'marked never-for-context in its own frontmatter',
-  restricted: 'restricted (the Personal/ folder or marked private)',
-  'employment-sensitive': 'about a named colleague’s employment',
-  'other-domain': 'from the other half of life (work vs personal)',
   duplicate: 'a duplicate or sync-conflict copy',
   ambiguous: 'an untitled or generic note',
   unreadable: 'could not be read',
@@ -235,48 +228,25 @@ const RESTRICTION_SAY = {
   security: 'It is in Security review/, which NEURO never shows.',
   excluded: 'It is in a folder NEURO never uses (archived, generated or excluded).',
   'opted-out': 'The note is marked never-for-context in its own frontmatter.',
-  'personal-folder': 'It is in your Personal folder.',
-  private: 'The note is marked private.',
-  'employee-cases-note': 'Contains personnel-sensitive material — colleagues are named alongside absence, health, conduct or performance.',
-  'hr-wording': 'Its title or wording is about an HR matter.',
-  'pip-deliverable': 'It is part of a performance-plan deliverable.',
-  'no-longer': 'It was restricted when it was linked; no restriction rule fires on it now, so it stays restricted until it is linked again.',
 };
 
 /**
- * PURE. Why a note is restricted, in words. `hard` = it must never be shown or linked
- * on ANY screen (Security review/, excluded folders, an opt-out). The screens are
- * injected (vault-exclusions and prepared-move's employment screen). An employment
- * screen that could not run counts as sensitive — never less restricted.
- */
-/**
  * PURE. A HARD exclusion: never shown, never linked, on any screen. Security review/
- * always; an excluded folder (Archive, generated, infrastructure) — but NOT the
- * sensitive Personal/Private folders, which vault-exclusions also keeps out of
- * entity extraction: those are restricted, not hard (a task may still be raised in one).
+ * always; an excluded folder (Archive, generated, infrastructure).
  */
 function isHardExcluded(rel, deps = {}) {
   const r = relNorm(rel);
   if (deps.isSecurityPath && deps.isSecurityPath(r)) return true;
-  if (deps.isSensitivePath && deps.isSensitivePath(r)) return false;
   return Boolean(deps.isExcludedPath && deps.isExcludedPath(r));
 }
 
-function restrictionOf({ rel, fm = {}, body = '' }, deps = {}) {
+/** PURE. Why a note is never shown or linked, in words — or null when nothing stops it. */
+function restrictionOf({ rel, fm = {} }, deps = {}) {
   const r = relNorm(rel);
   if (deps.isSecurityPath && deps.isSecurityPath(r)) return { hard: true, codes: ['security'], say: RESTRICTION_SAY.security };
   if (isHardExcluded(r, deps)) return { hard: true, codes: ['excluded'], say: RESTRICTION_SAY.excluded };
   if (optedOut(fm)) return { hard: true, codes: ['opted-out'], say: RESTRICTION_SAY['opted-out'] };
-  const codes = [];
-  if (deps.isSensitivePath && deps.isSensitivePath(r)) codes.push('personal-folder');
-  if (String(fm.private || '').toLowerCase() === 'true') codes.push('private');
-  if (deps.employmentScreen) {
-    let cats = null;
-    try { const s = deps.employmentScreen({ sourceTitle: titleOf(r), sourceText: body }); cats = s && s.sensitive ? s.categories || [] : []; } catch { cats = ['employee-cases-note']; }
-    for (const c of ['employee-cases-note', 'hr-wording', 'pip-deliverable']) if (cats.includes(c)) codes.push(c);
-  }
-  if (!codes.length) codes.push('no-longer');
-  return { hard: false, codes, say: codes.map((c) => RESTRICTION_SAY[c]).join(' ') };
+  return null;
 }
 
 /** PURE. "Found automatically — this task was raised in this note." */
@@ -289,22 +259,14 @@ function provenanceLine(link) {
 }
 
 /**
- * PURE. May the SCAN use this note at all? Returns { ok, reason, restricted }.
- * `deps.isExcludedPath` / `isSensitivePath` / `noteDomain` / `employmentScreen`
- * are injected so this stays pure (the service passes vault-exclusions and
- * prepared-move's screen).
+ * PURE. May the SCAN use this note at all? Returns { ok, reason }.
+ * `deps.isExcludedPath` / `isSecurityPath` are injected so this stays pure.
  */
 function screenNote({ rel, fm = {}, body = '', readable = true }, deps = {}) {
   const r = relNorm(rel);
   if (!readable) return { ok: false, reason: 'unreadable' };
-  // HARD exclusions first, and deliberately NOT `restricted`: a restricted note can
-  // still be pinned as a task's own source (title only), and these must never be
-  // linked at all (23 Oct 2026). Security review/ sits inside isSensitivePath, so
-  // it has to be decided before that check, not by it.
   if (deps.isSecurityPath && deps.isSecurityPath(r)) return { ok: false, reason: 'security' };
   if (optedOut(fm)) return { ok: false, reason: 'opted-out' };
-  if (deps.isSensitivePath && deps.isSensitivePath(r)) return { ok: false, reason: 'restricted', restricted: true };
-  if (String(fm.private || '').toLowerCase() === 'true') return { ok: false, reason: 'restricted', restricted: true };
   for (const s of SCAN_SKIP_PREFIXES) if (r.startsWith(s.prefix)) return { ok: false, reason: s.reason };
   if (deps.isExcludedPath && deps.isExcludedPath(r)) return { ok: false, reason: 'excluded' };
   // "X 2.md" is a duplicate only when "X.md" sits beside it — "Session 2.md" is a real note.
@@ -313,10 +275,6 @@ function screenNote({ rel, fm = {}, body = '', readable = true }, deps = {}) {
   const t = titleOf(r).toLowerCase().replace(/[-_]+/g, ' ').trim();
   if (GENERIC_TITLES.has(t) || /^untitled( \d+)?$/.test(t) || /^\d{4}-\d{2}-\d{2}( \d{6})?$/.test(t) || /^neuro-\d+$/.test(t)) return { ok: false, reason: 'ambiguous' };
   if (!String(body || '').trim()) return { ok: false, reason: 'empty' };
-  if (deps.employmentScreen) {
-    const s = deps.employmentScreen({ sourceTitle: titleOf(r), sourceText: body });
-    if (s && s.sensitive) return { ok: false, reason: 'employment-sensitive', restricted: true };
-  }
   return { ok: true, reason: null };
 }
 
