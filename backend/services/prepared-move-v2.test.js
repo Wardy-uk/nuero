@@ -103,6 +103,17 @@ test('pure: ungrounded catches names, numbers, addresses and links the sources d
   assert.ok(planner.ungrounded('Ask Priya about it.', src).includes('Priya'));
 });
 
+test('pure: ungrounded ignores the draft’s own structure and ordinary words, never names or dates (31 Oct 2026)', () => {
+  const src = 'Damon suggested a business WhatsApp account for customer support.';
+  const draft = '## WhatsApp Evaluation\n**Challenges:** cost and staffing\n- Next Steps:\nThe pilot covers Current Initiatives and Response Times.';
+  const common = new Set(['response', 'times', 'pilot', 'current']);
+  assert.deepEqual(planner.ungrounded(draft, src, common), [], 'headings, labels, abstract nouns and lowercase-known words are not names');
+  const bad = planner.ungrounded('Ask Priya about it by Friday.', src, new Set(['friday', 'about']));
+  assert.ok(bad.includes('Priya'), 'a name is still caught');
+  assert.ok(bad.includes('Friday'), 'a date stays grounded even if written in lowercase elsewhere');
+  assert.ok(planner.ungrounded('Speak to Lawrence Davies.', src, common).includes('Lawrence'), 'surname-like suffixes are not excused');
+});
+
 test('pure: the scan gate — off, holiday, stopped, off duty and a meeting each stop it', () => {
   const on = { flagOn: true, workingDay: true, duty: { onDuty: true }, inMeeting: false, stopped: false };
   assert.equal(scan.gate(on).run, true);

@@ -92,20 +92,56 @@ function safeTitle(text) {
  * refusing: a refused draft is asked for again; an invented fact reaches Nick.
  */
 const ALLOWED_WORDS = new Set(['I', 'Nick', 'Hi', 'Hello', 'Thanks', 'Thank', 'Best', 'Regards', 'Cheers', 'Kind', 'Many', 'OK', 'Ok', 'Yes', 'No', 'SAiM', 'NEURO', 'Draft', 'Suggested']);
-function ungrounded(text, sources) {
+// A markdown heading, a wholly bold line, or a short line ending in a colon.
+const HEADING_LINE = /^\s*(#{1,6}\s|\*\*[^*]+\*\*:?\s*$|__[^_]+__:?\s*$)|^\s*[-*]?\s*[\w '’&/-]{1,60}:\s*$/;
+// "**Challenges:** the rest of the line" / "- Next steps: …" — drop the label.
+const LABEL_LEAD = /^\s*([-*>]\s*)?(\*\*|__)?[A-Z][\w '’&/-]{0,40}:(\*\*|__)?\s+/;
+// A capitalised abstract noun ("Evaluation", "Initiatives") is not a name. Suffixes
+// that real surnames carry (-ence Lawrence, -ies Davies, -ing Fleming) are left out.
+const COMMON_NOUN = /^[A-Z][a-z]{3,}(tion|tions|sion|sions|ment|ments|ness|ity|ities|ship|ships|ive|ives|ism|ology|ics|enges)$/;
+
+// Dates must still be grounded, however often the word is written in lowercase.
+const DATE_WORDS = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december']);
+let _common = { at: 0, size: -1, words: new Set() };
+/**
+ * Words Nick writes in LOWERCASE somewhere in the notes SAiM reads (31 Oct 2026).
+ * A capitalised word that is also an ordinary lowercase word in his own notes
+ * ("Response Times", "Challenges") is not a name: names are always capitalised.
+ * Built from the evidence index already in memory; empty until it is warm.
+ */
+function commonWords() {
+  let idx;
+  try { idx = require('./prepared-move')._test.noteIndex; } catch { return new Set(); }
+  if (_common.size === idx.size && Date.now() - _common.at < 3600000) return _common.words;
+  const words = new Set();
+  for (const e of idx.values()) {
+    for (const m of String((e && e.text) || '').match(/(?<![\w@.])[a-z][a-z'’-]{2,}(?![\w@/]|\.\w)/g) || []) if (!DATE_WORDS.has(m)) words.add(m);
+  }
+  _common = { at: Date.now(), size: idx.size, words };
+  return words;
+}
+
+function ungrounded(text, sources, common = null) {
   const src = String(sources || '').toLowerCase();
   const out = new Set();
   const draft = String(text || '');
   for (const m of draft.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []) if (!src.includes(m.toLowerCase())) out.add(m);
   for (const m of draft.match(/https?:\/\/\S+/g) || []) if (!src.includes(m.toLowerCase())) out.add(m);
   for (const m of draft.match(/\d[\w:/.,%£$-]*/g) || []) { const t = m.replace(/[.,]+$/, ''); if (t && !src.includes(t.toLowerCase())) out.add(t); }
-  for (const sentence of draft.split(/(?<=[.!?:\n])\s+|\n+/)) {
-    const words = sentence.replace(/^[\s\-*>#"'“‘(]+/, '').split(/\s+/);
-    words.forEach((w, i) => {
-      const clean = w.replace(/^[("'“‘]+|[)"'”’.,;:!?]+$/g, '').replace(/['’]s$/, '');
-      if (i === 0 || !/^[A-Z][a-zA-Z'’-]+$/.test(clean) || ALLOWED_WORDS.has(clean)) return;
-      if (!src.includes(clean.toLowerCase())) out.add(clean);
-    });
+  for (const line of draft.split('\n')) {
+    // A heading or a "Label:" lead-in is the draft's own structure, not a claim
+    // about the world (31 Oct 2026: "Evaluation", "Challenges", "Initiatives"
+    // threw a whole draft away). Names are only looked for in prose.
+    if (HEADING_LINE.test(line)) continue;
+    const prose = line.replace(LABEL_LEAD, '');
+    for (const sentence of prose.split(/(?<=[.!?:])\s+/)) {
+      const words = sentence.replace(/^[\s\-*>#"'“‘(]+/, '').split(/\s+/);
+      words.forEach((w, i) => {
+        const clean = w.replace(/^[("'“‘*_]+|[)"'”’.,;:!?*_]+$/g, '').replace(/['’]s$/, '');
+        if (i === 0 || !/^[A-Z][a-zA-Z'’-]+$/.test(clean) || ALLOWED_WORDS.has(clean) || COMMON_NOUN.test(clean) || (common && common.has(clean.toLowerCase()) && !DATE_WORDS.has(clean.toLowerCase()))) return;
+        if (!src.includes(clean.toLowerCase())) out.add(clean);
+      });
+    }
   }
   return [...out];
 }
@@ -716,7 +752,7 @@ async function planAndStore({ now = Date.now(), ref = null, source = null, origi
         if (ref || source) return { ok: false, outcome: 'withheld', why, withheld };
         continue;
       }
-      const bad = ungrounded([d.text, ...(d.gaps || [])].join('\n'), sourcesText);
+      const bad = ungrounded([d.text, ...(d.gaps || [])].join('\n'), sourcesText, commonWords());
       if (bad.length) {
         const why = `The draft brought in things your sources do not say (${bad.slice(0, 3).join(', ')}), so SAiM did not keep it.`;
         withheld.push({ ref: n.ref, title: n.title, reason: 'ungrounded', why });
@@ -935,6 +971,6 @@ async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [
 
 module.exports = { meetingStarted, planAgentOutput,
   CONTRACT, KINDS, DO_ADAPTERS, DENY_FOLDERS, BLOCK_MINUTES, ANSWER_MAX, MIN_MEETING_LEAD_MIN,
-  moveKeyFor, quickEligible, safeTitle, ungrounded, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
+  moveKeyFor, quickEligible, safeTitle, ungrounded, commonWords, questionFor, normalise, gather, freshnessOf, composeV2, noteMarkdown, blockTitle,
   planAndStore, recheck, prescreen, destinationFor, WORKING_FOLDER, eligibleNow, rowIdsFor, projectFolders, nextSlot, SLOT_WORKING_DAYS, DEFAULT_DEPS,
 };
