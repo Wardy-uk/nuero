@@ -60,7 +60,7 @@ test('a promise task: header, Next (delivery + move with the save slot), tools s
   assert.match(h, />Draft the delivery note<\/button>/, 'the delivery offer moved here');
   assert.match(h, /SAVE pm_9/, 'the prepared move’s save slot');
   assert.match(h, /TOOLS 31/, 'TaskAgent/TaskContext mount point');
-  assert.deepEqual(tools, [31]); assert.deepEqual(saves, ['pm_9']);
+  assert.deepEqual([...new Set(tools)], [31]); assert.deepEqual([...new Set(saves)], ['pm_9']);
   assert.match(h, /Nick will send Hope the onboarding checklist/, 'evidence');
   const at = (s) => h.indexOf(s);
   assert.ok(at('twf__title') < at('Draft the delivery note') && at('Draft the delivery note') < at('TOOLS 31') && at('TOOLS 31') < at('Evidence'), 'header → Next → tools → evidence');

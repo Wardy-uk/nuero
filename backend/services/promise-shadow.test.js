@@ -300,9 +300,9 @@ test('excluded features are absent from the branch: no briefing, proposals, goal
   const server = fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8');
   assert.deepEqual(server.split(/\r?\n/).filter((l) => /promise/i.test(l)), ["app.use('/api/promises', require('./routes/promise-delivery'));"], 'only the delivery door is mounted');
   const door = fs.readFileSync(path.join(root, 'backend', 'routes', 'promise-delivery.js'), 'utf8');
-  assert.deepEqual([...door.matchAll(/router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['post /:key/prepare'], 'the door has exactly one route');
+  assert.deepEqual([...door.matchAll(/router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g)].map((m) => `${m[1]} ${m[2]}`), ['get /workflow', 'post /:key/prepare'], 'the door: the delivery prepare, plus the Task workflow screen’s read (31 Oct 2026)');
   const matrixSrc = fs.readFileSync(path.join(__dirname, 'authority-matrix.js'), 'utf8');
-  assert.deepEqual(matrixSrc.split('\n').filter((l) => /R\(.*\/api\/promises/.test(l)).map((l) => l.trim()), ["R('POST', '/api/promises/:key/prepare', 'email.send', { machine: 'refuse' }),"]);
+  assert.deepEqual(matrixSrc.split('\n').filter((l) => /R\(.*\/api\/promises/.test(l)).map((l) => l.trim()), ["R('POST', '/api/promises/:key/prepare', 'email.send', { machine: 'refuse' }),", "R('GET', '/api/promises/workflow', 'read'),"]);
   const gw = fs.readFileSync(path.join(root, 'mcp-server', 'remote', 'api-policy.js'), 'utf8');
   assert.deepEqual([...gw.matchAll(/(\w*promises\w*):/g)].map((m) => m[1]), ['post_promises_by_key_prepare']);
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'canonical-read.js'), 'utf8'), /sponsorship|promiseFeed|promise-shadow|promise-observe|goal-proposals|saveGoal\([^)]*sponsor/);
