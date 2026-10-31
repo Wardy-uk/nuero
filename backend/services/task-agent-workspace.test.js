@@ -9,7 +9,7 @@
  *  - the workspace is composed by the server: Status (one line + will/won't),
  *    What NEURO has done (≤3), What I need from you (one question or none),
  *    and a one-line trace summary;
- *  - the employment case: NEURO never chooses the decision — a generic question
+ *  - a decision case: NEURO never chooses the decision — a generic question
  *    is refused, the specific decision is asked once, and after Nick states it the
  *    run finishes with the brief instead of asking again;
  *  - the same question is never asked twice unless the model says what changed;
@@ -111,7 +111,7 @@ test.before(async () => {
 });
 test.after(() => { try { server.close(); } catch { /* */ } agent._internals.setDeps(null); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } });
 
-test('employment acceptance case: generic question refused, the SPECIFIC decision asked once; workspace is three parts', async () => {
+test('decision case: generic question refused, the SPECIFIC decision asked once; workspace is three parts', async () => {
   script = [
     reply([tu('save_output', { kind: 'brief', title: 'Heidi Example – End Date Decision Brief', markdown: '## Facts\n- HR reply awaited\n## Options\n- 30 September 2026\n- 31 December 2026\n## Decision\nOpen — Nick to decide.' })]),
     reply([tu('ask_nick', { kind: 'authority', question: 'This is an employment matter. What do you decide, and should NEURO prepare anything further?', why: 'x', after: 'y' })]),
@@ -124,7 +124,7 @@ test('employment acceptance case: generic question refused, the SPECIFIC decisio
   assert.equal(v.run.status, 'needs-decision');
   const w = v.workspace;
   assert.equal(w.status.label, 'Waiting for your decision');
-  assert.match(w.status.wont, /will not decide, contact anyone, promise anything or change anything/);
+  assert.match(w.status.wont, /drafts and prepares/);
   assert.ok(w.done.length >= 1 && w.done.length <= 3);
   assert.ok(w.done.some((d) => /Prepared a private brief: “Heidi Example – End Date Decision Brief”/.test(d.say) && d.open && d.open.label === 'Open brief'));
   assert.ok(w.done.some((d) => /No one has been contacted and nothing has been changed\./.test(d.say)));
@@ -163,7 +163,6 @@ test('Nick states the date: NEURO records it in the brief and finishes — the d
   assert.equal(v.run.status, 'ready');
   assert.equal(v.workspace.need, null, 'no further question');
   assert.equal(v.workspace.status.label, 'Ready for you');
-  assert.ok(v.run.outputs.every((o) => o.next && o.next.canSave === false), 'a people-matter brief is not offered for saving');
   assert.equal(v.run.answers.length, 1);
 });
 
@@ -237,47 +236,19 @@ test('no workspace for the kiosk, the API token or a declared machine; chat has 
   assert.doesNotMatch(tools, /task-agent|task_agent/);
 });
 
-// ── 26 Oct 2026: no invented decision question; a private SOURCE is not a people matter ──
-test('a task merely RAISED in a private people note: ordinary work, protections kept, no decision question — "Next for you" instead', async () => {
-  const realForTask = (id) => tc.forTask(id, { viewer: 'owner' });
-  const t = taskStore.createTask({ text: 'Document the CI/JIRA parent ticket and major incident toggle process next week', source: 'test' }).task;
-  agent._internals.setDeps({ forTask: (id) => (id === t.id
-    ? { ok: true, pinned: [{ id: 901, type: 'note', title: 'Weekly team catch up', ref: 'Meetings/2026/10/team catch up.md', restricted: true, restrictedCodes: ['employee-cases-note'], excerpt: 'Agreed Nick documents the CI/JIRA toggle process.' }] }
-    : realForTask(id)) });
-  lastToolResults.length = 0;
-  script = [
-    reply([tu('prepare_email', { to: 'Jane Doe', subject: 'Toggle process', body: 'x' })]),
-    reply([tu('save_output', { kind: 'draft', title: 'CI / JIRA parent ticket & major incident toggle', markdown: '## Process\n- [JIRA project name]\n- Raise the parent ticket' })]),
-    reply([tu('finish', { completed: ['Drafted the process'], remaining: ['Gap-fill: JIRA project name, ticket type, toggle field', 'Review the draft before sharing it with the team'] })]),
-  ];
-  try {
-    const v = await agent.start(t.id, { awaitTurn: true });
-    assert.equal(v.run.sensitive.sensitive, true, 'still handled with care');
-    assert.equal(agent.isPeopleMatter(v.run.sensitive), false, 'but the task itself is not a people matter');
-    assert.equal(v.run.status, 'ready');
-    assert.equal(v.run.question, null, 'no invented question');
-    assert.equal(v.workspace.need, null);
-    assert.deepEqual(v.workspace.next.items, ['Gap-fill: JIRA project name, ticket type, toggle field', 'Review the draft before sharing it with the team']);
-    assert.match(v.workspace.status.wont, /private people note/);
-    assert.doesNotMatch(JSON.stringify(v.workspace), /employment matter|What is your decision on/);
-    assert.ok(lastToolResults.some((r) => /raised in a private people note — NEURO prepares no email/.test(r)), 'email still refused');
-    assert.ok(v.run.outputs.every((o) => o.next.canSave === false), 'still never saved to the vault on its own');
-  } finally { agent._internals.setDeps({ forTask: realForTask }); }
-});
-
-test('a real people matter that finishes without asking: Ready, NO "What is your decision on…" question, the remaining steps listed', async () => {
+// ── 26 Oct 2026: no invented decision question ──
+test('a run that finishes without asking: Ready, NO "What is your decision on…" question, the remaining steps listed', async () => {
   const t = taskStore.createTask({ text: "Nick to reply formally to Stephen Example's flexible working request with a plan", source: 'test' }).task;
   script = [
     reply([tu('save_output', { kind: 'draft', title: 'Formal reply – flexible working', markdown: 'Dear Stephen, …' })]),
     reply([tu('finish', { completed: ['Drafted the formal reply'], remaining: ['Review and approve the draft letter', 'Send it to Stephen yourself — NEURO cannot send employment correspondence'] })]),
   ];
   const v = await agent.start(t.id, { awaitTurn: true });
-  assert.equal(agent.isPeopleMatter(v.run.sensitive), true);
   assert.equal(v.run.status, 'ready');
   assert.equal(v.run.question, null);
   assert.equal(v.workspace.need, null);
   assert.equal(v.workspace.next.items.length, 2);
-  assert.match(v.workspace.status.wont, /will not decide, contact anyone/);
+  assert.match(v.workspace.status.wont, /drafts and prepares/);
   T.peopleDone = t;
 });
 

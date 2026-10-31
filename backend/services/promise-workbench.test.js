@@ -108,19 +108,15 @@ test('booked time AFTER the due point does not make it ready', () => {
   assert.deepEqual(r.items[0].booked, []);
 });
 
-test('sensitive, ambiguous, unreadable and undated promises are WITHHELD, counted by reason, and never named', () => {
-  const sens = promise({ id: 801, due: '2026-10-21', text: 'Confirm Naomi’s phased return dates', sensitivity: { sensitive: true, where: 'wording', matched: 'phased return' } });
+test('ambiguous, unreadable and undated promises are WITHHELD, counted by reason', () => {
   const amb = promise({ id: 802, due: '2026-10-21', owedTo: { resolved: null, people: [], ambiguous: [{ said: 'chris', candidates: ['Chris Middleton', 'Chris Smith'] }] } });
   const two = promise({ id: 803, due: '2026-10-21', owedTo: { resolved: null, people: [{ name: 'A B' }, { name: 'C D' }], ambiguous: [] } });
   const unread = promise({ id: 804, due: '2026-10-21', source: { title: 'x', path: 'x.md', line: null, readable: false } });
   const undated = promise({ id: 805, due: null });
   const ok = promise({ id: 806, due: '2026-10-22' });
-  const r = sel([sens, amb, two, unread, undated, ok]);
+  const r = sel([amb, two, unread, undated, ok]);
   assert.deepEqual(r.items.map((i) => i.key), ['promise:806']);
-  assert.deepEqual(r.withheld, { sensitive: 1, ambiguous: 2, unreadable: 1, undated: 1 });
-  const json = JSON.stringify(r);
-  assert.ok(!json.includes('Naomi'), 'an employment matter is never named');
-  assert.ok(!json.includes('phased'), 'nor its wording');
+  assert.deepEqual(r.withheld, { ambiguous: 2, unreadable: 1, undated: 1 });
 });
 
 test('a stale or failed read prepares NOTHING and says why', () => {

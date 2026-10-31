@@ -104,7 +104,6 @@ test.before(async () => {
   await db.init();
   P.alex = task('Nick to send Alex Reed the list of ticket types blocked by skill gaps', 34);
   P.sam = task('Nick to write the onboarding guide for Sam Patel', 30);
-  P.hr = task('Nick to agree the outcome of Jordan Kay\'s flexible working request', 26, 'Meetings/2026/09/2026-09-22 - Jordan Kay 1-2-1.md');
   shadow.registerPromiseShadow({ PROMISE_SHADOW_ENABLED: 'true' }, { schedule: () => ({ stop() {} }) });
   shadow._resetRuntime();
 });
@@ -202,14 +201,6 @@ test('two moments in ONE tick (a 12:45 meeting inside the 12:30 bundle): the pro
   assert.deepEqual(t.shown, [P.alex], 'Alex once — not once per moment');
   const meet = t.added.find((r) => r.moment === `meeting:Alex Reed@${d}T12:45`);
   assert.equal(meet.kind, 'suppression'); assert.equal(meet.reason, 'already offered earlier today');
-});
-
-test('the employment matter is routed (task ids + rule only) once a day and never offered, unchanged by any of this', () => {
-  const routed = rows("kind = 'routing'");
-  assert.equal(routed.length, 4, 'one routing row per day the pass ran');
-  for (const r of routed) assert.deepEqual(JSON.parse(r.payload_json), { taskIds: [Number(P.hr.split(':')[1])], rule: 'hr-wording' });
-  assert.equal(rows("kind IN ('prompt','suppression') AND promise_key = ?", [P.hr]).length, 0);
-  assert.doesNotMatch(rows().map((r) => `${r.moment} ${r.reason} ${r.payload_json}`).join('\n'), /flexible|Jordan|Kay/i);
 });
 
 test('no moment is logged twice, and the counters record each suppression for an earlier offer', () => {

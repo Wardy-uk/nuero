@@ -299,7 +299,7 @@ test('restart mid-attempt: an interrupted part resumes in the SAME budget (not r
   assert.equal(v.run.outputs.length, 1);
 });
 
-test('no full restricted, excluded, Archive or Security review/ content ever enters a prompt', async () => {
+test('no excluded, Archive, opted-out or Security review/ content ever enters a prompt; a private note may', async () => {
   limits(DEFAULT_ATTEMPT);
   sent.length = 0;
   searchResults = ['Archive/Old rota.md', 'Security review/Rota passwords.md', 'Projects/Rota/Opted out.md', 'Meetings/2026/10/Private rota.md'].map((p) => ({ relativePath: p, excerpts: ['x'] }));
@@ -308,7 +308,8 @@ test('no full restricted, excluded, Archive or Security review/ content ever ent
     reply([tu('save_output', { kind: 'plan', title: 'Rota plan', markdown: '- plan' })]), reply([tu('finish', { completed: ['Plan'], remaining: [] })]), end()];
   await agent.start(T.priv.id, { awaitTurn: true });
   const all = sent.join('\n');
-  for (const m of ['ARCHIVE-MARKER-NEVER-IN-PROMPT', 'SECURITY-MARKER', 'hunter2', 'OPTOUT-MARKER', 'RESTRICTED-BODY-MARKER']) assert.ok(!all.includes(m), `${m} never sent`);
+  for (const m of ['ARCHIVE-MARKER-NEVER-IN-PROMPT', 'SECURITY-MARKER', 'hunter2', 'OPTOUT-MARKER']) assert.ok(!all.includes(m), `${m} never sent`);
+  assert.ok(all.includes('RESTRICTED-BODY-MARKER'), 'a private: true note is ordinary material (31 Oct 2026)');
   assert.ok(sent.length >= 2, 'positive control: the attempt did run');
   searchResults = [];
 });

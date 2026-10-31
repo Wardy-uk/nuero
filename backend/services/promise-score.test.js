@@ -181,19 +181,6 @@ test('an unreadable task list measures nothing', () => {
   assert.match(r.why, /couldn’t read the task list/);
 });
 
-test('an employment matter is counted but never described', () => {
-  const r = run([promise({ sensitivity: { sensitive: true, where: 'wording', rule: 'x', matched: 'probation' }, due: '2026-10-20' })]);
-  assert.equal(r.counts.late, 1);
-  const e = r.entries[0];
-  assert.equal(e.sensitive, true);
-  assert.equal(e.sensitiveRule, 'hr-wording');
-  assert.equal(e.text, null);
-  assert.equal(e.due, null);
-  assert.equal(e.owedTo, null);
-  assert.ok(!JSON.stringify(r).includes('Send Chris'), 'no wording leaks');
-  assert.ok(!JSON.stringify(r).includes('probation'), 'no matched words leak');
-});
-
 // ── The Monday report ────────────────────────────────────────────────────────
 
 test('the Monday report is judged separately against midday London on its due day', () => {

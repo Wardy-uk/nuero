@@ -96,14 +96,6 @@ const tableCounts = () => Object.fromEntries(db.all(`SELECT name FROM sqlite_mas
 
 // ── Pure ─────────────────────────────────────────────────────────────────────
 
-test('employment screen: a note discussing named people\'s employment marks anything from it, without repeating it', () => {
-  const s = pm.employmentScreen({ sourceText: HR_NOTE, roster });
-  assert.deepEqual(s, { sensitive: true, categories: ['employee-cases-note'] });
-  assert.equal(pm.employmentScreen({ sourceText: '- Alex Example will demo the portal.\n- Ship the portal.', roster }).sensitive, false, 'an operational note naming a person is not an employment matter');
-  assert.deepEqual(pm.employmentScreen({ wording: 'Confirm the end date and notice period' }).categories, ['hr-wording']);
-  assert.deepEqual(pm.employmentScreen({ kind: 'weekly_risk' }).categories, ['pip-deliverable']);
-});
-
 test('freshness: an unreadable or over-age source withholds; within limits passes', () => {
   const ok = pm.freshnessScreen([{ kind: 'calendar', ref: 'c', observedAt: new Date(NOW - 30 * 60000).toISOString() }], NOW);
   assert.equal(ok.ok, true);
@@ -143,18 +135,14 @@ test('production order: outside a meeting the decision names attention RECORDS �
 
 // ── Real prepare() over a scratch DB and vault ───────────────────────────────
 
-test('trustworthy: the held Planner card is worked up into a full packet; the employment item ahead of it is withheld by category only', async () => {
+test('trustworthy: the held Planner card is worked up into a full packet; the capacity warning ahead of it is withheld', async () => {
   seedDb();
   const before = tableCounts();
   const out = await pm.prepare({ now: NOW, deps: { readDecision: decisionOf({ ref: 'item:capacity-start-9', kind: 'attention-item', rule: 'S7 top item', title: 'capacity' }, [{ ref: 'held:todo-overdue-summary', title: 'todo' }], [TODO, CAPACITY]) } });
 
   assert.equal(out.contract, 'prepared-move-v1');
   const w = out.withheld.find((x) => x.ref === 'item:capacity-start-9');
-  assert.equal(w.reason, 'employment-route');
-  assert.deepEqual(w.categories, ['employee-cases-note']);
-  const json = JSON.stringify(out);
-  assert.equal(json.includes('hybrid incentive'), false, 'the employment item\'s wording is never repeated');
-  assert.equal(/sick leave|fit note|flexible working/i.test(json), false, 'nothing from the HR note is quoted anywhere');
+  assert.equal(w.reason, 'not-a-commitment');
 
   const s = out.selected;
   assert.ok(s, `a packet was prepared: ${JSON.stringify(out.withheld)}`);
@@ -207,36 +195,6 @@ test('nothing trustworthy: a meeting lead and nothing held is said plainly, neve
   assert.equal(out.selected, null);
   assert.equal(out.withheld[0].reason, 'not-a-commitment');
   assert.ok(out.findings.some((f) => /personal phone-calendar entry/.test(f)));
-});
-
-test('the faster employment screen gives the SAME verdict as the original name-first rule', () => {
-  const ledger = require('./promise-ledger');
-  const pm = require('./prepared-move');
-  const roster = { full: ['Hope Goodall', 'Melanie Ellis', 'Abdi Musa'], firstNames: new Map([['hope', 'Hope Goodall'], ['melanie', 'Melanie Ellis'], ['abdi', 'Abdi Musa']]) };
-  // The rule as it was: names first, then the topic test, count every line.
-  const naive = (text) => {
-    let n = 0;
-    for (const raw of String(text).split('\n')) {
-      if (!raw.trim()) continue;
-      const named = ledger.namesIn(raw, roster);
-      if (!named.people.length && !named.ambiguous.length) continue;
-      if (ledger.CONTEXT_PATTERNS.some((re) => re.test(raw))) n += 1;
-    }
-    return n >= 2;
-  };
-  const lines = ['Hope Goodall is off sick this week', 'Melanie Ellis returns from maternity leave', 'Abdi Musa owns the T1 criteria', 'the team agreed the escalation fields',
-    'Hope Goodall has a fit note until Friday', 'flexible working request from Melanie Ellis', 'Absence review with Abdi Musa', 'SLA breach on Tier 2', 'Hope Goodall', '',
-    // The two case-SENSITIVE patterns: "HR" and "RTW" count, "hr" and "rtw" do not.
-    'HR call with Hope Goodall', 'an hr chat with Melanie Ellis', 'RTW meeting for Abdi Musa', 'rtw notes on Abdi Musa'];
-  // Every pair and triple of lines, in order — sensitive and not.
-  let checked = 0; let sensitive = 0;
-  for (let a = 0; a < lines.length; a++) for (let b = 0; b < lines.length; b++) for (let c = 0; c < lines.length; c += 3) {
-    const text = [lines[a], lines[b], lines[c]].join('\n');
-    const got = pm.employmentScreen({ sourceText: text, roster }).categories.includes('employee-cases-note');
-    assert.equal(got, naive(text), text);
-    checked += 1; if (got) sensitive += 1;
-  }
-  assert.ok(sensitive > 0 && sensitive < checked, `both verdicts exercised (${sensitive}/${checked})`);
 });
 
 test('the in-memory note index never serves an old version of a note — any edit is re-read', () => {

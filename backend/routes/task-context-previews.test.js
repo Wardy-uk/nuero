@@ -1,19 +1,9 @@
 'use strict';
 
 /**
- * Task-context previews for Nick, title-only for everyone else (23 Oct 2026).
- *
- * The live problem: every automatically linked meeting note read "Restricted —
- * preview withheld" on Nick's own screens. The fix separates the link's
- * CLASSIFICATION (restricted or not — the scan's, stored, unchanged) from the
- * VIEWER (decided per request from the authenticated surface):
- *   - Nick's PIN session ('owner'): a task-bounded excerpt read from the note,
- *     the exact provenance, the restriction reason in words, the open route.
- *   - the kiosk token, the API token, a declared machine (the local MCP sends
- *     X-Neuro-Machine-Client): restricted notes are title-only — no path, no
- *     preview, no excerpt, no open route.
- *   - Security review/, Archive and other hard exclusions: never pinned, never
- *     linked, never searched, never shown — even a legacy row pointing at one.
+ * Task-context previews (23 Oct 2026; restrictions removed 31 Oct 2026): the
+ * task-bounded excerpt, and the hard exclusions — Security review/, Archive and
+ * opted-out notes are never pinned, linked, searched or shown, even a legacy row.
  *
  * Real HTTP, real api-auth, real authority guard, real scan over a temp vault.
  */
@@ -132,27 +122,9 @@ test('model: an excerpt is ONE line of the note tied to the task — marker firs
   assert.ok(c.text.length <= model.EXCERPT_MAX, 'bounded');
 });
 
-test('model: restriction reasons in words; hard exclusions are hard; Personal/ is restricted, not hard', () => {
+test('model: the scan never takes Security review/ or an opted-out note', () => {
   const ex = require('../services/vault-exclusions');
-  const deps = { isSecurityPath: ex.isSecurityPath, isSensitivePath: ex.isSensitivePath, isExcludedPath: (r) => ex.isExcludedPath(r),
-    employmentScreen: () => ({ sensitive: true, categories: ['employee-cases-note'] }) };
-  assert.equal(model.isHardExcluded(SEC, deps), true);
-  assert.equal(model.isHardExcluded(ARCH, deps), true);
-  assert.equal(model.isHardExcluded('Personal/Prep.md', deps), false);
-  assert.equal(model.isHardExcluded(HR, deps), false);
-  const r = model.restrictionOf({ rel: HR, fm: {}, body: 'x' }, deps);
-  assert.equal(r.hard, false); assert.deepEqual(r.codes, ['employee-cases-note']);
-  assert.match(r.say, /personnel-sensitive/);
-  assert.equal(model.restrictionOf({ rel: SEC }, deps).hard, true);
-  assert.equal(model.restrictionOf({ rel: 'Projects/X.md', fm: { neuro_context: 'exclude' } }, deps).hard, true);
-  const broken = { ...deps, employmentScreen: () => { throw new Error('no roster'); } };
-  assert.deepEqual(model.restrictionOf({ rel: HR, body: 'x' }, broken).codes, ['employee-cases-note'], 'a screen that cannot run is never LESS restricted');
-  assert.equal(model.provenanceLine({ origin: 'nightly-scan', reasons: [{ code: 'origin', say: 'This task was raised in this note.' }] }), 'Found automatically — this task was raised in this note.');
-});
-
-test('model: the scan never takes Security review/ or an opted-out note, not even as restricted', () => {
-  const ex = require('../services/vault-exclusions');
-  const deps = { isSecurityPath: ex.isSecurityPath, isSensitivePath: ex.isSensitivePath, isExcludedPath: (r) => ex.isExcludedPath(r) };
+  const deps = { isSecurityPath: ex.isSecurityPath, isExcludedPath: (r) => ex.isExcludedPath(r) };
   const s = model.screenNote({ rel: SEC, fm: {}, body: 'x y z' }, deps);
   assert.equal(s.reason, 'security'); assert.ok(!s.restricted);
   const o = model.screenNote({ rel: OPTOUT, fm: { neuro_context: 'exclude' }, body: 'x y z' }, deps);
@@ -161,90 +133,9 @@ test('model: the scan never takes Security review/ or an opted-out note, not eve
 
 // ── the scan: what was linked ───────────────────────────────────────────────
 
-test('scan: the two personnel-sensitive meeting notes are pinned to their own tasks, restricted; hard exclusions are not', () => {
-  const rows = linkRows();
-  const hr = rows.find((r) => r.task_id === T_HR.id && r.source_ref === HR);
-  const mk = rows.find((r) => r.task_id === T_MARK.id && r.source_ref === MARKED);
-  assert.ok(hr && mk, 'both origin notes pinned');
-  for (const r of [hr, mk]) { assert.equal(r.restricted, 1); assert.equal(r.preview, null, 'no preview stored'); assert.equal(r.state, 'pinned'); }
-  for (const bad of [SEC, ARCH, OPTOUT]) assert.ok(!rows.some((r) => r.source_ref === bad), `${bad} never linked`);
-  // (the opted-out note's project folder may be linked as a PROJECT — the note itself never is)
-  const other = rows.filter((r) => r.source_type === 'note' && [T_SEC.id, T_ARCH.id, T_OPT.id].includes(r.task_id));
-  assert.equal(other.length, 0, JSON.stringify(other.map((r) => [r.task_id, r.source_ref, r.state, r.reasons_json])));
-});
-
 // ── Nick's screen ───────────────────────────────────────────────────────────
 
-test('owner (Nick, PIN): excerpt, provenance, plain restriction reason and the open route — no write', async () => {
-  const before = { rows: JSON.stringify(linkRows()), vault: JSON.stringify(snapshotVault()) };
-  const a = await call('GET', `/tasks/${T_HR.id}`, undefined, NICK);
-  assert.equal(a.status, 200);
-  assert.equal(a.json.viewer, 'owner');
-  const it = a.json.pinned.find((p) => p.title.includes('Heidi Example Catch Up'));
-  assert.ok(it);
-  assert.equal(it.restricted, true);
-  assert.equal(it.provenance, 'Found automatically — this task was raised in this note.');
-  assert.match(it.restrictedSay, /^Contains personnel-sensitive material/);
-  assert.deepEqual(it.restrictedCodes, ['employee-cases-note']);
-  assert.equal(it.excerpt.basis, 'task-wording');
-  assert.equal(it.excerpt.text, 'The escalation triage checklist handover was discussed.');
-  assert.equal(it.excerpt.heading, 'Actions');
-  assert.ok(!a.raw.includes(OFF_SICK), 'the excerpt is bounded to the task — the sick-leave line is never sent');
-  assert.equal(it.preview, null, 'no general preview of a restricted note');
-  assert.equal(it.ref, HR);
-  assert.deepEqual(it.open, { kind: 'note', path: HR, obsidianUrl: `obsidian://open?vault=Test%20Vault&file=${encodeURIComponent(HR.replace(/\.md$/, ''))}` });
-
-  const b = await call('GET', `/tasks/${T_MARK.id}`, undefined, NICK);
-  const m = b.json.pinned.find((p) => p.ref === MARKED);
-  assert.equal(m.excerpt.basis, 'task-marker');
-  assert.equal(m.excerpt.text, 'Nick to book the planning session');
-  assert.ok(!b.raw.includes('performance plan'), 'only the task line, never the rest');
-
-  assert.equal(JSON.stringify(linkRows()), before.rows, 'reading changes no link');
-  assert.equal(JSON.stringify(snapshotVault()), before.vault, 'reading writes nothing to the vault');
-});
-
 // ── everyone else ───────────────────────────────────────────────────────────
-
-for (const [who, headers] of Object.entries(LIMITED)) {
-  test(`limited (${who}): the same restricted link is title-only — no path, preview, excerpt or open route`, async () => {
-    for (const [taskId, rel] of [[T_HR.id, HR], [T_MARK.id, MARKED]]) {
-      const r = await call('GET', `/tasks/${taskId}`, undefined, headers);
-      assert.equal(r.status, 200, `${who} may read: ${r.raw.slice(0, 200)}`);
-      assert.equal(r.json.viewer, 'limited');
-      const it = r.json.pinned.find((p) => p.restricted);
-      assert.ok(it, 'the link is still there, by title');
-      assert.ok(it.title.length > 0);
-      assert.equal(it.ref, null); assert.equal(it.open, null); assert.equal(it.preview, null);
-      assert.equal(it.excerpt, undefined); assert.equal(it.restrictedCodes, undefined);
-      assert.equal(it.restrictedSay, 'Restricted — shown as a title only on this screen.');
-      assert.ok(!r.raw.includes(rel), 'the path appears nowhere in the response');
-      assert.ok(!r.raw.includes('obsidian://'), 'no open route');
-      assert.ok(!/handover was discussed|book the planning session|off sick|performance plan/.test(r.raw), 'no note content at all');
-    }
-  });
-}
-
-test('limited: an ordinary (unrestricted) note still opens and previews — only restricted notes are trimmed', async () => {
-  const id = tc.link({ taskId: T_PLAIN.id, type: 'note', ref: 'Meetings/2026/09/Filler 1 – Weekly.md' });
-  assert.equal(id.ok, true);
-  const r = await call('GET', `/tasks/${T_PLAIN.id}`, undefined, LIMITED.kiosk);
-  const it = r.json.pinned[0];
-  assert.equal(it.restricted, false);
-  assert.equal(it.ref, 'Meetings/2026/09/Filler 1 – Weekly.md');
-  assert.ok(it.preview);
-  tc.remove({ taskId: T_PLAIN.id, linkId: it.id });
-});
-
-test('the viewer is decided by the credential, never by anything the client says about its surface', () => {
-  assert.equal(tc.viewerOf({ headers: {} }), 'owner');
-  assert.equal(tc.viewerOf({ headers: {}, apiClient: 'n8n' }), 'limited');
-  assert.equal(tc.viewerOf({ headers: {}, attendedSurface: 'kiosk' }), 'limited');
-  assert.equal(tc.viewerOf({ headers: { 'x-neuro-machine-client': 'mcp-local' } }), 'limited');
-  assert.equal(tc.viewerOf(null), 'limited');
-  assert.equal(tc.forTask(T_HR.id).viewer, 'limited', 'an in-process caller gets the limited view by default');
-  assert.equal(tc.pinnedFor([T_HR.id]).get(T_HR.id)[0].ref, null, 'pinnedFor defaults to limited too');
-});
 
 // ── hard exclusions, through every path ─────────────────────────────────────
 
@@ -287,12 +178,4 @@ test('a legacy row pointing at Security review/ or Archive is title-only even fo
   }
   for (const bad of ['hunter2', SEC, ARCH, 'Old plan', 'obsidian://']) assert.ok(!r.raw.includes(bad), `${bad} in ${r.raw}`);
   db.run(`DELETE FROM task_context_links WHERE task_id = ?`, [T_SEC.id]);
-});
-
-test('the meeting-prep route passes the viewer through to every prep it builds', () => {
-  const src = fs.readFileSync(path.join(__dirname, 'meeting-prep-view.js'), 'utf8');
-  const calls = src.match(/_buildPrep\([^)]*\)/g).filter((c) => !c.startsWith('_buildPrep(meeting'));
-  assert.ok(calls.length >= 5, 'positive control: the call sites were found');
-  for (const c of calls) assert.match(c, /viewer: _viewer\(req\)/, c);
-  assert.match(src, /pinnedFor\(ids, \{ limit: 3, viewer \}\)/);
 });

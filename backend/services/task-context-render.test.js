@@ -5,7 +5,7 @@
  * renderToString) from the SAME components every shell mounts (22 Oct 2026).
  *
  *  - compact context renders NOTHING when a task has none (no noisy screens),
- *    shows at most `limit`, and withholds a restricted note's preview;
+ *    shows at most `limit`;
  *  - editable context shows pinned, suggestions (not pinned), stale, the scan's
  *    question and "Add context";
  *  - the task card mounts it for a NEURO task and not for a Microsoft mirror;
@@ -80,17 +80,17 @@ test('every item says what it is, why it is there and who put it there', () => {
   const out = html(React.createElement(TC.default, { taskId: 31, call, editable: true, onOpen: () => {}, initial: data({ pinned: [
     item(1),
     item(2, { origin: 'manual', originLabel: 'Linked by you', automatic: false, type: 'project', title: 'NOVA', ref: 'Projects/NOVA', reason: 'Linked by you.', scopeItems: [{ ref: 'Projects/NOVA/Plan.md', title: 'Plan', reason: 'Mentions leaderboard.' }] }),
-    // limited view of a restricted note: no ref, no open route, no preview
-    item(3, { restricted: true, preview: null, ref: null, open: null, title: 'A 1-2-1', reason: 'This task was raised in this note.', restrictedSay: 'Restricted — shown as a title only on this screen.' }),
+    // a hard-excluded note (Security review/): no ref, no open route, no preview
+    item(3, { hardExcluded: true, preview: null, ref: null, open: null, title: 'Old keys', reason: 'This task was raised in this note.', excludedSay: 'It is in Security review/, which NEURO never shows.' }),
   ] }) }));
   assert.match(out, /Found automatically/);
   assert.match(out, /Linked by you/);
   assert.match(out, />Project</);
   assert.match(out, /Plan<\/button>/, 'a project shows a few notes within it');
-  assert.match(out, /Restricted — shown as a title only on this screen/);
+  assert.match(out, /It is in Security review\/, which NEURO never shows/);
   assert.doesNotMatch(out, /title="null"|data-ref="null"/);
   assert.equal((out.match(/>Remove</g) || []).length, 3);
-  assert.equal((out.match(/>Open source note</g) || []).length, 1, 'only the unrestricted note gets an open route; the restricted one has none');
+  assert.equal((out.match(/>Open source note</g) || []).length, 1, 'only the ordinary note gets an open route; the excluded one has none');
   assert.match(out, /Add context/);
 });
 
@@ -141,8 +141,8 @@ const readout = (over = {}) => ({ label: 'Holding the week', figure: '3 / 4', fi
   kept: { action: { label: 'See your promises', view: 'commitments' } },
   monday: { label: 'Monday report', line: 'Due Monday 26 October 2026, 12:00.', state: 'due', settled: false, receipt: null, action: { label: 'Write and send it', view: 'weekly-risk' } },
   judgement: { label: 'Needs your judgement', strong: '2 promises', line: 'Only you can say whether they were delivered.', more: 0, items: [
-    { key: 'p1', taskId: 31, title: 'Send Kit the onboarding checklist', sensitive: false, why: 'Ticked, with no proof it was delivered.' },
-    { key: 'p2', taskId: 44, title: null, sensitive: true, why: 'Ticked, with no proof it was delivered.' },
+    { key: 'p1', taskId: 31, title: 'Send Kit the onboarding checklist', why: 'Ticked, with no proof it was delivered.' },
+    { key: 'p2', taskId: 44, title: 'Agree Heidi’s return dates', why: 'Ticked, with no proof it was delivered.' },
   ] }, ...over });
 const cards = (r, onOpen = () => {}) => html(React.createElement(KMW.KmwReadout, { readout: r, workspace: true, onOpen }));
 
@@ -154,7 +154,7 @@ test('Holding the week is three distinct cards, each with its route', () => {
   assert.match(out, /See your promises →/);
   assert.match(out, /Write and send it →/);
   assert.match(out, /Send Kit the onboarding checklist/);
-  assert.match(out, /An employment matter — not named here/);
+  assert.match(out, /Agree Heidi’s return dates/);
   assert.equal((out.match(/class="kmw__judge-item"/g) || []).length, 2, 'each promise opens its task');
 });
 

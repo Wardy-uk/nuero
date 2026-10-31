@@ -266,11 +266,9 @@ test('routes cannot choose a date, note path, recipient, title, body or write ty
 
 // ── Packets that must never be confirmable ───────────────────────────────────
 
-test('stale, ambiguous and employment packets are refused at request — nothing is minted', async () => {
+test('stale and ambiguous packets are refused at request — nothing is minted', async () => {
   const cases = [
-    ['nothing selected (employment withheld)', () => ({ contract: 'prepared-move-v1', decision: { decidedAt: new Date(NOW).toISOString() }, selected: null, withheld: [{ title: 'Weekly risk report', reason: 'employment matter — routing only' }] }), /no prepared move to confirm right now — Weekly risk report: employment matter/],
-    ['employment screen', () => fixture((x) => { x.selected.screens.employment = { sensitive: true, categories: ['hr-wording'] }; }), /employment matter/],
-    ['draft reads as employment', () => fixture((x) => { x.selected.preparation[0].draft += '\n- the disciplinary outcome for Mel\n'; }), /employment matter/],
+    ['nothing selected', () => ({ contract: 'prepared-move-v1', decision: { decidedAt: new Date(NOW).toISOString() }, selected: null, withheld: [{ title: 'Weekly risk report', reason: 'unsupported kind' }] }), /no prepared move to confirm right now — Weekly risk report: unsupported kind/],
     ['ambiguous record', () => fixture((x) => { x.selected.screens.recordUnique = false; }), /exactly one record/],
     ['stale source', () => fixture((x) => { x.selected.screens.freshnessOk = false; }), /stale when it was prepared/],
     ['stale evidence', () => fixture((x) => { x.decision.decidedAt = new Date(NOW - 3 * 3600000).toISOString(); }), /expired/],
@@ -565,17 +563,4 @@ test('stale evidence across the boundary: an evening preparation is not offered 
   const r = await request();
   assert.equal(r.status, 409); assert.match(r.json.error, /expired/);
   assert.equal(grantRows(), grants, 'nothing minted');
-});
-
-test('an employment-sensitive move is never shown — not even as held — and is refused as itself', async () => {
-  resetWorld();
-  freshMove((x) => { x.duty = { onDuty: false, why: 'off-duty' }; x.selected.screens.employment = { sensitive: true, categories: ['hr-wording'] }; });
-  const v = await view.currentView({ deps: { prepare: async () => S.packet(), checks: noChecks } });
-  assert.equal(v.move, null); assert.equal(v.held, undefined);
-  assert.equal(v.unavailable.reason, 'nothing-prepared');
-  const grants = grantRows();
-  const r = await request();
-  assert.equal(r.status, 409); assert.match(r.json.error, /employment matter/);
-  assert.notEqual(r.json.held, true);
-  assert.equal(grantRows(), grants);
 });

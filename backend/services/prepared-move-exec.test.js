@@ -213,9 +213,7 @@ test('scope: only one solo block and one note in an existing project folder', ()
     [(x) => { x.selected.decision.proposedWrites.push({ kind: 'email.send' }); }, /exactly one solo block and one note/],
     [(x) => { x.selected.decision.proposedWrites[1].path = 'Projects/Support Improvement Plan/../../People/Mel.md'; }, /note path/],
     [(x) => { x.selected.decision.proposedWrites[1].path = 'People/Melanie Ellis.md'; }, /note path/],
-    [(x) => { x.selected.screens.employment = { sensitive: true, categories: ['employee-cases-note'] }; }, /employment matter/],
     [(x) => { x.selected.screens.recordUnique = false; }, /exactly one record/],
-    [(x) => { x.selected.preparation[0].draft = `${DRAFT}\n- the disciplinary outcome\n`; }, /employment matter/],
   ];
   for (const [edit, re] of cases) {
     const w = exec.writesFor(packet(edit), 'approve');

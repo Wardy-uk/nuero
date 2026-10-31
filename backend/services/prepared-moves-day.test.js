@@ -269,7 +269,7 @@ test('eligible Now items: email, future meeting and task carry their exact ref a
   });
   const out = await planner.eligibleNow({ now: NOW, deps: d });
   const byRef = new Map(out.items.map((i) => [i.ref, i]));
-  assert.deepEqual([...byRef.keys()].sort(), [em.ref, meet.ref, todo.ref].sort(), JSON.stringify(out.items.map((i) => i.ref)));
+  assert.deepEqual([...byRef.keys()].sort(), [em.ref, hr.ref, meet.ref, todo.ref].sort(), JSON.stringify(out.items.map((i) => i.ref)));
   assert.equal(byRef.get(em.ref).label, 'Draft the reply');
   assert.equal(byRef.get(meet.ref).label, 'Make the meeting prep ready');
   assert.equal(byRef.get(todo.ref).label, 'Make this ready');

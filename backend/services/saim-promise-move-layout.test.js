@@ -101,22 +101,8 @@ test.before(async () => {
     { recordId: 'pm_2', title: 'Write the Support Hub rota notes', state: 'scheduled', say: 'Scheduled for Thursday 22 Oct 09:00–09:30; I can now make the next item ready.' },
     { recordId: 'pm_3', title: 'Renewal question', state: 'ready', say: 'Ready for you to confirm — nothing needs booking.' },
   ] }, onShow: () => {} });
-  // The private-draft interview as Home shows it after "Prepare a private working draft".
-  const brief = require('./private-brief');
-  const T = 'Define achievable targets for hybrid/WFH incentive; agree plan on 2026-09-02';
-  const out = brief.compose({ title: T, promiseText: T, source: { path: 'Meetings/2026/09/2026-09-01 – Weekly Meeting Ticket Health, AI Integration, and Team Performance.md', title: '2026-09-01 – Weekly Meeting Ticket Health, AI Integration, and Team Performance' },
-    lines: [{ text: 'Consider hybrid model (e.g., two days WFH) as incentive tied to achievable targets, leveraging AI efficiency gains; stagger WFH to maintain coverage.', line: 98 }, { text: T + '.', line: 123 }], leftOut: 2, answers: [], todayYmd: '2026-10-26' });
-  const PRIV = { label: brief.LABEL, cannot: brief.CANNOT, can: brief.CAN };
-  const view = { move: { version: 2, recordId: 'pm_9', recordVersion: 1, kind: 'project-note', plan: 'draft', title: T,
-    prepared: { headline: 'I prepared a private draft for you — no decision made, nothing sent.' }, privateDraft: PRIV, interview: out.interview,
-    outcome: { goal: `Think “${T}” through yourself, with what your notes say in one place.` }, why: { because: [], willNot: [] }, evidence: [], freshness: [],
-    deliverable: { title: 'x — private draft', sourceFacts: [], suggested: { label: brief.LABEL, text: out.text }, gaps: out.gaps },
-    options: [{ id: 'unfinished', writes: ['Save your unfinished private draft'] }], notOffered: [],
-    respond: { defer: { days: [{ days: 1, label: 'Until tomorrow' }], reasons: [{ id: 'not-now', label: 'Not now' }] }, decline: { reasons: [], say: 'x' } }, moment: { headline: 'x' } } };
-  const interview = React.createElement('div', { className: 'app' }, React.createElement('main', { className: 'app__view' },
-    React.createElement(PM.PreparedMoveView, { state: { kind: 'ready', view }, onChoose() {}, onAsk() {}, onConfirm() {}, onCancel() {}, onAgain() {}, onAnswer() {}, onPark() {}, onAskOption() {} })));
   const jobs = [];
-  for (const [name, el] of Object.entries({ ask, also, interview })) {
+  for (const [name, el] of Object.entries({ ask, also })) {
     const file = path.join(tmp, `${name}.html`); fs.writeFileSync(file, page(el));
     for (const [w, h] of SIZES) jobs.push({ name, file, w, h });
   }
@@ -153,15 +139,3 @@ test('"Also open": every row and every Show button inside the width; Show only o
   }
 });
 
-test('phone: the private-draft question, its field, "Tell SAiM" and "Park this for now" are ABOVE THE FOLD and inside the width', (t) => {
-  if (skipWhy) return t.skip(skipWhy);
-  for (const m of results.filter((x) => x.name === 'interview')) {
-    assert.equal(m.sw, m.vw, `no sideways scroll @${m.w}: ${m.over.join(', ')}`);
-    assert.ok(m.ivProg && m.ivQuestion && m.ivField && m.ivSubmit && m.ivPark, `the interview renders @${m.w}`);
-    for (const [k, b] of [['field', m.ivField], ['Tell SAiM', m.ivSubmit], ['Park', m.ivPark]]) {
-      assert.ok(b.r <= m.vw + 0.5, `${k} inside the width @${m.w}`);
-      if (m.w === 390 || m.w >= 1440) assert.ok(b.b <= m.h, `${k} above the fold @${m.w}×${m.h} (bottom ${Math.round(b.b)})`);
-    }
-    assert.ok(m.ivField.w >= 200, `the field is usable @${m.w} (${Math.round(m.ivField.w)}px)`);
-  }
-});
