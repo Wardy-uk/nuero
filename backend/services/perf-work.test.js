@@ -60,13 +60,14 @@ test('tickets, workforce and people', () => {
   const t = work.tickets(d, W).map((i) => i.title).sort();
   assert.deepEqual(t, ['Declined "Pending Rejection Approval (to CC)" on NT-34482', 'Kept a promised update on NT-35291', 'Missed a promised update on NT-2']);
 
-  d.exec(`CREATE TABLE IF NOT EXISTS uat_rounds (id INTEGER PRIMARY KEY, status TEXT, uat_date TEXT, feature TEXT, from_name TEXT, closed_at TEXT)`);
-  d.exec(`CREATE TABLE IF NOT EXISTS uat_selections (id INTEGER PRIMARY KEY, round_id INTEGER, status TEXT)`);
-  d.prepare(`INSERT INTO uat_rounds (status, uat_date, feature, from_name, closed_at) VALUES ('done','2026-10-28','AFE anniversaries','Dan','2026-10-27T09:40:00Z')`).run();
-  d.prepare(`INSERT INTO uat_selections (round_id, status) VALUES (1,'accepted'),(1,'confirmed')`).run();
-  const wf = work.workforce(d, W);
+  // The real UAT tables carry more NOT NULL columns than this reads; a bare copy keeps the fixture small.
+  bare.exec(`CREATE TABLE uat_rounds (id INTEGER PRIMARY KEY, status TEXT, uat_date TEXT, feature TEXT, from_name TEXT, closed_at TEXT)`);
+  bare.exec(`CREATE TABLE uat_selections (id INTEGER PRIMARY KEY, round_id INTEGER, status TEXT)`);
+  bare.prepare(`INSERT INTO uat_rounds (status, uat_date, feature, from_name, closed_at) VALUES ('done','2026-10-28','AFE anniversaries','Dan','2026-10-27T09:40:00Z')`).run();
+  bare.prepare(`INSERT INTO uat_selections (round_id, status) VALUES (1,'accepted'),(1,'confirmed'),(1,'declined')`).run();
+  const wf = work.workforce(bare, W);
   assert.equal(wf.length, 1);
-  assert.match(wf[0].detail, /2 people invited from the rota, 2 going/);
+  assert.match(wf[0].detail, /3 people invited from the rota, 2 going/);
 
   d.prepare(`INSERT INTO waiting_on (key, person, text, status, asked_at, first_seen, last_seen) VALUES ('w1','Hope','SECRET-OWED','open','2026-10-12T10:00:00Z','2026-10-01','2026-10-12')`).run();
   const p = work.people(d, W);
