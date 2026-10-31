@@ -177,7 +177,7 @@ async function aiRead(name, buf, deps) {
   const provider = deps.provider || require('./providers/anthropic-provider');
   if (!aiRouting.isCloudAllowed('perf_doc_read') || !provider.isConfigured()) return null;
   const r = await provider.vision(AI_SYSTEM, { pdfBase64: buf.toString('base64'), prompt: `The attachment is "${name}". Describe it.` },
-    { model: process.env.PERF_DOC_MODEL || undefined, effort: 'low', maxTokens: 1000, callClass: 'perf_doc_read' });
+    { model: process.env.PERF_DOC_MODEL || 'claude-opus-5', effort: 'low', maxTokens: 1000, callClass: 'perf_doc_read' });
   try { aiRouting.recordUsage(r.usage, { provider: 'anthropic', model: r.model, taskType: 'perf_doc_read' }); } catch { /* bookkeeping only */ }
   return String(r.text || '').trim().slice(0, DOC_TEXT) || null;
 }
