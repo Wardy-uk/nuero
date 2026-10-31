@@ -3,9 +3,10 @@
 // "Do this" — NEURO progressing one task as far as it safely can (23 Oct 2026).
 // See services/task-agent.js and docs/task-agent.md.
 //
-// ⚠ EVERY ROUTE HERE BUT ONE, READS INCLUDED, IS NICK'S OWN SURFACE ONLY. The one
-// exception is GET /tasks/:taskId/drafts (Nick, 27 Oct 2026): the saved drafts are
-// readable by agents over MCP. The kiosk, the API token (MCP, n8n), any declared
+// ⚠ EVERY ROUTE HERE BUT TWO, READS INCLUDED, IS NICK'S OWN SURFACE ONLY. The
+// exceptions: GET /tasks/:taskId/drafts (Nick, 27 Oct 2026): the saved drafts are
+// readable by agents over MCP; and POST /tasks/:taskId/claude-result (31 Oct 2026):
+// Claude on the laptop returns its finished work through the local MCP server. The kiosk, the API token (MCP, n8n), any declared
 // machine client and chat cannot run Do this: it spends Nick's own Anthropic key
 // against his daily limits and acts with his authority (matrix task-agent.run,
 // machine: refuse). Identity is task-context.viewerOf(req) — it can only
@@ -45,6 +46,17 @@ router.get('/tasks/:taskId', (req, res) => {
 router.get('/tasks/:taskId/drafts', (req, res) => {
   try {
     send(res, svc().draftsForAgent(req.params.taskId));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/task-agent/tasks/:taskId/claude-result — Claude result return from desktop: body.markdown is Claude's finished task output; shown on the task card and saved into the task's draft note (new, or appended). Open to the local MCP (return_task_result). Keywords: claude result, return task result, desktop output.
+router.post('/tasks/:taskId/claude-result', (req, res) => {
+  try {
+    const bad = strict(req.body, ['markdown']);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    const { markdown } = req.body;
+    const machine = req.get('X-Neuro-Machine-Client') || (req.apiClient ? String(req.apiClient) : null);
+    send(res, svc().returnFromClaude(req.params.taskId, { markdown, by: machine ? `machine:${machine}` : 'nick' }));
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

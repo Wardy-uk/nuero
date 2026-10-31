@@ -73,6 +73,10 @@ const CAPABILITIES = Object.freeze({
   // the existing approval screen. Every route, reads included, is Nick's alone (it spends his own
   // Anthropic key and acts with his authority), so machine: refuse and the gateway marks them interactive.
   'task-agent.run': { authority: 'A1', effect: "run NEURO's task agent on one task: read permitted context, save private working outputs, prepare (never send) a governed email draft", machine: 'refuse', approval: 'click (owner session)', registry: null, ledger: false, verification: 'agent_state task_agent_run:<id> + activity_log task_agent', idempotent: 'one attempt per task; a repeat press resumes it' },
+  // 31 Oct 2026 (Nick): Claude on the laptop returns its finished work for a task. Writes the
+  // task's draft note in the vault (new, or a section appended — never an overwrite) and NEURO's
+  // own record of it. The local MCP server's return_task_result calls it, so machine: execute.
+  'task-agent.claude-return': { authority: 'A2', effect: "Claude's finished work for one task: saved into that task's draft note in the vault (created or appended, never overwritten) and shown on its card", machine: 'execute', approval: 'none', registry: null, ledger: false, verification: 'agent_state task_agent_claude:<id> + activity_log task_agent_claude_return', idempotent: 'identical work within 10 minutes is the same return' },
   'saim.authority': { authority: 'A4', effect: "change what SAiM is allowed to do: grant or revoke today's allowance, stop or resume all SAiM actions", machine: 'refuse', approval: 'click + one-use confirmation (grant, resume)', registry: null, ledger: true, verification: 'saim_authority_events', idempotent: 'one grant per day; tokens one-use' },
   'saim.move.calendar-block': { authority: 'A2', effect: "one solo block in Nick's calendar for a prepared move he confirmed", machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.calendar-block', ledger: true, verification: 'event read-back', idempotent: 'one per move (ledger key + marker)' },
   'saim.move.vault-note': { authority: 'A2', effect: 'one new named vault note for a prepared move he confirmed (never an overwrite)', machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.vault-note', ledger: true, verification: 'content hash read-back', idempotent: 'one per move (ledger key + exact path)' },
@@ -156,6 +160,7 @@ const ROUTE_RULES = Object.freeze([
   R('GET', '/api/task-agent/tasks/:taskId', 'task-agent.run'),
   R('GET', '/api/task-agent/tasks/:taskId/handoff/preview', 'task-agent.run'),
   R('GET', '/api/task-agent/tasks/:taskId/drafts', 'read'),
+  R('POST', '/api/task-agent/tasks/:taskId/claude-result', 'task-agent.claude-return'),
   R('POST', '/api/task-agent/tasks/:taskId/handoff', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/outputs/:outputId/save', 'task-agent.run'),
   // Do this's key, on/off and daily limits are Nick's, in Settings — never a machine's.

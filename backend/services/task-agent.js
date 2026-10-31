@@ -709,7 +709,8 @@ function view(taskId) {
   run = _settleStale(run);
   run = _settleInventedQuestion(run);
   const budget = budgetView();
-  if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null, budget };
+  const claude = _loadClaude(id).map(({ hash, ...o }) => o);
+  if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null, budget, claudeResults: claude };
   const d = deps();
   const handoffs = (run.handoffs || []).map((h) => {
     if (h.kind !== 'prepared_action') return h;
@@ -733,7 +734,7 @@ function view(taskId) {
   const L = d.settings.attemptLimits ? d.settings.attemptLimits() : null;
   const attempt = L ? { limits: L, used: { tranche: b.tranche, rounds: b.rounds, notes: b.notes, searches: b.searches, inputTokens: b.inputTokens, costUsd: b.costUsd } } : null;
   const shaped = { ...run, outputs, handoffs, running, phase: phase ? phase.phase : null, attempt };
-  return { ok: true, contract: CONTRACT, taskId: id, budget, run: shaped, workspace: workspaceOf(shaped, { today: budget && budget.today, daily: budget ? { runs: budget.dailyRuns, usd: budget.dailyUsd } : null }) };
+  return { ok: true, contract: CONTRACT, taskId: id, budget, claudeResults: claude, run: shaped, workspace: workspaceOf(shaped, { today: budget && budget.today, daily: budget ? { runs: budget.dailyRuns, usd: budget.dailyUsd } : null }) };
 }
 
 /**
@@ -1038,6 +1039,11 @@ function defaultBrief(run, task) {
   ].join('\n').slice(0, BRIEF_MAX);
 }
 
+/** PURE. How Claude hands its finished work back to NEURO (the one write it is asked to make). */
+function returnLine(taskId) {
+  return `When the work is finished, call the NEURO MCP tool return_task_result with task_id ${taskId} and your complete result as markdown — NEURO shows it on this task and saves it into the task's draft note. If that tool is not available, say so and give the full result here in the chat so Nick can paste it back into NEURO.`;
+}
+
 /** PURE. The fixed, server-composed half: destination, context and NEURO's work so far. */
 function fixedContext(run, task, { includeDrafts = false, destination = null } = {}) {
   const lines = [`## Destination (fixed)`, `NEURO task #${task.id}: ${task.text}`];
@@ -1057,6 +1063,7 @@ function fixedContext(run, task, { includeDrafts = false, destination = null } =
     lines.push(`- Draft (${o.kind}): ${o.title}${includeDrafts ? '' : ` — not included here; read it with NEURO's MCP: GET /api/task-agent/tasks/${task.id}/drafts`}`);
     if (includeDrafts) lines.push('', '```markdown', o.markdown, '```', '');
   }
+  lines.push('', '## When you finish (fixed)', returnLine(task.id));
   return lines.join('\n');
 }
 
@@ -1207,6 +1214,97 @@ function draftsForAgent(taskId) {
   };
 }
 
+// ── Claude's finished work coming BACK (31 Oct 2026, Nick) ──────────────────
+//
+// The handoff sends a task to Claude on the laptop; this is the way back. Claude
+// calls the local MCP tool `return_task_result` (or Nick pastes the answer on the
+// card) and the result lands on the card AND in the task's draft note in the
+// vault, with no extra press. A new note is created; an existing one only ever
+// gets a section APPENDED — nothing is overwritten.
+//
+// ⚠ Kept under its OWN key, not inside the run: a turn works on a copy of the run
+// and commits the whole thing when it finishes, so a result written into the run
+// mid-turn would be lost. view() merges it in.
+const CLAUDE_KEY = (id) => `task_agent_claude:${id}`;
+const CLAUDE_MAX_CHARS = 200000;
+const CLAUDE_KEEP = 10;
+const CLAUDE_REPEAT_MS = 10 * 60 * 1000;
+
+function _loadClaude(taskId) {
+  try { const v = JSON.parse(db.getState(CLAUDE_KEY(taskId)) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function claudeResults(taskId) { return _loadClaude(Number(taskId)); }
+
+/** PURE. "31 Oct 2026, 14:05" on London's wall clock. */
+function londonStamp(ms) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ms));
+}
+
+/** The vault half: create the task's draft note, or append a section to it. */
+function _writeClaudeNote(task, markdown, ms) {
+  const fs = require('fs');
+  const path = require('path');
+  const planner = require('./prepared-move-planner');
+  const safePath = require('../routes/vault')._safePath;
+  const dest = deps().destination(task) || { folder: planner.WORKING_FOLDER, project: null };
+  const title = planner.safeTitle(task.text) || `Task ${task.id}`;
+  const rel = `${dest.folder}/${title} (draft).md`;
+  const p = safePath(rel);
+  if (!p) return { ok: false, status: 500, error: 'The vault could not be reached, so nothing was saved.' };
+  const dir = path.dirname(p);
+  if (!fs.existsSync(dir)) {
+    // The ONE folder this may create, as the prepared-move executor does: Projects/Working,
+    // and only inside an existing Projects/. Never a folder named by anything else.
+    const working = safePath(planner.WORKING_FOLDER);
+    if (!working || dir !== working || !fs.existsSync(path.dirname(working))) return { ok: false, status: 409, error: `The folder ${dest.folder} does not exist — NEURO does not create folders.` };
+    fs.mkdirSync(working);
+  }
+  const body = String(markdown).replace(/\s+$/, '');
+  const section = `## From Claude — ${londonStamp(ms)}\n\n${body}\n`;
+  if (fs.existsSync(p)) {
+    const cur = fs.readFileSync(p, 'utf8');
+    fs.appendFileSync(p, `${cur.endsWith('\n') ? '' : '\n'}\n${section}`);
+    return { ok: true, notePath: rel, created: false };
+  }
+  const fm = ['---', 'type: draft', `task: ${task.id}`, 'source: claude-desktop', `created: ${new Date(ms).toISOString()}`, '---', ''].join('\n');
+  try {
+    fs.writeFileSync(p, `${fm}\n${section}`, { flag: 'wx' });
+    return { ok: true, notePath: rel, created: true };
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    fs.appendFileSync(p, `\n${section}`); // created between the check and the write — append, never overwrite
+    return { ok: true, notePath: rel, created: false };
+  }
+}
+
+/**
+ * Claude returns its finished work for a task: saved into the task's draft note
+ * and shown on the card. Identical work re-sent within 10 minutes is the same
+ * return (`already: true`) and appends nothing.
+ */
+function returnFromClaude(taskId, { markdown, by = 'nick' } = {}) {
+  const id = Number(taskId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, status: 400, error: 'bad task id' };
+  if (typeof markdown !== 'string' || !markdown.trim()) return { ok: false, status: 400, error: 'markdown is required — the result was empty.' };
+  if (markdown.length > CLAUDE_MAX_CHARS) return { ok: false, status: 400, error: `The result is longer than ${CLAUDE_MAX_CHARS} characters.` };
+  const d = deps();
+  const task = d.getTask(id);
+  if (!task) return { ok: false, status: 404, error: 'No such task.' };
+  if (!['open', 'in-progress'].includes(task.status)) return { ok: false, status: 404, error: 'That task is not open.' };
+  const now = d.now();
+  const hash = require('crypto').createHash('sha256').update(markdown.trim()).digest('hex').slice(0, 16);
+  const list = _loadClaude(id);
+  const same = list.find((o) => o.hash === hash && now - Date.parse(o.at) < CLAUDE_REPEAT_MS);
+  if (same) return { ok: true, already: true, notePath: same.notePath, output: same };
+  let w;
+  try { w = _writeClaudeNote(task, markdown, now); } catch (e) { return { ok: false, status: 500, error: `The draft note could not be written: ${e.message}` }; }
+  if (!w.ok) return w;
+  const output = { id: `c${now}`, kind: 'claude', title: 'From Claude', markdown, at: _iso(now), by: String(by || 'nick').slice(0, 60), notePath: w.notePath, created: w.created, hash };
+  db.setState(CLAUDE_KEY(id), JSON.stringify([output, ...list].slice(0, CLAUDE_KEEP)));
+  try { db.logActivity('task_agent_claude_return', { taskId: id, notePath: w.notePath, created: w.created, chars: markdown.length, by: output.by }); } catch { /* never fails the return */ }
+  return { ok: true, already: false, notePath: w.notePath, output };
+}
+
 /** For Drafts: every task with agent work in progress (outputs, a handoff or a question). */
 function activeRuns() {
   let rows = [];
@@ -1226,7 +1324,7 @@ function activeRuns() {
 module.exports = {
   workspaceOf, questionOverlap, continueWorking, MAX_READ_CHARS,
   CONTRACT, STATUS, QUESTION_KINDS, OUTPUT_KINDS, TOOLS,
-  view, start, answer, stop, activeRuns, draftsForAgent, prepareSave, handoffPreview, handoff, budgetView,
+  view, start, answer, stop, activeRuns, draftsForAgent, prepareSave, returnFromClaude, claudeResults, londonStamp, returnLine, handoffPreview, handoff, budgetView,
   sourcesFrom, addressesIn, classifyError, policyEnvelope, defaultBrief, fixedContext, composeFinal, screenBrief, BRIEF_RULES, DEFAULT_MODEL,
   _internals: {
     setDeps: (o) => { _deps = o ? { ...deps(), ...o } : null; },
