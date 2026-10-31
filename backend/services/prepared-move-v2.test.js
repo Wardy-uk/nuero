@@ -149,10 +149,9 @@ test('evidence change → a NEW version; the old one can no longer be confirmed'
   assert.equal(exec.requestConfirmation({ recordId: a.record.id, sessionId: SESSION }).ok, false);
 });
 
-test('withheld, with a human reason: stale, employment, already in Actions, ungrounded, no safe slot', async () => {
+test('withheld, with a human reason: stale, already in Actions, ungrounded, no safe slot', async () => {
   const cases = [
     ['stale', { triageEntry: (id) => ({ id, subject: 'Renewal question', from: 'Sam Jones', fromEmail: 'sam@acme.test', triagedAt: new Date(NOW - 3 * DAY).toISOString() }) }, /stale/],
-    ['employment', { triageEntry: (id) => ({ id, subject: 'Disciplinary hearing outcome', from: 'HR', fromEmail: 'hr@nurtur.test', triagedAt: new Date(NOW).toISOString() }) }, /employment/],
     ['already-in-progress', { liveReply: () => ({ status: 'prepared', draft: { body: 'x' } }) }, /already prepared in Actions/],
     ['ungrounded', { draft: async () => ({ ok: true, text: 'Hi Sam, I have asked Priya to sign it by 30 June.', gaps: [] }) }, /do not say/],
   ];
@@ -193,7 +192,6 @@ test('ask: no project folder → SAiM asks; the answer is a source fact and re-p
   assert.equal(a.record.packet.selected.plan, 'ask');
   assert.equal(a.record.packet.selected.ask.questions[0].id, 'folder');
   assert.ok(a.record.packet.selected.ask.questions[0].choices.includes('Support Hub'));
-  assert.ok(!a.record.packet.selected.ask.questions[0].choices.includes('PIP'), 'PIP is never offered as a place to write');
   assert.equal(exec.writesFor(a.record.packet, 'approve').ok, false, 'a question cannot be confirmed');
   assert.equal(store.addAnswer({ recordId: a.record.id, version: a.record.version, questionId: 'nope', text: 'x' }).ok, false);
   assert.equal(store.addAnswer({ recordId: a.record.id, version: a.record.version, questionId: 'folder', text: 'Support Hub', by: 'machine:mcp' }).ok, true);

@@ -107,7 +107,6 @@ test.before(async () => {
   clock.reportsSent([london(day(1), '12:30'), london(day(8), '12:30')]); // both simulated weeks' report to Chris, recorded as sent (see the clock helper)
   P.alex = task('Nick to send Alex Reed the list of ticket types blocked by skill gaps', 34);
   P.sam = task('Nick to write the onboarding guide for Sam Patel', 30);
-  P.hr = task('Nick to agree the outcome of Jordan Kay\'s flexible working request', 26, 'Meetings/2026/09/2026-09-22 - Jordan Kay 1-2-1.md');
   shadow.registerPromiseShadow({ PROMISE_SHADOW_ENABLED: 'true' }, { schedule: () => ({ stop() {} }) });
   shadow._resetRuntime();
 });
@@ -140,7 +139,6 @@ test('all candidates already offered today: the bundle is settled from history �
   const p = payloadOf(w);
   assert.equal(p.canonicalNow, 'not_called'); assert.equal(p.decidedBy, 'history');
   assert.equal('gate' in p, false, 'no gate result is fabricated'); assert.equal('ctx' in p, false);
-  assert.ok(t.added.some((r) => r.kind === 'routing' && r.promise_key === P.hr), 'the day’s routing row is still logged without a read');
 });
 
 test('daily cap already reached: a pre-meeting moment is settled — no Now, no presence', async () => {
@@ -160,20 +158,6 @@ test('a bundle after the daily cap: settled — no Now, no presence', async () =
   assert.equal(t.nowReads, 0); assert.equal(t.presence, 0);
   const w = t.added.find((r) => r.moment === `window:${d}:2`);
   assert.equal(w.reason, '3 promise prompts already today'); assert.equal(payloadOf(w).canonicalNow, 'not_called');
-});
-
-test('HR-only: a meeting with the person an employment matter is owed to, and a bundle where only it remains, never read Now', async () => {
-  const d = day(3);
-  cal('evt-hr', '1-2-1 Nick / Jordan Kay', d, '11:00');
-  const m = await tick(d, '10:30');
-  assert.equal(m.snapshots, 1, 'the meeting was looked at (a real meeting is due)');
-  assert.equal(m.nowReads, 0); assert.equal(m.presence, 0);
-  assert.equal(m.added.length, 0, 'an employment matter makes no moment — routing only');
-  offer(P.alex, d, '07:30'); offer(P.sam, d, '07:35');
-  const b = await tick(d, '12:30');
-  assert.equal(b.nowReads, 0); assert.equal(b.presence, 0);
-  assert.ok(b.added.some((r) => r.kind === 'routing' && r.promise_key === P.hr && JSON.stringify(payloadOf(r)) === JSON.stringify({ taskIds: [Number(P.hr.split(':')[1])], rule: 'hr-wording' })));
-  assert.equal(rows("kind IN ('prompt','suppression') AND promise_key = ?", [P.hr]).length, 0, 'never offered, never even suppressed as a prompt');
 });
 
 test('a mixed meeting: Alex already offered, Sam still offerable → Now is read ONCE and the shared gate applies to both', async () => {
@@ -237,11 +221,10 @@ test('two people’s meetings at once, where the selector prefers the SECOND per
 test('counters: presence calls equal Now reads across the file; every avoided read is counted', () => {
   const s = shadow.stats();
   assert.equal(calls.presence, s.nowReads, 'localhost:3005 calls === Now reads');
-  // Tue 12:30 (all offered) · Wed 13:30 (cap, meeting) · Wed 17:30 (cap, bundle) · Thu 12:30 (HR only left).
-  // The Thu 10:30 HR meeting makes no moment at all, so it is idle, not an avoided read.
-  assert.equal(s.nowAvoided, 4);
+  // Tue 12:30 (all offered) · Wed 13:30 (cap, meeting) · Wed 17:30 (cap, bundle).
+  assert.equal(s.nowAvoided, 3);
   assert.equal(s.nowReads, 4, 'only the mixed meeting, discovery and the two multi-promise meetings read Now');
   const settled = rows("payload_json LIKE '%\"canonicalNow\":\"not_called\"%'");
-  assert.equal(settled.length, 4);
+  assert.equal(settled.length, 3);
   for (const r of settled) assert.equal('gate' in payloadOf(r), false, 'a settled row never carries a gate');
 });

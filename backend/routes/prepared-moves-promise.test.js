@@ -200,11 +200,9 @@ test('a message promise owed to ONE named person hands off to the delivery note 
   assert.deepEqual(outward(), before, 'handing off prepares no governed action by itself');
 });
 
-test('a closed, delivered or HR-routed promise is refused before anything is asked', async () => {
+test('a closed or unknown promise is refused before anything is asked', async () => {
   promises.set('promise:901', { ...promiseOf('promise:901', TEXT, taskId), open: false });
-  promises.set('promise:902', { ...promiseOf('promise:902', TEXT, taskId), sensitivity: { sensitive: true } });
   assert.equal((await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:901' } })).status, 409);
-  assert.equal((await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:902' } })).status, 409);
   assert.equal((await call('/api/prepared-moves/prepare', { method: 'POST', body: { ref: 'promise:promise:404' } })).status, 409);
 });
 

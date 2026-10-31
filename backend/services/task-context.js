@@ -90,16 +90,12 @@ function _exists() {
   try { return Boolean(db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='task_context_links'`)); } catch { return false; }
 }
 
-// Who is looking decides what a RESTRICTED link may show (23 Oct 2026). The link's
-// classification (restricted or not) is the scan's and is stored; the viewer is
-// decided per request by the route from the authenticated surface — never a header
-// the client chooses. 'limited' (the default, and every in-process caller) is
-// title-only for a restricted note: no path, no preview, no excerpt, no open route.
-// 'owner' (Nick's own PIN session on the NEURO desktop or phone) additionally gets
-// the reason it is restricted, a task-bounded excerpt read from the note, and the
-// open route — except for a hard exclusion, which no viewer ever gets.
+// Who is looking (23 Oct 2026). Every viewer now gets the same full row — the
+// excerpt, the reason it is linked and the open route (31 Oct 2026: no HR or
+// personal restrictions). `viewerOf` survives for the routes that are Nick-only
+// for other reasons (task-agent: cost and authority). A hard exclusion
+// (Security review/, excluded folders, an opt-out) is never shown to anyone.
 const VIEWERS = ['limited', 'owner'];
-const LIMITED_RESTRICTED_SAY = 'Restricted — shown as a title only on this screen.';
 
 /**
  * Who is looking, from the AUTHENTICATED request — never from anything the
@@ -122,11 +118,9 @@ function _row(r) {
   if (!r) return null;
   const reasons = (() => { try { return JSON.parse(r.reasons_json || '[]'); } catch { return []; } })();
   const scope = (() => { try { return r.scope_json ? JSON.parse(r.scope_json) : null; } catch { return null; } })();
-  const restricted = Boolean(r.restricted);
   const row = {
     id: r.id, taskId: r.task_id, type: r.source_type, ref: r.source_ref, title: r.title,
-    preview: restricted ? null : r.preview, restricted,
-    restrictedSay: restricted ? LIMITED_RESTRICTED_SAY : null,
+    preview: r.preview,
     origin: r.origin, originLabel: model.ORIGIN_LABEL[r.origin] || r.origin, automatic: r.origin === 'nightly-scan',
     state: r.state, staleFrom: r.stale_from || null, staleReason: r.stale_reason || null,
     staleSay: r.stale_reason ? (model.STALE_SAY[r.stale_reason] || r.stale_reason) : null,
@@ -137,7 +131,6 @@ function _row(r) {
     linkedBy: r.linked_by || null, createdAt: r.created_at, updatedAt: r.updated_at,
     sourceChangedAt: r.source_changed_at || null, removedAt: r.removed_at || null,
   };
-  if (restricted) { row.ref = null; row.open = null; } // title only: not even the path
   return row;
 }
 
@@ -160,30 +153,25 @@ function _readInsideVault(rel) {
 }
 
 /**
- * Nick's own view of ONE link: why it is linked, a task-bounded excerpt from the
- * note, why it is restricted (in words), and the open route. Reads the note now;
- * writes nothing. A hard exclusion stays title-only here too.
+ * ONE link in full: why it is linked, a task-bounded excerpt from the note, and
+ * the open route. Reads the note now; writes nothing. A hard exclusion stays
+ * title-only.
  */
-function _ownerDetail(row, rawRow, task) {
+function _detail(row, rawRow, task) {
   if (row.type !== 'note') return row;
   const rel = rawRow.source_ref;
   const deps = _deps(new Set());
   // Hard exclusions are decided on the PATH before the note is even opened.
   if (model.isHardExcluded(rel, deps)) {
     const h = model.restrictionOf({ rel }, deps);
-    return { ...row, ref: null, open: null, preview: null, excerpt: null, restricted: true, hardExcluded: true, restrictedSay: h.say, restrictedCodes: h.codes };
+    return { ...row, ref: null, open: null, preview: null, excerpt: null, hardExcluded: true, excludedSay: h.say, excludedCodes: h.codes };
   }
   const out = { ...row, ref: rel, open: { kind: 'note', path: rel, obsidianUrl: _obsidianUrl(rel) } };
   const read = _readInsideVault(rel);
   if (!read.ok) return { ...out, excerpt: null, excerptGap: `No excerpt — ${read.why}.` };
   const { fm, body } = model.splitNote(read.text);
-  if (row.restricted) {
-    const why = model.restrictionOf({ rel, fm, body }, deps);
-    if (why.hard) return { ...row, ref: null, open: null, excerpt: null, hardExcluded: true, restrictedSay: why.say, restrictedCodes: why.codes };
-    out.restrictedSay = why.say;
-    out.restrictedCodes = why.codes;
-  } else if (model.optedOut(fm)) {
-    return { ...row, ref: null, open: null, preview: null, excerpt: null, restricted: true, hardExcluded: true, restrictedSay: model.RESTRICTION_SAY['opted-out'], restrictedCodes: ['opted-out'] };
+  if (model.optedOut(fm)) {
+    return { ...row, ref: null, open: null, preview: null, excerpt: null, hardExcluded: true, excludedSay: model.RESTRICTION_SAY['opted-out'], excludedCodes: ['opted-out'] };
   }
   const excerpt = task ? model.taskExcerpt(body, { id: task.id, text: task.text }, _tokenize()) : null;
   out.excerpt = excerpt;
@@ -193,11 +181,8 @@ function _ownerDetail(row, rawRow, task) {
 
 /**
  * READ-ONLY. May a task agent read this note IN FULL (23 Oct 2026, "Do this")?
- * Only a note the scan itself would accept: never a hard exclusion (Security
- * review/, Archive, generated output), never an opted-out note, never a
- * restricted one (Personal/, private, employment-sensitive) — for those the
- * agent gets only the task-bounded excerpt Nick already sees via forTask.
- * Same deps and rules as the scan, so the two cannot disagree.
+ * Never a hard exclusion (Security review/, Archive, generated output) and
+ * never an opted-out note. Same deps and rules as the scan.
  */
 function readForAgent(rel) {
   const r = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -208,16 +193,12 @@ function readForAgent(rel) {
   if (!read.ok) return { ok: false, why: read.why };
   const { fm, body } = model.splitNote(read.text);
   const s = model.screenNote({ rel: r, fm, body }, { ...deps, exists: () => false });
-  if (!s.ok && (s.restricted || ['security', 'opted-out', 'excluded'].includes(s.reason))) return { ok: false, why: s.restricted ? 'restricted' : s.reason, restricted: Boolean(s.restricted) };
+  if (!s.ok && ['security', 'opted-out', 'excluded'].includes(s.reason)) return { ok: false, why: s.reason };
   return { ok: true, rel: r, title: model.titleOf(r), body };
 }
 
 function _view(rawRows, viewer, taskById) {
-  if (!VIEWERS.includes(viewer)) viewer = 'limited';
-  return rawRows.map((r) => {
-    const row = _row(r);
-    return viewer === 'owner' ? _ownerDetail(row, r, taskById(r.task_id)) : row;
-  });
+  return rawRows.map((r) => _detail(_row(r), r, taskById(r.task_id)));
 }
 
 // ── the vault ────────────────────────────────────────────────────────────────
@@ -231,15 +212,10 @@ function vaultRoot() {
 
 function _deps(allPaths) {
   const ex = require('./vault-exclusions');
-  let roster = null;
-  try { roster = require('./entities').getRoster(); } catch { roster = { full: [] }; }
-  const pm = require('./prepared-move');
   return {
     isExcludedPath: (r) => ex.isExcludedPath(r),
     isSecurityPath: (r) => ex.isSecurityPath(r),
-    isSensitivePath: (r) => ex.isSensitivePath(r),
     exists: (r) => allPaths.has(r),
-    employmentScreen: ({ sourceTitle, sourceText }) => pm.employmentScreen({ sourceTitle, sourceText, roster }),
   };
 }
 
@@ -280,7 +256,6 @@ function buildIndex({ root, nowMs = Date.now() } = {}) {
       notes.push(n);
     } else {
       skipped[screen.reason] = (skipped[screen.reason] || 0) + 1;
-      if (screen.restricted || screen.reason === 'employment-sensitive') entry.restricted = true;
     }
     byRel.set(f.rel, entry);
   }
@@ -292,7 +267,7 @@ function listScopes(root) {
   const out = [];
   try {
     const pv = require('./projects').readVault({ vaultRoot: root, fresh: true });
-    // Projects/Working is SAiM's private-drafts folder (private-brief.WORKING_FOLDER), not a project.
+    // Projects/Working is SAiM's holding folder for drafts with no project, not a project.
     for (const p of pv.projects || []) if (!/^Projects\/Working$/i.test(p.vaultPath)) out.push({ type: 'project', ref: p.vaultPath, name: p.name, projectId: p.projectId });
   } catch { /* no projects read: none offered, never invented */ }
   try {
@@ -509,32 +484,16 @@ function _scanTask(t, { ix, scopes, projectLinks, nowIso, now, receipt, partial 
   // 1. notes
   const found = [];
   for (const n of ix.notes) {
-    if (n.domain === 'personal' && task.domain !== 'personal') continue; // never across the work/personal line
     const s = model.scoreNote(task, n, ix.stats, now);
     if (s) found.push({ n, s });
-  }
-  // The note the task was raised in, even when its screen withheld it from general
-  // matching — it is this task's OWN source. A sensitive one is pinned restricted.
-  // Any OTHER withheld origin (a daily note, an import) is where the task was
-  // captured, not context worth pinning — it stays out.
-  if (task.originPath && ix.byRel.has(task.originPath) && !found.some((f) => f.n.rel === task.originPath)) {
-    const e = ix.byRel.get(task.originPath);
-    const exc = require('./vault-exclusions');
-    // Second guard behind screenNote: a hard exclusion is never pinned, even as a source.
-    const hard = model.isHardExcluded(e.rel, { isSecurityPath: exc.isSecurityPath, isSensitivePath: exc.isSensitivePath, isExcludedPath: (r) => exc.isExcludedPath(r) });
-    if (!hard && (e.screen.reason === 'employment-sensitive' || e.screen.reason === 'restricted')) {
-      const { body } = model.splitNote(e.text || '');
-      found.push({ n: { rel: e.rel, title: model.titleOf(e.rel), preview: model.previewOf(body), hash: e.hash, mtimeMs: e.mtimeMs, restricted: true },
-        s: { level: 'pin', confidence: 0.95, reasons: [{ code: 'origin', say: 'This task was raised in this note.' }] } });
-    }
   }
   found.sort((a, b) => b.s.confidence - a.s.confidence || (b.n.mtimeMs || 0) - (a.n.mtimeMs || 0) || a.n.rel.localeCompare(b.n.rel));
   const pins = found.filter((f) => f.s.level === 'pin').slice(0, model.MAX_AUTO_PINS);
   const extra = found.filter((f) => f.s.level === 'pin').slice(model.MAX_AUTO_PINS);
   const sugg = [...found.filter((f) => f.s.level === 'suggest'), ...extra].slice(0, model.MAX_SUGGESTIONS);
   const wanted = new Map();
-  for (const f of pins) wanted.set(`note|${f.n.rel}`, { type: 'note', ref: f.n.rel, title: f.n.title, preview: f.n.preview, hash: f.n.hash, mtimeMs: f.n.mtimeMs, state: 'pinned', confidence: f.s.confidence, reasons: f.s.reasons, restricted: Boolean(f.n.restricted) });
-  for (const f of sugg) if (!wanted.has(`note|${f.n.rel}`)) wanted.set(`note|${f.n.rel}`, { type: 'note', ref: f.n.rel, title: f.n.title, preview: f.n.preview, hash: f.n.hash, mtimeMs: f.n.mtimeMs, state: 'suggested', confidence: Math.min(f.s.confidence, 0.7), reasons: f.s.reasons, restricted: false });
+  for (const f of pins) wanted.set(`note|${f.n.rel}`, { type: 'note', ref: f.n.rel, title: f.n.title, preview: f.n.preview, hash: f.n.hash, mtimeMs: f.n.mtimeMs, state: 'pinned', confidence: f.s.confidence, reasons: f.s.reasons });
+  for (const f of sugg) if (!wanted.has(`note|${f.n.rel}`)) wanted.set(`note|${f.n.rel}`, { type: 'note', ref: f.n.rel, title: f.n.title, preview: f.n.preview, hash: f.n.hash, mtimeMs: f.n.mtimeMs, state: 'suggested', confidence: Math.min(f.s.confidence, 0.7), reasons: f.s.reasons });
 
   // 2. scopes: the project/area the task came from or is linked to (pin);
   //    one the wording names (suggest); two or more named → ask, never guess.
@@ -557,7 +516,7 @@ function _scanTask(t, { ix, scopes, projectLinks, nowIso, now, receipt, partial 
     const [type, ref] = key.split('|');
     const sc = scopes.find((s) => s.ref === ref);
     const items = model.scopeItems(task, ix.notes, ref, ix.stats);
-    wanted.set(key, { type, ref, title: sc ? sc.name : ref.split('/').pop(), preview: null, hash: sha(JSON.stringify(items)), mtimeMs: null, state: w.state, confidence: w.confidence, reasons: w.reasons, scope: { items }, restricted: false });
+    wanted.set(key, { type, ref, title: sc ? sc.name : ref.split('/').pop(), preview: null, hash: sha(JSON.stringify(items)), mtimeMs: null, state: w.state, confidence: w.confidence, reasons: w.reasons, scope: { items } });
   }
 
   // 3. apply: add new, refresh changed, mark what no longer holds — never touch a removal.
@@ -596,7 +555,7 @@ function _scanTask(t, { ix, scopes, projectLinks, nowIso, now, receipt, partial 
 function _insert(taskId, w, origin, by, nowIso) {
   db.run(`INSERT INTO task_context_links (task_id, source_type, source_ref, title, preview, origin, state, confidence, reasons_json, restricted, scope_json, source_hash, source_mtime, linked_by, created_at, updated_at)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-  [taskId, w.type, w.ref, w.title, w.restricted ? null : (w.preview || null), origin, w.state, w.confidence ?? null, JSON.stringify(w.reasons || []), w.restricted ? 1 : 0,
+  [taskId, w.type, w.ref, w.title, w.preview || null, origin, w.state, w.confidence ?? null, JSON.stringify(w.reasons || []), 0,
     w.scope ? JSON.stringify(w.scope) : null, w.hash || null, w.mtimeMs ? iso(w.mtimeMs) : null, by, nowIso, nowIso]);
 }
 
@@ -610,7 +569,7 @@ function _refresh(row, w, nowIso, receipt, { upgrade }) {
     set('state', 'pinned'); receipt.pinned += 1;
   }
   if ((w.hash || null) !== (row.source_hash || null)) {
-    set('title', w.title); set('preview', w.restricted ? null : (w.preview || null)); set('source_hash', w.hash || null);
+    set('title', w.title); set('preview', w.preview || null); set('source_hash', w.hash || null);
     set('source_mtime', w.mtimeMs ? iso(w.mtimeMs) : row.source_mtime); set('source_changed_at', nowIso);
     if (w.scope) set('scope_json', JSON.stringify(w.scope));
     receipt.refreshed += 1;
@@ -619,7 +578,7 @@ function _refresh(row, w, nowIso, receipt, { upgrade }) {
     const rj = JSON.stringify(w.reasons || []);
     if (rj !== row.reasons_json) set('reasons_json', rj);
     if ((w.confidence ?? null) !== row.confidence && w.confidence != null) set('confidence', w.confidence);
-    if (Boolean(w.restricted) !== Boolean(row.restricted)) set('restricted', w.restricted ? 1 : 0);
+    if (row.restricted) set('restricted', 0);
   }
   if (!sets.length) { receipt.unchanged += 1; return; }
   set('updated_at', nowIso);
@@ -628,8 +587,7 @@ function _refresh(row, w, nowIso, receipt, { upgrade }) {
 
 function _refreshNote(row, e, nowIso, receipt) {
   const { body } = model.splitNote(e.text || '');
-  const restricted = Boolean(e.restricted || row.restricted);
-  _refresh(row, { title: model.titleOf(e.rel), preview: restricted ? null : model.previewOf(body), hash: e.hash, mtimeMs: e.mtimeMs, state: row.stale_from || row.state, restricted }, nowIso, receipt, { upgrade: false });
+  _refresh(row, { title: model.titleOf(e.rel), preview: model.previewOf(body), hash: e.hash, mtimeMs: e.mtimeMs, state: row.stale_from || row.state }, nowIso, receipt, { upgrade: false });
 }
 
 function _refreshScope(row, task, ix, nowIso, receipt) {
@@ -661,9 +619,8 @@ function _task(taskId) {
 }
 
 /**
- * READ. A task's context, grouped. Never writes; never creates a table. The
- * 'limited' view never reads the vault; the 'owner' view reads each linked note
- * (inside the vault only) for its excerpt and restriction reason.
+ * READ. A task's context, grouped. Never writes; never creates a table. Reads
+ * each linked note (inside the vault only) for its excerpt.
  */
 function forTask(taskId, { viewer = 'limited' } = {}) {
   const t = _task(taskId);
@@ -784,22 +741,15 @@ function _noteTarget(rel, full, ex) {
   const skip = model.SCAN_SKIP_PREFIXES.find((s) => rel.startsWith(s.prefix) && s.refuseManual);
   if (skip) return { ok: false, status: 400, error: 'That is machine-produced output, not something worth linking to a task.' };
   // Hard exclusions are never linkable, by anyone (23 Oct 2026). Before this a
-  // Security review/ or Archive/ note could be linked, merely marked restricted.
+  // Security review/ or Archive/ note could be linked.
   if (ex.isSecurityPath(rel)) return { ok: false, status: 400, error: 'Notes under Security review/ can never be linked to a task.' };
-  if (model.isHardExcluded(rel, { isSensitivePath: ex.isSensitivePath, isExcludedPath: (r) => ex.isExcludedPath(r) })) return { ok: false, status: 400, error: 'That folder is excluded from NEURO (archived, generated or infrastructure), so it cannot be linked.' };
+  if (model.isHardExcluded(rel, { isExcludedPath: (r) => ex.isExcludedPath(r) })) return { ok: false, status: 400, error: 'That folder is excluded from NEURO (archived, generated or infrastructure), so it cannot be linked.' };
   let text = '';
   try { text = fs.readFileSync(full, 'utf8'); } catch { return { ok: false, status: 400, error: 'That note could not be read.' }; }
   const { fm, body } = model.splitNote(text);
   if (model.optedOut(fm)) return { ok: false, status: 400, error: 'That note is marked neuro_context: exclude, so it cannot be linked.' };
-  let restricted = ex.isSensitivePath(rel) || String(fm.private || '').toLowerCase() === 'true';
-  if (!restricted) {
-    try {
-      const s = _deps(new Set()).employmentScreen({ sourceTitle: model.titleOf(rel), sourceText: body });
-      restricted = Boolean(s && s.sensitive);
-    } catch { /* a screen that could not run never makes a note LESS restricted — preview kept off below */ restricted = true; }
-  }
   let mtimeMs = null; try { mtimeMs = fs.statSync(full).mtimeMs; } catch { /* kept null */ }
-  return { ok: true, target: { type: 'note', ref: rel, title: model.titleOf(rel), preview: restricted ? null : model.previewOf(body), hash: sha(text), mtimeMs, restricted } };
+  return { ok: true, target: { type: 'note', ref: rel, title: model.titleOf(rel), preview: model.previewOf(body), hash: sha(text), mtimeMs } };
 }
 
 /** Link ONE thing to a task, as Nick (or a chat on his explicit word). Never writes the vault. */
@@ -825,8 +775,8 @@ function link({ taskId, type, ref, by = 'nick', now = Date.now() } = {}) {
   if (cur && cur.state === 'pinned' && cur.origin !== 'nightly-scan') return { ok: true, already: true, link: _row(cur) };
   if (cur) {
     db.run(`UPDATE task_context_links SET state = 'pinned', origin = ?, linked_by = ?, stale_from = NULL, stale_reason = NULL, removed_at = NULL, removed_by = NULL,
-            title = ?, preview = ?, restricted = ?, scope_json = ?, source_hash = ?, source_mtime = ?, reasons_json = ?, confidence = NULL, updated_at = ? WHERE id = ?`,
-    [origin, by, target.title, target.restricted ? null : (target.preview || null), target.restricted ? 1 : 0, target.scope ? JSON.stringify(target.scope) : null,
+            title = ?, preview = ?, restricted = 0, scope_json = ?, source_hash = ?, source_mtime = ?, reasons_json = ?, confidence = NULL, updated_at = ? WHERE id = ?`,
+    [origin, by, target.title, target.preview || null, target.scope ? JSON.stringify(target.scope) : null,
       target.hash || null, target.mtimeMs ? iso(target.mtimeMs) : null, JSON.stringify(reasons), nowIso, cur.id]);
   } else {
     _insert(t.id, { ...target, state: 'pinned', reasons, confidence: null }, origin, by, nowIso);
@@ -893,9 +843,9 @@ function search({ q, taskId = null } = {}) {
       const hay = rel.toLowerCase();
       if (!words.every((w) => hay.includes(w))) return;
       if (model.SCAN_SKIP_PREFIXES.some((s) => rel.startsWith(s.prefix) && s.refuseManual)) return;
-      if (model.isHardExcluded(rel, { isSecurityPath: ex.isSecurityPath, isSensitivePath: ex.isSensitivePath, isExcludedPath: (r) => ex.isExcludedPath(r) })) return; // hard exclusions are never offered
+      if (model.isHardExcluded(rel, { isSecurityPath: ex.isSecurityPath, isExcludedPath: (r) => ex.isExcludedPath(r) })) return; // hard exclusions are never offered
       let mtimeMs = 0; try { mtimeMs = fs.statSync(full).mtimeMs; } catch { /* 0 */ }
-      notes.push({ type: 'note', ref: rel, title: model.titleOf(rel), folder: path.posix.dirname(rel), restricted: ex.isSensitivePath(rel), mtimeMs, titleHit: words.every((w) => model.titleOf(rel).toLowerCase().includes(w)) });
+      notes.push({ type: 'note', ref: rel, title: model.titleOf(rel), folder: path.posix.dirname(rel), mtimeMs, titleHit: words.every((w) => model.titleOf(rel).toLowerCase().includes(w)) });
     },
   });
   notes.sort((a, b) => (b.titleHit - a.titleHit) || b.mtimeMs - a.mtimeMs);

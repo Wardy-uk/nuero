@@ -14,9 +14,9 @@ import './TaskAgent.css';
 // component holds no confirmation of its own. `copyText` puts the Claude handoff
 // prompt on the clipboard (defaults to navigator.clipboard).
 //
-// `readOnly` (the kiosk) renders NOTHING — no control and no working output,
-// because the output can quote a restricted excerpt. The server refuses the
-// kiosk anyway; this only stops a dead control being drawn.
+// `readOnly` (the kiosk) renders NOTHING — Do this is Nick's own control (it
+// spends his key). The server refuses the kiosk anyway; this only stops a dead
+// control being drawn.
 //
 // ⚠ Nothing here completes the task. The tick stays Nick's statement.
 
@@ -65,9 +65,7 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
       <p className="tagent__meta"><strong>Included:</strong> {preview.included.join('; ')}.</p>
       <p className="tagent__meta"><strong>Never included:</strong> {preview.excluded.join('; ')}.</p>
       <p className="tagent__statement">{preview.statement}</p>
-      {!(preview.people ?? preview.sensitive) && (
-        <label className="tagent__check"><input type="checkbox" checked={preview.includeDrafts} disabled={busy} onChange={(e) => onIncludeDrafts(e.target.checked)} /> Include my drafts in full</label>
-      )}
+      <label className="tagent__check"><input type="checkbox" checked={preview.includeDrafts} disabled={busy} onChange={(e) => onIncludeDrafts(e.target.checked)} /> Include my drafts in full</label>
       <p className="tagent__h">Fixed by NEURO — not editable</p>
       <pre className="tagent__fixed" data-tagent-envelope>{preview.envelope}</pre>
       <details className="tagent__fold"><summary>Destination and context (fixed)</summary><pre className="tagent__fixed">{preview.fixed}</pre></details>
@@ -273,7 +271,6 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
                 ? <button type="button" className="tagent__link" onClick={() => onOpenNote(s)}>{s.title}</button>
                 : <span className="tagent__title">{s.title}</span>}
               <span className="tagent__badge">{s.used ? 'used' : 'available'}</span>
-              {s.restricted && <span className="tagent__badge">excerpt only</span>}
               <p className="tagent__meta">{s.provenance}</p>
             </li>
           ))}

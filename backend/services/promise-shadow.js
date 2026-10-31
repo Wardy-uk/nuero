@@ -27,7 +27,6 @@
  *   • Every row carries the build it ran under: the resolved commit, dirty
  *     state, a hash of the loaded decision-path code, and whether the checkout
  *     has moved since the process started.
- *   • An employment matter is logged as task ids and a rule category only.
  *   • Context unknown → silent, with the reason logged.
  * Pinned by promise-shadow.test.js (empty diffs, source scans) and
  * promise-shadow-parity.test.js (two processes, two identical frozen copies).
@@ -146,7 +145,7 @@ const _seen = (moment) => Boolean(db.get(`SELECT id FROM ${TABLE} WHERE moment =
 
 // ── Judgement ────────────────────────────────────────────────────────────────
 
-/** PURE. The moments `now` falls in. Employment matters never make a moment (their people are not named). */
+/** PURE. The moments `now` falls in. */
 function momentsAt(nowMs, promises) {
   const t = local(nowMs);
   const w = policy.windowIndex(nowMs);
@@ -158,7 +157,7 @@ function momentsAt(nowMs, promises) {
   const meetings = new Map();
   for (const p of promises) {
     const m = p.nextMeeting;
-    if (p.sensitive || !m || !m.start || p.closed) continue;
+    if (!m || !m.start || p.closed) continue;
     const startMs = Date.parse(`${m.start}:00Z`) - _offsetMs(m.start);
     const mins = (startMs - nowMs) / 60000;
     if (!(mins > 0 && mins <= policy.BEFORE_MEETING_MINUTES)) continue;
@@ -177,7 +176,6 @@ const CANDIDATE_STATES = Object.freeze(['late', 'slipped', 'ticked-no-evidence']
  * promise passes the policy with NO context against the day's real history and
  * the 3-a-day cap, Now cannot change the answer. Returns null when Now is
  * needed (discovery always; any offerable promise), else the settled outcome.
- * Employment matters are never candidates here — they are routing-only.
  */
 function settledWithoutNow(m, { promises, now, offered, date }) {
   if (m.type === 'discovery') return null;
@@ -188,7 +186,7 @@ function settledWithoutNow(m, { promises, now, offered, date }) {
       const b = firsts[0];
       return { reason: policy.ALREADY_OFFERED, alreadyOffered: true, offeredAt: b.at, offeredAtMoment: b.meetingKey ? `meeting:${b.meetingKey}` : 'bundle' };
     }
-    const ps = promises.filter((p) => m.promiseKeys.includes(p.key) && !p.sensitive && CANDIDATE_STATES.includes(p.judgement.state));
+    const ps = promises.filter((p) => m.promiseKeys.includes(p.key) && CANDIDATE_STATES.includes(p.judgement.state));
     if (!ps.length) return { reason: 'no promise needs a prompt' };
     const gates = ps.map((p) => policy.mayPromptPromise({ now, ctx: {}, promise: p, prompted: offered }));
     if (gates.some((g) => g.ok && g.meetingKey)) return null;
@@ -453,20 +451,15 @@ async function _tick({ now = Date.now(), readNow = _readNow, repoDir = REPO_DIR 
   return { idle: false, logged, moments: moments.map((m) => m.key), read: readError ? 'failed' : 'ok' };
 }
 
-/** Once a day: the routing-only list (task ids + rule category ONLY) and the evidence judged on. Needs no context. */
+/** Once a day: the evidence judged on. Needs no context. */
 function _logDay(snap, t, log) {
   const dayKey = `day:${t.date}`;
   if (!_seen(dayKey)) {
-    for (const p of snap.promises.filter((x) => x.sensitive)) {
-      log({ moment: dayKey, kind: 'routing', decision: 'routed', promiseKey: p.key, reason: 'employment matter — routing note only',
-        payload: { taskIds: p.taskIds, rule: p.sensitiveRule } });
-    }
     log({ moment: dayKey, kind: 'snapshot', decision: 'observed', reason: `${snap.promises.length} promises read`,
       payload: {
         readAt: snap.readAt, gaps: snap.gaps,
         counts: snap.promises.reduce((o, p) => { o[p.judgement.state] = (o[p.judgement.state] || 0) + 1; return o; }, {}),
-        routingOnly: snap.promises.filter((p) => p.sensitive).length,
-        candidates: snap.promises.filter((p) => !p.sensitive && ['late', 'slipped', 'ticked-no-evidence'].includes(p.judgement.state))
+        candidates: snap.promises.filter((p) => ['late', 'slipped', 'ticked-no-evidence'].includes(p.judgement.state))
           .map((p) => ({ key: p.key, state: p.judgement.state, date: p.judgement.date || null, dueMoves: p.slips.dueMoves, lapsedBlocks: p.slips.lapsedBlocks })),
       } });
   }

@@ -56,11 +56,10 @@ const get = async (p) => {
   return { status: res.status, text: await res.text() };
 };
 
-test('the exclusion list treats the folder as excluded and sensitive, case-insensitively', () => {
+test('the exclusion list treats the folder as excluded, case-insensitively', () => {
   const ex = require('./vault-exclusions');
   for (const p of ['Security review/API Keys.md', 'security review/API Keys.md', 'Security review']) {
     assert.equal(ex.isSecurityPath(p), true, p);
-    assert.equal(ex.isSensitivePath(p), true, p);
   }
   assert.equal(ex.isExcludedPath('Security review/API Keys.md'), true);
   assert.equal(ex.isExcludedPath('Security review/API Keys.md', { forEmbeddings: true }), true);
@@ -116,9 +115,10 @@ test('commitment extraction and task-context never read it', () => {
   assert.equal(require('./action-candidates').shouldSkipPath('Meetings/2026/10/x.md'), false, 'positive control');
   const model = require('./task-context-model');
   const ex = require('./vault-exclusions');
-  const s = model.screenNote({ rel: 'Security review/API Keys.md', fm: {}, body: 'x' }, { isSensitivePath: ex.isSensitivePath, isExcludedPath: ex.isExcludedPath });
+  const s = model.screenNote({ rel: 'Security review/API Keys.md', fm: {}, body: 'x' }, { isSecurityPath: ex.isSecurityPath, isExcludedPath: ex.isExcludedPath });
   assert.equal(s.ok, false);
-  assert.equal(s.restricted, true);
+  assert.equal(s.reason, 'security');
+  assert.equal(model.isHardExcluded('Security review/API Keys.md', { isSecurityPath: ex.isSecurityPath, isExcludedPath: ex.isExcludedPath }), true);
 });
 
 test('vault-hygiene never scans it, refuses it as a root, and masks any secret it quotes', () => {

@@ -117,9 +117,9 @@ test('GET /drafts lists every active item from the store, one status each — an
   assert.equal(r.body.items.length, store.activeV2({ limit: 50 }).length, 'one row per active move — no second list, no duplicates');
   assert.equal(new Set(r.body.items.map((x) => x.moveKey)).size, r.body.items.length);
   for (const x of r.body.items) {
-    assert.equal(x.kindLabel, 'Private working draft');
+    assert.equal(x.kindLabel, 'Prepared note');
     assert.equal(x.status, 'needs-answer');
-    assert.match(x.say, /^Decision 1 of 4: /);
+    assert.ok(x.say, 'it says what SAiM needs');
     assert.deepEqual(x.action, { open: 'question', label: 'Answer the question' });
   }
   assert.deepEqual(r.body.items.map((x) => x.startedBy).sort(), ['manual', 'scan', 'scan', 'scan'], 'however it began');

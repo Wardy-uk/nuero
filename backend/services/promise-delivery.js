@@ -16,8 +16,6 @@
  *     CODE in Actions (intent-grants: not a human origin);
  *   - the [details] placeholder, which the executor refuses to send until Nick
  *     has written what he promised (an edit keeps the evidence and origin);
- *   - an employment matter gets the ROUTING NOTE and no draft, refused here at
- *     the write door, not just hidden;
  *   - a recipient NEURO cannot name exactly once is CHOSEN by Nick, never guessed;
  *   - one live delivery draft per promise.
  * What it deliberately does NOT bring: the goal proposal, chase emails,
@@ -26,7 +24,6 @@
  * is the governed executor's, after Nick's approval.
  */
 
-const policy = require('../../saim/policy/promises.cjs');
 
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const MOVE = 'deliver-email';
@@ -109,8 +106,6 @@ function prepare(key, { to = null, now = Date.now(), deps = {} } = {}) {
   if (!found) return { ok: false, code: 404, error: 'no such promise' };
   // Nick's own answer to "who is this owed to?" — never a guess, never an inferred address.
   const p = deps.owed === false ? found : require('./promise-owed').overlay([found])[0];
-  // ⚠ The HR rule, enforced at the write door.
-  if (p.sensitivity && p.sensitivity.sensitive) return { ok: false, code: 409, routing: true, error: policy.ROUTING_TEXT };
   if (!p.open) return { ok: false, code: 409, error: 'this promise is closed — there is nothing left to deliver' };
 
   let existing;

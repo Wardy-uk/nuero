@@ -70,8 +70,8 @@ const CAPABILITIES = Object.freeze({
   'saim.prepared-move.propose': { authority: 'A1', effect: "a prepared-move PROPOSAL in NEURO's own store, or Nick's defer / decline / answer on one — no external write", machine: 'execute', approval: 'none', registry: null, ledger: false, verification: 'prepared_moves rows (immutable, versioned)', idempotent: 'unchanged evidence folds into the stored version' },
   // 23 Oct 2026: "Do this" - the task agent. Reads Nick's permitted context and writes only its own
   // run (agent_state) and private outputs; any email it prepares is a governed A4 draft that waits on
-  // the existing approval screen. Every route, reads included, is Nick's alone (output can quote a
-  // restricted excerpt), so machine: refuse and the gateway marks them interactive.
+  // the existing approval screen. Every route, reads included, is Nick's alone (it spends his own
+  // Anthropic key and acts with his authority), so machine: refuse and the gateway marks them interactive.
   'task-agent.run': { authority: 'A1', effect: "run NEURO's task agent on one task: read permitted context, save private working outputs, prepare (never send) a governed email draft", machine: 'refuse', approval: 'click (owner session)', registry: null, ledger: false, verification: 'agent_state task_agent_run:<id> + activity_log task_agent', idempotent: 'one attempt per task; a repeat press resumes it' },
   'saim.authority': { authority: 'A4', effect: "change what SAiM is allowed to do: grant or revoke today's allowance, stop or resume all SAiM actions", machine: 'refuse', approval: 'click + one-use confirmation (grant, resume)', registry: null, ledger: true, verification: 'saim_authority_events', idempotent: 'one grant per day; tokens one-use' },
   'saim.move.calendar-block': { authority: 'A2', effect: "one solo block in Nick's calendar for a prepared move he confirmed", machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.calendar-block', ledger: true, verification: 'event read-back', idempotent: 'one per move (ledger key + marker)' },

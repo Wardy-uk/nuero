@@ -105,19 +105,6 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   assert.match(confluence.error, /Confluence not (read yet|configured)/);
 });
 
-test('an employment matter keeps its title and loses its detail; a failing screen withholds', () => {
-  const sensitive = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => ({ sensitive: true, categories: ['employee-cases-note'] }) });
-  const m = sensitive.items.find((i) => i.kind === 'meeting');
-  assert.equal(m.sensitive, true);
-  assert.doesNotMatch(m.detail, /QA rollout/);
-  assert.match(m.title, /Support Leadership/);
-  assert.ok(!sensitive.items.some((i) => '_screenText' in i), 'the full text never leaves NEURO');
-  const broken = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => { throw new Error('boom'); } });
-  assert.equal(broken.items.find((i) => i.kind === 'meeting').sensitive, true);
-  const clean = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => ({ sensitive: false, categories: [] }) });
-  assert.match(clean.items.find((i) => i.kind === 'meeting').detail, /QA rollout/, 'positive control');
-});
-
 test('an unreadable vault is a named gap, not an empty meetings list', () => {
   const out = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { vaultRoot: path.join(scratch, 'nope') });
   assert.equal(out.sources.meetings.ok, false);
@@ -125,18 +112,15 @@ test('an unreadable vault is a named gap, not an empty meetings list', () => {
   assert.equal(out.sources.wins.ok, true);
 });
 
-test('a 1-2-1 is withheld by its title, and health or personal-life text by its words, whatever the injected screen says', () => {
-  const { personalScreen, meetingText } = feed._internals;
-  assert.equal(personalScreen({ title: 'Meeting: One-on-One 1 Tier Two Performance and Career Progression' }).sensitive, true);
-  assert.equal(personalScreen({ title: 'Meeting: Return to work', text: '' }).sensitive, true);
-  assert.equal(personalScreen({ title: 'Meeting: Jira review', text: 'The employee said a cyst had grown' }).sensitive, true);
-  assert.equal(personalScreen({ title: 'Meeting: Stand-up', text: 'Maria has 30 tickets over five days' }).sensitive, false, 'positive control');
+test('meeting text drops the Plaud block; a 1-2-1 and its content flow through unredacted (31 Oct 2026)', () => {
+  const { meetingText } = feed._internals;
   const fence = String.fromCharCode(10);
   const cleaned = meetingText(['## Summary', '[](plaud://image?x=1)', '**A stand-up** on queues'].join(fence));
   assert.doesNotMatch(cleaned, /plaud:|\*\*|^Summary/m);
   fs.writeFileSync(path.join(vault, 'Meetings', '2026', '10', '2026-10-07 – 1-2-1 with Someone.md'), '---\ntype: meeting\n---\n## Summary\nTalked about their medical leave.\n');
-  const out = feed.candidates({ from: '2026-10-01', to: '2026-10-14' }, { screen: () => ({ sensitive: false, categories: [] }) });
+  const out = feed.candidates({ from: '2026-10-01', to: '2026-10-14' });
   const m = out.items.find((i) => /1-2-1 with Someone/.test(i.title));
-  assert.equal(m.sensitive, true);
-  assert.doesNotMatch(m.detail, /medical/);
+  assert.equal(m.sensitive, undefined);
+  assert.match(m.detail, /medical/);
+  assert.ok(!out.items.some((i) => '_screenText' in i), 'the internal screen text never leaves the feed');
 });

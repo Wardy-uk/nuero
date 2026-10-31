@@ -46,14 +46,9 @@ test('something that is not an id is null, never a guess', () => {
 // The refusals. These are the safety model, not edge cases.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('the sensitive folder is REFUSED outright, not warned about', () => {
-  // Personal/ holds HR, disciplinary, occupational health and GP material. A
-  // mapping is the most complete possible exfiltration of a folder, and Notion
-  // is an external service.
-  const refusal = config.folderRefusal('Personal');
-  assert.ok(refusal, 'Personal must be refused');
-  assert.match(refusal, /occupational health|HR|medical/i);
-  assert.ok(config.folderRefusal('Personal/Sub'), 'a subfolder must be refused too');
+test('Personal/ is an ordinary folder: it may be mapped (31 Oct 2026)', () => {
+  assert.equal(config.folderRefusal('Personal'), null);
+  assert.equal(config.noteRefusal('Personal/OH Report.md'), null);
 });
 
 test('excluded folders (retired, generated, transient) are refused', () => {
@@ -132,14 +127,12 @@ test('two distinct, non-overlapping mappings validate clean', () => {
 // The picker.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('the folder picker omits sensitive and excluded folders entirely', () => {
+test('the folder picker omits excluded folders entirely, and offers Personal', () => {
   const { known, folders } = config.vaultFolders();
   assert.equal(known, true);
   assert.ok(folders.includes('Projects'));
   assert.ok(folders.includes('Projects/Notion'));
-  // Offered-then-refused invites the question of why; the answer is not one to
-  // put in a tooltip.
-  assert.ok(!folders.includes('Personal'), 'Personal must not be offered');
+  assert.ok(folders.includes('Personal'), 'Personal is offered');
   assert.ok(!folders.includes('Archive'), 'Archive must not be offered');
   assert.ok(!folders.includes('Templates'));
 });
@@ -179,13 +172,6 @@ test('a page mapping validates against the NOTE, not a folder', () => {
 test('a missing .md extension is added rather than rejected', () => {
   assert.equal(config.normaliseNotePath('Team/_Team Overview'), 'Team/_Team Overview.md');
   assert.equal(config.normaliseNotePath('Team/_Team Overview.md'), 'Team/_Team Overview.md');
-});
-
-test('a note inside the sensitive folder is refused, same as the folder is', () => {
-  // The guard must not be sidestuck by mapping one file instead of its folder.
-  const refusal = config.noteRefusal('Personal/OH Report.md');
-  assert.ok(refusal);
-  assert.match(refusal, /occupational health|HR|medical/i);
 });
 
 test('a note inside an excluded folder is refused', () => {

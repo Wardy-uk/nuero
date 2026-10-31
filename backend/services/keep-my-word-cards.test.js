@@ -82,12 +82,6 @@ test('Judgement: one item per ticked-without-proof promise, reviewed one at a ti
   assert.equal(cards.cardsFrom({ score: score(), now: NOW }).judgement.state, 'none');
 });
 
-test('a sensitive promise carries no title and no evidence', () => {
-  const k = cards.cardsFrom({ score: score({ entries: [entry({ sensitive: true, evidence: [{ kind: 'x', say: 'Naomi said' }] })] }), now: NOW }).kept;
-  assert.equal(k.detail.promises[0].title, null);
-  assert.deepEqual(k.detail.promises[0].evidence, []);
-});
-
 test('the shared UI and the server agree on which target kinds mutate', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'), 'utf8');
   const m = src.match(/export const MUTATING_KINDS = \[([^\]]*)\]/);

@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../../db/database');
-const { isExcludedDir, isSensitivePath, SENSITIVE_DIRS } = require('../vault-exclusions');
+const { isExcludedDir } = require('../vault-exclusions');
 
 const STATE_KEY = 'notion_sync_mappings';
 const MODES = new Set(['two-way', 'pull-only', 'push-only']);
@@ -83,7 +83,7 @@ function normaliseNotePath(input) {
 
 /**
  * Why a NOTE may not be published. Reuses the folder rules on its directory, so
- * the sensitive and excluded guards cannot be sidestepped by mapping a single
+ * the excluded guard cannot be sidestepped by mapping a single
  * file inside a folder that is itself refused.
  */
 function noteRefusal(notePath) {
@@ -108,18 +108,8 @@ function noteRefusal(notePath) {
 /**
  * Why a folder may NOT be synced to Notion. Returns null when it is allowed.
  *
- * ⚠ The sensitive check is the one that matters and it is not paranoia about a
- * generic "private" folder. `Personal/` in this vault holds Nick's disciplinary
- * prep, the fraud investigation, his GP notes (anxiety, depression, ADHD) and
- * three Occupational Health documents naming the external assessor and the HR
- * contact — see the long comment in vault-exclusions.js. Notion is an external
- * service and a mapping is the most complete possible exfiltration of a folder,
- * so this refuses OUTRIGHT rather than warning. It is the same "leaves the
- * building" test the email and chase paths already apply, one door along.
- *
  * It fails CLOSED on an unreadable vault: with no vault we cannot tell what a
- * folder contains, and allowing the mapping would let the guard be bypassed by
- * configuring it while the disk is unmounted.
+ * folder contains. Security review/ is refused by the excluded-folder rule.
  */
 function folderRefusal(folder) {
   if (!folder) return 'Pick a vault folder.';
@@ -130,13 +120,6 @@ function folderRefusal(folder) {
 
   const absolute = path.resolve(root, folder);
   if (!absolute.startsWith(path.resolve(root))) return 'Folder must be inside the vault.';
-
-  // Sensitive is checked on a file-shaped path, since isSensitivePath looks at
-  // every segment EXCEPT the last (it is written for note paths).
-  if (isSensitivePath(`${folder}/x.md`) || SENSITIVE_DIRS.includes(folder.split('/')[0])) {
-    return `"${folder.split('/')[0]}" holds HR, occupational health and medical material. `
-      + 'It is never synced to an external service.';
-  }
 
   for (const seg of folder.split('/')) {
     if (isExcludedDir(seg)) {
@@ -347,9 +330,7 @@ function autoSyncForcedByEnv() {
 /**
  * Vault folders offered in the picker.
  *
- * Excluded and sensitive folders are omitted rather than shown-and-refused: a
- * dropdown listing `Personal` at all invites the question of why it will not
- * work, and the answer is not one to put in a tooltip.
+ * Excluded folders are omitted rather than shown-and-refused.
  */
 function vaultFolders({ maxDepth = 3 } = {}) {
   const root = vaultPath();

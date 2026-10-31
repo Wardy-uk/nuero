@@ -5,10 +5,9 @@
  * Evidence.
  *
  * Nick: "are we fully utilising verbal feedback I'm getting from Chris in
- * meetings that are just me and him?" — no: the feed's privacy screen withholds
- * every 1-2-1 by its title, so what Chris said about Nick's work never reached
- * VANTAGE. This reads meeting notes INSIDE NEURO and carries out only what
- * someone said ABOUT NICK'S WORK — praise, concerns, expectations, requests.
+ * meetings that are just me and him?" This reads meeting notes INSIDE NEURO and
+ * carries out what someone said ABOUT NICK'S WORK — praise, concerns,
+ * expectations, requests.
  *
  * Nick's weighting, highest first (his order, 30 Oct 2026):
  *   1 manager-1to1     just Nick and his line manager
@@ -17,14 +16,8 @@
  *   4 seniors          any meeting with Chris, Ricky or Damon in it
  *   5 other            any other meeting — peers and direct reports count too
  *
- * ⚠ Privacy is enforced HERE, after the model, not left to the prompt:
- *  - a line carrying any health / personal-circumstance term is dropped;
- *  - a line naming any colleague other than the person giving the feedback is
- *    dropped (the giver may be named; Nick may be named);
- *  - a DIRECT REPORT is never named — attributed as "a direct report" — and a
- *    line containing their own name is dropped (Nick's call: lines about him
- *    only, by role, never their name, never anything about them).
- * The note itself never leaves NEURO; only the extracted lines do.
+ * The guard after the model only shapes the answer (31 Oct 2026: no HR or
+ * personal filtering): Nick's own words are dropped, every giver is named.
  *
  * Each note is read ONCE per content hash (table perf_feedback), so a re-read
  * costs nothing and an edited note is read again. A failed read is recorded
@@ -47,10 +40,8 @@ const BACKFILL_DAYS = 400;
 const PER_RUN = 12;
 const DAILY_DEFAULT = 150;
 const RETRY_AFTER_MS = 2 * 60 * 60_000;
-const PERSONAL = /\b(medical|medication|medicine|diagnos\w*|surgery|surgical|hospital|GP\b|doctor|dentist|dental|sick(ness)?|ill(ness)?\b|injur\w*|cyst|tumou?r|cancer|pregnan\w*|maternity|paternity|miscarri\w*|bereave\w*|funeral|passed away|mental health|anxiety|depress\w*|stress(ed)? leave|counsell?ing|therapy|therapist|assault\w*|police|divorce|disabilit\w*|fit note|occupational health|OH report|accommodation(s)?|carer|caring responsibilit\w*|childcare|condition|wellbeing|welfare|absence|disciplinary|grievance|probation)\b/i;
 
 // First names that are also ordinary words — never treated as naming someone.
-const COMMON_WORDS = new Set(['will', 'mark', 'may', 'april', 'june', 'grace', 'joy', 'rose', 'faith', 'bill', 'sky', 'dawn', 'summer', 'chase', 'bob', 'pat', 'sue', 'ray', 'art', 'drew', 'jack', 'frank', 'max', 'rich', 'guy']);
 
 let ready = false;
 function db() {
@@ -137,40 +128,22 @@ function roleOf(name, ctx) {
 }
 
 /**
- * The privacy and shape guard over the model's answer. Pure.
+ * The shape guard over the model's answer. Pure.
  * @returns {Array<{from, role, stance, said, about}>}
  */
 function guardItems(raw, ctx) {
   const list = Array.isArray(raw?.feedback) ? raw.feedback : [];
   const out = [];
-  const colleagues = ctx.roster.filter((n) => norm(n) !== norm(ctx.self));
-  const first = (n) => norm(n).split(' ')[0];
-  const firstCount = new Map();
-  for (const c of colleagues) firstCount.set(first(c), (firstCount.get(first(c)) || 0) + 1);
-  const word = (w, text) => new RegExp(`(^| )${w}( |$)`).test(text);
   for (const f of list) {
     const giver = String(f?.from || '').trim();
     const said = String(f?.said || '').replace(/\s+/g, ' ').trim().slice(0, 500);
     if (said.length < 12) continue;
     const about = String(f?.about || '').replace(/\s+/g, ' ').trim().slice(0, 160) || null;
-    const all = norm(`${said} ${about || ''}`);
-    if (PERSONAL.test(`${said} ${about || ''}`)) continue;
-    // Any OTHER colleague named → dropped (the line is about them too). A full
-    // name always counts; a first name only when exactly one colleague has it,
-    // it is not the giver's own first name, and it is not an ordinary word.
-    const named = colleagues.some((c) => {
-      if (norm(c) === norm(giver)) return false;
-      if (word(norm(c), all)) return true;
-      const fn = first(c);
-      return fn.length > 2 && firstCount.get(fn) === 1 && fn !== first(giver) && !COMMON_WORDS.has(fn) && word(fn, all);
-    });
-    if (named) continue;
     const role = roleOf(giver, ctx);
     // Nick's own words are not feedback about him.
     if (role === 'self') continue;
-    if (role === 'direct-report' && word(first(giver), all)) continue;
     const stance = ['for', 'against'].includes(f?.stance) ? f.stance : null;
-    out.push({ from: role === 'direct-report' || role === 'unknown' ? null : (giver || null), role, stance, said, about });
+    out.push({ from: role === 'unknown' ? null : (giver || null), role, stance, said, about });
     if (out.length >= 12) break;
   }
   return out;
@@ -184,9 +157,8 @@ WHAT COUNTS
 WHAT DOES NOT COUNT
 - Tasks or action items handed to Nick ("Nick to do X", "Nick is tasked with Y") — unless the person also judged how he is doing.
 - Anything Nick himself said. Status updates, general discussion, decisions not about Nick's performance.
-- Anything about another person's performance, health, personal life or circumstances — never include it, even in passing.
 RULES
-- said: one or two sentences, in plain words, about Nick's work only. Name nobody except the person giving the feedback; never mention any other colleague.
+- said: one or two sentences, in plain words, about Nick's work.
 - from: the full name of who said it, exactly as listed in PEOPLE IN THE MEETING; "unknown" if the notes do not say who.
 - Only what the notes support. If there is no feedback about Nick, answer {"feedback":[]}.`;
 
@@ -330,7 +302,7 @@ function itemsFor(w) {
     try { items = JSON.parse(r.items_json); } catch {}
     const tier = TIERS[r.tier] || TIERS[5];
     items.forEach((f, i) => {
-      const who = f.role === 'direct-report' ? 'a direct report'
+      const who = f.role === 'direct-report' ? (f.from ? `${f.from} (direct report)` : 'a direct report')
         : f.role === 'manager' ? `${f.from} (your line manager)`
           : f.role === 'senior' ? `${f.from} (senior leader)`
             : f.from ? `${f.from} (colleague)` : 'someone in the meeting';

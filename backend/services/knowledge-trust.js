@@ -350,13 +350,6 @@ function noteChanged(relativePath) {
  * folders, the templates and `Daily/`. The point is not tidiness: marking one of
  * those would write a flag into a note that no search can ever return, i.e. a
  * button that reports success and changes nothing.
- *
- * ⚠ `Personal/` is DELIBERATELY NOT refused. It is sensitive WORK material —
- * OH, disciplinary, GP — and `vault-exclusions` has already decided that it
- * stays in embeddings because "this is Nick's own brain and he must be able to
- * ask it about his own OH report". Refusing to trust it here would quietly
- * overrule that decision from a second place. It is REPORTED as sensitive on
- * the listing instead, which is a fact rather than a veto.
  */
 function refusalFor(relativePath) {
   const vault = VAULT_PATH();
@@ -615,10 +608,7 @@ function listTrusted() {
     known: scan.known,
     reasons: scan.reasons,
     count: scan.notes.length,
-    notes: scan.notes.map((n) => ({
-      ...n,
-      sensitive: vaultExclusions.isSensitivePath(n.path),
-    })),
+    notes: scan.notes,
   };
 }
 

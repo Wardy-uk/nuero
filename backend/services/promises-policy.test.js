@@ -11,7 +11,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const policy = require('../../saim/policy/promises.cjs');
-const { hrSensitivity, groupDuplicates, namesIn } = require('./promise-ledger');
+const { groupDuplicates, namesIn } = require('./promise-ledger');
 
 const at = (s) => Date.parse(s);
 // Monday 19 Oct 2026, BST (UTC+1).
@@ -30,39 +30,6 @@ function promise(over = {}) {
     nextMeeting: null, sensitivity: { sensitive: false }, ...over,
   };
 }
-
-// ── HR classification (mutation-checked: each line here fails if its rule goes) ──
-test('HR: employment matters are sensitive, by wording or by the note they came from', () => {
-  for (const t of [
-    'Agree the outcome of the flexible working request', 'Confirm her end date with payroll', 'Prepare for the disciplinary hearing',
-    'Book the return to work meeting', 'Send the OH referral to occupational health', 'Draft the performance improvement plan',
-    'Discuss the grievance with HR', 'Agree the reasonable adjustments', 'Check the notice period', 'Raise the pay rise with Chris',
-    'Probation review for the new starter', 'Retention conversation', 'Write up the sickness absence',
-    // From the live snapshot, pseudonymised:
-    'Escalate with a hearing for Jordan due to availability and call-handling issues',
-    'Define interim light duties for Sam to minimise phone-dependent work',
-    'Discuss Sam’s role viability and next steps with the HR partner',
-    'Monitor Jordan’s productivity while WFH and revisit near expiry',
-  ]) assert.equal(hrSensitivity(t).sensitive, true, t);
-  assert.equal(hrSensitivity('Discuss and decide next steps', 'Stephen RTW meeting').sensitive, true, 'the note title counts');
-});
-
-test('HR: ordinary promises are not swept up', () => {
-  for (const t of [
-    'Send Alex Reed the ticket-type list', 'Review the escalation rota', 'Write the onboarding guide', 'Share the NOVA metrics',
-    'Document the types of tickets blocked by skill gaps', 'Hiring plan for the support desk', 'Chase the hardware order',
-  ]) assert.equal(hrSensitivity(t).sensitive, false, t);
-  assert.equal(hrSensitivity('Send the slides', 'Alex Reed 1-2-1').sensitive, false, 'a 1-2-1 is not an HR matter by itself');
-});
-
-test('HR judgement: routing note only — no email, no decision, no one-tap move', () => {
-  const p = promise({ sensitivity: { sensitive: true, matched: 'flexible working' } });
-  const j = policy.judge(p, { now: at('2026-10-18T09:00:00Z') });
-  assert.deepEqual(j.moves, ['routing-note']);
-  assert.equal(j.routing, policy.ROUTING_TEXT);
-  const ticked = policy.judge({ ...p, open: false }, { now: at('2026-10-18T09:00:00Z') });
-  assert.deepEqual(ticked.moves, ['routing-note']);
-});
 
 test('judge: an ordinary late promise offers deliver, re-commit, delivered, drop; an unnamed one needs a recipient', () => {
   const j = policy.judge(promise(), { now: at('2026-10-18T09:00:00Z') });
@@ -93,15 +60,6 @@ test('discovery: needs ≥3 recent slips over ≥14 days and a named person', ()
   const old = three.map((p) => ({ ...p, slips: { ...p.slips, lastSlipAt: '2026-08-01' } }));
   assert.equal(policy.discover({ promises: old, gaps: [], readAt: 'x' }, { now }).qualifies, false, 'stale slips');
   assert.equal(policy.discover({ promises: three, gaps: [{ input: 'tasks' }], readAt: 'x' }, { now }).qualifies, false, 'unreadable tasks');
-});
-
-test('discovery: an HR example never reaches the proposal\'s examples', () => {
-  const now = at('2026-10-18T09:00:00Z');
-  const list = [1, 2, 3].map((i) => promise({ key: `promise:${i}`, firstSeen: '2026-09-20' }));
-  list.push(promise({ key: 'promise:9', text: 'Agree the flexible working request outcome', firstSeen: '2026-09-20', sensitivity: { sensitive: true } }));
-  const p = policy.discover({ promises: list, gaps: [], readAt: 'x' }, { now }).proposal;
-  assert.ok(!p.examples.some((e) => e.key === 'promise:9'));
-  assert.doesNotMatch(JSON.stringify(p), /flexible/);
 });
 
 // ── budget: proposals ────────────────────────────────────────────────────────
@@ -189,11 +147,6 @@ test('gate: shown on an ordinary lead, never beside an urgent, blind, meeting or
   assert.equal(policy.sponsorshipGate({ rule: 'S7 top item', offDay: true, feed: feed() }).reason, 'not a working day');
 });
 
-test('gate: an employment matter is never carried', () => {
-  assert.equal(shown({ rule: 'S7 top item', feed: feed({ proposal: null, promise: { ...feed().promise, sensitive: true } }) }), false);
-  assert.equal(shown({ rule: 'S7 top item', feed: feed({ proposal: null, promise: { ...feed().promise, moves: ['routing-note'] } }) }), false);
-});
-
 test('gate inputs: rule and off-day from the canonical decision; quiet is NOT read from it', () => {
   assert.deepEqual(policy.gateInputs({ lead: { rule: 'S7 top item' }, quiet: true }, { constraints: { workingWindow: { todayIsWorking: true } } }),
     { rule: 'S7 top item', offDay: false, decided: true }, 'a decision.quiet field (which main never produces) changes nothing');
@@ -224,49 +177,6 @@ test('names: Nick is never the person a promise is owed to, by name or by alias'
   assert.deepEqual(namesIn('Nick W to send Alex the slides', roster).people.map((p) => p.name), ['Alex Reed']);
 });
 
-
-// ── source context: ordinary wording, an employment situation behind it ───────
-const { contextSensitivity } = require('./promise-ledger');
-const ROSTER = { full: ['Sam Patel', 'Alex Reed', 'Nick Ward'], firstNames: new Map([['sam', 'Sam Patel'], ['alex', 'Alex Reed']]), aliases: new Map() };
-// Regression fixture: the shape of #316's note (2 Sep 2026), pseudonymised.
-const NOTE_316 = [
-  '# Meeting: Policy, Performance and Team Updates', '## Meeting Notes', '### Individual cases',
-  '- **Sam:** Is on a second extended fit note after surgery; medically advised to minimise speaking. Seeking HR guidance on reasonable adjustments.',
-  '## Next Arrangements',
-  '- [ ] Define interim task allocation for Sam to minimise phone-dependent work.',
-  '- [ ] Establish a workable cadence for one-to-ones and structured written updates from Sam.',
-].join('\n');
-
-test('context: #316 — ordinary wording, but its note describes the same person\'s circumstances → routing only', () => {
-  const t = 'Establish a workable cadence for one-to-ones and structured written updates from Sam';
-  assert.equal(hrSensitivity(t).sensitive, false, 'the wording alone is ordinary');
-  const c = contextSensitivity(NOTE_316, t, 'Meeting Policy, Performance and Team Updates', ROSTER);
-  assert.equal(c.sensitive, true);
-  assert.equal(c.where, 'source-context');
-  assert.deepEqual(c.about, ['Sam Patel']);
-  const j = policy.judge(promise({ text: t, sensitivity: c }), { now: at('2026-10-18T09:00:00Z') });
-  assert.deepEqual(j.moves, ['routing-note']);
-});
-
-test('context: a note titled as employee cases makes every named person in it a case', () => {
-  const c = contextSensitivity('- [ ] Send Alex the rota', 'Send Alex the rota', '2026-09-02 – Meeting WFH Policy and Employee Accommodations', ROSTER);
-  assert.equal(c.sensitive, true); assert.equal(c.rule, 'employee-title');
-});
-
-test('context: the line pre-filter still sees a subject named only by their alias', () => {
-  const roster = { ...ROSTER, aliases: new Map([['pip', 'Sam Patel']]) };
-  const note = '- **Pip:** second extended fit note after surgery; seeking HR guidance.\n- [ ] Send Sam the rota';
-  const c = contextSensitivity(note, 'Send Sam the rota', 'Ops', roster);
-  assert.equal(c.sensitive, true);
-  assert.deepEqual(c.about, ['Sam Patel']);
-});
-
-test('context: not swept up — nobody named, or the person is mentioned only in ordinary terms', () => {
-  const note = '# Weekly ops\n- Team performance was strong this week.\n- Alex shared the rota.\n- [ ] Send Alex the rota';
-  assert.equal(contextSensitivity(note, 'Send Alex the rota', 'Weekly ops', ROSTER).sensitive, false, 'performance about the team, not about Alex');
-  assert.equal(contextSensitivity(NOTE_316, 'Document the escalation route', 'Ops', ROSTER).sensitive, false, 'names nobody');
-  assert.equal(contextSensitivity(NOTE_316, 'Send Alex the rota', 'Ops', ROSTER).sensitive, false, 'a different person');
-});
 
 test('sponsorship wording drops "Nick to" — the promise is already his', () => {
   const f = feed({ proposal: null, promise: { ...feed().promise, text: 'Nick Ward will send the slides to Alex Reed' } });

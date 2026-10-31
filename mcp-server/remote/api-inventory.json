@@ -5282,7 +5282,7 @@
     "domain": "prepared-moves",
     "source": "routes/prepared-moves.js",
     "line": 119,
-    "description": "GET /api/prepared-moves/eligible. which Now items SAiM can make ready (make this ready, draft the reply, meeting prep): each with its exact ref for /prepare and the Now row ids it is drawn as. Held, personal, employment and ineligible items are left out. Read only.",
+    "description": "GET /api/prepared-moves/eligible. which Now items SAiM can make ready (make this ready, draft the reply, meeting prep): each with its exact ref for /prepare and the Now row ids it is drawn as. Held, personal, NOVA-owned and ineligible items are left out. Read only.",
     "params": [],
     "query": [],
     "body": [],
@@ -6196,7 +6196,7 @@
     "domain": "task-agent",
     "source": "routes/task-agent.js",
     "line": 45,
-    "description": "GET /api/task-agent/tasks/:taskId/drafts. the drafts \"Do this\" saved for a task (id, kind, title, full markdown), so Claude desktop or another agent can read the working draft over MCP. Read only. A people matter's drafts are refused (403) and stay in NEURO. Keywords: task agent drafts, do this draf",
+    "description": "GET /api/task-agent/tasks/:taskId/drafts. the drafts \"Do this\" saved for a task (id, kind, title, full markdown), so Claude desktop or another agent can read the working draft over MCP. Read only. Keywords: task agent drafts, do this draft, saved draft, working draft.",
     "params": [
       "taskId"
     ],
@@ -6361,7 +6361,7 @@
     "domain": "task-context",
     "source": "routes/task-context.js",
     "line": 44,
-    "description": "GET /api/task-context/tasks/:taskId. a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question. A restricted note is title-only except on Nick's own PIN session, which also g",
+    "description": "GET /api/task-context/tasks/:taskId. a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question. Each note comes with a task-bounded excerpt and its open route",
     "params": [
       "taskId"
     ],

@@ -80,7 +80,7 @@ function WorkspaceReadout({ readout, onOpen = null }) {
               {Array.isArray(j.items) && j.items.length > 0 && (
                 <ul className="kmw__judge-list">
                   {j.items.map((it) => {
-                    const label = it.sensitive ? 'An employment matter — not named here' : (it.title || 'A promise');
+                    const label = it.title || 'A promise';
                     const open = go(it.taskId ? { kind: 'task', taskId: it.taskId } : null);
                     return (
                       <li key={it.key}>
@@ -161,7 +161,7 @@ function KeptDetail({ d, ctx, onResult }) {
         <ul className="kmw__promises">
           {d.promises.map((p) => (
             <li key={p.key} className={`kmw__promise${p.atRisk ? ' kmw__promise--risk' : ''}`} data-key={p.key} data-task-id={p.taskId || ''}>
-              <p className="kmw__promise-title">{p.sensitive ? 'An employment matter — not named here' : (p.title || 'A promise')}</p>
+              <p className="kmw__promise-title">{p.title || 'A promise'}</p>
               <p className="kmw__line">{p.atRisk ? 'At risk · ' : ''}{p.outcomeSay}{p.due ? ` · ${p.due.say}` : ''}</p>
               {(p.evidence || []).map((e) => <p key={e} className="kmw__line kmw__line--quiet">{e}</p>)}
               {p.preparation && <p className="kmw__line kmw__line--quiet">{p.preparation}</p>}
@@ -245,7 +245,7 @@ function JudgementDetail({ d, ctx, onResult }) {
       <p className="kmw__line kmw__line--quiet">{d.say}</p>
       <div className="kmw__review" data-key={it.key} data-task-id={it.taskId || ''}>
         <p className="kmw__sheet-h">{at + 1} of {items.length}</p>
-        <p className="kmw__promise-title">{it.sensitive ? 'An employment matter — not named here' : (it.title || 'A promise')}</p>
+        <p className="kmw__promise-title">{it.title || 'A promise'}</p>
         <p className="kmw__line">{it.why}</p>
         {(it.evidence || []).map((e) => <p key={e} className="kmw__line kmw__line--quiet">{e}</p>)}
         <div className="kmw__review-choices">
@@ -491,23 +491,21 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false, renderSa
     run({ action: 'answer', recordId: cur.recordId, version: cur.version, questionId: q.id, text: t }, { answering: true });
   };
   const park = () => run({ action: 'park', recordId: cur.recordId, version: cur.version, questionId: q.id });
-  const pd = cur.privateDraft || null;
   const oa = cur.owedAnswer || null;
   const iv = cur.interview || null;
   const id = `kmw-q-${String(cur.ref || 'p').replace(/[^A-Za-z0-9_-]/g, '-')}`;
   // The governed save step, IN this card (26 Oct 2026): a slot the SHELL fills with
   // the same prepared-move record, version, authority check, route and executor
-  // SAiM Home uses — this card itself writes nothing. While questions are open it
-  // offers only the unfinished save; once every decision is answered or parked,
-  // the full save. It stays mounted through its own receipt.
-  const saveable = Boolean(renderSave && can && pd && cur.recordId && ['interview', 'needs-decision', 'ready'].includes(cur.state));
+  // SAiM Home uses — this card itself writes nothing. Only a legacy private draft
+  // (one with an interview, prepared before 31 Oct 2026) is saved here. It stays
+  // mounted through its own receipt.
+  const saveable = Boolean(renderSave && can && iv && cur.recordId && ['interview', 'needs-decision', 'ready'].includes(cur.state));
   const saveId = saveable ? cur.recordId : (savedId && ['done', 'scheduled'].includes(cur.state) ? savedId : null);
   if (saveable && savedId !== cur.recordId) setSavedId(cur.recordId);
   return (
-    <div className={`kmw__row kmw__row--move${pd ? ' kmw__row--private' : ''}`}>
+    <div className="kmw__row kmw__row--move">
       <span className="kmw__rowlabel">Next</span>
       <div>
-        {pd && <p className="kmw__rowline kmw__private">{pd.label}</p>}
         {cur.state === 'interview' && iv && <p className="kmw__rowline kmw__progress">Decision {iv.n} of {iv.total}</p>}
         {cur.state !== 'ask' && cur.state !== 'interview' && cur.say && <p className="kmw__rowline">{cur.say}</p>}
         {iv && iv.said && iv.said.length > 0 && (
@@ -627,7 +625,6 @@ export function KmwThread({ thread, onOpen = null, actions = false, onPrepareDel
         </div>
       </div>
       {thread.more && <p className="kmw__more">{thread.more.count === 1 ? 'One more' : `${thread.more.count} more`} at risk: {thread.more.titles.join('; ')}</p>}
-      {thread.withheld && <p className="kmw__more">{thread.withheld}</p>}
       {open && (
         <div className="kmw__actions">
           <button type="button" className="kmw__open" onClick={open}>Open the task</button>

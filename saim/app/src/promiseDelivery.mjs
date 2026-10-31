@@ -2,7 +2,7 @@
 // PREPARES a promise's governed delivery note (21 Oct 2026). It never sends,
 // approves or confirms anything: the draft waits in Actions for Nick's
 // approval code. A refusal comes back WHOLE (apiFetch truncates bodies, and the
-// employment routing sentence must not be cut), so the thread can show the
+// server reason must not be cut), so the thread can show the
 // server's own reason.
 import { apiUrl, authHeaders } from './api';
 import { promiseMoveRequest } from './promiseMoveRequest.mjs';

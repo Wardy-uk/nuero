@@ -44,62 +44,21 @@ test('a lint backup is never content', () => {
 
 // ── Sensitive ────────────────────────────────────────────────────────────────
 
-test('⚠ Personal/ is kept OUT of the person graph and IN the search index', () => {
-  // `Personal/` holds Nick's disciplinary prep, the fraud investigation, his GP
-  // notes and three Occupational Health documents. Two different answers for two
-  // different consumers, and getting either backwards is a real harm:
-  //
-  //  • entity extraction MUST skip it, or the HR officer who handled his
-  //    disciplinary, the external OH assessor and his GP enter the person graph,
-  //    get ranked on mentions pages, and become people-gap stubs.
-  //  • embeddings MUST NOT skip it. This is Nick's own brain and he has to be
-  //    able to ask it about his own OH report; the guards that matter for this
-  //    material are the outbound ones, not the index.
-  assert.equal(ex.isExcludedPath('Personal/Occupational Health Debrief - 15 July 2026.md'), true);
-  assert.equal(
-    ex.isExcludedPath('Personal/Occupational Health Debrief - 15 July 2026.md', { forEmbeddings: true }),
-    false,
-  );
-  assert.equal(ex.isSensitivePath('Personal/GP Appointment Prep - 16 July 2026.md'), true);
-  assert.equal(ex.isSensitivePath('Meetings/2026/08/standup.md'), false);
-});
-
-test('⚠ BOTH folder names are covered, so the rename has no exposed window', () => {
-  // This guard fails OPEN. If the code named only one and the folder were
-  // renamed first, the other name would be unprotected until the next deploy —
-  // entity extraction would walk it again and the HR officer, the OH assessor
-  // and Nick's GP would re-enter the person graph, silently, exactly as before.
-  // Listing both means the rename is safe in either order.
-  assert.equal(ex.isSensitivePath('Private/Occupational Health Debrief.md'), true);
-  assert.equal(ex.isSensitivePath('Personal/Occupational Health Debrief.md'), true);
-  assert.equal(ex.isExcludedPath('Private/Investigation Prep.md'), true);
-  assert.equal(ex.isExcludedPath('Private/Investigation Prep.md', { forEmbeddings: true }), false);
-});
-
-test('the two exclusion sets are NOT one a superset of the other', () => {
-  // They used to differ only by Daily/, so anything added to the base was
-  // excluded from both — which would have removed the sensitive folder from
-  // search as well as from the person graph. The divergence is the fix, and a
-  // future tidy-up that "unifies" them would silently undo it.
-  assert.equal(ex.ENTITY_EXCLUDED_DIRS.has('Personal'), true);
-  assert.equal(ex.EMBEDDING_EXCLUDED_DIRS.has('Personal'), false);
+test('Personal/ and Private/ are ordinary work notes: indexed, extracted, never excluded (31 Oct 2026)', () => {
+  for (const p of ['Personal/Occupational Health Debrief.md', 'Private/Investigation Prep.md']) {
+    assert.equal(ex.isExcludedPath(p), false, p);
+    assert.equal(ex.isExcludedPath(p, { forEmbeddings: true }), false, p);
+  }
+  assert.equal(ex.ENTITY_EXCLUDED_DIRS.has('Personal'), false);
   assert.equal(ex.EMBEDDING_EXCLUDED_DIRS.has('Daily'), true);
   assert.equal(ex.ENTITY_EXCLUDED_DIRS.has('Daily'), false);
-});
-
-test('⚠ Personal/ is sensitive WORK material, not personal life', () => {
-  // The distinction is load-bearing in both directions. Reading this folder as
-  // "personal life" would hide Nick's OH and disciplinary history from the work
-  // surfaces where it is genuinely relevant, AND leave actual family notes
-  // indexed — wrong twice from one wrong assumption.
+  assert.equal('isSensitivePath' in ex, false, 'the sensitive-folder guard is gone');
   assert.equal(ex.noteDomain('Personal/Investigation Prep.md'), 'work');
   assert.equal(ex.isPersonalPath('Personal/Investigation Prep.md'), false);
 });
 
 test('personal life is empty by default and must be declared', () => {
-  // `Personal/` is already taken and means something else, and no other folder
-  // in this vault is unambiguously home life. Guessing would silently change
-  // what the index holds and what the person graph learns.
+  // No folder in this vault is unambiguously home life.
   assert.deepEqual(ex.PERSONAL_DIRS, []);
   assert.equal(ex.noteDomain('Meetings/2026/08/standup.md'), 'work');
 });

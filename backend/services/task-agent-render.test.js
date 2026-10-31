@@ -75,10 +75,10 @@ test('a manual step offers "I’ve done it — carry on"', () => {
   assert.doesNotMatch(h, /Tell NEURO/);
 });
 
-test('a people matter: will/won’t line, the specific decision, never the generic question', () => {
-  const h = view(base({ status: 'needs-decision', sensitive: { sensitive: true, why: ['hr-wording'] }, sources: [{ key: 'ctx:1', title: 'Leaver catch up', provenance: 'x', used: true }], steps: [{ kind: 'read', say: 'Read' }], outputs: [{ id: 'o1', kind: 'brief', title: 'End date decision brief', markdown: '- x', next: { canSave: false } }], question: { id: 'q3', kind: 'authority', question: 'What end date should the brief record?', why: 'The decision is yours.', after: 'NEURO will record it in the private brief and stop.', options: ['31 Oct 2026', '31 Dec 2026'] } }));
+test('a decision: will/won’t line, the specific decision, never the generic question', () => {
+  const h = view(base({ status: 'needs-decision', sources: [{ key: 'ctx:1', title: 'Leaver catch up', provenance: 'x', used: true }], steps: [{ kind: 'read', say: 'Read' }], outputs: [{ id: 'o1', kind: 'brief', title: 'End date decision brief', markdown: '- x', next: { canSave: false } }], question: { id: 'q3', kind: 'authority', question: 'What end date should the brief record?', why: 'The decision is yours.', after: 'NEURO will record it in the private brief and stop.', options: ['31 Oct 2026', '31 Dec 2026'] } }));
   assert.match(h, /Waiting for your decision/);
-  assert.match(h, /will not decide, contact anyone, promise anything or change anything/);
+  assert.match(h, /drafts and prepares/);
   assert.match(h, /What end date should the brief record\?/);
   assert.match(h, /Checked the permitted evidence \(1 source\)\./);
   assert.match(h, /Prepared a private brief: “End date decision brief”/);
@@ -91,7 +91,7 @@ test('outputs folded, an Actions handoff, and the trace CLOSED by default with i
   const h = view(base({
     outputs: [{ id: 'o1', kind: 'plan', title: 'Q4 plan', markdown: '- Week 47 swap' }],
     handoffs: [{ kind: 'prepared_action', actionId: 'pa_1', actionType: 'compose_email', status: 'prepared', say: 'Email to Jane Doe — prepared, not sent.' }],
-    sources: [{ key: 'ctx:1', kind: 'note', title: 'Q4 rota notes', provenance: 'Linked by you.', path: 'P/x.md', used: true }, { key: 'ctx:2', kind: 'note', title: 'Leaver catch up', provenance: 'This task was raised in this note.', path: null, restricted: true, used: false }],
+    sources: [{ key: 'ctx:1', kind: 'note', title: 'Q4 rota notes', provenance: 'Linked by you.', path: 'P/x.md', used: true }, { key: 'ctx:2', kind: 'note', title: 'Leaver catch up', provenance: 'This task was raised in this note.', path: 'M/x.md', used: false }],
     steps: [{ kind: 'read', say: 'Read “Q4 rota notes”.' }, { kind: 'output', say: 'Wrote plan' }],
     summary: { completed: ['Drafted the plan'], remaining: ['Publish it'] },
     usage: { model: 'claude-sonnet-5', promptTokens: 3600, completionTokens: 900, costUsd: 0.0162 },
@@ -104,7 +104,7 @@ test('outputs folded, an Actions handoff, and the trace CLOSED by default with i
   assert.match(h, /<details class="tagent__fold tagent__trace"(?![^>]*open)[^>]*>/, 'trace closed by default');
   assert.match(h, /Activity and evidence · (<!-- -->)?1 permitted source used · 2 internal steps/);
   // the full record is still there for audit, inside the fold
-  assert.match(h, /Linked by you\./); assert.match(h, /excerpt only/); assert.match(h, /Drafted the plan/); assert.match(h, /Read “Q4 rota notes”\./);
+  assert.match(h, /Linked by you\./); assert.match(h, /Leaver catch up/); assert.match(h, /Drafted the plan/); assert.match(h, /Read “Q4 rota notes”\./);
   assert.match(h, /claude-sonnet-5 · 3,600 in · 900 out · about \$0\.0162/);
   assert.match(h, /Start a fresh attempt/);
   assert.ok(!/<ol class="tagent__bul tagent__steps"/.test(h.slice(0, h.indexOf('tagent__trace'))), 'no numbered transcript above the fold');

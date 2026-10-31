@@ -18,7 +18,7 @@
  * The detail carries the sections that say what Nick found and did — headline,
  * escalations, positives, actions (Weekly Risk); success, star, amber, red
  * (SOAP) — never the task or management-log sections, which name colleagues
- * and are carried by their own sources. The feed's employment screen still runs.
+ * and are carried by their own sources.
  */
 
 const EXCERPT = 900;

@@ -40,7 +40,7 @@ function send(res, r) {
   return res.status((r && r.status) || 500).json(r || { ok: false, error: 'Nothing came back.' });
 }
 
-// GET /api/task-context/tasks/:taskId — a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question. A restricted note is title-only except on Nick's own PIN session, which also gets a task-bounded excerpt, the restriction reason and the open route
+// GET /api/task-context/tasks/:taskId — a task's pinned context (notes, projects, areas), with why each is linked and whether it was found automatically or linked by Nick; plus suggestions, stale links and any open question. Each note comes with a task-bounded excerpt and its open route
 router.get('/tasks/:taskId', (req, res) => {
   try { send(res, svc().forTask(req.params.taskId, { viewer: svc().viewerOf(req) })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });

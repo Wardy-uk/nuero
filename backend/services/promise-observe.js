@@ -7,46 +7,20 @@
  * and builds the prompt feed through the interruption budget. It writes nothing
  * and requires nothing that can: no task store, no prepared actions, no goals,
  * no proposals, no senders (pinned by a source scan in promise-shadow.test.js).
- *
- * ⚠ An employment matter leaves this module as a task id and a rule CATEGORY
- *   only (`sensitiveRule`): never its wording, the matched words, the meeting
- *   title, or the names of the people involved.
  */
 
 const policy = require('../../saim/policy/promises.cjs');
 
 const msOf = (now) => (typeof now === 'number' ? now : Date.parse(now));
 
-/** PURE. The category of an employment-matter classification — never the pattern or the words. */
-function sensitiveRule(sensitivity) {
-  if (!sensitivity || !sensitivity.sensitive) return null;
-  if (sensitivity.where === 'wording') return 'hr-wording';
-  if (sensitivity.where === 'source-note') return 'hr-meeting-title';
-  if (sensitivity.rule === 'employee-title') return 'employee-cases-meeting';
-  if (sensitivity.rule === 'person-context') return 'person-context';
-  return 'hr-other';
-}
-
-/**
- * Every promise NEURO holds, judged. Reads only. An employment matter keeps
- * its key, task ids, state and moves (the routing note) — nothing else.
- */
+/** Every promise NEURO holds, judged. Reads only. */
 function snapshot({ now = Date.now(), ledger = null } = {}) {
   const nowMs = msOf(now);
   const facts = ledger || require('./promise-ledger').read({ now: nowMs });
   const promises = facts.promises.map((p) => {
     const judgement = policy.judge(p, { now: nowMs });
-    const sensitive = Boolean(p.sensitivity && p.sensitivity.sensitive);
-    if (sensitive) {
-      return {
-        key: p.key, taskIds: p.taskIds, sensitive: true, sensitiveRule: sensitiveRule(p.sensitivity),
-        open: p.open, closed: null, text: null, owedTo: { resolved: null, people: [], ambiguous: [] }, source: null,
-        firstSeen: p.firstSeen, slips: { dueMoves: p.slips.dueMoves, lapsedBlocks: p.slips.lapsedBlocks, statedDatePassed: p.slips.statedDatePassed },
-        nextMeeting: null, judgement: { state: judgement.state, moves: judgement.moves, date: null },
-      };
-    }
     return {
-      key: p.key, taskIds: p.taskIds, sensitive: false, sensitiveRule: null,
+      key: p.key, taskIds: p.taskIds,
       open: p.open, closed: null, text: p.text, tickedWithoutEvidence: p.tickedWithoutEvidence,
       firstSeen: p.firstSeen, due: p.due, statedDate: p.statedDate,
       owedTo: { resolved: p.owedTo.resolved, people: p.owedTo.people.map((x) => x.name), ambiguous: p.owedTo.ambiguous },
@@ -92,7 +66,7 @@ function promiseFeedContext(payload, { now = Date.now() } = {}) {
  */
 function selectPrompt({ promises, ctx, now, prompted = [] }) {
   const candidates = promises
-    .filter((p) => !p.closed && !p.sensitive && ['late', 'slipped', 'ticked-no-evidence'].includes(p.judgement.state))
+    .filter((p) => !p.closed && ['late', 'slipped', 'ticked-no-evidence'].includes(p.judgement.state))
     .sort((a, b) => (a.judgement.state === 'late' ? 0 : 1) - (b.judgement.state === 'late' ? 0 : 1) || String(a.firstSeen).localeCompare(String(b.firstSeen)));
   const passing = [];
   let why = null;
@@ -120,7 +94,7 @@ function feedFor({ ctx = null, promises = [], now, prompted = [], proposal = nul
   out.why = sel.why;
   if (sel.pick) {
     const p = sel.pick.p;
-    out.promise = { key: p.key, text: p.text, sensitive: p.sensitive, state: p.judgement.state, date: p.judgement.date || null,
+    out.promise = { key: p.key, text: p.text, state: p.judgement.state, date: p.judgement.date || null,
       owedTo: p.owedTo.resolved, moves: p.judgement.moves, why: sel.pick.gate.why };
     out.promiseWhy = sel.pick.gate.why;
     out.meetingKey = sel.pick.gate.meetingKey || null;
@@ -128,4 +102,4 @@ function feedFor({ ctx = null, promises = [], now, prompted = [], proposal = nul
   return out;
 }
 
-module.exports = { sensitiveRule, snapshot, promiseFeedContext, selectPrompt, feedFor };
+module.exports = { snapshot, promiseFeedContext, selectPrompt, feedFor };

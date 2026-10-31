@@ -5,7 +5,7 @@
  * Real HTTP through NEURO's api-auth and authority guard; the packet source and
  * the diary/leave/commitment readers are fakes. Proves it STORES NOTHING and
  * MINTS NOTHING, offers only times that pass the fresh checks now, and never
- * names a withheld (possibly employment) item.
+ * names a withheld item.
  */
 
 const test = require('node:test');
@@ -186,11 +186,9 @@ test('no availability is speculative: a time that cannot be confirmed free NOW i
   S.over = {};
 });
 
-test('nothing trustworthy → move: null — no candidate, employment, stale, ambiguous, out of scope', async () => {
+test('nothing trustworthy → move: null — no candidate, stale, ambiguous, out of scope', async () => {
   const cases = [
     ['no candidate', () => ({ contract: 'prepared-move-v1', decision: { decidedAt: new Date(NOW).toISOString() }, selected: null, withheld: [{ title: 'Disciplinary prep for Mel', reason: 'employment matter' }] })],
-    ['employment screen', () => fixture((x) => { x.selected.screens.employment = { sensitive: true, categories: ['hr-wording'] }; })],
-    ['draft reads as employment', () => fixture((x) => { x.selected.preparation[0].draft += '\n- the disciplinary outcome\n'; })],
     ['stale source', () => fixture((x) => { x.selected.screens.freshnessOk = false; })],
     ['ambiguous record', () => fixture((x) => { x.selected.screens.recordUnique = false; })],
     ['out-of-scope note path', () => fixture((x) => { x.selected.decision.proposedWrites[1].path = 'People/Mel.md'; })],

@@ -140,11 +140,7 @@ test('before any promise delivery exists the score is still measured — from ti
   assert.equal(r.why, null);
 });
 
-test('refusals: an employment matter gets the routing note; an unknown promise 404s; nothing is prepared', () => {
-  const hr = delivery.prepare(keyOf('hr'), { now: clock });
-  assert.equal(hr.ok, false);
-  assert.equal(hr.routing, true);
-  assert.match(hr.error, /employment/);
+test('refusals: an unknown promise 404s; nothing is prepared', () => {
   assert.equal(delivery.prepare('promise:999999', { now: clock }).code, 404);
   assert.equal(db.all('SELECT COUNT(*) AS n FROM prepared_actions')[0].n, 0);
 });
@@ -176,7 +172,7 @@ test('“Send approved emails” OFF: the note can be DRAFTED, but cannot be app
   assert.deepEqual(live, { actionId: a.actionId, status: 'prepared' }, 'the home sees the waiting draft');
 });
 
-test('the route over HTTP: prepares, repeats idempotently, refuses an employment matter — and sends nothing', async () => {
+test('the route over HTTP: prepares, repeats idempotently — and sends nothing', async () => {
   const express = require('express');
   const app = express();
   app.use(express.json());
@@ -192,10 +188,6 @@ test('the route over HTTP: prepares, repeats idempotently, refuses an employment
     const second = await post(keyOf('offline'));
     assert.equal(second.body.action.actionId, first.body.action.actionId, 'repeat press → the SAME draft');
     assert.equal(second.body.action.status, 'prepared');
-    const hr = await post(keyOf('hr'));
-    assert.equal(hr.status, 409);
-    assert.equal(hr.body.routing, true);
-    assert.match(hr.body.error, /employment/);
     const chase = await post(keyOf('offline'), { move: 'chase-email' });
     assert.equal(chase.status, 400, 'only deliver-email is prepared here');
     const noaddr = await post(keyOf('noaddr'));
@@ -218,8 +210,7 @@ test('freshness: a successful prepare drops ONLY the Keep my word memo; the next
   assert.equal(km.compose({ ...first, presentation: { mode: 'calm', needsYou: [] }, now: AT }).thread.draft.control, 'Draft the delivery note');
   // Within the minute the memo serves the same read.
   assert.equal(canonical.keepWordBlock(AT + 1000), first, 'memoised within the minute');
-  // Refusals (employment matter, no address, unknown promise) leave it exactly as it was.
-  assert.equal(delivery.prepare(keyOf('hr'), { now: AT }).ok, false);
+  // Refusals (no address, unknown promise) leave it exactly as it was.
   assert.equal(delivery.prepare(keyOf('noaddr'), { now: AT }).ok, false);
   assert.equal(delivery.prepare('promise:999999', { now: AT }).ok, false);
   assert.equal(canonical.keepWordBlock(AT + 2000), first, 'a refusal invalidates nothing');
@@ -390,9 +381,6 @@ test('END TO END: with the real proof source connected, the score moves from unm
   assert.equal(r.counts.beforeProofSource, 0);
   const straddle = r.entries.find((e) => e.key === keyOf('straddle'));
   assert.match(straddle.rule, /cannot place it before the due point/);
-  const hr = r.entries.find((e) => e.key === keyOf('hr'));
-  assert.equal(hr.sensitive, true);
-  assert.equal(hr.text, null);
   assert.deepEqual(r.ratio, { kept: 1, of: r.counts.due - r.counts.pending });
   assert.equal(r.counts.keptOnTime, 1);
 });

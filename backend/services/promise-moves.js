@@ -17,15 +17,8 @@
  *   needs-decision  drafted, and it needs Nick to choose a time before anything
  *                   is scheduled (a proposed slot is NOT a booking)
  *   ready           drafted; nothing needs booking — waiting for his confirm
- *   scheduled       the private block was WRITTEN and read back (store.scheduledFor)
+ *   scheduled       the solo block was WRITTEN and read back (store.scheduledFor)
  *   done            carried out (a complete receipt)
- *
- * PRIVATE DRAFT (25 Oct 2026): a promise whose source note discusses people's
- * employment (planner.promiseMode) is offered ONLY as a private working draft
- * for Nick — control "Prepare a private working draft", never "who is it owed
- * to?" — and every state carries `privateDraft` (the label, what SAiM can't do
- * and what it can). A stored question from before (the owed ask) is not shown:
- * pressing re-plans it as the private draft.
  */
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -34,13 +27,6 @@ const dayShort = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00
 
 const OWED_CONTROL = 'Tell SAiM who it is owed to';
 const READY_CONTROL = 'Make this ready';
-const PRIVATE_CONTROL = require('./private-brief').CONTROL;
-
-/** PURE. The private-draft label block every surface shows. */
-function privateView() {
-  const b = require('./private-brief');
-  return { label: b.LABEL, cannot: b.CANNOT, can: b.CAN, promise: b.PROMISE };
-}
 
 /** PURE. The schedule sentence for a booked block. */
 function scheduledSay(b) {
@@ -77,7 +63,7 @@ function stateOf(rec, { now = Date.now(), store, extra = {}, ref, moveKey }) {
     said: iv.questions.filter((q) => q.state === 'answered').map((q) => ({ id: q.id, decision: q.decision, answer: q.answer })),
     parked: iv.questions.filter((q) => q.state === 'parked').map((q) => ({ id: q.id, decision: q.decision })),
   } : null;
-  // A private draft still being worked through (26 Oct 2026): the ONE next question, answerable or parkable.
+  // A legacy private draft (before 31 Oct 2026) still being worked through: the ONE next question, answerable or parkable.
   if (s.plan === 'draft' && iv && iv.next) {
     const q = iv.next;
     return { ...extra, state: 'interview', ref, moveKey, recordId: rec.id, version: rec.version, headline: s.headline,
@@ -104,7 +90,7 @@ function fromRecord(rec, { now = Date.now(), deps = {} } = {}) {
   const key = s && s.source && s.source.promiseKey;
   if (!key) return null;
   const store = deps.store || require('./prepared-move-store');
-  const extra = { privateDraft: s.privateDraft ? privateView() : null, owedAnswer: null, focusRef: `promise:${key}` };
+  const extra = { owedAnswer: null, focusRef: `promise:${key}` };
   return stateOf(rec, { now, store, extra, ref: `promise:${key}`, moveKey: rec.moveKey });
 }
 
@@ -121,35 +107,18 @@ function moveFor(item, { now = Date.now(), deps = {} } = {}) {
   if (!lead) return null;
   const ref = `promise:${item.key}`;
   const moveKey = planner.moveKeyFor('project-note', `task:${lead}`);
-  let mode = { privateDraft: false };
-  try {
-    const task = (deps.task || planner.DEFAULT_DEPS.task)(lead);
-    mode = planner.promiseMode(task, (deps.roster || planner.DEFAULT_DEPS.roster)());
-  } catch { mode = { privateDraft: false }; }
-  const priv = mode.privateDraft ? privateView() : null;
   const said = item.owedToSaidBy && item.owedToSaidBy.text ? item.owedToSaidBy.text : null;
   // An earlier owed-to answer is never a trap: shown with a way to remove it.
-  const owedAnswer = said ? (priv
-    ? { text: said, ignored: true, say: `Your earlier answer to “who is it owed to?” (“${said}”) isn’t needed for a private draft, so SAiM doesn’t use it.`, control: 'Remove that answer' }
-    : { text: said, ignored: false, say: `You said it is owed to “${said}”.`, control: 'Change' }) : null;
-  const extra = { privateDraft: priv, owedAnswer, focusRef: ref };
+  const owedAnswer = said ? { text: said, ignored: false, say: `You said it is owed to “${said}”.`, control: 'Change' } : null;
+  const extra = { owedAnswer, focusRef: ref };
   const rec = store.latest(moveKey);
-  const mine = rec && rec.packet && rec.packet.contract === 'prepared-move-v2' && ((rec.packet.selected || {}).source || {}).promiseKey === item.key
-    // A record planned before this promise became private-draft-only (the old owed ask) is not its move any more.
-    && (!priv || (((rec.packet.selected || {}).screens || {}).employment || {}).mode === 'private-draft')
-    // A private draft planned before the interview existed (26 Oct 2026) is offered again, never shown as finished work.
-    && !(priv && rec.packet.selected.plan === 'draft' && !rec.packet.selected.interview);
+  const mine = rec && rec.packet && rec.packet.contract === 'prepared-move-v2' && ((rec.packet.selected || {}).source || {}).promiseKey === item.key;
   if (mine) {
     const st = stateOf(rec, { now, store, extra, ref, moveKey });
     if (st) return st;
   }
   // Nothing open for this promise: offer the one control that takes it forward.
   const p = item.preparation;
-  if (priv) {
-    // Never on a read that isn't safe, or a promise that may already be done.
-    if (p.state === 'not-safe-to-prepare' || (p.state === 'waiting-for-Nick' && !p.missing)) return null;
-    return { ...extra, state: 'offer', ref, moveKey, control: PRIVATE_CONTROL, question: null, say: priv.promise };
-  }
   if (p.state === 'waiting-for-Nick' && p.missing === 'owed-to') {
     return { ...extra, state: 'offer', ref, moveKey, control: OWED_CONTROL, question: owed.firstQuestion(), say: null };
   }
@@ -166,15 +135,14 @@ async function list({ now = Date.now() } = {}) {
     move: moveFor(it, { now }),
   })).map((x) => ({
     ...x,
-    // What is missing is the MOVE's question when it has one; a private draft never needs owed-to.
+    // What is missing is the MOVE's question when it has one.
     missing: x.move && ['ask', 'interview'].includes(x.move.state) && x.move.question ? [{ questionId: x.move.question.id, question: x.move.question.question, recordId: x.move.recordId, version: x.move.version, canPark: Boolean(x.move.question.canPark) }]
-      : x.move && x.move.privateDraft ? []
-        : x.preparation && x.preparation.missing === 'owed-to' ? [{ questionId: 'owed', question: 'Who is this owed to?' }] : [],
+      : x.preparation && x.preparation.missing === 'owed-to' ? [{ questionId: 'owed', question: 'Who is this owed to?' }] : [],
   }));
   return {
     contract: 'promise-moves-v1', state: wb.state, why: wb.why, items,
-    how: 'To take one forward: POST /api/prepared-moves/prepare { ref }. If its move asks a question, POST /api/prepared-moves/answer { recordId, version, questionId, text } with Nick’s own words — a full name or a group. A private draft’s interview question may instead be parked: POST /api/prepared-moves/answer { recordId, version, questionId, park: true }. To remove an earlier owed-to answer: POST /api/prepared-moves/prepare { ref, withdraw: "owed" }. A promise marked privateDraft is only ever prepared as a PRIVATE working draft for Nick — no employment decision, no contact, nothing sent. SAiM never guesses who it is owed to, and nothing is saved, sent or booked without Nick’s confirmation in SAiM.',
+    how: 'To take one forward: POST /api/prepared-moves/prepare { ref }. If its move asks a question, POST /api/prepared-moves/answer { recordId, version, questionId, text } with Nick’s own words — a full name or a group. To remove an earlier owed-to answer: POST /api/prepared-moves/prepare { ref, withdraw: "owed" }. SAiM never guesses who it is owed to, and nothing is saved, sent or booked without Nick’s confirmation in SAiM.',
   };
 }
 
-module.exports = { OWED_CONTROL, READY_CONTROL, PRIVATE_CONTROL, stateOf, fromRecord, moveFor, list, scheduledSay };
+module.exports = { OWED_CONTROL, READY_CONTROL, stateOf, fromRecord, moveFor, list, scheduledSay };

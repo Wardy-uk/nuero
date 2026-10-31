@@ -5,9 +5,8 @@
  *  - Nick's weighting order, and that a meeting is only a 1-2-1 when the BODY's
  *    participants agree (a live note listed only Chris in frontmatter while five
  *    people were in the room);
- *  - the privacy guard: health/personal terms dropped, another colleague named →
- *    dropped, a direct report never named and their own-name lines dropped, and a
- *    giver sharing a first name with someone else is not mistaken for them;
+ *  - the guard: only shape (too short, Nick's own words) — nothing is filtered
+ *    for health, other colleagues or direct reports (31 Oct 2026);
  *  - the Plaud recording block never leads the text;
  *  - a full pass: highest weight read first, each note once, items in the feed.
  */
@@ -47,7 +46,7 @@ test('weighting: a 1-2-1 only when the body agrees; then tech leadership, risk, 
   assert.equal(t('Daily standup', ['Hope Goodall']), 5);
 });
 
-test('the guard: personal terms, other colleagues and direct-report names never pass', () => {
+test('the guard: only shape — too short and Nick\'s own words are dropped; everyone, direct reports included, is named', () => {
   const out = guardItems({ feedback: [
     { from: 'Chris Middleton', said: 'Chris was pleased with how Nick presented the KPI pack to SMT.', stance: 'for', about: 'KPI reporting' },
     { from: 'Chris Middleton', said: 'Chris wants Nick to escalate Engineering blockers earlier.', stance: 'against' },
@@ -60,10 +59,11 @@ test('the guard: personal terms, other colleagues and direct-report names never 
     { from: 'Nick Ward', said: 'Nick suggested adopting the ITIL framework for the service desk.', stance: 'for' },
   ] }, ctx);
   assert.deepEqual(out.map((o) => o.said.slice(0, 20)), [
-    'Chris was pleased wi', 'Chris wants Nick to ', 'The call coaching fr', 'Liam thought the esc',
+    'Chris was pleased wi', 'Chris wants Nick to ', 'Nick handled Hope Go', 'Nick managed the sic',
+    'The call coaching fr', 'Hope said Nick shoul', 'Liam thought the esc',
   ]);
   const dr = out.find((o) => o.role === 'direct-report');
-  assert.equal(dr.from, null, 'a direct report is never named');
+  assert.ok(dr && dr.from, 'a direct report is named');
   assert.equal(out[0].role, 'manager');
   assert.equal(out[1].stance, 'against');
 });

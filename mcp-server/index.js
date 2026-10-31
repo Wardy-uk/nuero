@@ -826,16 +826,15 @@ server.tool('create_task', 'Create a task in NEURO (the source of truth for task
 // ═══════════════════════════════════════════════════════
 
 function contextLine(it) {
-  const bits = [`${it.title} [${it.type}${it.restricted ? ', restricted' : ''}] — ${it.originLabel}`, `  ${it.reason}`];
+  const bits = [`${it.title} [${it.type}] — ${it.originLabel}`, `  ${it.reason}`];
   if (it.preview) bits.push(`  "${it.preview}"`);
   if (it.staleSay) bits.push(`  ${it.staleSay}`);
-  if (it.restricted && it.restrictedSay) bits.push(`  ${it.restrictedSay}`);
   bits.push(`  link #${it.id}${it.ref ? ` · ${it.ref}` : ''}`);
   return bits.join('\n');
 }
 
 server.tool('get_task_context',
-  'Read the context pinned to a NEURO task: related vault notes, projects and areas, each with WHY it is linked and whether the nightly scan found it or Nick linked it; plus suggestions (NOT pinned), stale links and any question the scan asked. Restricted notes are title-only — do not try to read their content.',
+  'Read the context pinned to a NEURO task: related vault notes, projects and areas, each with WHY it is linked and whether the nightly scan found it or Nick linked it; plus suggestions (NOT pinned), stale links and any question the scan asked.',
   { taskId: z.number().int().describe('NEURO task id') },
   async ({ taskId }) => {
     const d = await neuroApi(`/api/task-context/tasks/${taskId}`);
@@ -853,7 +852,7 @@ server.tool('search_task_context',
   { q: z.string().min(2).describe('Words to look for'), taskId: z.number().int().optional().describe('Marks what is already linked to this task') },
   async ({ q, taskId }) => {
     const d = await neuroApi(`/api/task-context/search?q=${encodeURIComponent(q)}${taskId ? `&taskId=${taskId}` : ''}`);
-    const rows = [...d.scopes.map((s) => `${s.type}: ${s.title} (${s.ref})${s.linked ? ' — linked' : ''}`), ...d.notes.map((n) => `note: ${n.title} (${n.ref})${n.restricted ? ' — restricted' : ''}${n.linked ? ' — linked' : ''}`)];
+    const rows = [...d.scopes.map((s) => `${s.type}: ${s.title} (${s.ref})${s.linked ? ' — linked' : ''}`), ...d.notes.map((n) => `note: ${n.title} (${n.ref})${n.linked ? ' — linked' : ''}`)];
     return { content: [{ type: 'text', text: rows.length ? `${rows.join('\n')}${d.more ? `\n…and ${d.more} more notes` : ''}${d.complete ? '' : '\n(the vault search stopped early)'}` : `Nothing matches "${q}".` }] };
   });
 

@@ -7,8 +7,8 @@
  *
  * What is pinned here, because each is the failure the feature must not have:
  *  - explicit evidence pins; a title needs support; a vague overlap gives NOTHING
- *  - generated, daily, Personal/, employment-sensitive, duplicate and untitled
- *    notes are never pulled in — except a task's OWN origin note, pinned restricted
+ *  - generated, daily, duplicate and untitled notes are never pulled in;
+ *    Personal/ and people notes are ordinary material (31 Oct 2026)
  *  - a rerun changes no row; a scan, a read and an empty run write no vault file
  *  - a vanished/changed note goes stale, and comes back when restored
  *  - manual note/project/area links; removal is remembered by the scan
@@ -121,17 +121,17 @@ const MACHINE = { 'X-NEURO-API-TOKEN': 'tok-5678' };
 
 // ── the pure rules ───────────────────────────────────────────────────────────
 
-test('screen: machine output, daily notes, Personal/, private and generic notes are never scan material', () => {
-  const deps = { isExcludedPath: () => false, isSensitivePath: (r) => r.startsWith('Personal/'), exists: (r) => r === 'Projects/X/Note.md' };
+test('screen: machine output, daily notes and generic notes are never scan material; Personal/ and private notes are', () => {
+  const deps = { isExcludedPath: () => false, exists: (r) => r === 'Projects/X/Note.md' };
   const s = (rel, extra = {}) => model.screenNote({ rel, fm: {}, body: 'something real here', ...extra }, deps).reason;
   assert.equal(s('Documents/System/SAiM Import Reports/2026-10-21.md'), 'generated');
   assert.equal(s('Daily/2026-10-21.md'), 'daily-note');
   assert.equal(s('Plaud/Transcripts/x.md'), 'raw-transcript');
-  assert.equal(s('Personal/Prep.md'), 'restricted');
+  assert.equal(s('Personal/Prep.md'), null);
   assert.equal(s('Projects/X/Note 2.md'), 'duplicate');
   assert.equal(s('Projects/D&D/Session 2.md'), null, 'a real "Session 2" is not a duplicate');
   assert.equal(s('Untitled.md'), 'ambiguous');
-  assert.equal(s('Projects/X/Plan.md', { fm: { private: 'true' } }), 'restricted');
+  assert.equal(s('Projects/X/Plan.md', { fm: { private: 'true' } }), null);
   assert.equal(s('Projects/X/Plan.md', { body: '  ' }), 'empty');
   assert.equal(s('Projects/X/Plan.md', { readable: false }), 'unreadable');
 });
@@ -247,21 +247,18 @@ test('the backfill: explicit evidence and supported titles pin; vague matches an
 
   // the receipt says what was skipped and why
   const rc = r.receipt;
-  for (const k of ['daily-note', 'generated', 'restricted', 'employment-sensitive', 'duplicate', 'ambiguous', 'person-note']) assert.ok(rc.skipped[k] >= 1, `skipped.${k}`);
+  for (const k of ['daily-note', 'generated', 'duplicate', 'ambiguous', 'person-note']) assert.ok(rc.skipped[k] >= 1, `skipped.${k}`);
   assert.ok(rc.pinned >= 3 && rc.suggested >= 1 && rc.questions === 1);
 });
 
-test('an employment-sensitive origin note is pinned to its OWN task only, restricted: title, no preview', () => {
+test('a people-meeting origin note is pinned to its own task in full — every viewer sees the same row (31 Oct 2026)', () => {
   const c = tc.forTask(C.id, { viewer: 'owner' });
   const hr = c.pinned.find((p) => p.ref === HR);
-  assert.ok(hr, 'the 1-2-1 the task came from is its context');
-  assert.equal(hr.restricted, true);
-  assert.equal(hr.preview, null);
-  // the default (limited) view of the same link is title-only: no path, no open route
+  assert.ok(hr, 'the catch-up the task came from is its context');
+  assert.equal(hr.restricted, undefined);
+  assert.ok(hr.preview, 'its preview is shown');
   const lim = tc.forTask(C.id).pinned.find((p) => p.id === hr.id);
-  assert.equal(lim.ref, null); assert.equal(lim.open, null); assert.equal(lim.excerpt, undefined); assert.equal(lim.title, hr.title);
-  const raw = db.get(`SELECT preview FROM task_context_links WHERE id = ?`, [hr.id]);
-  assert.equal(raw.preview, null, 'not even stored');
+  assert.equal(lim.ref, HR); assert.ok(lim.open, 'it opens for any viewer'); assert.equal(lim.title, hr.title);
   // …and never reaches the unrelated task with the same words
   assert.ok(![...tc.forTask(A.id, { viewer: 'owner' }).pinned, ...tc.forTask(A.id, { viewer: 'owner' }).suggestions].some((p) => p.ref === HR));
 });
@@ -355,11 +352,11 @@ test('ambiguity asks: a name that fits several notes or projects comes back as a
   assert.equal(tc.forTask(D.id).question, null);
 });
 
-test('a Personal/ note linked by hand is kept restricted — no preview', () => {
+test('a Personal/ note linked by hand is an ordinary link — with its preview', () => {
   const r = tc.link({ taskId: E.id, type: 'note', ref: 'Personal/Disciplinary Prep.md' });
   assert.equal(r.ok, true);
-  assert.equal(r.link.restricted, true);
-  assert.equal(r.link.preview, null);
+  assert.equal(r.link.restricted, undefined);
+  assert.ok(r.link.preview);
 });
 
 test('the nightly job is registered at 03:40 and an empty vault run writes nothing to it', () => {

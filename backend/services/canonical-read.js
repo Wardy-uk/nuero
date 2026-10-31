@@ -1396,10 +1396,9 @@ function linkPromiseOpens(cards, moves) {
     const m = byTask.get(Number(c.meta.taskId));
     if (!m || !OPEN_SAY[m.state]) continue;
     // Mid-interview the question is ON the promise card, so that is where it opens.
-    // A private draft is answered AND saved on its promise card (26 Oct 2026), so it always opens there.
-    const draft = !m.privateDraft && ['needs-decision', 'ready', 'scheduled', 'done'].includes(m.state) && m.recordId;
-    c.open = { kind: 'promise', ref: m.ref, recordId: m.recordId || null, state: m.state, show: draft ? 'draft' : 'promise', privateDraft: Boolean(m.privateDraft) };
-    c.actionHint = m.state === 'interview' ? OPEN_SAY.interview : m.privateDraft && ['needs-decision', 'ready'].includes(m.state) ? 'Save the private draft' : m.privateDraft && m.recordId && OPEN_SAY[m.state] && m.state !== 'offer' ? 'Open the private draft' : m.privateDraft && m.state === 'offer' ? 'Prepare a private working draft' : OPEN_SAY[m.state];
+    const draft = ['needs-decision', 'ready', 'scheduled', 'done'].includes(m.state) && m.recordId;
+    c.open = { kind: 'promise', ref: m.ref, recordId: m.recordId || null, state: m.state, show: draft ? 'draft' : 'promise' };
+    c.actionHint = OPEN_SAY[m.state];
   }
 }
 

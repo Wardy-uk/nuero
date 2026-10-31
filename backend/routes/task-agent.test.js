@@ -202,43 +202,14 @@ test('the AI gate saw every request under the task_agent class', () => {
   assert.match(text, /task_agent/, 'task_agent tickets are on the shared ledger');
 });
 
-// ── 3 + 9: a people matter — useful preparation, stops at Nick's decision ────
-test('people matter: prepares the brief from the excerpt only, refuses email, stops at the decision', async () => {
-  const before = snapshot();
-  const n0 = seen.length;
-  script = [
-    reply([toolUse('prepare_email', { to: 'Heidi Example', subject: 'Your end date', body: 'Hi Heidi' })]),
-    reply([toolUse('save_output', { kind: 'brief', title: 'End date decision brief', markdown: '## Facts\n- HR reply awaited [ctx]\n## Options\n1. Confirm\n2. Wait for HR\n## Risks\n- Confirming before HR replies' })]),
-    reply([toolUse('finish', { completed: ['Prepared a decision brief'], remaining: ['The decision is yours'] })]),
-    reply([{ type: 'text', text: 'Brief ready.' }], 'end_turn'),
-  ];
-  await press(T.hr.id);
-  const run = await state(T.hr.id);
-  assert.equal(run.sensitive.sensitive, true);
-  assert.equal(run.status, 'ready', 'a people matter that only said finish ends Ready — no invented "What is your decision on…" question (26 Oct 2026)');
-  assert.equal(run.question, null);
-  assert.equal(run.outputs.length, 1, 'the brief WAS prepared — it did not stop before the preparatory work');
-  assert.equal((run.handoffs || []).length, 0, 'no email prepared');
-  assert.equal(db.get("SELECT COUNT(*) n FROM prepared_actions").n, 0);
-  const prompts = seen.slice(n0).join('\n');
-  assert.ok(prompts.includes('EMPLOYMENT / PEOPLE MATTER'), 'the model was told');
-  assert.ok(prompts.includes('confirm Heidi Example end date'), 'the task-bounded excerpt reached the model');
-  assert.ok(!prompts.includes('private family matter'), 'the rest of the restricted note did not');
-  assert.ok(!prompts.includes('hunter2') && !prompts.includes('Security review') && !prompts.includes('Service account passwords'), 'the hard exclusion contributed nothing, not even its title');
-  assert.ok(!run.sources.some((s) => /Security review|passwords/i.test(`${s.title} ${s.path}`)));
-  const restricted = run.sources.find((s) => s.restricted);
-  assert.ok(restricted && restricted.path === null, 'a restricted source carries no path');
-  assert.deepEqual(snapshot(), before);
-});
-
-test('read_note refuses a restricted or hard-excluded path even if the model names it', async () => {
+test('read_note refuses a hard-excluded or unoffered path even if the model names it', async () => {
   script = [reply([toolUse('read_note', { path: SEC }), toolUse('read_note', { path: HR }), toolUse('search_vault', { query: 'passwords' }), toolUse('search_vault', { query: 'family matter' })]),
     reply([toolUse('finish', { completed: [], remaining: [] })]), reply([{ type: 'text', text: 'ok' }], 'end_turn')];
   const t = taskStore.createTask({ text: 'Tidy the support wiki index', source: 'test' });
   const n0 = seen.length;
   await press(t.id);
   const tail = seen.slice(n0).join('\n');
-  assert.ok(!tail.includes('hunter2') && !tail.includes('private family matter'), 'neither body ever returned to the model');
+  assert.ok(!tail.includes('hunter2'), 'the Security review/ body never returned to the model');
   assert.match(tail, /was not offered to you/);
 });
 
@@ -423,14 +394,15 @@ test('model refused budget: no call is made and the run says why', async () => {
 });
 
 // ── pure rules ──────────────────────────────────────────────────────────────
-test('sourcesFrom: hard exclusions dropped entirely; restricted keeps only its excerpt and no path', () => {
+test('sourcesFrom: hard exclusions dropped entirely; every other note keeps its path (31 Oct 2026: no restricted notes)', () => {
   const s = agent.sourcesFrom({ pinned: [
     { id: 1, type: 'note', title: 'A', ref: 'a.md', restricted: false, preview: 'p', excerpt: null, provenance: 'x' },
     { id: 2, type: 'note', title: 'Sec', ref: null, hardExcluded: true, restricted: true, excerpt: { text: 'even with an excerpt' } },
     { id: 3, type: 'note', title: 'R', ref: 'r.md', restricted: true, excerpt: { text: 'line' }, provenance: 'y' },
     { id: 4, type: 'note', title: 'R2', ref: 'r2.md', restricted: true, excerpt: null },
   ] });
-  assert.deepEqual(s.map((x) => x.key), ['ctx:1', 'ctx:3']);
-  assert.equal(s[1].path, null);
-  assert.equal(s[1].readable, false);
+  assert.deepEqual(s.map((x) => x.key), ['ctx:1', 'ctx:3', 'ctx:4']);
+  assert.equal(s[1].path, 'r.md');
+  assert.equal(s[1].readable, true);
+  assert.equal(s[1].excerpt, 'line');
 });

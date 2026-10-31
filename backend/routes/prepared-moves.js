@@ -115,7 +115,7 @@ router.post('/drafts/outcome', (req, res) => {
   }
 });
 
-// GET /api/prepared-moves/eligible — which Now items SAiM can make ready (make this ready, draft the reply, meeting prep): each with its exact ref for /prepare and the Now row ids it is drawn as. Held, personal, employment and ineligible items are left out. Read only.
+// GET /api/prepared-moves/eligible — which Now items SAiM can make ready (make this ready, draft the reply, meeting prep): each with its exact ref for /prepare and the Now row ids it is drawn as. Held, personal, NOVA-owned and ineligible items are left out. Read only.
 router.get('/eligible', async (req, res) => {
   try {
     const p = await require('../services/read-only-scope').run(() => planner().eligibleNow());
