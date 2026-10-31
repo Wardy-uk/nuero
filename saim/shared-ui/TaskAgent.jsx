@@ -82,6 +82,45 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
   );
 }
 
+/**
+ * Claude's finished work coming back (31 Oct 2026): what has returned — shown here
+ * and already saved into the task's draft note — and, folded away, a box to paste
+ * an answer from a Claude chat that could not call return_task_result itself.
+ */
+export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null, busy = false, error = null, done = null }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  if (!results.length && !onReturn) return null;
+  const when = (at) => new Date(at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="tagent__section" data-tagent-claude-return>
+      {results.map((o) => (
+        <details className="tagent__out" key={o.id} open={o === results[0]} data-tagent-output="claude">
+          <summary><span className="tagent__badge">From Claude</span> {when(o.at)}</summary>
+          <pre className="tagent__md">{o.markdown}</pre>
+          <p className="tagent__meta" data-tagent-claude-saved>Saved to {o.notePath}{' '}
+            {onOpenNote && <button type="button" className="tagent__link" onClick={() => onOpenNote({ path: o.notePath, title: o.notePath })}>Open</button>}
+          </p>
+        </details>
+      ))}
+      {onReturn && !open && <button type="button" className="tagent__quiet" onClick={() => setOpen(true)}>Paste Claude’s answer…</button>}
+      {onReturn && open && (
+        <form className="tagent__q" data-tagent-claude-paste onSubmit={async (e) => { e.preventDefault(); if (!text.trim()) return; const ok = await onReturn(text); if (ok) { setText(''); setOpen(false); } }}>
+          <p className="tagent__h">Paste Claude’s answer</p>
+          <p className="tagent__meta">For a Claude chat that could not send it back itself. NEURO shows it here and saves it into this task’s draft note.</p>
+          <textarea className="tagent__answer" rows={8} value={text} onChange={(e) => setText(e.target.value)} aria-label="Claude’s answer" />
+          <div className="tagent__row">
+            <button type="submit" disabled={busy || !text.trim()}>Send to NEURO</button>
+            <button type="button" className="tagent__quiet" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </form>
+      )}
+      {error && <p className="tagent__err" role="alert">{error}</p>}
+      {done && <p className="tagent__ok" role="status">{done}</p>}
+    </div>
+  );
+}
+
 /** The one question NEURO needs: choices, plus an "Other — explain" field. */
 function NeedBlock({ need, busy, onAnswer }) {
   const [text, setText] = useState('');
@@ -115,7 +154,7 @@ function NeedBlock({ need, busy, onAnswer }) {
   );
 }
 
-export function TaskAgentView({ run, workspace = null, budget = null, busy, error, onStart, onAnswer, onStop, onContinue = null, onOpenActions, onOpenNote, onSave = null, saving = null, renderSave = null, onCopy = null, claude = null, onClaudeOpen = null, onClaudeClose = null }) {
+export function TaskAgentView({ run, workspace = null, budget = null, busy, error, onStart, onAnswer, onStop, onContinue = null, onOpenActions, onOpenNote, onSave = null, saving = null, renderSave = null, onCopy = null, claude = null, onClaudeOpen = null, onClaudeClose = null, claudeReturn = null }) {
   const [openOut, setOpenOut] = useState(null);
   const outRefs = useRef({});
 
@@ -128,6 +167,7 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
         )}
         <p className="tagent__hint">NEURO works on this as far as it safely can — drafts, plans, research — and asks you only when it must. It sends, books and changes nothing without your confirmation.</p>
         {error && <p className="tagent__err" role="alert">{error}</p>}
+        {claudeReturn && <ClaudeReturn {...claudeReturn} onOpenNote={onOpenNote} />}
       </div>
     );
   }
@@ -255,6 +295,8 @@ export function TaskAgentView({ run, workspace = null, budget = null, busy, erro
         </div>
       )}
 
+      {claudeReturn && <ClaudeReturn {...claudeReturn} onOpenNote={onOpenNote} />}
+
       {/* The trace — closed by default; the full record stays for audit. */}
       <details className="tagent__fold tagent__trace" data-tagent-trace>
         <summary>Activity and evidence · {ws.trace.summary}</summary>
@@ -301,9 +343,11 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
   const [saving, setSaving] = useState(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [claude, setClaude] = useState({ preview: null, busy: false, error: null, result: null });
+  const [claudeResults, setClaudeResults] = useState([]);
+  const [ret, setRet] = useState({ busy: false, error: null, done: null });
   const timer = useRef(null);
 
-  const absorb = (body) => { if (body && 'run' in body) { setRun(body.run); setWorkspace(body.workspace || null); } if (body && body.budget) setBudget(body.budget); };
+  const absorb = (body) => { if (body && 'run' in body) { setRun(body.run); setWorkspace(body.workspace || null); } if (body && body.budget) setBudget(body.budget); if (body && Array.isArray(body.claudeResults)) setClaudeResults(body.claudeResults); };
 
   const load = useCallback(async () => {
     const r = await call(`/api/task-agent/tasks/${enc(taskId)}`);
@@ -359,9 +403,24 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
     }
   };
 
+  const returnClaude = async (markdown) => {
+    setRet({ busy: true, error: null, done: null });
+    try {
+      const r = await call(`/api/task-agent/tasks/${enc(taskId)}/claude-result`, { method: 'POST', body: { markdown } });
+      if (r.status === 200 && r.body && r.body.ok) {
+        setRet({ busy: false, error: null, done: r.body.already ? `NEURO already had this — nothing added. It is in ${r.body.notePath}.` : `Saved into ${r.body.notePath}.` });
+        await load();
+        return true;
+      }
+      setRet({ busy: false, error: (r.body && r.body.error) || `Not saved (${r.status}).`, done: null });
+    } catch (e) { setRet({ busy: false, error: e.message || 'Request failed.', done: null }); }
+    return false;
+  };
+
   return (
     <TaskAgentView
       run={run}
+      claudeReturn={{ results: claudeResults, onReturn: returnClaude, ...ret }}
       workspace={workspace}
       budget={budget}
       busy={busy}

@@ -167,3 +167,19 @@ test('blocked says why in the status line; the budget line is the server’s wor
   assert.match(h, /Nothing says what &quot;the thing&quot; is\./);
   assert.match(h, /not budget-blocked by the gate/);
 });
+
+test('Claude’s returned work: shown with where it was saved and an Open link; the paste box is folded behind a button', () => {
+  const results = [{ id: 'c1', kind: 'claude', title: 'From Claude', markdown: '# Rota plan\n\nWeek 47 covered by early/late split.', at: '2026-10-31T14:05:00.000Z', by: 'machine:mcp-local', notePath: 'Projects/Working/Plan the rota (draft).md' }];
+  const h = view(base(), { claudeReturn: { results, onReturn: noop } });
+  assert.match(h, /data-tagent-claude-return/);
+  assert.match(h, /From Claude/);
+  assert.match(h, /Week 47 covered by early\/late split/);
+  assert.match(h, /Saved to Projects\/Working\/Plan the rota \(draft\)\.md/);
+  assert.match(h, />Open</);
+  assert.match(h, /Paste Claude’s answer…/, 'the paste box is behind a button');
+  assert.doesNotMatch(h, /data-tagent-claude-paste/, 'and closed until pressed');
+  const idle = view(null, { claudeReturn: { results, onReturn: noop } });
+  assert.match(idle, /Week 47 covered/, 'shown on a task with no Do this run too');
+  const noPaste = view(base(), { claudeReturn: { results, onReturn: null } });
+  assert.doesNotMatch(noPaste, /Paste Claude’s answer/, 'no paste box without a sender');
+});
