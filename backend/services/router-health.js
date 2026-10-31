@@ -337,14 +337,35 @@ function samples() {
 const ALERT_LEVEL = { degrading: 'building', wedged: 'down', unreachable: 'down' };
 const ALERT_LEVELS = ['building', 'down'];
 
-/** The push key for one level of one episode. PURE. */
-function alertKey(startedAt, level) {
-  return `router:${startedAt}:${level}`;
+// A router that stays DOWN is re-announced every REMIND_HOURS (31 Oct 2026).
+// One push per episode let the 30 Oct wedge go quiet for 29 hours after its
+// 13:30 alert, while Isaac read "Out" upstairs. Only `down` reminds — a router
+// merely building towards a wedge is not worth a second interruption.
+const REMIND_HOURS = Math.max(1, Number(process.env.ROUTER_REMIND_HOURS) || 4);
+const REMIND_MS = REMIND_HOURS * 3600 * 1000;
+
+/** The push key for one level (and reminder round) of one episode. PURE. */
+function alertKey(startedAt, level, round = 0) {
+  return round > 0 ? `router:${startedAt}:${level}:r${round}` : `router:${startedAt}:${level}`;
 }
 
-/** Every key an episode could have pushed under. PURE. */
-function episodeAlertKeys(startedAt) {
-  return startedAt ? ALERT_LEVELS.map((l) => alertKey(startedAt, l)) : [];
+/** Which reminder round an episode is in at `now`. 0 = the first alert. PURE. */
+function reminderRound(startedAt, now = new Date()) {
+  const t = Date.parse(startedAt);
+  if (!Number.isFinite(t)) return 0;
+  return Math.max(0, Math.floor((now.getTime() - t) / REMIND_MS));
+}
+
+/**
+ * Every key an episode could have pushed under up to `now` — both levels plus
+ * each `down` reminder round, so recovery closes all of them. PURE.
+ */
+function episodeAlertKeys(startedAt, now = new Date()) {
+  if (!startedAt) return [];
+  const keys = ALERT_LEVELS.map((l) => alertKey(startedAt, l));
+  const rounds = reminderRound(startedAt, now);
+  for (let r = 1; r <= rounds; r++) keys.push(alertKey(startedAt, 'down', r));
+  return keys;
 }
 
 // The ref every router alert used before 15 Oct 2026, when all of them shared
@@ -391,7 +412,8 @@ function episode(state, now = new Date()) {
     startedAt = now.toISOString();
     save(startedAt);
   }
-  return { key: alertKey(startedAt, level), level, startedAt };
+  const round = level === 'down' ? reminderRound(startedAt, now) : 0;
+  return { key: alertKey(startedAt, level, round), level, startedAt, round };
 }
 
 function current(now = new Date()) {
@@ -400,7 +422,7 @@ function current(now = new Date()) {
 
 module.exports = {
   assess, sustainedD, headline,
-  record, samples, current, episode, alertKey, episodeAlertKeys,
+  record, samples, current, episode, alertKey, episodeAlertKeys, reminderRound, REMIND_HOURS,
   LEGACY_ALERT_REF, ALERT_LEVEL,
   STATE_KEY, MAX_SAMPLES,
   LOAD_WARN, TASKS_WARN, D_SUSTAINED, D_SAMPLES_REQUIRED, NVRAM_LOW, WATCHER_STALE_MIN,

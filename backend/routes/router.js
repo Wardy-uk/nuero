@@ -27,17 +27,36 @@ const routerHealth = require('../services/router-health');
  * single shared record every alert used before 15 Oct 2026 — the one that
  * silenced the 12-14 Oct wedge. Never throws: recovery must not fail a sample.
  */
-function closeAlerts(startedAt) {
+function closeAlerts(startedAt, { except = null, resolution = 'gone', note = 'router recovered' } = {}) {
   try {
     const db = require('../db/database');
     const lifecycle = require('../services/attention-lifecycle');
     const refs = [...routerHealth.episodeAlertKeys(startedAt), routerHealth.LEGACY_ALERT_REF];
     for (const ref of refs) {
+      if (ref === except) continue;
       const row = db.getOpenAttentionRecord(lifecycle.dedupeKeyForPush('router_health', ref));
-      if (row) lifecycle.act(row.id, 'resolve', { resolution: 'gone', note: 'router recovered' });
+      if (row) lifecycle.act(row.id, 'resolve', { resolution, note });
     }
   } catch (e) {
     console.warn('[Router] could not close alerts:', e.message);
+  }
+}
+
+/**
+ * Has Nick already answered this episode — acknowledged or deferred one of its
+ * alerts? Then a reminder would be nagging about something he has said he has
+ * seen. Unreadable answers "no": a missed reminder is the failure being fixed.
+ */
+function answered(startedAt) {
+  try {
+    const db = require('../db/database');
+    const lifecycle = require('../services/attention-lifecycle');
+    return routerHealth.episodeAlertKeys(startedAt).some((ref) => {
+      const row = db.getOpenAttentionRecord(lifecycle.dedupeKeyForPush('router_health', ref));
+      return row && (row.state === 'acknowledged' || row.state === 'deferred');
+    });
+  } catch {
+    return false;
   }
 }
 
@@ -54,12 +73,23 @@ router.post('/sample', (req, res) => {
     try {
       const ep = routerHealth.episode(assessment.state);
       if (ep && ep.key) {
-        const line = routerHealth.headline(assessment);
+        let line = routerHealth.headline(assessment);
+        // A reminder round: say how long, close the earlier round's record so
+        // Controls shows one router alert, and stay quiet if Nick has answered.
+        if (line && ep.round > 0) {
+          if (answered(ep.startedAt)) line = null;
+          else {
+            closeAlerts(ep.startedAt, { except: ep.key, resolution: 'superseded', note: 'reminder round' });
+            const hours = Math.round((Date.now() - Date.parse(ep.startedAt)) / 3600000);
+            line = `Still down after ${hours}h — ${line}`;
+          }
+        }
         if (line) {
           // ⚠ SENT ON EVERY UNHEALTHY SAMPLE, deliberately. The key names the
-          // episode and its level, and the attention lifecycle lets the first
-          // one through and refuses the rest — so one push per wedge, plus one
-          // more if it escalates from building to down. A push held by quiet
+          // episode, its level and (for `down`) its 4-hour reminder round, and
+          // the attention lifecycle lets the first of each through and refuses
+          // the rest — so one push per wedge, one more if it escalates to down,
+          // and one every 4 hours while it stays down. A push held by quiet
           // hours or the hourly cap is retried on the next sample instead of
           // being lost to a latch.
           //
@@ -73,7 +103,7 @@ router.post('/sample', (req, res) => {
           announced = true;
         }
       } else if (ep && 'ended' in ep) {
-        closeAlerts(ep.ended);
+        closeAlerts(ep.ended);  // every round up to now
       }
     } catch (e) {
       console.warn('[Router] could not raise alert:', e.message);

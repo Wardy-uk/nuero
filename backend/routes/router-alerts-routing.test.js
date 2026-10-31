@@ -163,3 +163,40 @@ test('a watchdog recovery closes the alert it recovers from', async () => {
   await webpush.sendToAll('✅ Back: Home router', 'Reporting again.', { type: 'sense_alert', key: 'sense:router:resolved' });
   assert.equal(lastPush('sense_alert').outcome, PASSED, 'the second recovery is announced');
 });
+
+// 31 Oct 2026: the 30 Oct wedge pushed at 13:30 and then said nothing for 29
+// hours. A router that stays DOWN is re-announced every 4 hours — once per
+// round, one open record at a time, and never once Nick has acknowledged it.
+test('a router still down is re-announced every 4 hours, until Nick answers', async () => {
+  resetGovernor();
+  await post(sample());
+  await post(sample({ shellOk: false }));
+  assert.equal(lastPush('router_health').outcome, PASSED);
+
+  const backdate = (hours) => {
+    const s = JSON.parse(db.getState('router_health'));
+    s.episodeStartedAt = new Date(Date.now() - hours * 3600000).toISOString();
+    db.setState('router_health', JSON.stringify(s));
+  };
+  const pushes = () => db.getPushLog(500).filter((r) => r.type === 'router_health' && r.outcome === PASSED).length;
+
+  backdate(5);
+  let n = pushes();
+  const r = await post(sample({ shellOk: false }));
+  assert.equal(r.announced, true);
+  assert.equal(pushes(), n + 1, 'four hours on, still down: a reminder');
+  assert.equal(openRouterRecords().length, 1, 'the reminder supersedes the first record');
+
+  await post(sample({ shellOk: false }));
+  assert.equal(lastPush('router_health').reason, 'already notified, nothing changed', 'once per round');
+
+  // Nick acknowledges it: the next round stays quiet.
+  lifecycle.act(openRouterRecords()[0].id, 'acknowledge');
+  backdate(9);
+  n = pushes();
+  await post(sample({ shellOk: false }));
+  assert.equal(pushes(), n, 'acknowledged: no further reminders this episode');
+
+  await post(sample());
+  assert.equal(openRouterRecords().length, 0, 'recovery closes every round');
+});
