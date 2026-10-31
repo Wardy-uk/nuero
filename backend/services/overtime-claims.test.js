@@ -68,7 +68,7 @@ test('a NOVA without the overtime bridge is named as such, not as "Not authentic
   const original = nova.call;
   try {
     nova.call = async () => { const e = new Error('Not authenticated'); e.status = 401; throw e; };
-    assert.match((await ot.claims({})).error, /no overtime bridge yet/);
+    assert.match((await ot.claims({})).error, /does not have this overtime bridge route yet/);
     nova.call = async () => { const e = new Error('claim not found'); e.status = 404; throw e; };
     assert.strictEqual((await ot.check(9)).error, 'claim not found', 'a real 404 keeps its own words');
   } finally { nova.call = original; }
