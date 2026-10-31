@@ -48,7 +48,23 @@ def minutes_since(iso):
     return (datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() / 60
 
 
+def stamp():
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
 def main():
+    # A FAILED SETUP is the other way the router goes dark (31 Oct 2026): HA
+    # restarted at 14:40, asuswrt came up `setup_error` and stayed there, every
+    # router tracker read `unavailable`, and the rule below returned early on it
+    # for hours. Since 31 Oct Isaac is tracked by the router ALONE (his Life360
+    # is intermittent), so a dead integration makes him unknown in the house.
+    # Reloading revived it at once. Any loaded state is left alone.
+    entries = [e for e in call("/api/config/config_entries/entry") if e.get("domain") == "asuswrt"]
+    for e in entries:
+        if e.get("state") in ("setup_error", "setup_retry", "not_loaded"):
+            call("/api/config/config_entries/entry/%s/reload" % e["entry_id"], method="POST")
+            print("%s reloaded asuswrt %s: integration was %s" % (stamp(), e["entry_id"], e.get("state")), flush=True)
+            return
     router = call("/api/states/" + ROUTER_TRACKER)
     if router.get("state") != "home":
         return
@@ -60,11 +76,10 @@ def main():
         return
     if min(minutes_since(g["last_changed"]) for g in away) < STALE_MINUTES:
         return
-    entries = [e for e in call("/api/config/config_entries/entry") if e.get("domain") == "asuswrt"]
     for e in entries:
         call("/api/config/config_entries/entry/%s/reload" % e["entry_id"], method="POST")
         print("%s reloaded asuswrt %s: router said home, GPS said %s" % (
-            datetime.datetime.now().isoformat(timespec="seconds"), e["entry_id"],
+            stamp(), e["entry_id"],
             ", ".join(g["state"] for g in away)), flush=True)
 
 
