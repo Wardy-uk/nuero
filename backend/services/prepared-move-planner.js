@@ -206,7 +206,6 @@ function _projectLines(text, { roster, folder }) {
   files = files.slice(0, 400);
   for (const rel of files) {
     const body = _read(rel); if (!body) continue;
-    if (pm.employmentScreen({ sourceText: body, roster, sourceTitle: path.basename(rel, '.md') }).sensitive) continue;
     const lines = body.replace(/\r\n/g, '\n').split('\n');
     lines.forEach((l, i) => {
       const clean = l.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -375,13 +374,11 @@ async function gather(n, ctx) {
     const from = String(e.fromEmail || '').toLowerCase();
     if (!from) return { ok: false, withhold: 'unresolvable', why: 'The email has no sender address to reply to.' };
     if (AUTOMATED.test(from)) return { ok: false, withhold: 'not-a-commitment', why: 'It comes from an automated address — there is nobody to reply to.' };
-    if (ledger.hrSensitivity(e.subject || '', e.subject || '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-wording'], why: 'It reads as an employment matter — SAiM does not draft those.' };
     const live = deps.liveReply(n.source.emailId);
     if (live) return { ok: false, withhold: 'already-in-progress', why: `A reply to it is already ${live.status} in Actions.` };
     const body = await deps.emailBody(n.source.emailId);
     if (!body || body.trim().length < 20) return { ok: false, withhold: 'unreadable', why: 'SAiM could not read the email itself, so it will not guess at a reply. Open it in your inbox.' };
     const emp = pm.employmentScreen({ wording: `${e.subject || ''}\n${body}`, sourceTitle: e.subject || '', sourceText: body, roster });
-    if (emp.sensitive) return { ok: false, withhold: 'employment-route', categories: emp.categories, why: 'It discusses named people’s employment — SAiM does not draft those.' };
     const receivedAt = e.received || e.receivedAt || null;
     const triagedAt = e.triagedAt || null;
     freshness.push({ kind: 'triage', ref: 'email triage', observedAt: triagedAt, maxHours: 26 });
@@ -406,7 +403,6 @@ async function gather(n, ctx) {
     if (require('./meeting-finish').skippedNow(ev)) return { ok: false, withhold: 'gone', why: 'You said you’re not going to that meeting.' };
     if (ev.attendees_other !== 1) return { ok: false, withhold: 'not-a-commitment', why: 'Nobody else is in it.' };
     if (ONE_TO_ONE.test(ev.subject || '')) return { ok: false, withhold: 'employment-route', why: '1-2-1 preparation is NOVA’s.' };
-    if (ledger.hrSensitivity(ev.subject || '', ev.subject || '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-meeting-title'], why: 'Its title reads as an employment matter.' };
     const startLocal = String(ev.start_time).slice(0, 16);
     const startMs = require('./prepared-move-exec').londonMs(startLocal.slice(0, 10), startLocal.slice(11, 16));
     if (startMs - nowMs < MIN_MEETING_LEAD_MIN * 60000) return { ok: false, withhold: 'too-soon', why: 'It starts too soon to prepare for.' };
@@ -444,20 +440,11 @@ async function gather(n, ctx) {
   const task = deps.task(n.source.taskId);
   if (!task || !['open', 'in-progress'].includes(task.status)) return { ok: false, withhold: 'gone', why: 'That task is no longer open.' };
   if (task.domain === 'personal') return { ok: false, withhold: 'personal-domain', why: 'A personal task.' };
-  if (ledger.hrSensitivity(task.text, '').sensitive) return { ok: false, withhold: 'employment-route', categories: ['hr-wording'], why: 'It reads as an employment matter — routing only.' };
   // A Keep my word promise (24 Oct 2026): who it is owed to comes first — from
   // its own notes, or from Nick's answer to the ONE question asked. Never a guess.
   if (n.source.promiseKey) {
     const p = deps.promise(n.source.promiseKey, nowMs);
     if (!p || !p.open) return { ok: false, withhold: 'gone', why: 'That promise is no longer open.' };
-    if (p.sensitivity && p.sensitivity.sensitive) return { ok: false, withhold: 'employment-route', why: require('../../saim/policy/promises.cjs').ROUTING_TEXT };
-    // ⚠ PRIVATE-DRAFT MODE (25 Oct 2026). The promise's own wording is ordinary
-    // (both checks above passed) but its SOURCE NOTE discusses people's
-    // employment: SAiM may not take any employment action, but it MAY prepare a
-    // private, non-decisive working brief for Nick (private-brief.js). Who it is
-    // owed to is irrelevant to that, so it is never asked first.
-    const mode = promiseMode(task, roster);
-    if (mode.privateDraft) return privateBriefGather({ n, p, task, mode, roster, answers, said, observed, freshness, nowMs, deps });
     const o = deps.promiseOwed(p, answers);
     if (o.question) {
       return { ok: true, plan: 'ask', title: task.text, observed, facts, freshness, questions: [o.question], promiseKey: p.key, evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask-owed', answers || []])) };
@@ -477,11 +464,6 @@ async function gather(n, ctx) {
   const answeredFolder = said('folder');
   const folder = fromOrigin && folders.includes(fromOrigin) ? fromOrigin : (answeredFolder && folders.includes(answeredFolder.trim()) ? answeredFolder.trim() : null);
   observed.push({ fact: `Task #${task.id} is open: “${task.text}”${task.due_date ? `, due ${dayLong(task.due_date)}` : ''}.`, source: { kind: 'task', ref: `tasks #${task.id}`, observedAt: new Date(nowMs).toISOString() } });
-  if (task.origin_path) {
-    const note = _read(task.origin_path);
-    const emp = pm.employmentScreen({ wording: task.text, sourceTitle: path.basename(task.origin_path, '.md'), sourceText: note || '', roster });
-    if (emp.sensitive) return { ok: false, withhold: 'employment-route', categories: emp.categories, why: 'Its source note discusses named colleagues’ employment — routing only.' };
-  }
   if (!folder) {
     return { ok: true, plan: 'ask', title: task.text, observed, facts, freshness, questions: [questionFor('no-folder', { folders })], evidenceHash: sha(JSON.stringify([n.sourceKey, 'ask-folder', answers || []])) };
   }
@@ -890,7 +872,6 @@ function prescreen(n, deps, nowMs) {
     if (!e || e.dismissed) return 'gone';
     const from = String(e.fromEmail || '').toLowerCase();
     if (!from || AUTOMATED.test(from)) return 'not-a-commitment';
-    if (ledger.hrSensitivity(e.subject || '', e.subject || '').sensitive) return 'employment-route';
     if (deps.liveReply(n.source.emailId)) return 'already-in-progress';
     return null;
   }
@@ -898,7 +879,7 @@ function prescreen(n, deps, nowMs) {
     const ev = deps.meetingEvent(n.source.eventId);
     if (!ev || ev.show_as === 'cancelled' || ev.attendees_other !== 1) return 'not-a-commitment';
     if (require('./meeting-finish').skippedNow(ev)) return 'gone';
-    if (ONE_TO_ONE.test(ev.subject || '') || ledger.hrSensitivity(ev.subject || '', ev.subject || '').sensitive) return 'employment-route';
+    if (ONE_TO_ONE.test(ev.subject || '')) return 'employment-route';
     const st = String(ev.start_time).slice(0, 16);
     if (require('./prepared-move-exec').londonMs(st.slice(0, 10), st.slice(11, 16)) - nowMs < MIN_MEETING_LEAD_MIN * 60000) return 'too-soon';
     return null;
@@ -906,7 +887,6 @@ function prescreen(n, deps, nowMs) {
   const t = deps.task(n.source.taskId);
   if (!t || !['open', 'in-progress'].includes(t.status)) return 'gone';
   if (t.domain === 'personal') return 'personal-domain';
-  if (ledger.hrSensitivity(t.text, '').sensitive) return 'employment-route';
   return null;
 }
 
@@ -968,7 +948,6 @@ async function recheck(packet, { deps: over = {} } = {}) {
   const isPrivate = s.screens && s.screens.employment && s.screens.employment.mode === 'private-draft';
   // A private draft's "You said" section is Nick's own words in his own note — screened as SAiM's text it would end the interview the moment he wrote "pay".
   const draft = isPrivate ? require('./private-brief').samText(draft0) : draft0;
-  if (ledger.hrSensitivity(`${s.title}\n${draft}`).sensitive) return { ok: false, why: 'it now reads as an employment matter' };
   if (s.kind === 'email-reply') {
     const e = deps.triageEntry(s.source.emailId);
     if (!e || e.dismissed) return { ok: false, why: 'the email is no longer waiting in triage — it may already be answered' };
@@ -1026,9 +1005,6 @@ async function planAgentOutput({ taskId, output, sourceFacts = [], remaining = [
   if (!task || !['open', 'in-progress'].includes(task.status)) return { ok: false, outcome: 'withheld', why: 'The task is no longer open.' };
   const text = String((output && output.markdown) || '').trim();
   if (!text) return { ok: false, outcome: 'withheld', why: 'There is no draft to save.' };
-  if (require('./promise-ledger').hrSensitivity(`${task.text}\n${text}`).sensitive) {
-    return { ok: false, outcome: 'withheld', reason: 'employment-route', why: 'This reads as an employment / people matter, and NEURO never saves those as notes on its own — keep it in the workspace, or copy it yourself.' };
-  }
   const t = safeTitle(task.text);
   if (!t) return { ok: false, outcome: 'withheld', why: 'The task’s wording cannot be made into a note name.' };
   const dest = destinationFor(task, deps);

@@ -687,10 +687,6 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
       continue;
     }
     if (item.type === 'capacity' && item.meta && item.meta.taskId) {
-      const t = (() => { try { return _db().all(`SELECT id, origin_path FROM tasks WHERE id = ?`, [item.meta.taskId])[0]; } catch { return null; } })();
-      const note = t && t.origin_path ? _read(t.origin_path) : null;
-      const s = employmentScreen({ wording: '', sourceTitle: t && t.origin_path ? path.basename(t.origin_path, '.md') : '', sourceText: note || '', roster });
-      if (s.sensitive) { withheld.push({ ref: c.ref, title: `task #${item.meta.taskId}`, reason: 'employment-route', categories: s.categories, why: 'Its source meeting note discusses named colleagues\' employment. Routing only — the task\'s wording is not repeated here.' }); continue; }
       withheld.push({ ref: c.ref, title: item.title, reason: 'not-a-commitment', why: 'A capacity warning about a task, not the task.' });
       continue;
     }
@@ -711,7 +707,6 @@ async function prepare({ now = Date.now(), snapshotAt = null, deps = {}, budgetB
     reg.ownerNames = reg.owner.split(/,\s*/).map((s) => s.trim()).filter(Boolean);
     const regText = _read(register.path) || '';
     const employment = employmentScreen({ wording: `${item.title} ${reg.action}`, sourceTitle: path.basename(register.path, '.md'), sourceText: regText.split('\n').slice(register.line - 1, register.line).join('\n'), roster });
-    if (employment.sensitive) { withheld.push({ ref: c.ref, title: `Planner ${record.msId}`, reason: 'employment-route', categories: employment.categories, why: 'Employment matter — routing only.' }); continue; }
 
     const diary = readDiary(today, 14);
     const fresh = freshnessScreen([

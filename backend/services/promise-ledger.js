@@ -401,7 +401,13 @@ function read({ now = Date.now() } = {}) {
   return { contract: CONTRACT, readAt: new Date(nowMs).toISOString(), promises, gaps };
 }
 
-function _sensitivity(t, note, title, roster, safeOverride) {
+// Nick, 31 Oct 2026: the HR filters are removed — no promise is held back,
+// withheld or routed-only because of its wording or its source note.
+function _sensitivity() {
+  return { sensitive: false };
+}
+
+function _sensitivityRetired(t, note, title, roster, safeOverride) {
   const own = hrSensitivity(t.text, title);
   if (own.sensitive) return own;
   const ctx = contextSensitivity(note, t.text, title, roster);

@@ -211,7 +211,13 @@ function _audit(event, run, extra = {}) {
  *    deliverable). Only this changes what NEURO says about decisions. A task merely RAISED in
  *    an employee-cases meeting ("document the CI/JIRA toggle process") is not one.
  */
-function sensitivityOf(task, context) {
+// Nick, 31 Oct 2026: the HR filters are removed — no task is a 'people matter'
+// that refuses email, saving or excerpts.
+function sensitivityOf() {
+  return { sensitive: false, people: false, why: [] };
+}
+
+function _sensitivityOfRetired(task, context) {
   const why = [];
   try {
     const hr = require('./promise-ledger').hrSensitivity(task.text || '');

@@ -99,7 +99,6 @@ function writesFor(packet, option) {
   const s = packet.selected;
   if (!s) return refuse('there is no prepared move in this packet');
   const sc = s.screens || {};
-  if (!sc.employment || sc.employment.sensitive) return refuse(`employment matter (${((sc.employment || {}).categories || ['unscreened']).join(', ')}) — routing only, never executed`);
   if (sc.freshnessOk !== true) return refuse('a source this move rests on was stale when it was prepared');
   if (sc.recordUnique !== true || !s.record || !s.record.msId) return refuse('the move is not tied to exactly one record');
   const d = s.decision || {};
@@ -117,7 +116,6 @@ function writesFor(packet, option) {
   if (!PROJECT_FOLDERS.includes(path.posix.dirname(p))) return refuse(`the note path is not in a project folder a prepared move may save into (${PROJECT_FOLDERS.join(', ')})`);
   const draft = ((s.preparation || []).find((x) => x.draft) || {}).draft;
   if (!draft) return refuse('there is no prepared draft to save');
-  if (require('./promise-ledger').hrSensitivity(`${draft}\n${cal.title}`).sensitive) return refuse('the draft reads as an employment matter — routing only, never executed');
 
   const moveKey = `saim-move:planner:${s.record.msId}@${(d.forum && d.forum.start.slice(0, 10)) || slot.date}`;
   const content = ['---', 'type: draft', 'created-by: SAiM (a prepared move Nick confirmed)', `saim-move: "${moveKey}"`, '---', '', draft, ''].join('\n');
@@ -196,7 +194,6 @@ function writesForV2(packet, option) {
   const sc = s.screens || {};
   const draft0 = ((s.preparation || []).find((x) => x.draft) || {}).draft;
   const privateDraft = privateDraftAllowed(s, draft0);
-  if (!sc.employment || (sc.employment.sensitive && !privateDraft)) return refuse('employment matter — routing only, never executed');
   if (sc.freshnessOk !== true) return refuse('a source this move rests on was stale when it was prepared');
   if (sc.recordUnique !== true) return refuse('the move is not tied to exactly one record');
   const planner = require('./prepared-move-planner');
@@ -218,9 +215,6 @@ function writesForV2(packet, option) {
   if (!writes.length || new Set(kinds).size !== kinds.length || kinds.some((k) => !['vault.note', 'governed.reply', 'calendar.solo'].includes(k))) return refuse('the move must be at most one note, one reply draft and one solo block');
   const draft = ((s.preparation || []).find((x) => x.draft) || {}).draft;
   if (!draft) return refuse('there is no prepared draft');
-  // A private draft is screened over SAiM's own words; "You said" is Nick's, in his own note.
-  const screened = privateDraft ? require('./private-brief').samText(draft) : draft;
-  if (require('./promise-ledger').hrSensitivity(`${screened}\n${s.title}`).sensitive) return refuse('the draft reads as an employment matter — routing only, never executed');
 
   const moveKey = s.moveKey;
   let destination = null;
@@ -353,8 +347,6 @@ function defaultChecks({ adapters, now = Date.now() } = {}) {
       const res = pm.resolveTodoCard({ title: s.title });
       if (!res.unique) return { ok: false, why: res.hits.length ? 'the commitment is now ambiguous — more than one record carries its words' : 'the commitment can no longer be found — it may be done or renamed' };
       if (res.unique.msId !== s.record.msId) return { ok: false, why: 'the commitment now points at a different record' };
-      const draft = ((s.preparation || []).find((x) => x.draft) || {}).draft || '';
-      if (pm.employmentScreen({ wording: `${s.title}\n${draft}` }).sensitive) return { ok: false, why: 'it now reads as an employment matter' };
       return { ok: true };
     },
     async noteState(rel, contentSha) {
