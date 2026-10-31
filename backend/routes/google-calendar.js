@@ -30,6 +30,13 @@ router.post('/target', (req, res) => {
   res.status(r.ok ? 200 : 400).json({ ...r, status: gcal.status() });
 });
 
+// POST /api/google-calendar/calendars — the read-only Google calendars shown beside the family one { calendarIds: [...] }
+router.post('/calendars', (req, res) => {
+  const { calendarIds } = req.body || {};
+  const r = gcal.setExtraCalendars(calendarIds);
+  res.status(r.ok ? 200 : 400).json({ ...r, status: gcal.status() });
+});
+
 // POST /api/google-calendar/connect — start Google sign-in: returns the address to open
 router.post('/connect', (req, res) => {
   const r = gcal.authUrl();

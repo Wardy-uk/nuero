@@ -32,6 +32,11 @@
  *   or partial read keeps the last good copy and says why.
  * ⚠ Only events in the target calendar that NEURO has read are editable — the
  *   wall can never reach another calendar through here.
+ * ⚠ READ-ONLY extra calendars (31 Oct 2026, Nick: "add my personal calendar
+ *   as well" — ward.nickj@gmail.com, fine on the wall). Read on the same
+ *   5-minute sync, each with its own result: one calendar failing never blanks
+ *   another, and a stale one stops standing in for the phone's copy on its own.
+ *   Their rows carry `editable: false`.
  *
  * Storage: `google_calendar_events` (one row per occurrence; recurring events
  * are read as single occurrences and an edit/delete touches ONLY that one).
@@ -49,6 +54,8 @@ const API = 'https://www.googleapis.com/calendar/v3';
 const REDIRECT_URI = 'http://127.0.0.1:8765';
 const TZ = process.env.NEURO_TIMEZONE || 'Europe/London';
 const DEFAULT_TARGET = 'ward.calander@gmail.com';
+const DEFAULT_EXTRA = ['ward.nickj@gmail.com'];
+const FRESH_MS = 6 * 3600 * 1000;
 const PENDING_MS = 30 * 60 * 1000;
 const BACK_DAYS = 7;
 const AHEAD_DAYS = 60;
@@ -61,6 +68,7 @@ const K = {
   token: 'google_cal_token',
   pending: 'google_cal_pending',
   target: 'google_cal_target',
+  extra: 'google_cal_extra',
   sync: 'google_cal_sync',
 };
 
@@ -132,6 +140,27 @@ function disconnect() {
   return { ok: true };
 }
 
+/** Read-only calendars beside the target. GOOGLE_CALENDAR_EXTRA (comma list) wins. */
+function extraCalendars() {
+  const env = process.env.GOOGLE_CALENDAR_EXTRA;
+  const list = env != null ? env.split(',') : (_json(K.extra) || DEFAULT_EXTRA);
+  const t = target();
+  return [...new Set(list.map((x) => String(x || '').trim()).filter((x) => x && x !== t))];
+}
+
+/** Every calendar the sync reads: the writable target first. */
+function readCalendars() { return [target(), ...extraCalendars()]; }
+
+/** Set the read-only calendars. Refused (not trimmed) when any id is unusable. */
+function setExtraCalendars(ids) {
+  if (!Array.isArray(ids)) return { ok: false, error: 'calendarIds must be a list' };
+  const clean = ids.map((x) => String(x || '').trim());
+  if (clean.some((x) => !x || x.length > 200 || /\s/.test(x))) return { ok: false, error: 'each calendar id must be a single word like name@gmail.com' };
+  if (clean.length > 10) return { ok: false, error: 'at most 10 extra calendars' };
+  _put(K.extra, [...new Set(clean)]);
+  return { ok: true, calendars: extraCalendars() };
+}
+
 /** What Settings shows. Never a secret or a token. */
 function status() {
   const c = client();
@@ -145,6 +174,7 @@ function status() {
     connectedAt: t ? t.connectedAt || null : null,
     pending: !!_pendingLive(),
     target: target(),
+    extra: extraCalendars(),
     lastSync: s,
   };
 }
@@ -258,7 +288,7 @@ async function _api(method, path, { query = null, body = null } = {}) {
   return { status: res.status, json };
 }
 
-const _calPath = () => `/calendars/${encodeURIComponent(target())}`;
+const _calPath = (cal = target()) => `/calendars/${encodeURIComponent(cal)}`;
 
 // ── Shapes (PURE) ────────────────────────────────────────────────────────────
 
@@ -390,7 +420,36 @@ async function syncNow(now = Date.now()) {
   const base = new Date(now);
   const from = new Date(base.getFullYear(), base.getMonth(), base.getDate() - BACK_DAYS);
   const to = new Date(base.getFullYear(), base.getMonth(), base.getDate() + AHEAD_DAYS);
-  const cal = target();
+  const fromKey = `${_localKey(from)}T00:00:00`;
+  const toKey = `${_localKey(to)}T23:59:59`;
+  const at = new Date(now).toISOString();
+  const prev = _json(K.sync) || {};
+  const prevCals = prev.calendars || {};
+  const calendars = {};
+  for (const cal of readCalendars()) {
+    const r = await _readCalendar(cal, from, to);
+    if (!r.ok) {
+      // The target's last good read also lives at the top level (older records).
+      const lastGoodAt = (prevCals[cal] || {}).lastGoodAt || (cal === target() ? prev.lastGoodAt || null : null);
+      calendars[cal] = { ok: false, error: r.error, lastGoodAt };
+      continue;
+    }
+    db.batchSaves(() => {
+      db.run('DELETE FROM google_calendar_events WHERE calendar_id = ? AND start_time >= ? AND start_time <= ?', [cal, fromKey, toKey]);
+      for (const row of r.rows) _saveRow(row);
+    });
+    calendars[cal] = { ok: true, count: r.rows.length, lastGoodAt: at };
+  }
+  const t = calendars[target()];
+  const failed = Object.entries(calendars).filter(([, c]) => !c.ok);
+  const error = failed.length ? failed.map(([cal, c]) => `${cal}: ${c.error}`).join('; ') : null;
+  const count = Object.values(calendars).reduce((n, c) => n + (c.count || 0), 0);
+  _put(K.sync, { at, ok: !failed.length, count, error, lastGoodAt: t.lastGoodAt, calendars });
+  return failed.length ? { ok: false, error, count, calendars } : { ok: true, count, calendars };
+}
+
+/** Read one calendar's window, every page, or say why not. */
+async function _readCalendar(cal, from, to) {
   const rows = [];
   let pageToken = null;
   try {
@@ -399,7 +458,7 @@ async function syncNow(now = Date.now()) {
         timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: 'true', orderBy: 'startTime',
         timeZone: TZ, maxResults: '250', ...(pageToken ? { pageToken } : {}),
       };
-      const r = await _api('GET', `${_calPath()}/events`, { query });
+      const r = await _api('GET', `${_calPath(cal)}/events`, { query });
       if (r.status === 404) throw new Error(`Google cannot find the calendar ${cal} for this account`);
       if (r.status === 403) throw new Error(`this Google account may not read ${cal}`);
       if (r.status !== 200 || !r.json) throw new Error(`Google answered ${r.status}`);
@@ -409,37 +468,38 @@ async function syncNow(now = Date.now()) {
       if (page === MAX_PAGES - 1) throw new Error('too many pages — not every event was read');
     }
   } catch (e) {
-    const s = { at: new Date(now).toISOString(), ok: false, error: e.message, lastGoodAt: (_json(K.sync) || {}).lastGoodAt || null };
-    _put(K.sync, s);
     return { ok: false, error: e.message };
   }
-  const fromKey = `${_localKey(from)}T00:00:00`;
-  const toKey = `${_localKey(to)}T23:59:59`;
-  db.batchSaves(() => {
-    db.run('DELETE FROM google_calendar_events WHERE calendar_id = ? AND start_time >= ? AND start_time <= ?', [cal, fromKey, toKey]);
-    for (const row of rows) _saveRow(row);
+  return { ok: true, rows };
+}
+
+/** The calendars whose stored copy is recent enough to stand in for the phone's. */
+function freshCalendars(now = Date.now()) {
+  const s = _json(K.sync) || {};
+  const cals = s.calendars || (s.lastGoodAt ? { [target()]: { lastGoodAt: s.lastGoodAt } } : {});
+  return readCalendars().filter((cal) => {
+    const c = cals[cal];
+    return !!(c && c.lastGoodAt && now - Date.parse(c.lastGoodAt) < FRESH_MS);
   });
-  const at = new Date(now).toISOString();
-  _put(K.sync, { at, ok: true, count: rows.length, lastGoodAt: at });
-  return { ok: true, count: rows.length };
 }
 
 /** Stored rows in calendar_cache's shape, for the wall. Never a network call. */
-function rowsBetween(fromIso, toIso) {
+function rowsBetween(fromIso, toIso, now = Date.now()) {
   _ensureTable();
-  const cal = target();
-  return db.all('SELECT * FROM google_calendar_events WHERE calendar_id = ? AND start_time >= ? AND start_time <= ? ORDER BY start_time',
-    [cal, fromIso, toIso]).map((r) => ({
+  const cals = freshCalendars(now);
+  if (!cals.length) return [];
+  const t = target();
+  return db.all(`SELECT * FROM google_calendar_events WHERE calendar_id IN (${cals.map(() => '?').join(',')}) AND start_time >= ? AND start_time <= ? ORDER BY start_time`,
+    [...cals, fromIso, toIso]).map((r) => ({
     event_id: r.event_id, subject: r.subject, start_time: r.start_time, end_time: r.end_time, is_all_day: r.is_all_day,
-    location: r.location, show_as: r.is_all_day ? 'free' : 'busy', source: 'google', editable: true,
-    recurring: !!r.recurring, google_id: r.google_id,
+    location: r.location, show_as: r.is_all_day ? 'free' : 'busy', source: 'google', editable: r.calendar_id === t,
+    calendar: r.calendar_id, recurring: !!r.recurring, google_id: r.google_id,
   }));
 }
 
 /** Is the stored copy recent enough to stand in for the phone's copy? */
 function fresh(now = Date.now()) {
-  const s = _json(K.sync);
-  return !!(s && s.lastGoodAt && now - Date.parse(s.lastGoodAt) < 6 * 3600 * 1000);
+  return freshCalendars(now).length > 0;
 }
 
 function _held(googleId) {
@@ -576,8 +636,9 @@ async function deleteEvent(googleId, { by = 'wall' } = {}) {
 }
 
 module.exports = {
-  SCOPE, REDIRECT_URI, DEFAULT_TARGET, WRITER,
+  SCOPE, REDIRECT_URI, DEFAULT_TARGET, DEFAULT_EXTRA, WRITER,
   client, target, setClient, setTarget, disconnect, status,
+  extraCalendars, readCalendars, setExtraCalendars, freshCalendars,
   authUrl, parsePasted, finish,
   fromGoogle, validateDraft, toGoogle, newEventId,
   syncNow, rowsBetween, fresh,

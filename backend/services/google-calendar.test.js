@@ -31,7 +31,7 @@ const keyOffset = (n) => { const t = new Date(); t.setDate(t.getDate() + n); ret
 
 /** A tiny Google: events by id in one calendar. */
 function fakeGoogle() {
-  const g = { events: new Map(), calls: [], failNextPost: null, dropOnPost: false, refreshFails: false, ignorePatch: false };
+  const g = { personal: [], personalDown: false, events: new Map(), calls: [], failNextPost: null, dropOnPost: false, refreshFails: false, ignorePatch: false };
   g.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
@@ -50,6 +50,9 @@ function fakeGoogle() {
     if (init.headers && init.headers.Authorization !== 'Bearer at1' && init.headers.Authorization !== 'Bearer at2') return reply(401, {});
     const m = /\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/.exec(u.pathname);
     if (!m) return reply(404, {});
+    if (decodeURIComponent(m[1]) === 'ward.nickj@gmail.com' && !m[2] && method === 'GET') {
+      return g.personalDown ? reply(403, { error: { message: 'Forbidden' } }) : reply(200, { items: g.personal });
+    }
     if (decodeURIComponent(m[1]) !== 'ward.calander@gmail.com') return reply(404, { error: { message: 'Not Found' } });
     const id = m[2] ? decodeURIComponent(m[2]) : null;
     if (!id && method === 'GET') return reply(200, { items: [...g.events.values()].filter((e) => e.status !== 'cancelled') });
@@ -212,6 +215,43 @@ test('sign-in, sync, then the wall adds, edits and deletes — each read back fr
     assert.equal((await call('/wall', { token: wall })).json.familyCalendar.canEdit, false);
   } finally {
     server.close();
+    gcal._setFetch(null);
+  }
+});
+
+test('the personal calendar is read beside the family one, view-only, and fails on its own', async () => {
+  const g = fakeGoogle();
+  gcal._setFetch(g.fetch);
+  // The previous test ends with an expired sign-in; start this one signed in.
+  db.setState('google_cal_token', JSON.stringify({ refreshToken: 'rt1', accessToken: 'at1', expiresAt: new Date(Date.now() + 3600e3).toISOString() }));
+  try {
+    assert.deepEqual(gcal.readCalendars(), ['ward.calander@gmail.com', 'ward.nickj@gmail.com']);
+    assert.equal(gcal.setExtraCalendars(['bad id']).ok, false, 'refused, not trimmed');
+    assert.equal(gcal.setExtraCalendars('x').ok, false);
+    const day = keyOffset(3);
+    g.personal = [{ id: 'pers1abc', status: 'confirmed', summary: 'Haircut', start: { dateTime: `${day}T09:00:00+00:00` }, end: { dateTime: `${day}T09:30:00+00:00` } }];
+    const s = await gcal.syncNow();
+    assert.equal(s.ok, true, s.error);
+    assert.equal(s.calendars['ward.nickj@gmail.com'].count, 1);
+    const rows = gcal.rowsBetween(`${day}T00:00:00`, `${day}T23:59:59`);
+    const hc = rows.find((r) => r.subject === 'Haircut');
+    assert.ok(hc && hc.editable === false && hc.calendar === 'ward.nickj@gmail.com', 'personal rows are read-only');
+    // The wall's redaction never makes it editable.
+    const red = require('./vesta').redactDay([{ ...hc }]);
+    assert.ok(red.length && !red[0].editable, 'not editable on the wall');
+
+    // The personal calendar failing keeps the family one, and its own last good copy.
+    g.personalDown = true;
+    const s2 = await gcal.syncNow();
+    assert.equal(s2.ok, false);
+    assert.equal(s2.calendars['ward.calander@gmail.com'].ok, true, 'family still synced');
+    assert.ok(gcal.rowsBetween(`${day}T00:00:00`, `${day}T23:59:59`).some((r) => r.subject === 'Haircut'), 'last good personal copy kept while fresh');
+    // Stale beyond six hours → it stops standing in for the phone, family stays.
+    const later = Date.now() + 7 * 3600 * 1000;
+    assert.deepEqual(gcal.freshCalendars(later), [], 'nothing fresh 7h on');
+    gcal.setExtraCalendars([]);
+    assert.deepEqual(gcal.readCalendars(), ['ward.calander@gmail.com']);
+  } finally {
     gcal._setFetch(null);
   }
 });

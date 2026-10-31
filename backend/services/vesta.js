@@ -84,7 +84,8 @@ function redactEvent(event = {}, { domain = 'work' } = {}) {
   if (isPersonal && event.location) out.location = String(event.location).slice(0, 80);
   // The shared family calendar's events can be changed from the wall: say so,
   // with the id Google knows it by. Never on anything else.
-  if (isPersonal && String(event.source || '') === 'google' && event.google_id) {
+  // A read-only Google calendar (Nick's personal one) says `editable: false`.
+  if (isPersonal && String(event.source || '') === 'google' && event.google_id && event.editable !== false) {
     out.editable = true;
     out.calendarId = String(event.google_id);
     if (event.recurring) out.recurring = true;
