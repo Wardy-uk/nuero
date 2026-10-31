@@ -354,4 +354,6 @@ router.post('/retire-master', (req, res) => {
   }
 });
 
+// Shared with task-next-steps' "Mark the task done" step, so that completion pushes to Microsoft too.
+router.pushCompletionToMicrosoft = pushCompletionToMicrosoft;
 module.exports = router;

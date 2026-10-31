@@ -701,6 +701,11 @@ function _settleInventedQuestion(run) {
 }
 
 /** Current state, with live status of anything handed off. Writes nothing except settling a dead run. */
+// What to do with Claude's returned work (task-next-steps). Never allowed to fail the workspace.
+function _nextSteps(id) {
+  try { return require('./task-next-steps').view(id); } catch (e) { return { error: `NEURO couldn’t work out the next steps: ${e.message}`, steps: [] }; }
+}
+
 function view(taskId) {
   const id = Number(taskId);
   if (!Number.isInteger(id) || id <= 0) return { ok: false, status: 400, error: 'bad task id' };
@@ -710,7 +715,8 @@ function view(taskId) {
   run = _settleInventedQuestion(run);
   const budget = budgetView();
   const claude = _loadClaude(id).map(({ hash, ...o }) => o);
-  if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null, budget, claudeResults: claude };
+  const nextSteps = claude.length ? _nextSteps(id) : null;
+  if (!run) return { ok: true, contract: CONTRACT, taskId: id, run: null, budget, claudeResults: claude, nextSteps };
   const d = deps();
   const handoffs = (run.handoffs || []).map((h) => {
     if (h.kind !== 'prepared_action') return h;
@@ -734,7 +740,7 @@ function view(taskId) {
   const L = d.settings.attemptLimits ? d.settings.attemptLimits() : null;
   const attempt = L ? { limits: L, used: { tranche: b.tranche, rounds: b.rounds, notes: b.notes, searches: b.searches, inputTokens: b.inputTokens, costUsd: b.costUsd } } : null;
   const shaped = { ...run, outputs, handoffs, running, phase: phase ? phase.phase : null, attempt };
-  return { ok: true, contract: CONTRACT, taskId: id, budget, claudeResults: claude, run: shaped, workspace: workspaceOf(shaped, { today: budget && budget.today, daily: budget ? { runs: budget.dailyRuns, usd: budget.dailyUsd } : null }) };
+  return { ok: true, contract: CONTRACT, taskId: id, budget, claudeResults: claude, nextSteps, run: shaped, workspace: workspaceOf(shaped, { today: budget && budget.today, daily: budget ? { runs: budget.dailyRuns, usd: budget.dailyUsd } : null }) };
 }
 
 /**

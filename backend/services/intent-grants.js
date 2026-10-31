@@ -67,6 +67,10 @@ const HUMAN_ORIGINS = Object.freeze({
   'chase-button': 'human_assisted',
   'weekly-risk': 'human_assisted',
   'chat-attended': 'human_assisted',
+  // Next steps on Claude's returned work (31 Oct 2026): the covering email and a
+  // meeting Nick sends from the task card with one press.
+  'task-claude-send': 'human_assisted',
+  'task-claude-meeting': 'human_assisted',
 });
 
 // What started an action, from its origin alone. Never from a request body.
