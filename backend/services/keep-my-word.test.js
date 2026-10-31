@@ -313,7 +313,7 @@ test('a draft that EXISTS is never offered as a new draft: prepared → “Show 
   assert.ok(!JSON.stringify(waiting.thread).includes('Draft the delivery note'), 'no stale offer');
   assert.ok(!JSON.stringify(waiting.thread).includes('SAiM can prepare a delivery note'), 'no stale offer sentence');
   const out = html(presentationWith(waiting, CALM), 'desktop', { onPrepareDelivery: async () => ({ ok: true }) });
-  assert.deepEqual(kmwButtons(out), ['Show the delivery note'], 'still exactly one control');
+  assert.deepEqual(kmwButtons(out), ['Show the delivery note', 'Open the task'], 'the delivery control, plus Open the task (31 Oct 2026)');
   for (const status of ['approved', 'executing', 'executed', 'execution_uncertain']) {
     const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY({ live: { actionId: 'pa_1', status } }), presentation: CALM, now: NOW });
     assert.equal(v.thread.draft.control, null, status);
@@ -333,7 +333,7 @@ test('render: the offer and ONE control — no approve, send or confirm anywhere
   for (const profile of ['phone', 'desktop']) {
     const out = html(presentationWith(kmw, CALM), profile, { onPrepareDelivery: async () => ({ ok: true }), onOpenActions: () => {} });
     assert.ok(out.includes('SAiM can prepare a delivery note for your approval. Nothing will be sent.'), profile);
-    assert.deepEqual(kmwButtons(out), ['Draft the delivery note'], `${profile}: exactly one control`);
+    assert.deepEqual(kmwButtons(out), ['Draft the delivery note', 'Open the task'], `${profile}: the delivery control, plus Open the task`);
     assert.ok(!/>[^<]*(Approve|Send|Confirm)[^<]*<\/button>/.test(out), `${profile}: no approve, send or confirm`);
   }
 });
