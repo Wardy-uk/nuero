@@ -170,7 +170,7 @@ test('blocked says why in the status line; the budget line is the server’s wor
 
 test('Claude’s returned work: shown with where it was saved and an Open link; the paste box is folded behind a button', () => {
   const results = [{ id: 'c1', kind: 'claude', title: 'From Claude', markdown: '# Rota plan\n\nWeek 47 covered by early/late split.', at: '2026-10-31T14:05:00.000Z', by: 'machine:mcp-local', notePath: 'Projects/Working/Plan the rota (draft).md' }];
-  const h = view(base(), { claudeReturn: { results, onReturn: noop } });
+  const h = view(base(), { claudeReturn: { results, onReturn: noop } }).replace(/<!-- -->/g, '');
   assert.match(h, /data-tagent-claude-return/);
   assert.match(h, /From Claude/);
   assert.match(h, /Week 47 covered by early\/late split/);
