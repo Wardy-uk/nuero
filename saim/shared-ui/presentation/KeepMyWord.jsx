@@ -496,10 +496,11 @@ export function KmwMove({ move, onPromiseMove = null, readOnly = false, renderSa
   const id = `kmw-q-${String(cur.ref || 'p').replace(/[^A-Za-z0-9_-]/g, '-')}`;
   // The governed save step, IN this card (26 Oct 2026): a slot the SHELL fills with
   // the same prepared-move record, version, authority check, route and executor
-  // SAiM Home uses — this card itself writes nothing. Only a legacy private draft
-  // (one with an interview, prepared before 31 Oct 2026) is saved here. It stays
-  // mounted through its own receipt.
-  const saveable = Boolean(renderSave && can && iv && cur.recordId && ['interview', 'needs-decision', 'ready'].includes(cur.state));
+  // SAiM Home uses — this card itself writes nothing. Any prepared draft waiting
+  // on Nick (needs-decision / ready, or a legacy private draft mid-interview) is
+  // saved here, so the card always has its next action. It stays mounted through
+  // its own receipt.
+  const saveable = Boolean(renderSave && can && cur.recordId && (['needs-decision', 'ready'].includes(cur.state) || (iv && cur.state === 'interview')));
   const saveId = saveable ? cur.recordId : (savedId && ['done', 'scheduled'].includes(cur.state) ? savedId : null);
   if (saveable && savedId !== cur.recordId) setSavedId(cur.recordId);
   return (
