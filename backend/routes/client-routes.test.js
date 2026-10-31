@@ -410,6 +410,10 @@ const KIOSK_NEVER_CALLS = new Map([
   // Holding the week: "Draft the delivery note" from a card. The kiosk passes no
   // onCardOpen (Surface) and Situation refuses card actions on the kiosk profile.
   ['/api/promises/${encodeURIComponent(target.key)}/prepare', 'saim/shared-ui/presentation/cardOpen.mjs'],
+  // Do this → next steps: "Send now" on a prepared email/invite. TaskAgent renders
+  // NOTHING on the kiosk (readOnly), and the task-agent segment is closed anyway.
+  ['/api/prepared-actions/${id}/intent-grant', 'saim/shared-ui/TaskAgent.jsx'],
+  ['/api/prepared-actions/${id}/execute-direct', 'saim/shared-ui/TaskAgent.jsx'],
 ]);
 
 /**

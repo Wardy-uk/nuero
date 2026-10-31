@@ -87,10 +87,10 @@ export function ClaudeHandoff({ preview, busy, error, result, copied = null, onI
  * and already saved into the task's draft note — and, folded away, a box to paste
  * an answer from a Claude chat that could not call return_task_result itself.
  */
-export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null, busy = false, error = null, done = null, leading = null, inline = false }) {
+export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null, busy = false, error = null, done = null, leading = null, inline = false, after = null }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
-  if (!results.length && !onReturn && !leading) return null;
+  if (!results.length && !onReturn && !leading && !after) return null;
   const when = (at) => new Date(at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   return (
     <div className={inline ? 'tagent__return' : 'tagent__section'} data-tagent-claude-return>
@@ -101,13 +101,16 @@ export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null,
         </div>
       )}
       {results.map((o) => (
-        <details className="tagent__out" key={o.id} open={o === results[0]} data-tagent-output="claude">
-          <summary><span className="tagent__badge">From Claude</span> {when(o.at)}</summary>
-          <pre className="tagent__md">{o.markdown}</pre>
-          <p className="tagent__meta" data-tagent-claude-saved>Saved to {o.notePath}{' '}
-            {onOpenNote && <button type="button" className="tagent__link" onClick={() => onOpenNote({ path: o.notePath, title: o.notePath })}>Open</button>}
-          </p>
-        </details>
+        <div key={o.id} className="tagent__returned">
+          <details className="tagent__out" open={o === results[0]} data-tagent-output="claude">
+            <summary><span className="tagent__badge">From Claude</span> {when(o.at)}</summary>
+            <pre className="tagent__md">{o.markdown}</pre>
+            <p className="tagent__meta" data-tagent-claude-saved>Saved to {o.notePath}{' '}
+              {onOpenNote && <button type="button" className="tagent__link" onClick={() => onOpenNote({ path: o.notePath, title: o.notePath })}>Open</button>}
+            </p>
+          </details>
+          {o === results[0] && after}
+        </div>
       ))}
       {onReturn && open && (
         <form className="tagent__q" data-tagent-claude-paste onSubmit={async (e) => { e.preventDefault(); if (!text.trim()) return; const ok = await onReturn(text); if (ok) { setText(''); setOpen(false); } }}>
@@ -122,6 +125,154 @@ export function ClaudeReturn({ results = [], onReturn = null, onOpenNote = null,
       )}
       {error && <p className="tagent__err" role="alert">{error}</p>}
       {done && <p className="tagent__ok" role="status">{done}</p>}
+    </div>
+  );
+}
+
+/**
+ * Next steps on Claude's returned work (31 Oct 2026). NEURO works the plan out
+ * from the result (services/task-next-steps.js); this only draws it. One button
+ * per step; an email or invite is prepared first, shown, then sent on "Send now"
+ * (intent grant → execute-direct, the same one-press path as everywhere else).
+ * `readOnly` draws the steps with no buttons.
+ */
+const STEP_DONE = (s) => Boolean(s.state && s.state.status === 'done');
+const ACTION_SAY = { prepared: 'Prepared — not sent yet.', approved: 'Approved — sending…', executing: 'Sending…', executed: 'Sent — checking Sent Items…', verified: 'Sent — verified in Sent Items.', execution_uncertain: 'Outcome uncertain — not resent; NEURO will check.', failed: 'Not sent.', rejected: 'Withdrawn.', superseded: 'Replaced by a newer draft.', expired: 'Expired.' };
+
+function ActionPreview({ action, kind }) {
+  if (!action) return null;
+  return (
+    <div className="tagent__preview" data-tagent-step-action={action.status}>
+      {kind === 'send' ? (
+        <>
+          <p className="tagent__meta"><strong>To:</strong> {(action.to || []).map((r) => (r.name ? `${r.name} <${r.email}>` : r.email)).join(', ')}</p>
+          <p className="tagent__meta"><strong>Subject:</strong> {action.subject}</p>
+          <pre className="tagent__md">{action.body}</pre>
+          {(action.attachments || []).map((f) => <p className="tagent__meta" key={f.name} data-tagent-attachment>📎 {f.name}</p>)}
+        </>
+      ) : (
+        <>
+          <p className="tagent__meta"><strong>Invite:</strong> {action.subject} — {String(action.start || '').replace('T', ' ').slice(0, 16)}–{String(action.end || '').slice(11, 16)}</p>
+          <p className="tagent__meta"><strong>With:</strong> {(action.to || []).map((r) => r.name || r.email).join(', ') || '—'}</p>
+        </>
+      )}
+      <p className="tagent__meta" data-tagent-action-status>{ACTION_SAY[action.status] || action.status}</p>
+    </div>
+  );
+}
+
+function StepBody({ step, readOnly, busy, onAct, onSendNow, onOpenActions }) {
+  const [to, setTo] = useState('');
+  const [start, setStart] = useState((step.meeting && step.meeting.suggestedStart) || '');
+  const [extra, setExtra] = useState('');
+  const done = STEP_DONE(step);
+  const b = (label, body, primary = true) => (readOnly || done ? null : <div className="tagent__row"><button type="button" className={primary ? '' : 'tagent__quiet'} disabled={busy} onClick={() => onAct(step, body)}>{label}</button></div>);
+
+  if (step.kind === 'send') {
+    const s = step.send || {};
+    const a = s.action;
+    if (a) {
+      return (
+        <>
+          <ActionPreview action={a} kind="send" />
+          {!readOnly && a.status === 'prepared' && (
+            <div className="tagent__row">
+              {s.sendingEnabled === false
+                ? <p className="tagent__meta" data-tagent-sending-off>“Send approved emails” is off in Settings → Switches, so it can’t be sent from here yet — the draft is waiting in Actions.</p>
+                : <button type="button" className="tagent__go" disabled={busy} onClick={() => onSendNow(step, a)}>Send now</button>}
+              {onOpenActions && <button type="button" className="tagent__quiet" onClick={() => onOpenActions({ actionId: a.actionId })}>Open in Actions</button>}
+            </div>
+          )}
+        </>
+      );
+    }
+    return (
+      <>
+        <p className="tagent__meta">Covering email from your work address: “{s.subject}”, with 📎 {s.attachmentName}.</p>
+        {s.to ? b(`Send to ${s.to.name ? s.to.name.split(' ')[0] : s.to.email}`, {}) : (
+          <>
+            {s.why && <p className="tagent__meta" data-tagent-step-why-disabled>{s.why}</p>}
+            {!readOnly && !done && (
+              <form className="tagent__row" onSubmit={(e) => { e.preventDefault(); if (to.trim()) onAct(step, { to: to.trim() }); }}>
+                <input type="email" className="tagent__input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@example.com" aria-label="Send it to (email address)" />
+                <button type="submit" disabled={busy || !to.trim()}>Prepare the email</button>
+              </form>
+            )}
+          </>
+        )}
+      </>
+    );
+  }
+  if (step.kind === 'follow-up-task') {
+    const f = step.followUp || {};
+    return (
+      <>
+        <p className="tagent__meta">New task: “{f.text}”{f.due ? `, due ${f.due}` : ''}.</p>
+        {f.already && !done && <p className="tagent__meta" data-tagent-already>Already on your list: #{f.already.id} — {f.already.text}</p>}
+        {b(f.already ? `Use #${f.already.id}` : 'Add it to your tasks', {})}
+      </>
+    );
+  }
+  if (step.kind === 'meeting') {
+    const m = step.meeting || {};
+    if (m.action) {
+      return (
+        <>
+          <ActionPreview action={m.action} kind="meeting" />
+          {!readOnly && m.action.status === 'prepared' && (
+            <div className="tagent__row">
+              {m.calendarEnabled === false
+                ? <p className="tagent__meta">“Send approved calendar changes” is off in Settings → Switches — the invite is waiting in Actions.</p>
+                : <button type="button" className="tagent__go" disabled={busy} onClick={() => onSendNow(step, m.action)}>Send invite</button>}
+              {onOpenActions && <button type="button" className="tagent__quiet" onClick={() => onOpenActions({ actionId: m.action.actionId })}>Open in Actions</button>}
+            </div>
+          )}
+        </>
+      );
+    }
+    return (
+      <>
+        <p className="tagent__meta">“{m.subject}”, {m.minutes} minutes{(m.attendees || []).length ? ` with ${m.attendees.map((x) => x.name).join(', ')}` : ''}.</p>
+        {(m.unresolved || []).map((u) => <p className="tagent__meta" key={u.name}>{u.why}</p>)}
+        {!readOnly && !done && (
+          <form className="tagent__row" onSubmit={(e) => { e.preventDefault(); onAct(step, { start, ...(extra.trim() ? { attendees: extra.split(/[,;\s]+/).filter(Boolean) } : {}) }); }}>
+            <input type="datetime-local" className="tagent__input" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Start" />
+            {(m.unresolved || []).length > 0 && <input type="text" className="tagent__input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="their email address(es)" aria-label="Other attendees' email addresses" />}
+            <button type="submit" disabled={busy || !start}>Prepare the invite</button>
+          </form>
+        )}
+      </>
+    );
+  }
+  if (step.kind === 'discuss-with-chris') return (<><p className="tagent__meta">“{(step.discuss || {}).text}”</p>{b('Add to the Chris list', {})}</>);
+  if (step.kind === 'complete') return b('Mark the task done', {});
+  if (step.kind === 'drop-time') return b('Drop it', {});
+  return b('Done', {}, false);
+}
+
+export function NextSteps({ nextSteps, readOnly = false, busy = false, error = null, outcome = null, onAct, onSendNow, onRethink = null, onOpenActions = null }) {
+  if (!nextSteps) return null;
+  if (nextSteps.thinking) return <div className="tagent__steps" data-tagent-next-steps="thinking"><p className="tagent__h">Next steps</p><p className="tagent__meta">Working out the next steps from Claude’s result…</p></div>;
+  const steps = nextSteps.steps || [];
+  return (
+    <div className="tagent__steps" data-tagent-next-steps={nextSteps.source || 'model'}>
+      <div className="tagent__row tagent__steps-head">
+        <p className="tagent__h">{nextSteps.label || 'Next steps'}</p>
+        {!readOnly && onRethink && <button type="button" className="tagent__quiet" disabled={busy} onClick={onRethink}>Rethink</button>}
+      </div>
+      {nextSteps.error && <p className="tagent__err">{nextSteps.error}</p>}
+      <ol className="tagent__steplist">
+        {steps.map((s, i) => (
+          <li key={s.id} className={`tagent__step${STEP_DONE(s) ? ' tagent__step--done' : ''}`} data-tagent-step={s.kind}>
+            <p className="tagent__steptitle"><span className="tagent__stepnum">{STEP_DONE(s) ? '✓' : i + 1}</span> {s.title}</p>
+            {s.why && <p className="tagent__meta tagent__stepwhy">{s.why}</p>}
+            {s.state && s.state.say && <p className={STEP_DONE(s) ? 'tagent__ok' : 'tagent__meta'} data-tagent-step-state={s.state.status}>{s.state.say}</p>}
+            <StepBody step={s} readOnly={readOnly} busy={busy} onAct={onAct} onSendNow={onSendNow} onOpenActions={onOpenActions} />
+            {outcome && outcome.stepId === s.id && <p className={outcome.tone === 'ok' ? 'tagent__ok' : 'tagent__err'} role="status">{outcome.text}</p>}
+          </li>
+        ))}
+      </ol>
+      {error && <p className="tagent__err" role="alert">{error}</p>}
     </div>
   );
 }
@@ -350,9 +501,13 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
   const [claude, setClaude] = useState({ preview: null, busy: false, error: null, result: null });
   const [claudeResults, setClaudeResults] = useState([]);
   const [ret, setRet] = useState({ busy: false, error: null, done: null });
+  const [nextSteps, setNextSteps] = useState(null);
+  const [steps, setSteps] = useState({ busy: false, error: null, outcome: null });
   const timer = useRef(null);
+  const stepTimer = useRef(null);
+  const session = useRef(null);
 
-  const absorb = (body) => { if (body && 'run' in body) { setRun(body.run); setWorkspace(body.workspace || null); } if (body && body.budget) setBudget(body.budget); if (body && Array.isArray(body.claudeResults)) setClaudeResults(body.claudeResults); };
+  const absorb = (body) => { if (body && 'run' in body) { setRun(body.run); setWorkspace(body.workspace || null); } if (body && body.budget) setBudget(body.budget); if (body && Array.isArray(body.claudeResults)) setClaudeResults(body.claudeResults); if (body && 'nextSteps' in body) setNextSteps(body.nextSteps || null); };
 
   const load = useCallback(async () => {
     const r = await call(`/api/task-agent/tasks/${enc(taskId)}`);
@@ -368,6 +523,12 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
     if (run && run.status === 'running') timer.current = setTimeout(load, POLL_MS);
     return () => clearTimeout(timer.current);
   }, [run, load]);
+  // NEURO is still working out the next steps from Claude's result: look again shortly.
+  useEffect(() => {
+    clearTimeout(stepTimer.current);
+    if (nextSteps && nextSteps.thinking) stepTimer.current = setTimeout(load, POLL_MS);
+    return () => clearTimeout(stepTimer.current);
+  }, [nextSteps, load]);
 
   const loadPreview = useCallback(async (includeDrafts = true) => {
     setClaude((c) => ({ ...c, busy: true, error: null }));
@@ -422,10 +583,63 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
     return false;
   };
 
+  const sessionId = () => {
+    if (session.current) return session.current;
+    let v = '';
+    try { const b = new Uint8Array(12); crypto.getRandomValues(b); v = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(''); } catch { v = `s${Date.now()}${Math.floor(Math.random() * 1e6)}`; }
+    session.current = v;
+    return v;
+  };
+  const actStep = async (step, body) => {
+    if (steps.busy) return;
+    setSteps({ busy: true, error: null, outcome: null });
+    try {
+      const r = await call(`/api/task-agent/tasks/${enc(taskId)}/next-steps/${enc(step.id)}`, { method: 'POST', body: body || {} });
+      if (r.status === 200 && r.body && r.body.ok) {
+        if (r.body.nextSteps) setNextSteps(r.body.nextSteps);
+        const say = r.body.recurred && r.body.recurred.notice ? r.body.recurred.notice : null;
+        setSteps({ busy: false, error: null, outcome: say ? { stepId: step.id, tone: 'ok', text: say } : null });
+        if (step.kind === 'complete') await load();
+        return;
+      }
+      setSteps({ busy: false, error: null, outcome: { stepId: step.id, tone: 'bad', text: (r.body && r.body.error) || `Refused (${r.status}).` } });
+    } catch (e) { setSteps({ busy: false, error: e.message || 'Request failed.', outcome: null }); }
+  };
+  const sendNow = async (step, action) => {
+    if (steps.busy) return;
+    setSteps({ busy: true, error: null, outcome: null });
+    const fail = (text) => setSteps({ busy: false, error: null, outcome: { stepId: step.id, tone: 'bad', text } });
+    try {
+      const id = enc(action.actionId);
+      const g = await call(`/api/prepared-actions/${id}/intent-grant`, { method: 'POST', body: { version: action.version || 1, payloadHash: action.payloadHash, surface: 'neuro-web', sessionId: sessionId() } });
+      if (!(g.status === 200 && g.body && g.body.ok)) { await load(); return fail((g.body && g.body.needsConfirm) ? 'It changed since it was shown — check it and press again.' : ((g.body && g.body.error) || `Not sent (${g.status}).`)); }
+      const x = await call(`/api/prepared-actions/${id}/execute-direct`, { method: 'POST', body: { grantId: g.body.grantId, payloadHash: action.payloadHash } });
+      if (!(x.status === 200 && x.body && x.body.ok)) { await load(); return fail((x.body && x.body.error) || `Not sent (${x.status}).`); }
+      const st = x.body.status;
+      const where = action.actionType === 'create_calendar_event' ? 'your calendar' : 'Sent Items';
+      const text = st === 'verified' ? `Sent — verified in ${where}.` : st === 'executed' ? `Sent — confirming it in ${where} now.` : st === 'execution_uncertain' ? 'Outcome uncertain — not resent. NEURO will check and say what happened.' : `Not sent (${st || 'unknown'}). ${x.body.detail || ''}`.trim();
+      setSteps({ busy: false, error: null, outcome: { stepId: step.id, tone: ['verified', 'executed'].includes(st) ? 'ok' : 'bad', text } });
+      await load();
+    } catch (e) { fail(e.message || 'Request failed.'); }
+  };
+  const rethink = async () => {
+    if (steps.busy) return;
+    setSteps({ busy: true, error: null, outcome: null });
+    try {
+      const r = await call(`/api/task-agent/tasks/${enc(taskId)}/next-steps/rethink`, { method: 'POST', body: {} });
+      if (r.status === 200 && r.body && r.body.ok) { setNextSteps(r.body.nextSteps || null); setSteps({ busy: false, error: null, outcome: null }); return; }
+      setSteps({ busy: false, error: (r.body && r.body.error) || `Refused (${r.status}).`, outcome: null });
+    } catch (e) { setSteps({ busy: false, error: e.message || 'Request failed.', outcome: null }); }
+  };
+  const stepsNode = nextSteps ? (
+    <NextSteps nextSteps={nextSteps} busy={steps.busy} error={steps.error} outcome={steps.outcome}
+      onAct={actStep} onSendNow={sendNow} onRethink={rethink} onOpenActions={onOpenActions} />
+  ) : null;
+
   return (
     <TaskAgentView
       run={run}
-      claudeReturn={{ results: claudeResults, onReturn: returnClaude, ...ret }}
+      claudeReturn={{ results: claudeResults, onReturn: returnClaude, after: stepsNode, ...ret }}
       workspace={workspace}
       budget={budget}
       busy={busy}

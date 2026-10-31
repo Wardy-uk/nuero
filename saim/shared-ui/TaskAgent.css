@@ -101,3 +101,17 @@
 .tagent__trace summary { font-size: 12.5px; }
 .tagent__footer { margin-top: 0; padding-top: 12px; border-top: 1px solid rgba(127, 127, 127, 0.18); justify-content: flex-end; }
 .tagent__footer button { font-size: 12px; min-height: 30px; padding: 5px 12px; }
+
+/* Next steps on Claude's returned work (31 Oct 2026) */
+.tagent__returned { display: grid; gap: 8px; }
+.tagent__steps { padding: 12px 14px; border: 1px solid rgba(127, 127, 127, 0.22); border-radius: 10px; background: rgba(127, 127, 127, 0.04); }
+.tagent__steps-head { justify-content: space-between; align-items: center; margin-top: 0; }
+.tagent__steplist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; }
+.tagent__step { padding: 10px 12px; border: 1px solid rgba(127, 127, 127, 0.2); border-radius: 8px; }
+.tagent__step--done { opacity: 0.75; }
+.tagent__steptitle { margin: 0; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+.tagent__stepnum { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 11px; background: rgba(127, 127, 127, 0.16); font-size: 12px; }
+.tagent__step--done .tagent__stepnum { background: rgba(95, 183, 132, 0.3); }
+.tagent__stepwhy { margin-top: 2px; }
+.tagent__preview { margin-top: 6px; padding: 8px 10px; border-left: 3px solid rgba(127, 127, 127, 0.35); background: rgba(127, 127, 127, 0.05); border-radius: 4px; }
+.tagent__input { min-width: 0; flex: 1 1 220px; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(127, 127, 127, 0.4); background: transparent; color: inherit; font: inherit; }
