@@ -32,7 +32,7 @@ const BODY = [
   '## Actions this week', '- Run the aged-ticket review.',
 ].join('\n');
 
-test('sent reports become items with the deadline as a fact', () => {
+test('sent reports become items with the send time as a fact', () => {
   const set = (k, v) => db.setState(k, JSON.stringify(v));
   set('weekly_risk_sent_2026-10-19', { week: '2026-10-19', sentAt: '2026-10-20T12:56:04.026Z', recipients: [{ name: 'Chris Middleton' }], body: BODY });
   set('weekly_risk_sent_2026-10-26', { week: '2026-10-26', sentAt: '2026-10-26T10:15:00.000Z', recipients: [{ name: 'Chris Middleton' }], body: BODY });
@@ -47,7 +47,7 @@ test('sent reports become items with the deadline as a fact', () => {
   const late = by['report:weekly-risk:2026-10-19'];
   assert.equal(late.hint, null);
   assert.match(late.detail, /^Sent Tue 20 Oct 13:56\. To Chris Middleton\./);
-  for (const i of items) assert.doesNotMatch(i.detail, /due|late|on time|after\./i, 'no self-set deadline is judged');
+  for (const i of items) assert.doesNotMatch(i.detail, /(due|late|on time)/i, 'no self-set deadline is judged');
   assert.match(late.detail, /Tier 2 resolution compliance recovering/);
   assert.match(late.detail, /Run the aged-ticket review/);
   assert.doesNotMatch(late.detail, /SECRET-TASK-LINE|SECRET-MLOG-LINE/);

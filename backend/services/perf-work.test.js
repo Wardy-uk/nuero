@@ -23,8 +23,12 @@ const work = require('./perf-work');
 const W = { from: '2026-10-01', to: '2026-10-31' };
 test.before(async () => { await db.init(); });
 
+// prepared_actions is guarded by triggers (an action is born prepared), so the
+// sends test runs against a bare table of the same columns.
+const bare = new (require('better-sqlite3'))(':memory:');
+bare.exec(`CREATE TABLE prepared_actions (action_id TEXT, idempotency_key TEXT, action_type TEXT, version INTEGER, target_json TEXT, reason TEXT, evidence_json TEXT, evidence_hash TEXT, draft_json TEXT, payload_hash TEXT, authority_class TEXT, approval_required INTEGER, status TEXT, created_at TEXT, expires_at TEXT, executed_at TEXT, verified_at TEXT, updated_at TEXT, origin TEXT)`);
 function pa(id, type, origin, target, draft, evidence, at, status = 'verified') {
-  db.getDb().prepare(`INSERT INTO prepared_actions (action_id, idempotency_key, action_type, version, target_json, reason, evidence_json, evidence_hash, draft_json, payload_hash, authority_class, approval_required, status, created_at, expires_at, executed_at, verified_at, updated_at, origin)
+  bare.prepare(`INSERT INTO prepared_actions (action_id, idempotency_key, action_type, version, target_json, reason, evidence_json, evidence_hash, draft_json, payload_hash, authority_class, approval_required, status, created_at, expires_at, executed_at, verified_at, updated_at, origin)
     VALUES (?, ?, ?, 1, ?, 'r', ?, 'h', ?, 'p', 'A4', 1, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, id, type, JSON.stringify(target), JSON.stringify(evidence), JSON.stringify(draft), status, at, at, at, at, at, origin);
 }
@@ -38,7 +42,7 @@ test('sends: work mail, escalation emails, folded 1-2-1 moves; nothing repeated 
   pa('a6', 'compose_email', 'uat-volunteers', { mailbox: 'work' }, { to: [{ name: 'Abdi' }], subject: 'UAT' }, {}, '2026-10-10T12:00:00Z');
   pa('a7', 'create_calendar_event', 'event-composer', {}, { to: [], subject: 'NEURO governed calendar proof (Build 13) - safe to delete' }, {}, '2026-10-06T12:00:00Z');
   pa('a8', 'compose_email', 'composer', { mailbox: 'work' }, { to: [{ name: 'Z' }], subject: 'never sent' }, {}, '2026-10-10T12:00:00Z', 'rejected');
-  const items = work.sends(db.getDb(), W);
+  const items = work.sends(bare, W);
   const titles = items.map((i) => i.title).sort();
   assert.deepEqual(titles, ['Escalated NT-1 by email to Lucy', 'Moved 2 1-2-1s with Luke Scaife, Hope Goodall']);
   assert.match(items.find((i) => /Moved/.test(i.title)).detail, /Luke Scaife: CI - Project Harbour/);
@@ -47,8 +51,8 @@ test('sends: work mail, escalation emails, folded 1-2-1 moves; nothing repeated 
 test('tickets, workforce and people', () => {
   const d = db.getDb();
   d.exec(`CREATE TABLE IF NOT EXISTS watched_ticket_commitments (id INTEGER PRIMARY KEY, ticket_key TEXT, due_at TEXT, source TEXT, state TEXT, phrase TEXT, comment_id TEXT, made_at TEXT, confirmed_at TEXT, reminded_at TEXT, missed_at TEXT, closed_at TEXT, closed_by TEXT, kept_late INTEGER)`);
-  d.prepare(`INSERT INTO watched_ticket_commitments (ticket_key, due_at, state, made_at, closed_at, kept_late) VALUES ('NT-35291','2026-10-23T16:00:00Z','kept','2026-10-23T14:00:00Z','2026-10-23T15:40:00Z',0)`).run();
-  d.prepare(`INSERT INTO watched_ticket_commitments (ticket_key, due_at, state, made_at, missed_at) VALUES ('NT-2','2026-10-24T16:00:00Z','missed','2026-10-24T10:00:00Z','2026-10-24T16:00:00Z')`).run();
+  d.prepare(`INSERT INTO watched_ticket_commitments (source, ticket_key, due_at, state, made_at, closed_at, kept_late) VALUES ('detected','NT-35291','2026-10-23T16:00:00Z','kept','2026-10-23T14:00:00Z','2026-10-23T15:40:00Z',0)`).run();
+  d.prepare(`INSERT INTO watched_ticket_commitments (source, ticket_key, due_at, state, made_at, missed_at) VALUES ('detected','NT-2','2026-10-24T16:00:00Z','missed','2026-10-24T10:00:00Z','2026-10-24T16:00:00Z')`).run();
   const led = d.prepare(`INSERT INTO external_write_ledger (writer, idempotency_key, target, authority, initiated_by, status, attempts, request_json, requested_at, settled_at)
     VALUES (?, ?, ?, 'A3', 'nick', 'confirmed', 1, ?, '2026-10-30T11:47:00Z', '2026-10-30T11:47:57Z')`);
   led.run('jira.approval', 'k1', 'NT-34482', JSON.stringify({ key: 'NT-34482', name: 'Pending Rejection Approval (to CC)', decision: 'decline' }));
