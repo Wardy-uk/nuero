@@ -30,6 +30,14 @@ const PAGE = 50;
 const BROADCAST_MIN = 4;
 const EXCERPT = 500;
 const STATE_KEY = 'perf_mail_run';
+// Reading the documents (31 Oct 2026, Nick: "1 first with 2 as a backup").
+// 1: pull the text out (doc-text.js), no model. 2: only when that comes back
+// with almost nothing (a scanned PDF), Claude reads the PDF and describes it.
+const DOC_TEXT = 1500;        // characters of a document carried into the item
+const THIN_TEXT = 300;        // under this, extraction is "insufficient"
+const MAX_DOC_BYTES = 20 * 1024 * 1024;
+const DOCS_PER_RUN = 15;      // messages read per pass
+const AI_PER_RUN = 2;         // model reads per pass (shared hourly cloud limit)
 
 const DOC_EXT = /\.(pdf|docx?|xlsx?|xlsm|csv|pptx?|txt|md|vsdx?|one|zip)$/i;
 const SKIP_SUBJECT = /^(accepted|declined|tentative|canceled|cancelled|automatic reply|out of office|undeliverable)\b/i;
@@ -51,6 +59,9 @@ function db() {
       checked_at  TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_perf_mail_day ON perf_mail_items(day);`);
+    const cols = d.prepare('PRAGMA table_info(perf_mail_items)').all().map((c) => c.name);
+    // What each attached document says (JSON [{name, how, text|why}]); NULL = not read yet.
+    if (!cols.includes('doc_text')) d.exec('ALTER TABLE perf_mail_items ADD COLUMN doc_text TEXT');
     ready = true;
   }
   return d;
@@ -158,9 +169,85 @@ async function run(deps = {}) {
   return report;
 }
 
+const AI_SYSTEM = 'You describe a work document for a performance-evidence record. Say in 2-4 plain sentences what the document is and what it sets out or establishes (rules, a process, findings, a plan). Facts only, no praise, no judgement. If it cannot be read, say so in one sentence.';
+
+/** Claude reads a PDF whose text could not be pulled out. Returns text or null. */
+async function aiRead(name, buf, deps) {
+  const aiRouting = deps.aiRouting || require('./ai-routing');
+  const provider = deps.provider || require('./providers/anthropic-provider');
+  if (!aiRouting.isCloudAllowed('perf_doc_read') || !provider.isConfigured()) return null;
+  const r = await provider.vision(AI_SYSTEM, { pdfBase64: buf.toString('base64'), prompt: `The attachment is "${name}". Describe it.` },
+    { model: process.env.PERF_DOC_MODEL || undefined, effort: 'low', maxTokens: 1000, callClass: 'perf_doc_read' });
+  try { aiRouting.recordUsage(r.usage, { provider: 'anthropic', model: r.model, taskType: 'perf_doc_read' }); } catch { /* bookkeeping only */ }
+  return String(r.text || '').trim().slice(0, DOC_TEXT) || null;
+}
+
+/**
+ * Read the attached documents of kept messages not read yet. At most
+ * DOCS_PER_RUN messages and AI_PER_RUN model reads a pass. A message whose
+ * files could not be fetched stays unread and is tried again.
+ */
+async function readDocs(deps = {}) {
+  const ms = deps.microsoft || require('./microsoft');
+  const extract = deps.extract || require('./doc-text').extract;
+  const maxPages = deps.maxPages || require('./providers/anthropic-provider').DOC_MAX_PAGES || 20;
+  const report = { read: 0, files: 0, text: 0, ai: 0, unreadable: 0, failed: 0 };
+  const token = await ms.getAccessToken();
+  if (!token) return { ...report, error: 'Microsoft sign-in needed' };
+  const d = db();
+  const rows = d.prepare("SELECT id FROM perf_mail_items WHERE kind = 'mail-document' AND doc_text IS NULL ORDER BY at DESC LIMIT ?").all(deps.perRun || DOCS_PER_RUN);
+  const save = d.prepare('UPDATE perf_mail_items SET doc_text = ? WHERE id = ?');
+  let aiLeft = deps.aiPerRun !== undefined ? deps.aiPerRun : AI_PER_RUN;
+  for (const row of rows) {
+    try {
+      const list = await ms.graphFetch(`/me/messages/${encodeURIComponent(row.id)}/attachments?$select=id,name,size,isInline`, token);
+      if (!list || !Array.isArray(list.value)) throw new Error('attachments could not be listed');
+      const out = [];
+      for (const a of list.value.filter((x) => !x.isInline && x.name && DOC_EXT.test(x.name))) {
+        report.files += 1;
+        if (a.size > MAX_DOC_BYTES) { out.push({ name: a.name, how: 'none', why: 'too big to read' }); report.unreadable += 1; continue; }
+        const full = await ms.graphFetch(`/me/messages/${encodeURIComponent(row.id)}/attachments/${encodeURIComponent(a.id)}`, token);
+        if (!full || !full.contentBytes) { out.push({ name: a.name, how: 'none', why: 'not a file' }); report.unreadable += 1; continue; }
+        const buf = Buffer.from(full.contentBytes, 'base64');
+        const x = await extract(a.name, buf);
+        if (x.ok && x.text.length >= THIN_TEXT) {
+          out.push({ name: a.name, how: 'text', text: x.text.slice(0, DOC_TEXT) });
+          report.text += 1;
+          continue;
+        }
+        // Option 2: Claude reads the PDF itself. Only a PDF, only up to the page cap.
+        const pdfOk = /\.pdf$/i.test(a.name) && (!x.pages || x.pages <= maxPages);
+        if (pdfOk && aiLeft <= 0) throw Object.assign(new Error('model reads used up this pass'), { retry: true });
+        if (pdfOk) {
+          aiLeft -= 1;
+          const said = await aiRead(a.name, buf, deps).catch(() => null);
+          if (said) { out.push({ name: a.name, how: 'ai', text: said }); report.ai += 1; continue; }
+        }
+        out.push({ name: a.name, how: 'none', why: x.ok ? 'almost no text in it' : x.why });
+        report.unreadable += 1;
+      }
+      save.run(JSON.stringify(out), row.id);
+      report.read += 1;
+    } catch (e) {
+      if (e.retry) break;
+      report.failed += 1;
+    }
+  }
+  return report;
+}
+
 function status() {
   const r = db().prepare('SELECT kind, count(*) n FROM perf_mail_items GROUP BY kind').all();
   return { ...readState(), items: Object.fromEntries(r.map((x) => [x.kind, x.n])) };
+}
+
+/** The documents' own words, a line per file. Pure. */
+function docLines(json) {
+  let docs = [];
+  try { docs = JSON.parse(json || '[]') || []; } catch { return []; }
+  return docs.map((x) => (x.how === 'text' ? `Attachment "${x.name}" begins: ${x.text}`
+    : x.how === 'ai' ? `Attachment "${x.name}" (read by AI): ${x.text}`
+      : `Attachment "${x.name}" could not be read (${x.why}).`));
 }
 
 /** Feed items for a window — the cache only. Unread is a named gap, never []. */
@@ -178,10 +265,10 @@ function itemsFor(w) {
       title: r.kind === 'mail-document'
         ? `Sent ${docs.join(', ')} to ${r.recipients}`
         : `Emailed ${r.recipients}: "${r.subject}"`,
-      detail: [`Subject: ${r.subject}.`, r.excerpt ? `You wrote: ${r.excerpt}` : null].filter(Boolean).join(' '),
+      detail: [`Subject: ${r.subject}.`, r.excerpt ? `You wrote: ${r.excerpt}` : null, ...docLines(r.doc_text)].filter(Boolean).join(' '),
       ref: null,
     };
   });
 }
 
-module.exports = { run, status, itemsFor, _internals: { classify, documentNames, londonDay, namesOf } };
+module.exports = { run, readDocs, status, itemsFor, _internals: { docLines, classify, documentNames, londonDay, namesOf } };

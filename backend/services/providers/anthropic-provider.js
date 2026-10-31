@@ -39,12 +39,17 @@ function _getClient() {
 // ── The AI gate: every request below goes through _create / _stream ─────────
 const gateCall = require('./gate-call');
 const IMAGE_TOKENS = 1600; // Anthropic's per-image ceiling at the default size
+const DOC_MAX_PAGES = 20; // the largest PDF a caller may send (perf-mail)
+const DOC_PAGE_TOKENS = 3000; // text + page image, per page
 
 /** PURE. Input tokens for the gate's bound — images at their token cost, not their base64 length. */
 function _inputEstimate(params) {
-  const strip = (c) => (Array.isArray(c) ? c.map((b) => (b && b.type === 'image' ? '' : b)) : c);
-  const images = (params.messages || []).reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter((b) => b && b.type === 'image').length : 0), 0);
-  return gateCall.estimateTokens(params.system, (params.messages || []).map((m) => ({ ...m, content: strip(m.content) })), params.tools) + images * IMAGE_TOKENS;
+  const strip = (c) => (Array.isArray(c) ? c.map((b) => (b && (b.type === 'image' || b.type === 'document') ? '' : b)) : c);
+  const count = (type) => (params.messages || []).reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter((b) => b && b.type === type).length : 0), 0);
+  // A PDF is read page by page (text + an image of each page); callers cap a
+  // document at DOC_MAX_PAGES, so it is bounded at that many pages.
+  return gateCall.estimateTokens(params.system, (params.messages || []).map((m) => ({ ...m, content: strip(m.content) })), params.tools)
+    + count('image') * IMAGE_TOKENS + count('document') * DOC_MAX_PAGES * DOC_PAGE_TOKENS;
 }
 function _open(params, options, fallbackClass) {
   return gateCall.open({
@@ -120,10 +125,12 @@ async function chat(systemPrompt, messages, options = {}) {
  * reasoning, and the depth would be paid for on every photo without changing
  * the answer.
  */
-async function vision(systemPrompt, { imageBase64, mediaType, images, prompt }, options = {}) {
+async function vision(systemPrompt, { imageBase64, mediaType, images, pdfBase64, prompt }, options = {}) {
   if (!_key()) throw new Error('Anthropic API key not configured');
-  // One image (VESTA) or several (a scrolled NHS app screen, read as one page).
-  const pictures = Array.isArray(images) && images.length ? images : [{ imageBase64, mediaType }];
+  // One image (VESTA) or several (a scrolled NHS app screen, read as one page),
+  // or one PDF (a sent document whose text could not be pulled out — perf-mail).
+  const pictures = pdfBase64 ? [] : (Array.isArray(images) && images.length ? images : [{ imageBase64, mediaType }]);
+  const docs = pdfBase64 ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } }] : [];
 
   const response = await _create({
     model: options.model || _model(),
@@ -140,6 +147,7 @@ async function vision(systemPrompt, { imageBase64, mediaType, images, prompt }, 
         // Image before text: the model is being asked about the picture, and
         // this is the documented ordering.
         ...pictures.map(p => ({ type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.imageBase64 } })),
+        ...docs,
         { type: 'text', text: prompt },
       ],
     }],
@@ -353,6 +361,7 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
 }
 
 module.exports = {
+  DOC_MAX_PAGES,
   isConfigured, chat, generate, streamChat, chatWithTools, vision, _normaliseHistory,
   // Test seam. The truncation rules in `chatWithTools` are about what the SDK
   // hands back, so they can only be pinned by handing back a scripted response
