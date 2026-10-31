@@ -47,6 +47,8 @@ export const interactive = {
   post_task_agent_settings: 'Changing Do this settings or its Anthropic key is Nick’s alone, in NEURO → Settings.',
   post_task_agent_settings_test: 'The Anthropic connection test is Nick’s, in NEURO → Settings; it spends money.',
   post_task_agent_tasks_by_taskId_claude_result: 'Returning finished work for a NEURO task is for Claude on Nick’s laptop, through the local NEURO MCP server (return_task_result), or Nick pasting it on the task. It is not offered to remote agents.',
+  post_task_agent_tasks_by_taskId_next_steps_rethink: 'Rethinking the next steps on Claude’s returned work is Nick’s, in NEURO on that task.',
+  post_task_agent_tasks_by_taskId_next_steps_by_stepId: 'A next step on Claude’s returned work (sending it, a follow-up task, a meeting, marking the task done) is Nick’s press, in NEURO on that task.',
   post_task_agent_tasks_by_taskId_outputs_by_outputId_save: 'Preparing a “Do this” draft for the vault is Nick’s, in NEURO on that task; saving it still needs his confirmation.',
   // 20 Oct 2026: what SAiM may do. Granting authority, revoking it, stopping and resuming are Nick's alone.
   get_saim_authority_status: 'What SAiM is allowed to do is shown to Nick on his SAiM screen. An agent cannot read it on his behalf.',

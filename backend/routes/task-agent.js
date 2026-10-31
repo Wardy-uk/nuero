@@ -60,6 +60,36 @@ router.post('/tasks/:taskId/claude-result', (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── Next steps on Claude's returned work (31 Oct 2026, services/task-next-steps.js) ──
+const nextSteps = () => require('../services/task-next-steps');
+
+// POST /api/task-agent/tasks/:taskId/next-steps/rethink — Rethink the next steps for Claude's newest returned result: one fresh model call (the cached plan is replaced). Owner only. Keywords: next steps, rethink, claude result plan.
+router.post('/tasks/:taskId/next-steps/rethink', async (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const bad = strict(req.body, []);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    send(res, await nextSteps().rethink(req.params.taskId));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/task-agent/tasks/:taskId/next-steps/:stepId — Nick presses one next step on Claude's returned work: send it (prepare the covering email with the result as a .docx; body.to = an address he typed), create the follow-up task, prepare a meeting invite (body.start, body.attendees), add to the Chris list, mark the task done, drop the suggested time, or tick a manual step. Owner only; emails and invites go on his press via intent grant. Keywords: next step, send claude result, covering email, docx attachment, mark done, drop suggested time.
+router.post('/tasks/:taskId/next-steps/:stepId', async (req, res) => {
+  try {
+    if (!owner(req, res)) return;
+    const bad = strict(req.body, ['to', 'start', 'attendees']);
+    if (bad) return res.status(400).json({ ok: false, error: bad });
+    const { to, start, attendees } = req.body;
+    const body = {};
+    if (to !== undefined) body.to = to;
+    if (start !== undefined) body.start = start;
+    if (attendees !== undefined) body.attendees = attendees;
+    const r = await nextSteps().act(req.params.taskId, req.params.stepId, body);
+    if (r && r.ok === false) return res.status(r.status || 400).json({ ok: false, error: r.error, ...(r.recipientNeeded ? { recipientNeeded: true } : {}) });
+    res.json({ ...r, nextSteps: nextSteps().view(req.params.taskId) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── Settings → AI & SAiM → Anthropic (the Do this key, model and hard daily limits) ──
 const settings = () => require('../services/task-agent-settings');
 

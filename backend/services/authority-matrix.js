@@ -76,6 +76,7 @@ const CAPABILITIES = Object.freeze({
   // 31 Oct 2026 (Nick): Claude on the laptop returns its finished work for a task. Writes the
   // task's draft note in the vault (new, or a section appended — never an overwrite) and NEURO's
   // own record of it. The local MCP server's return_task_result calls it, so machine: execute.
+  'task-agent.next-step': { authority: 'A2', effect: "one next step on Claude's returned work: prepare a covering email (result attached as .docx) or a meeting invite (both sent only on Nick's press), create a follow-up task, add to the Chris list, mark the task done, or drop a prepared move's suggested time", machine: 'refuse', approval: 'click (owner session)', registry: null, ledger: false, verification: 'agent_state task_next_steps:<task>:<result> step state', idempotent: 'one live email per result; a follow-up task is deduped against open tasks' },
   'task-agent.claude-return': { authority: 'A2', effect: "Claude's finished work for one task: saved into that task's draft note in the vault (created or appended, never overwritten) and shown on its card", machine: 'execute', approval: 'none', registry: null, ledger: false, verification: 'agent_state task_agent_claude:<id> + activity_log task_agent_claude_return', idempotent: 'identical work within 10 minutes is the same return' },
   'saim.authority': { authority: 'A4', effect: "change what SAiM is allowed to do: grant or revoke today's allowance, stop or resume all SAiM actions", machine: 'refuse', approval: 'click + one-use confirmation (grant, resume)', registry: null, ledger: true, verification: 'saim_authority_events', idempotent: 'one grant per day; tokens one-use' },
   'saim.move.calendar-block': { authority: 'A2', effect: "one solo block in Nick's calendar for a prepared move he confirmed", machine: 'refuse', approval: 'click (intent grant)', registry: 'external-writes:saim.move.calendar-block', ledger: true, verification: 'event read-back', idempotent: 'one per move (ledger key + marker)' },
@@ -161,6 +162,8 @@ const ROUTE_RULES = Object.freeze([
   R('GET', '/api/task-agent/tasks/:taskId/handoff/preview', 'task-agent.run'),
   R('GET', '/api/task-agent/tasks/:taskId/drafts', 'read'),
   R('POST', '/api/task-agent/tasks/:taskId/claude-result', 'task-agent.claude-return'),
+  R('POST', '/api/task-agent/tasks/:taskId/next-steps/rethink', 'task-agent.next-step'),
+  R('POST', '/api/task-agent/tasks/:taskId/next-steps/:stepId', 'task-agent.next-step'),
   R('POST', '/api/task-agent/tasks/:taskId/handoff', 'task-agent.run'),
   R('POST', '/api/task-agent/tasks/:taskId/outputs/:outputId/save', 'task-agent.run'),
   // Do this's key, on/off and daily limits are Nick's, in Settings — never a machine's.

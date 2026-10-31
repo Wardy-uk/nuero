@@ -5618,7 +5618,7 @@
     "route": "/api/router/health",
     "domain": "router",
     "source": "routes/router.js",
-    "line": 90,
+    "line": 120,
     "description": "GET /api/router/health. the current read. Read-only; nothing notifies.",
     "params": [],
     "query": [],
@@ -6145,7 +6145,7 @@
     "route": "/api/task-agent/active",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 102,
+    "line": 132,
     "description": "GET /api/task-agent/active. tasks with Do this work in progress, for Drafts. Owner only.",
     "params": [],
     "query": [],
@@ -6161,7 +6161,7 @@
     "route": "/api/task-agent/settings",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 67,
+    "line": 97,
     "description": "GET /api/task-agent/settings. Do this settings: enabled, whether an Anthropic key is saved (configured true/false only, never the key), model, daily budget and run limit, today's spend/requests/runs and remaining allowance. Owner only.",
     "params": [],
     "query": [],
@@ -6213,7 +6213,7 @@
     "route": "/api/task-agent/tasks/:taskId/handoff/preview",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 164,
+    "line": 194,
     "description": "GET /api/task-agent/tasks/:taskId/handoff/preview. the Claude-desktop handoff Nick would send: why, what is included and excluded, the destination, and the editable prompt (query.includeDrafts=1 to include draft text). Sends nothing. Owner only.",
     "params": [
       "taskId"
@@ -14438,7 +14438,7 @@
     "route": "/api/router/sample",
     "domain": "router",
     "source": "routes/router.js",
-    "line": 45,
+    "line": 64,
     "description": "POST /api/router/sample. one reading from the watcher.",
     "params": [],
     "query": [],
@@ -15390,7 +15390,7 @@
     "route": "/api/task-agent/settings",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 75,
+    "line": 105,
     "description": "POST /api/task-agent/settings. save Do this settings: body.enabled, body.model, body.dailyUsd, body.dailyRuns, body.apiKey (paste/replace; never returned), body.clearKey. Omitted fields are unchanged; any invalid field refuses the whole save with field errors. Owner only.",
     "params": [],
     "query": [],
@@ -15414,7 +15414,7 @@
     "route": "/api/task-agent/settings/test",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 90,
+    "line": 120,
     "description": "POST /api/task-agent/settings/test. \"Test Anthropic connection\": one bounded synthetic request with the saved key (body.confirm must be true; without it the answer is the estimated cost). Reports model, tokens, cost and the ledger result — never the prompt or the key. Creates no task attempt or othe",
     "params": [],
     "query": [],
@@ -15432,7 +15432,7 @@
     "route": "/api/task-agent/tasks/:taskId/answer",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 121,
+    "line": 151,
     "description": "POST /api/task-agent/tasks/:taskId/answer. Nick answers the run's one open question (body.questionId, body.text), or says the manual step is done (body.manualDone). The run continues at once. Owner only.",
     "params": [
       "taskId"
@@ -15474,7 +15474,7 @@
     "route": "/api/task-agent/tasks/:taskId/continue",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 134,
+    "line": 164,
     "description": "POST /api/task-agent/tasks/:taskId/continue. Continue working after a per-attempt limit: one new bounded part, counted as a run.",
     "params": [
       "taskId"
@@ -15492,7 +15492,7 @@
     "route": "/api/task-agent/tasks/:taskId/handoff",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 172,
+    "line": 202,
     "description": "POST /api/task-agent/tasks/:taskId/handoff. Nick presses \"Continue this with Claude on desktop\" with his working brief (body.brief). The brief is screened; the final prompt is composed by NEURO from its fixed policy envelope, destination and context plus the brief, recorded by hash and returned for ",
     "params": [
       "taskId"
@@ -15509,12 +15509,53 @@
     "stream": false
   },
   {
+    "id": "post_task_agent_tasks_by_taskId_next_steps_by_stepId",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/next-steps/:stepId",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 77,
+    "description": "POST /api/task-agent/tasks/:taskId/next-steps/:stepId.",
+    "params": [
+      "taskId",
+      "stepId"
+    ],
+    "query": [],
+    "body": [
+      "attendees",
+      "start",
+      "to"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_task_agent_tasks_by_taskId_next_steps_rethink",
+    "method": "POST",
+    "route": "/api/task-agent/tasks/:taskId/next-steps/rethink",
+    "domain": "task-agent",
+    "source": "routes/task-agent.js",
+    "line": 67,
+    "description": "POST /api/task-agent/tasks/:taskId/next-steps/rethink. Rethink the next steps for Claude's newest returned result: one fresh model call (the cached plan is replaced). Owner only. Keywords: next steps, rethink, claude result plan.",
+    "params": [
+      "taskId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_task_agent_tasks_by_taskId_outputs_by_outputId_save",
     "method": "POST",
     "route": "/api/task-agent/tasks/:taskId/outputs/:outputId/save",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 153,
+    "line": 183,
     "description": "POST /api/task-agent/tasks/:taskId/outputs/:outputId/save. prepare ONE finished Do this draft to be saved to the vault: stores the existing project-note prepared move and returns its recordId. Saves nothing; the save happens only through /api/prepared-moves/request + /confirm. Owner only.",
     "params": [
       "taskId",
@@ -15533,7 +15574,7 @@
     "route": "/api/task-agent/tasks/:taskId/start",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 110,
+    "line": 140,
     "description": "POST /api/task-agent/tasks/:taskId/start. the Do this press: start, or resume the same attempt (repeated presses never duplicate work). body.fresh starts a new attempt on a settled run. Owner only.",
     "params": [
       "taskId"
@@ -15553,7 +15594,7 @@
     "route": "/api/task-agent/tasks/:taskId/stop",
     "domain": "task-agent",
     "source": "routes/task-agent.js",
-    "line": 143,
+    "line": 173,
     "description": "POST /api/task-agent/tasks/:taskId/stop.",
     "params": [
       "taskId"
