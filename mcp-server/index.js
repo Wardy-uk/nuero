@@ -887,6 +887,19 @@ server.tool('unlink_task_context',
     return { content: [{ type: 'text', text: `${d.already ? 'Already removed' : 'Removed'}: ${d.link.title}` }] };
   });
 
+// 31 Oct 2026 (Nick): the way BACK from a "Do this" Claude handoff. NEURO's
+// handoff prompt asks Claude to call this when it finishes.
+server.tool('return_task_result',
+  'Send Claude\'s finished work for a NEURO task back to NEURO: it is shown on the task\'s card and saved into the task\'s draft note in the vault. Call this when you finish a NEURO handoff.',
+  {
+    task_id: z.number().int().describe('The NEURO task id named in the handoff ("NEURO task #N")'),
+    markdown: z.string().min(1).describe('Your complete result, as markdown'),
+  },
+  async ({ task_id, markdown }) => {
+    const d = await neuroApi(`/api/task-agent/tasks/${task_id}/claude-result`, { method: 'POST', body: JSON.stringify({ markdown }), timeout: 20000 });
+    return { content: [{ type: 'text', text: d.already ? `NEURO already had this result for task #${task_id} — nothing appended. Saved in ${d.notePath}.` : `Returned to NEURO task #${task_id}: shown on the task's card and saved into ${d.notePath}.` }] };
+  });
+
 // ═══════════════════════════════════════════════════════
 // Tools: 1:1 Meeting Workflow
 // ═══════════════════════════════════════════════════════
