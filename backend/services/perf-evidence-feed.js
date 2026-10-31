@@ -127,7 +127,8 @@ function tasksLate(db, w) {
  *  - `ritual` ("Standup done", daily) and NEURO's own drafted replies.
  * Measured on the live feed 20-28 Oct 2026: 83 wins, 71 of them one of these.
  */
-const WIN_EXCLUDED_SOURCES = new Set(['task', 'meeting', 'reply', 'ritual']);
+// 'decision' is the decisions source's own (31 Oct 2026: every decision arrived twice).
+const WIN_EXCLUDED_SOURCES = new Set(['task', 'meeting', 'reply', 'ritual', 'decision']);
 const WIN_EXCLUDED_KINDS = new Set(['task_done', 'draft_reply']);
 
 function tasksDone(db, w) {
@@ -165,6 +166,7 @@ function repliesSent(db, w) {
   return db.prepare(`
     SELECT id, subject, from_name, recipients, body, sent_at
       FROM sent_replies WHERE substr(sent_at,1,10) BETWEEN ? AND ?
+       AND NOT (email_id LIKE 'pmail:%' OR email_id LIKE 'gmail:%') -- work only: a personal-mailbox reply is never evidence (31 Oct 2026)
   `).all(w.from, w.to).map((r) => {
     let to = [];
     try { to = (JSON.parse(r.recipients || '[]') || []).map((x) => x.name || x.email).filter(Boolean); } catch { /* none */ }
@@ -366,7 +368,7 @@ function candidates({ from, to } = {}, deps = {}) {
   for (const it of items) {
     const text = it._screenText || it.detail || '';
     delete it._screenText;
-    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence', 'reports'].includes(it.source)) continue;
+    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence', 'reports', 'wins'].includes(it.source)) continue;
     // The blunt personal screen ALWAYS runs, injected screen or not.
     let verdict = personalScreen({ title: it.title, text });
     if (!verdict.sensitive) {
@@ -375,6 +377,8 @@ function candidates({ from, to } = {}, deps = {}) {
     if (verdict.sensitive) {
       it.sensitive = true;
       it.detail = 'Details withheld — this concerns an employee matter. Open it in NEURO to read it.';
+      // A win's title IS its content (a commit subject, an action's wording), so it goes too.
+      if (it.source === 'wins') it.title = 'A win NEURO recorded (details withheld)';
     }
   }
   items.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));

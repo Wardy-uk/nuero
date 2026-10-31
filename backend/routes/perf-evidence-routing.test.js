@@ -41,6 +41,11 @@ before(async () => {
     VALUES ('2026-10-07','2026-10-07T10:00:00','git','commit','Shipped NOVA fix','abc',3,'w1','2026-10-07')`).run();
   raw.prepare(`INSERT INTO wins (date_key, occurred_at, source, kind, text, evidence, count, dedupe_key, created_at)
     VALUES ('2026-10-07','2026-10-07T11:00:00','activity','task_done','Book my car in for its MOT','9',1,'w2','2026-10-07')`).run();
+  raw.prepare(`INSERT INTO wins (date_key, occurred_at, source, kind, text, evidence, count, dedupe_key, created_at)
+    VALUES ('2026-10-07','2026-10-07T12:00:00','decision','decision','Decided the QA rubric','5',1,'w3','2026-10-07')`).run();
+  const rep = raw.prepare(`INSERT INTO sent_replies (email_id, subject, recipients, body, sent_at) VALUES (?, ?, '[]', ?, ?)`);
+  rep.run('AAMkWork', 'Re: SLA review', 'Thanks, done.', '2026-10-07T10:00:00Z');
+  rep.run('gmail:123', 'Re: Dinner Saturday', 'See you then.', '2026-10-07T11:00:00Z');
   fs.writeFileSync(path.join(vault, 'Meetings', '2026', '10', '2026-10-06 – Support Leadership.md'),
     '---\ntype: meeting\ndate: 2026-10-06\n---\n# Support Leadership\nRecording - Plaud ID: `abc`\n## Summary\nAgreed the [[QA framework|QA]] rollout.\n');
   fs.writeFileSync(path.join(vault, 'Meetings', '2026', '10', '2026-10-06 – Support Leadership 2.md'), '---\ntype: meeting\n---\ntwin');
@@ -77,6 +82,9 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   assert.ok(ids.includes('win:1'));
   assert.ok(!ids.includes('win:2'), 'a task completion from the wins ledger is not taken — it cannot tell work from personal');
   assert.ok(ids.includes('task-done:4'), 'a work task done on time comes from the tasks table');
+  assert.ok(!ids.includes('win:3'), 'a decision comes from the decisions source, never twice via wins');
+  const replies = body.items.filter((i) => i.kind === 'reply-sent').map((i) => i.title);
+  assert.deepEqual(replies, ['Replied: Re: SLA review'], 'a personal-mailbox reply is never evidence');
   assert.ok(!ids.includes('task-done:3'), 'done late is task-late, not task-done');
   const meetings = body.items.filter((i) => i.kind === 'meeting');
   assert.equal(meetings.length, 1, 'the " 2" twin is skipped');
