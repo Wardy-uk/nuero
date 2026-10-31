@@ -218,7 +218,7 @@ function workforce(db, w) {
         source: 'workforce', kind: 'uat-round', hint: null,
         at: r.closed_at,
         title: `Put forward UAT volunteers for "${r.feature}" (${r.uat_date})`,
-        detail: `Asked by ${r.from_name}. ${plural(asked, 'person')} invited from the rota, ${going} going; reply sent.`,
+        detail: `Asked by ${r.from_name}. ${plural(asked, 'person', 'people')} invited from the rota, ${going} going; reply sent.`,
         ref: null,
       });
     }
