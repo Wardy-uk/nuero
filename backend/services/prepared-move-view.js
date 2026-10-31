@@ -11,9 +11,8 @@
  *
  * The rules the screen relies on:
  *   - `move: null` whenever there is no trustworthy move — nothing selected,
- *     an out-of-scope write set, an employment or stale screen. Withheld items
- *     are COUNTED, never named: an employment matter is routing-only, and its
- *     wording is not for this screen.
+ *     an out-of-scope write set or a stale screen. Withheld items are
+ *     COUNTED.
  *   - a time is offered ONLY if it passes the fresh diary and leave checks NOW.
  *     A time that cannot be confirmed free is listed as withheld with its
  *     reason, never offered "probably free".
@@ -283,7 +282,7 @@ async function _currentView({ now = Date.now(), deps = {}, budgetMs = BUDGET_MS,
 
   const slots = ((s.decision || {}).slots) || [];
   const first = slots.length ? exec.writesFor(packet, slots[0].id) : null;
-  // An out-of-scope or sensitive move is not a move this screen can show.
+  // An out-of-scope move is not a move this screen can show.
   if (!first || !first.ok) return none('nothing-prepared', 'Nothing passed every check, so there is nothing to offer.', { withheldCount: withheldCount + 1 });
 
   const decidedMs = Date.parse((packet.decision || {}).decidedAt);
