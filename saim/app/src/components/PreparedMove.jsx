@@ -351,14 +351,12 @@ function V2Move({ state, busy, now, readOnly, onAsk, onConfirm, onCancel, onAgai
   const facts = d.sourceFacts || [];
   return (
     <section className="pmo pmo2" aria-label="Something SAiM has prepared">
-      {!embedded && move.privateDraft && <p className="pmo2__private" role="note">{move.privateDraft.label}</p>}
       {!embedded && <p className="pmo__say">{move.prepared && move.prepared.headline}</p>}
       {!embedded && !readOnly && !['confirming', 'receipt'].includes(state.kind) && (
         <div className="pmo__buttons pmo2__dismiss">
           <button type="button" className="pmo__btn" disabled={busy} onClick={() => onRespond('decline', { reason: 'not-useful' })}>Not relevant — get rid of it</button>
         </div>
       )}
-      {!embedded && move.privateDraft && <p className="pmo__sub pmo2__privatewhy">{move.privateDraft.cannot} {move.privateDraft.can}</p>}
       {!embedded && move.outcome && move.outcome.goal && <p className="pmo__sub pmo2__goal">{move.outcome.goal}</p>}
       {!embedded && !held && move.plan === 'draft' && <Interview move={move} busy={busy} readOnly={readOnly} onAnswer={onAnswer} onPark={onPark} onAskOption={state.kind === 'confirming' ? null : onAskOption} />}
 

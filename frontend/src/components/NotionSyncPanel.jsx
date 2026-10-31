@@ -222,7 +222,7 @@ export default function NotionSyncPanel({ embedded = false }) {
 
   // A folder named before it exists. Tracked locally only so the option can be
   // labelled "will be created" rather than "no longer in the vault" — the server
-  // is still the one that validates it (inside the vault, not sensitive, not
+  // is still the one that validates it (inside the vault, not excluded, not
   // overlapping another mapping).
   const commitNewFolder = (rowId) => {
     const folder = newFolder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
