@@ -304,6 +304,8 @@ const SOURCES = [
   // Confluence pages Nick wrote or substantially revised (perf-confluence.js;
   // the cache only — read hourly by the scheduler, never on this read path).
   ['confluence', (ctx) => require('./perf-confluence').itemsFor(ctx.w)],
+  // The Weekly Risk and SOAP reports Nick SENT (perf-reports.js; sent records only).
+  ['reports', (ctx) => require('./perf-reports').itemsFor(ctx.db, ctx.w)],
 ];
 
 /** What the feed deliberately does not carry yet, so nobody reads it as the whole picture. */
@@ -364,7 +366,7 @@ function candidates({ from, to } = {}, deps = {}) {
   for (const it of items) {
     const text = it._screenText || it.detail || '';
     delete it._screenText;
-    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence'].includes(it.source)) continue;
+    if (!['meetings', 'email', 'management-log', 'decisions', 'confluence', 'reports'].includes(it.source)) continue;
     // The blunt personal screen ALWAYS runs, injected screen or not.
     let verdict = personalScreen({ title: it.title, text });
     if (!verdict.sensitive) {
