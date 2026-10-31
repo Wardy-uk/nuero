@@ -43,7 +43,8 @@ const THREAD_ITEM = {
 const BENCH = { state: 'ok', items: [THREAD_ITEM], withheld: { sensitive: 1, ambiguous: 0, unreadable: 0, undated: 0 } };
 const DRAFT_ITEM = { ...THREAD_ITEM, title: 'Send Hope the onboarding checklist', preparation: { state: 'needs-a-draft', why: 'It is a message to one person; nothing is drafted yet.' } };
 const DRAFT_BENCH = { ...BENCH, items: [DRAFT_ITEM] };
-const kmwButtons = (out) => [...out.matchAll(/<button type="button" class="kmw__open"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+const kmwButtons = (out) => [...out.matchAll(/<button type="button" class="kmw__open[^"]*"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+const START = async () => ({ ok: true });
 const READY = (over = {}) => ({ sending: true, items: { 'promise:31': { addressable: true, why: null, live: null, ...over } } });
 const CALM = { mode: 'calm', needsYou: [], primary: null };
 const URGENT = { mode: 'needs-attention', needsYou: [{ id: 'risk', title: 'Weekly Risk report waits for you' }], primary: null };
@@ -179,7 +180,13 @@ async function load(entry) {
 }
 
 let Situation;
-test.before(async () => { Situation = (await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'Situation.jsx'))).default; });
+let Workflow;
+test.before(async () => {
+  Situation = (await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'Situation.jsx'))).default;
+  Workflow = (await load(path.join(ROOT, 'saim', 'shared-ui', 'TaskWorkflow.jsx'))).TaskWorkflowView;
+});
+// The Task workflow screen (31 Oct 2026) — where the delivery note and the move now live.
+const screen = (kmw, extra = {}) => renderToString(React.createElement(Workflow, { data: { ok: true, task: null, thread: kmw.thread }, ...extra }));
 
 function presentationWith(kmw, base) {
   return {
@@ -210,7 +217,11 @@ test('render: a calm screen gives the thread the main surface, with the readout 
   assert.ok(out.includes('sit--kmw'));
   assert.ok(out.indexOf('kmw__week') < out.indexOf('kmw__thread'), 'readout first (left), main surface after');
   assert.ok(out.includes('7 / 9'));
-  assert.ok(out.includes('Open the task'), 'the one control is the existing open hand-off');
+  assert.ok(!out.includes('Open the task'), 'the card no longer opens the task (31 Oct 2026)');
+  assert.deepEqual(kmwButtons(out), [], 'no shell handler → no button');
+  const started = html(presentationWith(kmw, CALM), 'desktop', { onStartTask: START });
+  assert.deepEqual(kmwButtons(started), ['Start this task'], 'the ONE control is Start this task');
+  assert.ok(!started.includes('kmw__tools') && !started.includes('>Evidence<'), 'no tools, no evidence rows on the card');
 });
 
 test('render: the verified receipt with exact date/time and the note’s location', () => {
@@ -238,6 +249,8 @@ test('render: the kiosk draws it, with a control only when its shell hands one o
   assert.ok(kiosk.includes('kmw__thread'));
   assert.ok(kiosk.includes('kmw__week'));
   assert.ok(!kiosk.includes('Open the task'), 'no onOpen from the shell → no button');
+  const kioskStart = html(presentationWith(kmw, CALM), 'kiosk', { onOpen: null, onStartTask: START });
+  assert.ok(!kioskStart.includes('Start this task'), 'never a Start button on the kiosk, even if a handler is passed');
   const watch = html(presentationWith(kmw, CALM), 'watch');
   assert.ok(!watch.includes('kmw__'));
 });
@@ -302,8 +315,9 @@ test('needs-a-draft with “Send approved emails” off: drafting still offered,
   const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: { ...READY(), sending: false }, presentation: CALM, now: NOW });
   assert.equal(v.thread.draft.control, 'Draft the delivery note');
   assert.equal(v.thread.draft.sendingOff, '“Send approved emails” is off, so the note can be reviewed but can’t be approved to send until that setting is on.');
-  const out = html(presentationWith(v, CALM), 'desktop', { onPrepareDelivery: async () => ({ ok: true }) });
+  const out = screen(v, { onPrepareDelivery: async () => ({ ok: true }) });
   assert.ok(out.includes('can’t be approved to send until that setting is on'));
+  assert.ok(!html(presentationWith(v, CALM), 'desktop', { onStartTask: START }).includes('delivery note'), 'the card says nothing of the delivery note');
 });
 
 test('a draft that EXISTS is never offered as a new draft: prepared → “Show the delivery note”; further on → status only', () => {
@@ -312,8 +326,8 @@ test('a draft that EXISTS is never offered as a new draft: prepared → “Show 
   assert.equal(waiting.thread.draft.say, 'A delivery note is already drafted and waiting for your approval.');
   assert.ok(!JSON.stringify(waiting.thread).includes('Draft the delivery note'), 'no stale offer');
   assert.ok(!JSON.stringify(waiting.thread).includes('SAiM can prepare a delivery note'), 'no stale offer sentence');
-  const out = html(presentationWith(waiting, CALM), 'desktop', { onPrepareDelivery: async () => ({ ok: true }) });
-  assert.deepEqual(kmwButtons(out), ['Show the delivery note', 'Open the task'], 'the delivery control, plus Open the task (31 Oct 2026)');
+  const out = screen(waiting, { onPrepareDelivery: async () => ({ ok: true }) });
+  assert.deepEqual(kmwButtons(out), ['Show the delivery note'], 'the delivery control, on the workflow screen');
   for (const status of ['approved', 'executing', 'executed', 'execution_uncertain']) {
     const v = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY({ live: { actionId: 'pa_1', status } }), presentation: CALM, now: NOW });
     assert.equal(v.thread.draft.control, null, status);
@@ -328,36 +342,38 @@ test('under an urgent lead the thread (and its control) folds beneath the lead',
 });
 
 
-test('render: the offer and ONE control — no approve, send or confirm anywhere in the thread', () => {
+test('render: the offer and ONE control on the workflow screen — no approve, send or confirm; the card only offers Start', () => {
   const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: READY(), presentation: CALM, now: NOW });
+  const out = screen(kmw, { onPrepareDelivery: async () => ({ ok: true }), onOpenActions: () => {} });
+  assert.ok(out.includes('SAiM can prepare a delivery note for your approval. Nothing will be sent.'));
+  assert.deepEqual(kmwButtons(out), ['Draft the delivery note']);
+  assert.ok(!/>[^<]*(Approve|Send|Confirm)[^<]*<\/button>/.test(out), 'no approve, send or confirm');
   for (const profile of ['phone', 'desktop']) {
-    const out = html(presentationWith(kmw, CALM), profile, { onPrepareDelivery: async () => ({ ok: true }), onOpenActions: () => {} });
-    assert.ok(out.includes('SAiM can prepare a delivery note for your approval. Nothing will be sent.'), profile);
-    assert.deepEqual(kmwButtons(out), ['Draft the delivery note', 'Open the task'], `${profile}: the delivery control, plus Open the task`);
-    assert.ok(!/>[^<]*(Approve|Send|Confirm)[^<]*<\/button>/.test(out), `${profile}: no approve, send or confirm`);
+    const card = html(presentationWith(kmw, CALM), profile, { onStartTask: START });
+    assert.deepEqual(kmwButtons(card), ['Start this task'], profile);
   }
 });
 
-test('render: no prepare handler (the kiosk, or any shell without one) → the offer is shown, the control is not; never on the watch', () => {
+test('render: no prepare handler (a read-only screen) → the offer is shown, the control is not; never on the watch', () => {
   const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, authority: OPEN, delivery: READY(), presentation: CALM, now: NOW });
-  const kiosk = html(presentationWith(kmw, CALM), 'kiosk', { onOpen: null });
-  assert.ok(kiosk.includes('SAiM can prepare a delivery note'));
-  assert.ok(!kiosk.includes('Draft the delivery note'));
-  const watch = html(presentationWith(kmw, CALM), 'watch', { onPrepareDelivery: async () => ({ ok: true }) });
-  assert.ok(!watch.includes('delivery note'));
+  const ro = screen(kmw, { readOnly: true });
+  assert.ok(ro.includes('SAiM can prepare a delivery note'));
+  assert.ok(!ro.includes('Draft the delivery note'));
+  const watch = html(presentationWith(kmw, CALM), 'watch', { onStartTask: START });
+  assert.ok(!watch.includes('delivery note') && !watch.includes('Start this task'));
 });
 
-test('render: urgent lead first; the delivery control lives in the folded thread beneath it', () => {
+test('render: urgent lead first; Start this task lives in the folded thread beneath it', () => {
   const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY(), presentation: URGENT, now: NOW });
-  const out = html(presentationWith(kmw, { ...URGENT, headline: 'One thing needs you.' }), 'phone', { onPrepareDelivery: async () => ({ ok: true }) });
+  const out = html(presentationWith(kmw, { ...URGENT, headline: 'One thing needs you.' }), 'phone', { onStartTask: START });
   const lead = out.indexOf('Weekly Risk report waits for you');
   const fold = out.indexOf('<details class="kmw__fold kmw__fold--entry">');
-  const ctl = out.indexOf('Draft the delivery note');
+  const ctl = out.indexOf('Start this task');
   assert.ok(lead > 0 && fold > lead && ctl > fold, 'lead → fold → control');
 });
 
 test('the click calls ONLY the prepare handler with the promise key, reveals the route’s draft, repeats idempotently, and shows a refusal whole', async () => {
-  const { KmwThreadOne: KmwThread } = await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx')); // the thread body, called directly
+  const { KmwDelivery: KmwThread } = await load(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx')); // the delivery row (on the workflow screen), called directly
   const kmw = k.compose({ score: SCORE, workbench: DRAFT_BENCH, delivery: READY(), presentation: CALM, now: NOW });
   const R = require('react');
   const realUseState = R.useState;
@@ -413,10 +429,10 @@ test('the shared component holds no URL and no send/approve call — the shells 
   const src = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'), 'utf-8');
   assert.ok(!/['"`]\/api\//.test(src), 'no API path in shared UI');
   assert.ok(!/approve|execute|intent-grant|challenge/i.test(src.replace(/\/\/.*$/gm, '')), 'no approval or execution in code');
-  // Brief 003: the desktop's delivery-note call lives in NowScene (shared by Now and SAiM).
-  for (const f of ['saim/app/src/promiseDelivery.mjs', 'frontend/src/components/NowScene.jsx']) {
+  // 31 Oct 2026: the desktop's delivery-note call lives on the Task workflow screen.
+  for (const f of ['saim/app/src/promiseDelivery.mjs', 'frontend/src/components/TaskWorkflowPage.jsx']) {
     const body = fs.readFileSync(path.join(ROOT, f), 'utf-8');
-    assert.ok(body.includes('/api/promises/${encodeURIComponent(key)}/prepare'), `${f} calls only the prepare route`);
+    assert.ok(/\/api\/promises\/\$\{encodeURIComponent\(\w+\)\}\/prepare/.test(body), `${f} calls only the prepare route`);
   }
 });
 

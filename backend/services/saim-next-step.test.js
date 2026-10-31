@@ -128,7 +128,7 @@ function meetingData(activity, handoff, kmwOver = {}) {
   p.keepMyWord = k.compose({ score: SCORE, workbench: BENCH, delivery: { sending: true, items: { 'promise:31': { addressable: true, live: null } } }, presentation: p, now: NOW, ...kmwOver });
   return { ...payload, presentation: p, handoff, poolAvailable: true };
 }
-const render = (data, extra = {}) => renderToString(React.createElement(Surface, { data, layout: 'situation', profile: 'desktop', onNavigate: () => {}, onPrepareDelivery: async () => ({ ok: true }), ...extra })).split('<!-- -->').join('');
+const render = (data, extra = {}) => renderToString(React.createElement(Surface, { data, layout: 'situation', profile: 'desktop', onNavigate: () => {}, onStartTask: async () => ({ ok: true }), ...extra })).split('<!-- -->').join('');
 const buttons = (html) => [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
 
 test('render: in a meeting the step sits in the headline block, BEFORE the folded promise; the Ask bar is meeting-aware', () => {
@@ -149,24 +149,26 @@ test('render: the kiosk gets prep, not a Teams link it cannot open', () => {
   assert.ok(!buttons(html).includes('Join in Teams'));
 });
 
-test('render: eligible promise on a calm screen — ONE control, the existing prepare; no meeting step, no send/approve', () => {
+test('render: eligible promise on a calm screen — ONE control, Start this task (31 Oct 2026); no meeting step, no send/approve', () => {
   const data = meetingData('steady', null);
   assert.equal(data.presentation.keepMyWord.leads, true);
   const html = render(data);
   assert.ok(!html.includes('class="sit__step"'), 'calm: no invented step');
   const b = buttons(html);
-  assert.ok(b.includes('Draft the delivery note'));
+  assert.ok(b.includes('Start this task'));
+  assert.ok(!b.includes('Draft the delivery note'), 'the delivery note lives on the Task workflow screen');
   assert.ok(!b.includes('Open the task'), 'one control per state');
   assert.ok(!b.some((x) => /approve|send|confirm/i.test(x)), JSON.stringify(b));
 });
 
-test('render: held promise names what is missing and offers NO control at all', () => {
+test('render: held promise names what is missing and offers no delivery control (Start only)', () => {
   const data = meetingData('steady', null, { delivery: { sending: true, items: { 'promise:31': { addressable: false, live: null } } } });
   assert.equal(data.presentation.keepMyWord.state, 'held');
   const html = render(data);
   assert.match(html, /no single email address for Kit Varga/);
   const b = buttons(html);
   assert.ok(!b.includes('Draft the delivery note') && !b.includes('Open the task'), JSON.stringify(b));
+  assert.ok(b.every((x) => x === 'Start this task' || !/draft|approve|send/i.test(x)), JSON.stringify(b));
   assert.ok(!html.includes('class="sit__step"'));
 });
 

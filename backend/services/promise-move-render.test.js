@@ -4,8 +4,8 @@
  * The held promise's answer interaction and the outstanding status line, as
  * REAL renders (esbuild + react-dom/server), plus the pure result mapper.
  *
- *   - the card offers ONE control ("Tell SAiM who it is owed to") and no
- *     "Open the task" when SAiM can take it forward;
+ *   - the promise's move lives on the Task workflow screen (31 Oct 2026): ONE
+ *     control ("Tell SAiM who it is owed to"); the CARD offers only "Start this task";
  *   - the question is asked IN PLACE: one line of question, why, choice
  *     buttons, one text box and "Tell SAiM" — no select, fieldset or
  *     settings vocabulary;
@@ -39,9 +39,10 @@ async function bundle(entry) {
 }
 const text = (h) => h.replace(/<!-- -->/g, '');
 
-let K; let PM;
+let K; let PM; let W;
 test.before(async () => {
   K = await bundle(path.join(ROOT, 'saim', 'shared-ui', 'presentation', 'KeepMyWord.jsx'));
+  W = await bundle(path.join(ROOT, 'saim', 'shared-ui', 'TaskWorkflow.jsx'));
   PM = await bundle(path.join(ROOT, 'saim', 'app', 'src', 'components', 'PreparedMove.jsx'));
 });
 
@@ -56,9 +57,11 @@ const thread = (move) => ({
   move,
 });
 const render = (el) => text(renderToString(el));
+// The Task workflow screen for one promise thread (where the move now lives).
+const screen = (t, extra = {}) => React.createElement(W.TaskWorkflowView, { data: { ok: true, task: null, thread: t }, ...extra });
 
-test('the offer: ONE control, and no "Open the task" when SAiM can take it forward', () => {
-  const h = render(React.createElement(K.KmwThread, { thread: thread({ state: 'offer', ref: 'promise:promise:322', control: 'Tell SAiM who it is owed to', question: OWED_Q }), actions: true, onOpen: () => {}, onPromiseMove: async () => ({}) }));
+test('the offer: ONE control on the workflow screen, and no "Open the task"', () => {
+  const h = render(screen(thread({ state: 'offer', ref: 'promise:promise:322', control: 'Tell SAiM who it is owed to', question: OWED_Q }), { onPromiseMove: async () => ({}) }));
   assert.match(h, />Tell SAiM who it is owed to<\/button>/);
   assert.doesNotMatch(h, /Open the task/);
   // Before the press, the question is not yet shown.
@@ -66,19 +69,23 @@ test('the offer: ONE control, and no "Open the task" when SAiM can take it forwa
   // A promise that needs time (not held) offers "Make this ready" — and still no "Open the task".
   const t = thread({ state: 'offer', ref: 'promise:promise:322', control: 'Make this ready', question: null });
   delete t.held; t.preparation = { state: 'needs-a-block', label: 'Needs time', why: 'It needs your time to finish.' };
-  const h2 = render(React.createElement(K.KmwThread, { thread: t, actions: true, onOpen: () => {}, onPromiseMove: async () => ({}) }));
+  const h2 = render(screen(t, { onPromiseMove: async () => ({}) }));
   assert.match(h2, />Make this ready<\/button>/);
   assert.doesNotMatch(h2, /Open the task/);
 });
 
-test('without a move, the old "Open the task" stays (nothing else can move it)', () => {
-  const t = thread(null); delete t.held;
-  const h = render(React.createElement(K.KmwThread, { thread: t, actions: true, onOpen: () => {} }));
-  assert.match(h, /Open the task/);
+test('the card itself (31 Oct 2026): only "Start this task" — no move, no question, no Open the task', () => {
+  const t = thread({ state: 'offer', ref: 'promise:promise:322', control: 'Tell SAiM who it is owed to', question: OWED_Q });
+  const h = render(React.createElement(K.KmwThread, { thread: t, actions: true, onOpen: () => {}, onStartTask: async () => ({ ok: true }) }));
+  assert.match(h, />Start this task<\/button>/);
+  assert.doesNotMatch(h, /Tell SAiM who it is owed to|Open the task|<input|Evidence/);
+  assert.match(h, /No one is named as who this is owed to\./, 'a held thread still says its held line');
+  const none = render(React.createElement(K.KmwThread, { thread: t, actions: false, onStartTask: async () => ({ ok: true }) }));
+  assert.doesNotMatch(none, /<button/, 'no actions → no button');
 });
 
 test('the question, asked in place: question, why, one text box, "Tell SAiM" — not a settings page', () => {
-  const h = render(React.createElement(K.KmwThread, { thread: thread({ state: 'ask', ref: 'promise:promise:322', recordId: 'pm_x', version: 2, question: OWED_Q }), actions: true, onOpen: () => {}, onPromiseMove: async () => ({}) }));
+  const h = render(screen(thread({ state: 'ask', ref: 'promise:promise:322', recordId: 'pm_x', version: 2, question: OWED_Q }), { onPromiseMove: async () => ({}) }));
   assert.match(h, /<form class="kmw__ask"/);
   assert.match(h, /<label[^>]*>Who is this owed to\?<\/label>/);
   assert.match(h, /SAiM won’t guess/);
@@ -100,7 +107,7 @@ test('an ambiguous answer comes back as choices — buttons to pick, never a dro
 });
 
 test('read-only (kiosk): the question shows, the box does not, and it says where to answer', () => {
-  const h = render(React.createElement(K.KmwThread, { thread: thread({ state: 'ask', ref: 'promise:promise:322', recordId: 'pm_x', version: 2, question: OWED_Q }), actions: false }));
+  const h = render(screen(thread({ state: 'ask', ref: 'promise:promise:322', recordId: 'pm_x', version: 2, question: OWED_Q }), { readOnly: true }));
   assert.match(h, /Who is this owed to\?/);
   assert.doesNotMatch(h, /<input|>Tell SAiM</);
   assert.match(h, /Answer this in SAiM on your phone or desktop\./);

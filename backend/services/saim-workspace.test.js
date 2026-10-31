@@ -91,12 +91,16 @@ test('3a. ONE shared scene: only NowScene imports Situation; Now and the workspa
 
 test('3b. the shared scene carries the existing governed callbacks, each to its existing route', () => {
   const scene = code(read('components/NowScene.jsx'));
-  for (const p of ['onPrepareDelivery', 'onPromiseMove', 'renderPromiseSave', 'onCardOpen', 'renderPrimary', 'onCorrect', 'onNotNow']) {
+  for (const p of ['onStartTask', 'onCardOpen', 'renderPrimary', 'onCorrect', 'onNotNow']) {
     assert.ok(scene.includes(p), `NowScene passes ${p}`);
   }
-  assert.match(scene, /\/api\/promises\/\$\{encodeURIComponent\(key\)\}\/prepare/, 'delivery note only PREPARES');
-  assert.match(scene, /promiseMoveRequest\(op\)/, 'prepared-move requests are built by the shared builder');
-  assert.match(scene, /<PromiseSave recordId=/, 'saving goes through PromiseSave → /prepared-moves/request + /confirm');
+  assert.match(scene, /startTaskSession\(desktopCall/, 'Start this task goes through the focus-session route');
+  assert.match(scene, /onNavigate\('task'/, 'then opens the Task workflow screen');
+  // 31 Oct 2026: the promise's own controls moved to the Task workflow screen.
+  const wf = code(read('components/TaskWorkflowPage.jsx'));
+  assert.match(wf, /\/api\/promises\/\$\{encodeURIComponent\(k\)\}\/prepare/, 'delivery note only PREPARES');
+  assert.match(wf, /promiseMoveRequest\(op\)/, 'prepared-move requests are built by the shared builder');
+  assert.match(wf, /<PromiseSave recordId=/, 'saving goes through PromiseSave → /prepared-moves/request + /confirm');
   assert.match(scene, /onAct=\{attention\.act\}/, 'card acts go through useAttention.act → /api/attention/records/:id/act');
 });
 
