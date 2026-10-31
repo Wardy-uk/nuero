@@ -111,3 +111,30 @@ test('documents: text first, Claude only for a near-empty PDF, unread waits for 
   item = mail.itemsFor({ from: '2026-09-01', to: '2026-09-30' }).find((i) => i.kind === 'mail-document');
   assert.match(item.detail, /could not be read \(almost no text in it\)/);
 });
+
+test('documents: an identical file is read once; a pass out of model reads keeps its progress', async () => {
+  const d = require('../db/database').getDb();
+  const files = [{ id: 'b1', name: 'BYM.pdf', size: 10 }, { id: 'b2', name: 'BYM.pdf', size: 10 }, { id: 'b3', name: 'Other.pdf', size: 10 }];
+  const bytes = { b1: 'same', b2: 'same', b3: 'different' };
+  const fake = {
+    getAccessToken: async () => 'tok',
+    graphFetch: async (url) => {
+      const one = url.match(/attachments\/([^/?]+)$/);
+      if (one) return { contentBytes: Buffer.from(bytes[one[1]]).toString('base64') };
+      return { value: files };
+    },
+  };
+  let calls = 0;
+  const provider = { isConfigured: () => true, vision: async () => { calls += 1; return { text: `read ${calls}`, usage: {}, model: 'm' }; } };
+  const deps = { microsoft: fake, provider, aiRouting: { isCloudAllowed: () => true, recordUsage: () => {} }, maxPages: 20, extract: async () => ({ ok: true, text: '', pages: 1 }) };
+  d.prepare('UPDATE perf_mail_items SET doc_text = NULL, doc_partial = NULL').run();
+
+  let r = await mail.readDocs({ ...deps, aiPerRun: 1 });
+  assert.equal(calls, 1, 'one model read: the second BYM.pdf is the same file');
+  assert.equal(r.waiting, 1, 'Other.pdf waits for the next pass');
+  r = await mail.readDocs({ ...deps, aiPerRun: 1 });
+  assert.equal(calls, 2, 'the next pass reads only what was left');
+  assert.equal(r.read, 1);
+  const item = mail.itemsFor({ from: '2026-09-01', to: '2026-09-30' }).find((i) => i.kind === 'mail-document');
+  assert.equal((item.detail.match(/\(read by AI\)/g) || []).length, 3);
+});
