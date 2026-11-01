@@ -238,6 +238,8 @@ test('a report on long leave (People note status) is away, not a gap and not cou
   assert.deepEqual(r.away.map(a => a.name).sort(), ['Adele Norman-Swift', 'Maria Pappa']);
   const cc = (r.teams || []).find(t => t.pool === 'customercare');
   if (cc) assert.ok(!cc.members.includes('Maria Pappa'), 'someone on long leave is not counted as cover');
+  const back = run([], { reports: REPORTS.map(r => r.name === 'Maria Pappa' ? { ...r, status: 'Active — returned from maternity 2026-05-01; 4-day week' } : r) });
+  assert.ok(!back.away.some(a => a.name === 'Maria Pappa'), 'someone back from maternity is not away');
   const plain = run([]);
   assert.ok(plain.gaps.some(g => /Adele/.test(g)), 'without the status, the missing report is still a named gap');
 });

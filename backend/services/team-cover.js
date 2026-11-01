@@ -55,7 +55,9 @@ const IGNORED_POOLS = Object.freeze(new Set(['digitaldesign']));
 // A report on long leave, as their People note's `status:` says, is away for the
 // whole window: not a gap, not a team member (Nick, 1 Nov 2026 — Adele is still
 // on maternity leave, so her absence from NOVA's roster is expected).
-const LONG_LEAVE = /\b(maternity|paternity|parental|adoption|shared parental|sabbatical|career break|long[- ]term (sick|leave))\b/i;
+// The status must START with the leave ("Maternity leave — returning…"): "Active —
+// returned from maternity…" (Maria Pappa, live) is back at work.
+const LONG_LEAVE = /^\s*(on\s+)?(maternity|paternity|parental|adoption|shared parental|sabbatical|career break|long[- ]term (sick|leave))\b/i;
 
 const POOL_LABELS = Object.freeze({
   support: 'Tier 2',
