@@ -156,7 +156,7 @@ router.post('/siri-note', (req, res) => {
 // this whole area exists to prevent. What it must never do is claim a vault
 // record it does not have, so `vault.written` is reported honestly and the
 // client says so in words. The only 500 is when NEITHER half landed.
-router.post('/todo', (req, res) => {
+router.post('/todo', async (req, res) => {
   const { text, priority, moscow, due, source } = req.body;
   if (!text || !text.trim()) {
     return res.status(400).json({ error: 'text is required' });
@@ -183,7 +183,7 @@ router.post('/todo', (req, res) => {
 
   try {
     const taskStore = require('../services/task-store');
-    const { id, created, task, similar } = taskStore.createTask({
+    const { id, created, task, similar: lexicalSimilar } = taskStore.createTask({
       text,
       priority,
       moscow,
@@ -197,6 +197,12 @@ router.post('/todo', (req, res) => {
       // to stop the pair before it has to be found again later.
       checkSimilar: true,
     });
+    // Words first (instant, inside createTask); meaning only when words found
+    // nothing — cached vectors for existing tasks, the new text embedded under a
+    // short deadline, lexical answer on any miss. Never costs the capture.
+    const similar = lexicalSimilar
+      ? { ...lexicalSimilar, why: 'words' }
+      : (created ? await require('../services/task-semantic').findSimilarSemantic(text, { excludeId: id }) : null);
     if (vaultRecord) captureStore.stampTaskCaptureId(vaultRecord.relativePath, captureId, id);
     console.log(`[Capture] Todo ${created ? 'created' : 'folded into'} task #${id} (vault: ${vault.written ? 'yes' : 'no'})`);
     res.json({

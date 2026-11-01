@@ -191,8 +191,8 @@ const PRESENTERS = {
     };
   },
 
-  // The PIP report. Outbound, and the highest-stakes recipient in the queue —
-  // the manager assessing the plan. The full report goes on the card verbatim
+  // The weekly report to Chris. Outbound, and the highest-stakes recipient in
+  // the queue — Nick's manager. The full report goes on the card verbatim
   // for the same reason every other outbound body does: the screen must show
   // what sends, and a summary here would be a summary of a summary.
   send_weekly_risk_report: (p) => {

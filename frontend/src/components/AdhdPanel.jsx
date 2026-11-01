@@ -17,6 +17,7 @@ import { useWorkOnly } from '../workOnly';
 // the SAME component, record, authority check, confirmation and executor as
 // SAiM Home — never a second save path (26 Oct 2026).
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
+import LooksDoneSection from '../../../saim/shared-ui/DoneEvidence.jsx';
 import { openInVault } from '../openVault';
 // "Make this ready" after a Now row's own action — the SAME control and /eligible list the phone uses (22 Oct 2026).
 import { desktopCall } from '../desktopCall';
@@ -891,6 +892,11 @@ export default function AdhdPanel({ onNavigate }) {
       {!hasScene(attention.data) && (
         <NowSituation situation={attention.situation} onNavigate={onNavigate} />
       )}
+
+      {/* ── Looks done ──
+          Tasks NEURO has evidence are already done. Renders nothing when there
+          are none; it offers, Nick closes. */}
+      <LooksDoneSection call={desktopCall} />
 
       {/* ── Friction noticed ──
           Evidence only, and BELOW the work rather than above it. */}

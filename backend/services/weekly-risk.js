@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * Weekly Risk & Anomaly Summary — PIP competency 2 (proactive oversight).
+ * Weekly Risk & Anomaly Summary — the weekly report to Chris.
  *
  * Nick sends this to Chris by midday every Monday; it is a standing 1:1 agenda
- * item and the evidence for proactive review of team activity with early
+ * item and the record of a proactive review of team activity with early
  * escalation. The first edition (w/c 11 Aug 2026) was assembled by hand from a
  * NOVA screen, which is fine once and untenable weekly — the failure mode of a
  * hand-built compliance report is that it silently stops being built.
@@ -20,7 +20,7 @@
  *    whether it answered, and a section with no data says so rather than
  *    rendering as a healthy zero. A report that reads "0 breaches" because NOVA
  *    was down is worse than no report, because it is a false all-clear sent to
- *    the person assessing the PIP.
+ *    Nick's manager.
  *
  * 2. **It never asserts the manual sections on Nick's behalf.** Overtime,
  *    escalations-to-Chris, actions and data-quality judgements are his to state.
@@ -379,8 +379,8 @@ function manualBlockers(manual, overtimeStatus = null) {
  * The list holds two populations with nothing in common but a due date:
  *
  *   • COMMITMENTS — work somebody else asked for, or is waiting on. Missing one
- *     is a fact about Nick's reliability to other people, and it is what
- *     competencies 3 and 4 are actually measured on.
+ *     is a fact about Nick's reliability to other people, and it is what the
+ *     report is about.
  *   • CONTINUAL IMPROVEMENT — work Nick set himself to make the department
  *     better. Nobody is waiting. One slipping is a fact about his own ambition.
  *
@@ -471,7 +471,7 @@ function taskCounts(week = weekCommencing()) {
   );
   // How much of the split is still NEURO's guess rather than Nick's call. A
   // report that presented proposals as decisions would be stating a machine's
-  // inference as his own judgement to the person assessing him.
+  // inference as his own judgement to his manager.
   const proposed = one(`SELECT COUNT(*) c FROM tasks WHERE ${OPEN} AND origin IS NOT NULL AND origin_proposed = 1`);
 
   return {
@@ -604,8 +604,8 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     })
     : { name: 'kpi-tracker', ok: false, error: 'NOVA bridge not configured', data: null };
 
-  // Nick's own task position. Competency 4 is about overdue management actions,
-  // but the 12 Aug review also put a number on his own work backlog — 400+ items
+  // Nick's own task position. The management log covers overdue management
+  // actions, but the 12 Aug review also put a number on his own work backlog — 400+ items
   // since 1 June — so "open / overdue / closed last week" is the movement that
   // conversation actually asked for. Read straight from the task store, which
   // is the source of truth for tasks.
@@ -641,7 +641,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     myEscalations,
     tasks,
     management: managementLog.status(),
-    // Competency 1, measured rather than typed. Until this existed the overtime
+    // Overtime, measured rather than typed. Until this existed the overtime
     // section was manual and BLOCKED publication every week — see the change to
     // manualBlockers().
     overtime: (() => {
@@ -1153,7 +1153,7 @@ function assess(snap) {
   // Same gate as the renderer: a stale NOVA build's numbers are not merely
   // incomplete, they are wrong in a specific direction — every return counted as
   // a rejection. Findings built on them would escalate friction that is not
-  // there, to the person assessing the PIP.
+  // there, to Nick's manager.
   if (flow && flow.build !== FLOW_BUILD_EXPECTED) {
     findings.push({
       severity: 'blocked',
@@ -1263,12 +1263,12 @@ function assess(snap) {
     }
   }
 
-  // ── Overtime (competency 1) ────────────────────────────────────────────────
+  // ── Overtime ───────────────────────────────────────────────────────────────
   //
   // The success measure is "all sampled approvals evidence completion of the
   // five-step checklist with no WTR breach". Both halves are findings here, and
   // an approval that got through without the full checklist is the more serious
-  // of the two — it is the exact behaviour the competency was written about.
+  // of the two — it is the exact behaviour the checklist exists to prevent.
   const ot = snap?.overtime;
   if (ot?.available) {
     if (ot.approvedWithoutFullChecklist > 0) {
@@ -1276,7 +1276,7 @@ function assess(snap) {
         severity: 'escalate',
         kind: 'overtime-checklist-gap',
         title: `${ot.approvedWithoutFullChecklist} overtime approval${ot.approvedWithoutFullChecklist === 1 ? '' : 's'} recorded without the full five-step check`,
-        detail: 'PIP competency 1 requires 100% of approvals to evidence the Section 8 checklist. These would fail a manager audit at the next checkpoint.',
+        detail: 'Every approval should evidence the Section 8 checklist. These would fail a manager audit.',
       });
     }
     for (const p of ot.overLimit || []) {
@@ -1286,7 +1286,7 @@ function assess(snap) {
         title: `${p.person} is at ${p.averageHours}h on the 17-week average`,
         detail: p.optoutSigned
           ? `Above the 48-hour limit with a signed opt-out on file, so permitted — but worth a look at why the pattern is sustained.`
-          : `Above the 48-hour limit with NO signed opt-out on file. This needs HR involvement now, not at the next checkpoint.`,
+          : `Above the 48-hour limit with NO signed opt-out on file. This needs HR involvement now.`,
       });
     }
     if (ot.checklistOutstanding > 0) {
@@ -1329,7 +1329,7 @@ function assess(snap) {
     });
   }
 
-  // Management log — competency 3/4 carried onto the same page, because the two
+  // Management log — carried onto the same page, because the two
   // documents are assessed together and a clean risk report next to an unlogged
   // conversation is not a good week.
   const mgmt = snap?.management;
@@ -1806,7 +1806,7 @@ function render(a) {
   lines.push('');
 
   // The escalations LEAD, immediately after the headline. Nick's call, 7 Sep
-  // 2026 — this is the one section the PIP asks him to act on inside two
+  // 2026 — this is the one section he is expected to act on inside two
   // working days, and a section reached after six numbered ones is read last.
   lines.push('## To escalate to Chris');
   lines.push('');
@@ -1887,7 +1887,7 @@ function render(a) {
     // audit evidence rather than a self-report.
     lines.push(`**${ot.hours} overtime hours** across **${ot.totalClaims}** claim${ot.totalClaims === 1 ? '' : 's'} — ${ot.approved} approved, ${ot.pending} pending${ot.declined ? `, ${ot.declined} declined` : ''}.`);
     lines.push('');
-    lines.push('| Competency 1 measure | Count | Target |');
+    lines.push('| Overtime check | Count | Target |');
     lines.push('|---|---|---|');
     lines.push(`| Approvals missing any of the five checks | **${ot.approvedWithoutFullChecklist}** | 0 |`);
     lines.push(`| Claims with the checklist unfinished | ${ot.checklistOutstanding} | — |`);
@@ -2008,7 +2008,6 @@ function render(a) {
     const m = a.management;
     lines.push(`Open items **${m.totals.open}** · overdue **${m.overdueCount}** · past the five-working-day standard **${m.breachesFiveDay.length}**.`);
     lines.push('');
-    // The competency-4 baseline line went when the PIP closed (12 Oct 2026).
     const week = m.loggedInWeek || [];
     lines.push('');
     if (week.length) {
@@ -2306,7 +2305,7 @@ async function publish({ week = weekCommencing(), force = false } = {}) {
   if (!vault) return { ok: false, blockers: ['OBSIDIAN_VAULT_PATH is not set — nowhere to publish.'], report };
 
   // One note per week, kept beside the original rather than overwriting it. The
-  // 11 Aug edition is the agreed format and the PIP's first piece of evidence;
+  // 11 Aug edition is the agreed format;
   // a generator that overwrites its own template loses the thing it was
   // modelled on the first time it runs.
   const rel = path.join('Projects', 'PIP', 'Weekly Risk Summaries', `Weekly Risk & Anomaly Summary — w-c ${week}.md`);
@@ -2334,7 +2333,7 @@ async function publish({ week = weekCommencing(), force = false } = {}) {
  * approval time, so the card shows the exact address the send will use.
  * "Chris" resolves ambiguously in this vault — there are two of them in
  * `People/` and Chris Middleton carries no `email:` — so an unresolved address
- * is a blocker rather than a guess. A weekly PIP report delivered to the wrong
+ * is a blocker rather than a guess. A weekly report delivered to the wrong
  * Chris is not a recoverable mistake.
  */
 async function queueSend({ week = weekCommencing(), to = null, force = false } = {}) {

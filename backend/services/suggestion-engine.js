@@ -287,6 +287,8 @@ function generateSuggestions(focusItems) {
   // Before the dedupe read, not after: a spent shortcut left pending would also
   // block today's fresh one for the same focus item.
   expireStaleNavigation();
+  // Spotted suggestions unanswered for 7 days (never written as a rejection).
+  try { require('./action-candidates').expireStaleSpotted(); } catch (e) { console.warn('[Suggestion] Spotted expiry failed:', e.message); }
 
   if (!focusItems || focusItems.length === 0) return [];
 

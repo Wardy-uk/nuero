@@ -86,11 +86,22 @@ const ORIGIN_INITIATOR = Object.freeze({
   'task-agent': 'neuro_autonomous',
   // UAT volunteers (26 Oct 2026): NEURO picks and drafts; Nick's one press sends.
   'uat-volunteers': 'neuro_autonomous',
+  // 1-2-1 auto-booking (1 Nov 2026): NOVA asked, NEURO chose the slot and booked
+  // it under the one_to_one_auto_book switch. Nick did not press anything.
+  '1to1-auto': 'neuro_autonomous',
+});
+
+// Origins a Settings SWITCH may approve without a press (1 Nov 2026). Turning the
+// switch on IS Nick's standing approval of each such action — the precedent is
+// leave_auto_decline. An origin not listed here can never be switch-approved,
+// and the switch is re-read at the moment of approval (prepared-actions.approve).
+const STANDING_SWITCH_ORIGINS = Object.freeze({
+  '1to1-auto': 'one_to_one_auto_book',
 });
 
 // The only proofs that may authorise an action from now on. `trusted_device`
 // was retired on 9 Oct 2026 and survives only on historical rows.
-const PROOFS = Object.freeze(['intent_grant', 'approval_code', 'none']);
+const PROOFS = Object.freeze(['intent_grant', 'approval_code', 'standing_switch', 'none']);
 
 const msOf = (v) => (v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.now());
 const iso = (ms) => new Date(ms).toISOString();
@@ -200,4 +211,4 @@ function consume({ grantId, actionId, version, payloadHash, now = Date.now() } =
 function get(grantId) { return db.get('SELECT * FROM human_action_intents WHERE id = ?', [grantId]) || null; }
 function forAction(actionId) { return db.all('SELECT * FROM human_action_intents WHERE action_id = ? ORDER BY created_at', [actionId]); }
 
-module.exports = { TTL_MS, SURFACES, MECHANISM, HUMAN_ORIGINS, PROOFS, initiatedByFor, callerOf, mint, mintForPreparedMove, PREPARED_MOVE_CAPABILITY, consume, get, forAction };
+module.exports = { TTL_MS, SURFACES, MECHANISM, HUMAN_ORIGINS, STANDING_SWITCH_ORIGINS, PROOFS, initiatedByFor, callerOf, mint, mintForPreparedMove, PREPARED_MOVE_CAPABILITY, consume, get, forAction };

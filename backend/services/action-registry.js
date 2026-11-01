@@ -192,7 +192,7 @@ const ACTION_TYPES = Object.freeze({
     execution: 'meeting still exists, not cancelled, more than 2 hours away, same organiser, Nick has not responded, still no agenda, Nick has not written to the organiser about it since',
     label: 'Ask a meeting organiser for the agenda',
   }),
-  // Build 8E. The PIP's Monday report to Chris. Generating the report stays
+  // Build 8E. The Monday report to Chris. Generating the report stays
   // automated; SENDING it is this action. The approved artefact is FROZEN in
   // the row (markdown Nick reads + the exact HTML that is sent, both hashed),
   // so a regenerated report can never ride an earlier approval: a newer

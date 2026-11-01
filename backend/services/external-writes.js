@@ -79,6 +79,15 @@ const WRITERS = Object.freeze({
     target: 'Outlook mailbox', authority: 'A2', initiation: 'human', ledger: false,
     effect: 'isRead on dismiss', why: 'Nick\'s own mailbox, idempotent, undoable.', readback: 'none',
   },
+  // 1 Nov 2026 — email-muted-archive.js. Not idempotentTarget: an unknown
+  // outcome is READ BACK (in Archive = done, still in the Inbox = failed) before
+  // any new attempt, by the archiver itself.
+  'microsoft.mail.archive': {
+    target: "Nick's Outlook mailbox (Inbox → Archive)", authority: 'A2', initiation: 'timer behind the email_muted_archive switch, after Nick mutes a sender', ledger: true,
+    effect: 'move one Inbox message from an exact muted sender address to the Archive folder and mark it read; never deletes, never a flagged message, never his own address',
+    why: "Nick muting a whole sender is the decision; it is his own mailbox, nobody else is told, and every move is undoable in Outlook. Machine clients cannot mute a sender.",
+    readback: 'Graph re-read of the message: parentFolderId must be the Archive folder',
+  },
   'homeassistant.room': {
     target: 'Home Assistant', authority: 'A2', initiation: 'human-only', ledger: false,
     effect: 'lights on / radiator target, only via an accepted room offer re-derived from a fresh read',

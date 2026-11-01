@@ -1,0 +1,28 @@
+.looksdone {
+  margin: 6px 0 2px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--success, #3fb27f);
+  background: rgba(63, 178, 127, 0.08);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.looksdone__task { font-weight: 600; margin-bottom: 2px; }
+.looksdone__label { font-weight: 600; color: var(--success, #3fb27f); }
+.looksdone__more { opacity: 0.7; }
+.looksdone__acts { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.looksdone__acts button {
+  font: inherit;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.looksdone__close { color: var(--success, #3fb27f); }
+.looksdone__acts button:disabled { opacity: 0.5; cursor: default; }
+.looksdone__err { color: var(--warning, #d29922); margin-top: 4px; }
+.looksdone-section { margin: 12px 0; }
+.looksdone-section__h { font-size: 0.95rem; margin: 0 0 2px; }
+.looksdone-section__note { font-size: 0.8rem; opacity: 0.7; margin: 0 0 6px; }
+.looksdone-section__gap { font-size: 0.8rem; color: var(--warning, #d29922); margin: 6px 0 0; }

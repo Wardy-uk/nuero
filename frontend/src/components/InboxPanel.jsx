@@ -47,7 +47,7 @@ export default function InboxPanel({ focusContext }) {
       .then(r => r.json())
       // null stays null on a failure: "I could not read the rules" and "there
       // are none" are different facts and only one of them is reassuring.
-      .then(data => setMuted(data?.ok ? { senders: data.senders || [], subjects: data.subjects || [] } : null))
+      .then(data => setMuted(data?.ok ? { senders: data.senders || [], subjects: data.subjects || [], archive: data.archive || null } : null))
       .catch(() => setMuted(null));
   };
 
@@ -234,6 +234,15 @@ export default function InboxPanel({ focusContext }) {
           <button className="inbox-muted-toggle" onClick={() => setMutedOpen(o => !o)}>
             {mutedOpen ? '▾' : '▸'} {muted.subjects.length} muted subject{muted.subjects.length === 1 ? '' : 's'} · {muted.senders.length} muted sender{muted.senders.length === 1 ? '' : 's'}
           </button>
+          {mutedOpen && muted.senders.length > 0 && (
+            <div className="inbox-muted-sample">
+              {muted.archive?.enabled
+                ? 'A muted sender’s mail is also moved out of your Outlook Inbox to Archive and marked read (never a flagged email, never deleted). Un-muting stops that but does not move anything back.'
+                : 'Archiving muted senders in Outlook is switched off in Settings — their mail stays in your Outlook Inbox.'}
+              {muted.archive?.enabled && muted.archive?.last?.reason && ` Last check: ${muted.archive.last.reason}.`}
+              {muted.archive?.enabled && muted.archive?.last?.mismatches?.length > 0 && ` ${muted.archive.last.mismatches.length} move(s) Outlook did not confirm — checked again next pass.`}
+            </div>
+          )}
           {mutedOpen && (
             <ul className="inbox-muted-list">
               {muted.subjects.map(m => (
@@ -248,6 +257,9 @@ export default function InboxPanel({ focusContext }) {
                   <span className="inbox-muted-addr">Everything from {m.name ? `${m.name} <${m.address}>` : m.address}</span>
                   {m.sampleSubject && (
                     <span className="inbox-muted-sample">muted on "{m.sampleSubject}"</span>
+                  )}
+                  {muted.archive?.enabled && (
+                    <span className="inbox-muted-sample">{m.archivedInOutlook || 0} archived in Outlook</span>
                   )}
                   <button className="inbox-muted-undo" onClick={() => unmute(m.address)}>Un-mute</button>
                 </li>

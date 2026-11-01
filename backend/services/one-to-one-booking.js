@@ -491,7 +491,12 @@ function _actionRef(a) {
  * A 1-2-1 with no resolved address is refused: an invite to nobody is not a
  * 1-2-1, and a block in Nick's own diary is not what "Book" means.
  */
-async function book({ person, start, end, email, subject, durationMinutes, skipClashCheck = false }) {
+const BOOK_ORIGINS = new Set(['1to1-book', '1to1-auto']);
+
+async function book({ person, start, end, email, subject, durationMinutes, skipClashCheck = false, origin = '1to1-book' }) {
+  // '1to1-auto' is the switch-approved booking (one-to-one-requests); nothing
+  // else may be named here.
+  if (!BOOK_ORIGINS.has(origin)) return { ok: false, error: `unknown booking origin ${origin}` };
   if (!person || !start || !end) return { ok: false, error: 'person, start and end are required' };
   if (!email) return { ok: false, error: `No address for ${person} — add their email to their People note, then book again. Nothing was prepared.` };
 
@@ -508,7 +513,7 @@ async function book({ person, start, end, email, subject, durationMinutes, skipC
     attendees: [{ email, name: person }],
     isOnline: true,
     body: 'Regular 1-2-1. Booked from NEURO.',
-    origin: '1to1-book',
+    origin,
     context: { person, durationMinutes: durationMinutes || DEFAULT_DURATION_MIN },
   });
   if (!r.ok) return { ok: false, error: r.error };
@@ -543,11 +548,15 @@ function createdEventIdFor(actionId) {
 function afterGovernedCalendar(a) {
   const t = (a && a.target) || {};
   const person = t.person;
-  if (!person || !['1to1-book', '1to1-move', '1to1-cancel'].includes(a.origin)) return;
+  if (!person || !['1to1-book', '1to1-auto', '1to1-move', '1to1-cancel'].includes(a.origin)) return;
   if (a.origin === '1to1-cancel') {
     // It is no longer in the diary, so it is no longer booked. Nothing else.
     try { require('./obsidian').updatePersonNote(person, { booked121: '' }); }
     catch (e) { console.warn('[1-2-1] Could not clear 1-2-1-booked:', e.message); }
+    // Cancelling a 1-2-1 NEURO booked automatically is Nick undoing the switch:
+    // remember it, so the next sweep offers the tap card instead of re-booking.
+    try { require('./one-to-one-requests').noteCancelled(person, t.eventId); }
+    catch (e) { console.warn('[1-2-1] Could not record the undo:', e.message); }
     return;
   }
   const start = (a.draft && a.draft.start) || '';
@@ -1238,6 +1247,7 @@ module.exports = {
   cancelOneToOne,
   movesFor,
   afterGovernedCalendar,
+  createdEventIdFor,
   // exported for tests
   _internals: {
     findGapInWindow, countOneToOnes, findSlot, reserve, subjectFor, ONE_TO_ONE_SUBJECT, awayFor, addDays,

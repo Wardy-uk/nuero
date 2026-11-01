@@ -67,7 +67,7 @@ test('meeting-type "1-1" alone does NOT make it a formal 1-2-1', () => {
   // ⚠ THE BUG. Nick did three return-to-work meetings the week of 1 Sep and
   // none were offered: PLAUD stamps `meeting-type: "1-1"` on ANY TWO-PERSON
   // meeting, so reading it as "this is the 1-2-1 cadence" swallowed absence and
-  // conduct management — exactly what competency 3 is about. Live title and
+  // conduct management — exactly what the log is for. Live title and
   // frontmatter, verbatim.
   const a = run([note({
     relativePath: 'Meetings/2026/09/2026-09-04 – Meeting Return-to-Work, Health and Wellbeing.md',
@@ -257,7 +257,7 @@ test('a prep note is never offered — it is not evidence a conversation happene
 // ── Dates and stamps ────────────────────────────────────────────────────────
 
 test('an undated note is refused rather than dated today', () => {
-  // `entry_date` is when the conversation HAPPENED and the whole competency-3
+  // `entry_date` is when the conversation HAPPENED and the whole two-working-day
   // measurement hangs off it. A guess there is a measurement about nothing.
   const a = run([note({
     relativePath: 'Meetings/loose/Some note.md',
@@ -270,7 +270,7 @@ test('an undated note is refused rather than dated today', () => {
 test('a note with no usable timestamp is offered, but NOT as contemporaneous', () => {
   // ⚠ The important half. It is still worth logging; it just cannot claim to
   // have been recorded on the day, so accepting it logs as today and shows as
-  // late. Guessing would manufacture competency-3 compliance out of nothing.
+  // late. Guessing would manufacture two-working-day compliance out of nothing.
   const a = run([note({ frontmatter: { title: 'Chat with Maria', created_at: '', start_at: '', people: ['Maria Pappa'] } })]);
   assert.equal(a.suggestions.length, 1);
   assert.equal(a.suggestions[0].contemporaneous, false);

@@ -391,7 +391,12 @@ function unmuteSender(address) {
 }
 
 function listMutedSenders() {
+  // How many of each sender's messages have been archived in Outlook
+  // (email-muted-archive.js). 0 is a real count; an unreadable store reads as 0.
+  let counts = {};
+  try { counts = require('./email-muted-archive').archivedCounts(); } catch { counts = {}; }
   return Object.values(readSenderRules())
+    .map((r) => ({ ...r, archivedInOutlook: (counts[r.address] && counts[r.address].archived) || 0 }))
     .sort((a, b) => String(b.mutedAt || '').localeCompare(String(a.mutedAt || '')));
 }
 
@@ -835,6 +840,7 @@ async function runTriage({ force = false } = {}) {
       // last checked the inbox, and it checked.
       db.setState('email_triage_time', String(Date.now()));
       console.log(`[EmailTriage] ${emails.length} emails, none new since last run — skipped the model call`);
+      kickMutedArchive();
       return { ok: true, skipped: true, classified: 0, ...outstandingCounts() };
     }
 
@@ -942,6 +948,10 @@ async function runTriage({ force = false } = {}) {
     storeTriage(updated);
     db.setState('email_triage_time', String(Date.now()));
 
+    // Muted senders' mail is archived in Outlook too. Started, never awaited,
+    // never allowed to fail triage.
+    kickMutedArchive();
+
     // Raise/refresh/clear the urgent-email banner off the set just stored.
     // The retired scanner used to own this; the nudge now fires from the same
     // pass that produces the list it describes. Never allowed to fail triage.
@@ -1009,6 +1019,13 @@ async function runTriage({ force = false } = {}) {
     console.error('[EmailTriage] Failed:', e.message);
     return { ok: false, error: e.message };
   }
+}
+
+// A muted sender's mail in the Outlook Inbox is moved to Archive and marked
+// read (email-muted-archive.js). Fire-and-forget: a backlog pass makes hundreds
+// of Graph calls, and a failure there is a logged reason, never a failed triage.
+function kickMutedArchive() {
+  try { require('./email-muted-archive').kick(); } catch (e) { console.warn('[EmailTriage] muted archive not started:', e.message); }
 }
 
 function getStoredTriage() {

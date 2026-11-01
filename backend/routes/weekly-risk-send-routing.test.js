@@ -11,8 +11,8 @@
  * The second test is the one that matters most. Approving from the weekly risk
  * panel must remain the SAME gate the Actions queue uses — the same queued
  * action, the same approve route, the same executor. If this router ever grows
- * a route that sends, there are two ways for a report to reach the manager
- * assessing Nick's PIP, only one of which is gated, and that is precisely the
+ * a route that sends, there are two ways for a report to reach Nick's
+ * manager, only one of which is gated, and that is precisely the
  * shape the two-gate rule exists to prevent.
  */
 

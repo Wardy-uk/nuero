@@ -10,7 +10,7 @@
  *
  * The load-bearing test is the last one: `logged_at` must not be settable from
  * a manual entry. The gap between when a conversation HAPPENED and when it was
- * WRITTEN DOWN is the whole of competency 3, and a freely backdatable stamp
+ * WRITTEN DOWN is the two-working-day standard, and a freely backdatable stamp
  * makes that measurement unfalsifiable — a self-report wearing the clothes of
  * evidence.
  */
@@ -113,7 +113,7 @@ test('an open item with no owner or due date is reported as a gap in the log its
     owner: null, dueDate: null,
   });
   const { body: log } = await get('/api/weekly-risk/log');
-  assert.ok(log.missingOwner.some(m => m.id === created.id), 'competency 3 needs an owner');
+  assert.ok(log.missingOwner.some(m => m.id === created.id), 'every open item needs an owner');
   assert.ok(log.missingDue.some(m => m.id === created.id), 'and a due date');
   // ⚠ And People HR is a QUESTION, never an accusation. A brand-new concern is
   // unanswered, so it must sit in hrUnknown and not in the hrGap that reaches
@@ -123,7 +123,7 @@ test('an open item with no owner or due date is reported as a gap in the log its
 });
 
 test('a manual entry CANNOT forge when it was logged', async () => {
-  // The whole of competency 3 is the gap between happening and being written
+  // The two-working-day standard is the gap between happening and being written
   // down. If the panel could send its own `loggedAt`, a late entry would look
   // punctual and the measurement would mean nothing.
   const { body: created } = await post('/api/weekly-risk/log', {
@@ -161,7 +161,7 @@ test('closing an item stamps a resolved date and stops it counting as overdue', 
   });
   assert.equal(res.status, 200);
   const row = await res.json();
-  // ⚠ Competency 4 measures how long things stayed open, so an item closed with
+  // ⚠ The overdue standard measures how long things stayed open, so an item closed with
   // no date is uncountable. The server stamps it rather than trusting a caller
   // to remember.
   assert.ok(row.resolved_date, 'closing stamps a resolved date');
@@ -180,7 +180,7 @@ test('correcting when a conversation happened is allowed; forging when it was lo
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     // The panel never sends this; a hand-rolled client might. The API must
-    // refuse it either way, or competency 3 is unfalsifiable.
+    // refuse it either way, or the two-working-day standard is unfalsifiable.
     body: JSON.stringify({ entryDate: '2026-08-03', loggedAt: '2026-08-03T09:00:00.000Z' }),
   });
   assert.equal(res.status, 200);

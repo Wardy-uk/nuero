@@ -697,9 +697,12 @@ test('33. no send path exists outside the governed executor', () => {
   }
   // The only caller of the executor's execute() outside it is the prepared-
   // actions route: approve (code) and, since 9 Oct 2026, execute-direct
-  // (a one-use intent grant — services/intent-grants.js).
+  // (a one-use intent grant — services/intent-grants.js). + one-to-one-requests
+  // (1 Nov 2026): a 1-2-1 NOVA asked for, approved by the one_to_one_auto_book
+  // switch (authority_proof standing_switch, origin 1to1-auto ONLY) — the same
+  // executor, ledger and read-back; a decision, not a drift.
   const callers = files.filter((f) => f !== 'services/action-executor.js' && /executor\(\)\.execute\(|action-executor'\)\.execute\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
-  assert.deepEqual(callers, ['routes/prepared-actions.js']);
+  assert.deepEqual(callers.sort(), ['routes/prepared-actions.js', 'services/one-to-one-requests.js']);
 });
 
 test('34. the event log carries ids and mechanisms — never a body, subject, address or code', () => {

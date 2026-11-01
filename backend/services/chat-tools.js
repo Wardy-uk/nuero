@@ -445,7 +445,7 @@ const HANDLERS = {
     };
   },
 
-  create_task({ text, moscow, due_date, recurrence }) {
+  async create_task({ text, moscow, due_date, recurrence }) {
     if (!text || !String(text).trim()) return { ok: false, error: 'text is required' };
     const taskStore = require('./task-store');
     let made;
@@ -463,7 +463,12 @@ const HANDLERS = {
     } catch (e) {
       return { ok: false, error: e.message };
     }
-    const { id, created, task, similar } = made;
+    const { id, created, task } = made;
+    // Words first (inside createTask); meaning only when words found nothing —
+    // cached vectors for open tasks, this text embedded under a short deadline.
+    const similar = made.similar
+      ? { ...made.similar, why: 'words' }
+      : (created ? await require('./task-semantic').findSimilarSemantic(task.text, { excludeId: id }) : null);
     // checkSimilar above: the exact-key fold only catches identical wording.
     // This catches "Consult Annabelle for insights" arriving on top of "Nick
     // Ward will consult Annabelle, who is further ahead in this process" — the

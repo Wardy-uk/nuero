@@ -3,7 +3,7 @@
 // What SAiM offers to do in a room she thinks Nick is in (12 Sep 2026).
 //
 // PURE. No DB, no network, no clock — `now` is passed in, the way
-// `context-state`, `pi-health.assess()` and `pip-deliverables.assess()` are, so
+// `context-state`, `pi-health.assess()` and `report-tracker.assess()` are, so
 // the judgement pins without a Home Assistant, a radiator or a time of day.
 // The reader that feeds it lives in `ha-rooms.js`; this file decides.
 //

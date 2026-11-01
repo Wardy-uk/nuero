@@ -3,7 +3,7 @@
 /**
  * Pins the Working Time Regulations arithmetic and the approval gate.
  *
- * These are PIP competency 1's success measure expressed as code — "all sampled
+ * These are the overtime success measure expressed as code — "all sampled
  * approvals evidence completion of the five-step checklist with no WTR breach" —
  * so the rules are tested rather than trusted. `assess()` and `rollingAverage()`
  * are pure and take their rows, so none of this needs a database or a clock.
@@ -131,8 +131,7 @@ test('status() reports unavailable when the log cannot be read, never a complian
   // totalClaims: 0 } against an uninitialised database, because the swallowing
   // list() handed it an empty array. That would have published "0 overtime
   // hours, no checklist gaps" off the back of a dead database AND cleared the
-  // weekly report's publication blocker — a false all-clear on a PIP
-  // competency.
+  // weekly report's publication blocker — a false all-clear on overtime.
   const db = require('../db/database');
   const original = db.all;
   db.all = () => { throw new Error('Database not initialized'); };

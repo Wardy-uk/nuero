@@ -171,7 +171,8 @@ router.post('/nova-sync', async (req, res) => {
 });
 
 // POST /api/1to1/booking-request — NOVA asks NEURO to book an agent's next 1-2-1 (book 1-2-1, schedule one to one, nova session, find slot).
-// Prepares the governed invite and pushes Nick a one-tap card; it NEVER sends one.
+// Prepares the governed invite and pushes Nick a one-tap card — or, when everything is certain and the
+// one_to_one_auto_book switch is on, books it through the same governed executor (the switch is the approval).
 // Called by NOVA the moment it creates the next session (machine token).
 router.post('/booking-request', async (req, res) => {
   const { agentName, date, sessionId } = req.body || {};
@@ -193,6 +194,13 @@ router.post('/booking-sweep', async (req, res) => {
     console.error('[1to1/booking-sweep]', e);
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// GET /api/1to1/auto-booked — 1-2-1s NEURO booked automatically (auto-book, one_to_one_auto_book switch) that are still ahead, each with its event id so People can offer Undo (the governed cancel). Read only.
+router.get('/auto-booked', (req, res) => {
+  const items = require('../services/one-to-one-requests').autoBooked();
+  if (items === null) return res.status(503).json({ ok: false, error: 'Could not read the automatic bookings', items: null });
+  res.json({ ok: true, items, switchOn: require('../services/feature-flags').isEnabled('one_to_one_auto_book') });
 });
 
 /**

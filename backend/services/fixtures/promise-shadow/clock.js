@@ -35,7 +35,7 @@ function reportsSent(instants) {
   const wr = require('../../weekly-risk');
   const weeks = [];
   for (const ms of instants) {
-    const d = require('../../pip-deliverables').build(new RealDate(ms));
+    const d = require('../../report-tracker').build(new RealDate(ms));
     const week = d && d.weekly && d.weekly.current && d.weekly.current.week;
     if (!week) throw new Error('no current weekly-report week at the simulated instant');
     if (!wr.sentRecord(week)) wr.markSent(week, { sentAt: new RealDate(ms).toISOString() });

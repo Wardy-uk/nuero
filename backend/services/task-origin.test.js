@@ -71,7 +71,7 @@ test('normaliseOrigin returns null for anything unrecognised — there is no def
 test('the module exports NO default-resolving helper', () => {
   // The counterpart to domainOrDefault is absent on purpose. If someone adds
   // one, this fails and they have to read the header first — the two mistakes
-  // point in opposite directions and both land in a report about Nick's PIP.
+  // point in opposite directions and both land in the weekly report to Chris.
   const mod = require('../../shared/task-origin.cjs');
   assert.strictEqual(mod.originOrDefault, undefined);
   assert.strictEqual(mod.DEFAULT_ORIGIN, undefined);

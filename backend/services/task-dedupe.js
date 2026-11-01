@@ -149,6 +149,77 @@ const MIN_SCORE = 0.42;
 const STRONG_SCORE = 0.7;
 const MIN_SHARED_TOKENS = 2;
 
+// ── The semantic arm (1 Nov 2026) ────────────────────────────────────────────
+//
+// Lexical matching cannot see a reword with no shared vocabulary ("Work out who
+// covers my role if I go under a bus" against "Succession plan" scores 0). The
+// semantic arm compares Voyage embeddings (services/task-semantic.js holds the
+// cache and the network); what lives HERE is pure: the normalisation the cache
+// is keyed on, cosine, and how a pair is admitted and explained.
+//
+// SEMANTIC_MIN_SCORE was MEASURED on the live store (1 Nov 2026, voyage-3.5,
+// 70 open tasks + the Microsoft mirror, 2,556 pairs, plus Nick's 7 confirmed
+// merges and his 2 dismissed internal pairs). There is NO clean gap:
+//
+//   true (Nick merged)   0.983 0.956 0.933 0.924 | 0.895 0.868 0.855
+//   brief's own example  0.820  ("go under a bus" / "Succession plan")
+//   known different     0.876 (LSL/EXP dashboards) 0.810 0.793
+//   live, different     0.896 (two weather tasks) 0.859 (two survey checks)
+//   live p99 0.819, p99.9 0.880
+//
+// 0.90 sits above every known-different pair and catches four of seven merges
+// plus the live #507/#508 duplicate (0.976). It is deliberately CONSERVATIVE:
+// it does NOT catch the brief's own example (0.820), and nothing short of
+// flooding the screen with related-but-different jobs would. A wrong offer costs
+// a dismissal; a screen of coincidences stops being read.
+const SEMANTIC_MIN_SCORE = 0.9;
+
+/** The wording a vector is keyed on: case, whitespace and vault markup folded. */
+function normaliseForEmbedding(text) {
+  return String(text || '')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cosine(a, b) {
+  if (!a || !b || a.length !== b.length || !a.length) return null;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  if (!na || !nb) return null;
+  return dot / Math.sqrt(na * nb);
+}
+
+/** Cosine of two texts through a vector map, or null when either is missing. */
+function semanticOf(vectors, aText, bText) {
+  if (!vectors) return null;
+  const c = cosine(vectors.get(normaliseForEmbedding(aText)), vectors.get(normaliseForEmbedding(bText)));
+  return c == null ? null : Number(c.toFixed(3));
+}
+
+/**
+ * Why a pair is on the screen, in words. `words` = the lexical matcher passed,
+ * `meaning` = only the embeddings did, `both` = both. Pure.
+ */
+function explainMatch(lexPass, semanticScore, semPass) {
+  const why = lexPass && semPass ? 'both' : lexPass ? 'words' : 'meaning';
+  const pct = semanticScore == null ? null : Math.round(semanticScore * 100);
+  const whyLabel = why === 'words' ? 'Same words'
+    : why === 'meaning' ? `Same meaning, ${pct}%`
+    : `Same words and meaning (${pct}%)`;
+  return { why, whyLabel };
+}
+
+/** Lexical matches first (proven), then meaning-only by cosine. */
+function comparePairs(a, b) {
+  const al = a.why === 'meaning' ? 0 : 1;
+  const bl = b.why === 'meaning' ? 0 : 1;
+  return bl - al
+    || (al ? b.score - a.score : (b.semanticScore || 0) - (a.semanticScore || 0))
+    || (b.semanticScore || 0) - (a.semanticScore || 0);
+}
+
 /**
  * Score one pair. Pure.
  *
@@ -229,7 +300,7 @@ function pairNotes(neuro, ms) {
  * they are suggestions, and collapsing to a single best guess per side hides the
  * near-miss that is often the right answer.
  */
-function rankCandidates({ neuroTasks = [], msTasks = [], dismissed = new Set(), minScore = MIN_SCORE } = {}) {
+function rankCandidates({ neuroTasks = [], msTasks = [], dismissed = new Set(), minScore = MIN_SCORE, vectors = null, semanticMinScore = SEMANTIC_MIN_SCORE } = {}) {
   const neuro = neuroTasks
     .filter(t => !t.ms_id)          // already linked — nothing left to decide
     .map(t => ({ task: t, tokens: tokenize(t.text) }))
@@ -246,11 +317,16 @@ function rankCandidates({ neuroTasks = [], msTasks = [], dismissed = new Set(), 
     for (const n of neuro) {
       if (dismissed.has(pairKey(n.task.id, m.task.ms_id))) continue;
       const scored = scorePair(n.tokens, m.tokens, idf);
-      if (scored.score < minScore) continue;
+      const lexPass = scored.score >= minScore;
+      const semanticScore = semanticOf(vectors, n.task.text, m.task.text);
+      const semPass = semanticScore != null && semanticScore >= semanticMinScore;
+      if (!lexPass && !semPass) continue;
       pairs.push({
         pairKey: pairKey(n.task.id, m.task.ms_id),
         score: scored.score,
-        confidence: scored.score >= STRONG_SCORE ? 'strong' : 'possible',
+        semanticScore,
+        ...explainMatch(lexPass, semanticScore, semPass),
+        confidence: lexPass && scored.score >= STRONG_SCORE ? 'strong' : 'possible',
         matchedOn: scored.containment >= scored.jaccard ? 'containment' : 'overlap',
         sharedWords: distinctiveShared(scored.shared, idf),
         notes: pairNotes(n.task, m.task),
@@ -276,7 +352,7 @@ function rankCandidates({ neuroTasks = [], msTasks = [], dismissed = new Set(), 
     }
   }
 
-  pairs.sort((a, b) => b.score - a.score || a.neuro.id - b.neuro.id);
+  pairs.sort((a, b) => comparePairs(a, b) || a.neuro.id - b.neuro.id);
   return pairs;
 }
 
@@ -349,7 +425,7 @@ function internalPairKey(aId, bId) {
  * may already point at (a focus session, a block, a Microsoft link) — but that is
  * a default for the screen to render, not a decision taken here.
  */
-function rankInternalCandidates({ tasks = [], dismissed = new Set(), minScore = INTERNAL_MIN_SCORE } = {}) {
+function rankInternalCandidates({ tasks = [], dismissed = new Set(), minScore = INTERNAL_MIN_SCORE, vectors = null, semanticMinScore = SEMANTIC_MIN_SCORE } = {}) {
   const rows = tasks
     .map(t => ({ task: t, tokens: tokenize(t.text) }))
     .filter(t => t.tokens.size > 0);
@@ -363,7 +439,10 @@ function rankInternalCandidates({ tasks = [], dismissed = new Set(), minScore = 
       const b = rows[j];
       if (dismissed.has(internalPairKey(a.task.id, b.task.id))) continue;
       const scored = scorePair(a.tokens, b.tokens, idf);
-      if (scored.score < minScore) continue;
+      const lexPass = scored.score >= minScore;
+      const semanticScore = semanticOf(vectors, a.task.text, b.task.text);
+      const semPass = semanticScore != null && semanticScore >= semanticMinScore;
+      if (!lexPass && !semPass) continue;
 
       // Older first. A task that has been around is the one with history hanging
       // off it; dropping it in favour of a fresh capture of the same words loses
@@ -373,7 +452,9 @@ function rankInternalCandidates({ tasks = [], dismissed = new Set(), minScore = 
       pairs.push({
         pairKey: internalPairKey(a.task.id, b.task.id),
         score: scored.score,
-        confidence: scored.score >= STRONG_SCORE ? 'strong' : 'possible',
+        semanticScore,
+        ...explainMatch(lexPass, semanticScore, semPass),
+        confidence: lexPass && scored.score >= STRONG_SCORE ? 'strong' : 'possible',
         matchedOn: scored.containment >= scored.jaccard ? 'containment' : 'overlap',
         sharedWords: distinctiveShared(scored.shared, idf),
         notes: internalPairNotes(keep, drop),
@@ -383,7 +464,7 @@ function rankInternalCandidates({ tasks = [], dismissed = new Set(), minScore = 
     }
   }
 
-  pairs.sort((x, y) => y.score - x.score || x.keep.id - y.keep.id);
+  pairs.sort((x, y) => comparePairs(x, y) || x.keep.id - y.keep.id);
   return pairs;
 }
 
@@ -928,6 +1009,11 @@ function findEquivalent(text, others = [], { minScore = MIN_SCORE } = {}) {
 
 module.exports = {
   MIN_SCORE,
+  SEMANTIC_MIN_SCORE,
+  cosine,
+  explainMatch,
+  normaliseForEmbedding,
+  semanticOf,
   INTERNAL_MIN_SCORE,
   STRONG_SCORE,
   buildIdf,

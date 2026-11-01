@@ -2,7 +2,7 @@
 
 /**
  * Overtime claims from NOVA — Nick's half (29 Oct 2026). NOT services/overtime.js, which is the
- * older hand-entered five-step log (PIP competency 1) that Weekly Risk reads; it is untouched.
+ * older hand-entered five-step log that Weekly Risk reads; it is untouched.
  * Spec: vault
  * Projects/NOVA/NOVA - Overtime Claims (spec).md; Nick, same day: "the approval & reporting
  * should be in NEURO".

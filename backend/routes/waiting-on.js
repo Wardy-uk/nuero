@@ -8,6 +8,8 @@
  * POST /api/waiting-on/:key/chase — PREPARE a governed chase for approval (never sends)
  * POST /api/waiting-on/:key/resolve — mark done or dropped
  * POST /api/waiting-on/:key/snooze  — hide until a date, or clear with no date
+ * POST /api/waiting-on/:key/reopen  — put a LAPSED item back on the open list
+ * POST /api/waiting-on/:key/not-yet — "Looks done" was wrong: suppress that evidence for this item
  */
 
 const express = require('express');
@@ -87,6 +89,29 @@ router.post('/:key/resolve', (req, res) => {
     res.json({ ok: true, item });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/waiting-on/:key/reopen — Reopen a lapsed waiting-on item (nobody mentioned it for 90 days, so NEURO set it aside as lapsed — not done, not dropped). Only a lapsed item can be reopened here; the lapse clock restarts from now.
+router.post('/:key/reopen', (req, res) => {
+  try {
+    const r = waitingOn.reopen(decodeURIComponent(req.params.key));
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
+    res.json({ ok: true, item: r.item });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/waiting-on/:key/not-yet — "Not yet": the "Looks done" evidence shown on a waiting-on item is wrong. Suppresses exactly those evidence ids for that item (body evidenceIds: [...]); the item stays open, and NEW evidence asks again. Never closes anything.
+router.post('/:key/not-yet', (req, res) => {
+  try {
+    const { evidenceIds } = req.body || {};
+    const r = waitingOn.notYet(decodeURIComponent(req.params.key), evidenceIds);
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

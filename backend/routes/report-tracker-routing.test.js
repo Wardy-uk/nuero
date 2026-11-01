@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Routing for the PIP deliverable tracker.
+ * Routing for the weekly report tracker.
  *
- * ⚠ `/deliverables` is a literal on a router that also carries `/log/:id` and
+ * ⚠ `/report-tracker` (and its old alias `/deliverables`) is a literal on a router that also carries `/log/:id` and
  * `/markdown`. This repo has shipped a literal path swallowed by a sibling
  * parameterised one more than once, and a green service suite says nothing
  * about it. Mutation check: rename the path and these fail.
@@ -21,14 +21,14 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-pip-'));
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-report-tracker-'));
 process.env.NEURO_DB_PATH = path.join(scratch, 'scratch.db');
 process.env.OBSIDIAN_VAULT_PATH = path.join(scratch, 'vault');
 fs.mkdirSync(process.env.OBSIDIAN_VAULT_PATH, { recursive: true });
 
 const express = require('express');
 const db = require('../db/database');
-const pip = require('../services/pip-deliverables');
+const tracker = require('../services/report-tracker');
 
 let server;
 let base;
@@ -53,17 +53,25 @@ const get = async (p) => {
   return { status: res.status, body: await res.json() };
 };
 
-test('GET /deliverables resolves to the tracker, not to a log row named "deliverables"', async () => {
-  const { status, body } = await get('/api/weekly-risk/deliverables');
+test('GET /report-tracker resolves to the tracker, not to a log row', async () => {
+  const { status, body } = await get('/api/weekly-risk/report-tracker');
   assert.equal(status, 200);
-  assert.ok(body.window, 'no window block — something else answered');
-  assert.ok(body.weekly, 'no weekly block');
-  assert.equal(body.window.end, '2026-10-11');
+  assert.ok(body.weekly, 'no weekly block — something else answered');
+  assert.ok(body.weekly.current, 'no current week');
+  assert.equal(body.window, undefined, 'no plan window any more');
+});
+
+const OLD_PATH = '/api/weekly-risk/deliverables';
+test('the old /deliverables path still answers the same tracker (iOS reads it)', async () => {
+  const a = await get(OLD_PATH);
+  const b = await get('/api/weekly-risk/report-tracker');
+  assert.equal(a.status, 200);
+  assert.deepEqual(a.body.weekly, b.body.weekly);
 });
 
 test('it reads weekly-risk’s real stores, not a shape of zeroes', async () => {
   const weeklyRisk = require('../services/weekly-risk');
-  const week = pip.weekCommencing(pip.dateKey(new Date()));
+  const week = tracker.weekCommencing(tracker.dateKey(new Date()));
 
   // ⚠ The key is weekly-risk's (`weekly_risk_published_<week>`) and is written
   // here directly rather than by calling publish(), which builds a whole report
@@ -74,7 +82,7 @@ test('it reads weekly-risk’s real stores, not a shape of zeroes', async () => 
   db.setState(`weekly_risk_published_${week}`, JSON.stringify({ path: 'x.md', publishedAt: new Date().toISOString() }));
   assert.ok(weeklyRisk.publishedAt(week), 'setup is stale — the publish key has moved');
 
-  const { body } = await get('/api/weekly-risk/deliverables');
+  const { body } = await get('/api/weekly-risk/report-tracker');
   assert.ok(
     body.weekly.noSendRecord.includes(week),
     `a published week must be read back as written-not-sent — got ${JSON.stringify(body.weekly)}`,
@@ -83,12 +91,12 @@ test('it reads weekly-risk’s real stores, not a shape of zeroes', async () => 
 });
 
 test('a published week is never reported as sent', async () => {
-  const { body } = await get('/api/weekly-risk/deliverables');
+  const { body } = await get('/api/weekly-risk/report-tracker');
   assert.equal(body.weekly.sendRecorded, 0, 'nothing has been sent in this scratch DB');
 });
 
 test('the payload carries no score, percentage or grade', async () => {
-  const { body } = await get('/api/weekly-risk/deliverables');
+  const { body } = await get('/api/weekly-risk/report-tracker');
   const flat = JSON.stringify(body).toLowerCase();
   for (const banned of ['percent', 'score', 'grade', 'rating', 'completion']) {
     assert.ok(!flat.includes(banned), `must not expose "${banned}"`);
@@ -97,7 +105,7 @@ test('the payload carries no score, percentage or grade', async () => {
 
 test('it is read-only — asking does not publish, send or write a report', async () => {
   const before = db.getState('weekly_risk_sent_2026-08-31');
-  await get('/api/weekly-risk/deliverables');
+  await get('/api/weekly-risk/report-tracker');
   assert.equal(db.getState('weekly_risk_sent_2026-08-31'), before, 'a read must not mark anything sent');
 });
 
@@ -117,9 +125,9 @@ const post = async (p, body) => {
 };
 
 test('POST /mark-sent records a send and the tracker stops asking', async () => {
-  const week = pip.weekCommencing(pip.dateKey(new Date()));
+  const week = tracker.weekCommencing(tracker.dateKey(new Date()));
 
-  const before = await get('/api/weekly-risk/deliverables');
+  const before = await get('/api/weekly-risk/report-tracker');
   assert.ok(before.body.weekly.noSendRecord.includes(week), 'setup: the week should be written with no send');
 
   const { status, body } = await post('/api/weekly-risk/mark-sent', { week });
@@ -132,13 +140,13 @@ test('POST /mark-sent records a send and the tracker stops asking', async () => 
   const weeklyRisk = require('../services/weekly-risk');
   assert.equal(weeklyRisk.sentRecord(week).reportedByNick, true);
 
-  const after = await get('/api/weekly-risk/deliverables');
+  const after = await get('/api/weekly-risk/report-tracker');
   assert.ok(!after.body.weekly.noSendRecord.includes(week), 'it must stop being asked about');
   assert.equal(after.body.weekly.sendRecorded, before.body.weekly.sendRecorded + 1);
 });
 
 test('marking the same week twice is refused rather than counted twice', async () => {
-  const week = pip.weekCommencing(pip.dateKey(new Date()));
+  const week = tracker.weekCommencing(tracker.dateKey(new Date()));
   const { status, body } = await post('/api/weekly-risk/mark-sent', { week });
   assert.equal(status, 409);
   assert.ok(body.sent, 'the existing record comes back so the screen can name it');
@@ -154,11 +162,12 @@ test('mark-sent records and never sends — no mail leaves NEURO', async () => {
   }
 });
 
-test('the management-log half answers with real competency figures', async () => {
-  const { body } = await get('/api/weekly-risk/deliverables');
+test('the management-log half answers with real figures', async () => {
+  const { body } = await get('/api/weekly-risk/report-tracker');
   // The log is readable in this scratch DB, so it must be an object of numbers
   // rather than null — null is reserved for "could not be read".
   assert.ok(body.log, 'log could not be read in a healthy scratch DB');
-  assert.equal(typeof body.log.baselineStillOpen, 'number');
   assert.equal(typeof body.log.lateLogged, 'number');
+  assert.equal(typeof body.log.breachesFiveDay, 'number');
+  assert.equal(body.log.baselineStillOpen, undefined, 'no baseline figure any more');
 });

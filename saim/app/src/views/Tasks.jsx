@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiUrl, authHeaders } from '../api';
 import { makeCall } from '../preparedMove.mjs';
 import TaskAgent from '../../../shared-ui/TaskAgent.jsx';
+import { DoneEvidenceRow } from '../../../shared-ui/DoneEvidence.jsx';
 import PreparedMove from '../components/PreparedMove.jsx';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { completeTask } from '../completeTask';
@@ -497,6 +498,10 @@ export default function Tasks() {
             >{done[item.id] ? '✓' : busy[item.id] ? '…' : ''}</button>
             <div className="tasks__body">
               <div className="tasks__text">{item.text}</div>
+              {/* "Looks done": NEURO's evidence this is already done. It offers; Nick closes. */}
+              {item.task_id && !done[item.id] && (
+                <DoneEvidenceRow taskId={item.task_id} call={agentCall} readOnly={platformNow() === 'kiosk'} onClosed={() => load()} />
+              )}
               <div className="tasks__meta">
                 {item.moscow && <span className={`tasks__moscow tasks__moscow--${item.moscow}`}>{item.moscow}</span>}
                 {started && <span className="tasks__wip">Working on it</span>}

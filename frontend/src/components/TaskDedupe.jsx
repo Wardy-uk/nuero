@@ -69,6 +69,22 @@ function refusalText(json) {
   return REFUSALS[json?.reason] || json?.reason || json?.error || 'Could not merge.';
 }
 
+/**
+ * Why a pair is here. `words` = the lexical matcher (shared words listed);
+ * `meaning` = only the embeddings matched it, so there may be no shared words
+ * to show — saying "same meaning, 92%" is the honest reason, not an empty list.
+ * The words come from the server (`whyLabel`), never composed here.
+ */
+export function WhyMatched({ pair }) {
+  const words = (pair.sharedWords || []).map(w => w.token).join(', ');
+  return (
+    <span className="dedupe-shared">
+      {pair.whyLabel || 'Same words'}
+      {pair.why !== 'meaning' && words ? ` · shares: ${words}` : ''}
+    </span>
+  );
+}
+
 export default function TaskDedupe() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -274,6 +290,11 @@ export default function TaskDedupe() {
               candidates.length ? `${candidates.length} against Microsoft (${strong} likely)` : null,
             ].filter(Boolean).join(' · ')}
       </div>
+      {data?.semantic && data.semantic.available === false && (
+        <div className="dedupe-sub">
+          Matched on words only — the meaning check did not run: {data.semantic.reason}
+        </div>
+      )}
 
       {open && (
         <>
@@ -293,9 +314,7 @@ export default function TaskDedupe() {
                       <span className={`dedupe-badge dedupe-badge-${pair.confidence}`}>
                         {pair.confidence === 'strong' ? 'Likely the same' : 'Possibly the same'}
                       </span>
-                      <span className="dedupe-shared">
-                        shares: {pair.sharedWords.map(w => w.token).join(', ')}
-                      </span>
+                      <WhyMatched pair={pair} />
                     </div>
 
                     <div className="dedupe-sides">
@@ -358,9 +377,7 @@ export default function TaskDedupe() {
                   <span className={`dedupe-badge dedupe-badge-${pair.confidence}`}>
                     {pair.confidence === 'strong' ? 'Likely the same' : 'Possibly the same'}
                   </span>
-                  <span className="dedupe-shared">
-                    shares: {pair.sharedWords.map(w => w.token).join(', ')}
-                  </span>
+                  <WhyMatched pair={pair} />
                 </div>
 
                 <div className="dedupe-sides">

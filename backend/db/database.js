@@ -371,7 +371,7 @@ async function init() {
     // the store arrived from a work source, so stamping 'work' was a fact; who
     // WANTED each of these 110 tasks is not recorded anywhere, so stamping
     // either value would be inventing an answer — and the answer is counted in a
-    // report that goes to the manager assessing Nick's PIP. Existing rows read
+    // report that goes to Nick's manager. Existing rows read
     // NULL ("not classified"), which the report names as its own bucket rather
     // than folding into either.
     //
@@ -763,6 +763,20 @@ async function init() {
     }
   } catch (e) {
     console.error('[DB] saim_actions migration check failed:', e.message);
+  }
+
+  // waiting_on.last_mentioned_at (1 Nov 2026) — when a DIFFERENT note last
+  // mentioned the commitment. `last_seen` is stamped on every re-read of the
+  // same note, so the nightly lapse pass cannot read "mentioned again" from it.
+  // `status` has no CHECK constraint, so 'lapsed' needs no table rebuild.
+  try {
+    const cols = db.prepare('PRAGMA table_info(waiting_on)').all().map(r => r.name);
+    if (cols.length && !cols.includes('last_mentioned_at')) {
+      db.exec('ALTER TABLE waiting_on ADD COLUMN last_mentioned_at TEXT');
+      console.log('[DB] waiting_on.last_mentioned_at added');
+    }
+  } catch (e) {
+    console.error('[DB] waiting_on migration check failed:', e.message);
   }
 
   // management_log.task_id — added after the table shipped, so CREATE TABLE IF

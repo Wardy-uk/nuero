@@ -165,7 +165,12 @@ router.get('/triage/feedback', (req, res) => {
 // mute with no way back is the shape of this that would actually be dangerous.
 router.get('/triage/muted', (req, res) => {
   try {
-    res.json({ ok: true, senders: emailTriage.listMutedSenders(), subjects: emailTriage.listMutedSubjects() });
+    let archive = null;
+    try {
+      const ma = require('../services/email-muted-archive');
+      archive = { enabled: ma.enabled(), last: ma.lastPass() };
+    } catch { archive = null; }
+    res.json({ ok: true, senders: emailTriage.listMutedSenders(), subjects: emailTriage.listMutedSubjects(), archive });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -444,6 +449,13 @@ router.post('/triage/dismiss/:emailId', async (req, res) => {
     let markedRead = null;
     let readError = null;
 
+    // Muting a whole sender now archives their mail in Outlook
+    // (email-muted-archive.js, capability mail.muted-archive), so a machine
+    // client may not do it. Refused before anything is dismissed.
+    if (req.body?.mute === 'sender' && req.apiClient) {
+      return res.status(403).json({ ok: false, error: 'muting a whole sender archives their mail in Outlook — a person does that, not a machine client' });
+    }
+
     const gmailIntake = require('../services/gmail-intake');
     const isGmail = gmailIntake.isGmailId(emailId);
     if (req.body?.markRead && isGmail) {
@@ -479,6 +491,11 @@ router.post('/triage/dismiss/:emailId', async (req, res) => {
 
     // `mute`: 'subject' (default for not-relevant) or 'sender' (the Mute sender button).
     const result = emailTriage.dismissEmail(emailId, req.body?.reason, { selfAddress, mute: req.body?.mute || null });
+    // A new sender mute starts the Outlook archive at once rather than at the
+    // next triage pass. Not awaited; it reports through GET /triage/muted.
+    if (result?.muted?.ok && result.muted.kind === 'sender' && !isGmail) {
+      try { require('../services/email-muted-archive').kick(); } catch { /* the next triage pass does it */ }
+    }
     res.json({ ok: true, markedRead, readError, muted: result?.muted || null });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

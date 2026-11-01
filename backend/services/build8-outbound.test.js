@@ -1127,5 +1127,5 @@ test('G6. machine callers can never mint a grant', async () => {
     const g = grants.mint({ actionId: action.actionId, version: action.version, payloadHash: action.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: { machine } });
     assert.equal(g.ok, false, machine);
   }
-  assert.deepEqual(grants.PROOFS, ['intent_grant', 'approval_code', 'none']);
+  assert.deepEqual(grants.PROOFS, ['intent_grant', 'approval_code', 'standing_switch', 'none']); // 1 Nov 2026: standing_switch = the one_to_one_auto_book switch (1to1-auto only)
 });

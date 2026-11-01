@@ -1,13 +1,14 @@
 'use strict';
 
 /**
- * Weekly Risk & Anomaly Summary + Management Actions Log — PIP competencies 2/3/4,
- * plus the deliverable tracker over both (`/deliverables`).
+ * Weekly Risk & Anomaly Summary (the Monday report to Chris) + the Management
+ * Actions & Conversations Log, plus the report tracker over both
+ * (`/report-tracker`, with `/deliverables` kept as an alias for older clients).
  *
  * Read paths are free; the only thing that leaves NEURO is `publish`, which
  * writes a note into the vault. Nothing here emails, sends or notifies anybody —
  * the report goes to Chris because Nick sends it, which keeps the judgement
- * where the PIP puts it.
+ * with Nick.
  */
 
 const express = require('express');
@@ -15,7 +16,7 @@ const router = express.Router();
 
 const weeklyRisk = require('../services/weekly-risk');
 const managementLog = require('../services/management-log');
-const pipDeliverables = require('../services/pip-deliverables');
+const reportTracker = require('../services/report-tracker');
 const logSuggest = require('../services/management-log-suggest');
 const chrisAgenda = require('../services/chris-agenda');
 const db = require('../db/database');
@@ -66,41 +67,6 @@ router.post('/manual', (req, res) => {
     const manual = weeklyRisk.setManual(week, patch);
     res.json({ week, manual, blockers: weeklyRisk.manualBlockers(manual) });
   } catch (err) { fail(res, err); }
-});
-
-/**
- * GET /api/weekly-risk/baseline — the competency-4 baseline and where it came
- * from. Its own route because it is the one figure in this report that is a
- * DECISION rather than a measurement (the PIP leaves it literally blank), and
- * because until it is recorded the report must say so rather than count.
- */
-router.get('/baseline', (req, res) => {
-  try {
-    res.json({
-      baseline: managementLog.status().baseline,
-      agreed: managementLog.getAgreedBaseline(),
-    });
-  } catch (err) { fail(res, err); }
-});
-
-/**
- * POST /api/weekly-risk/baseline — record the figure agreed with Chris.
- *
- * `{ count: null }` clears it back to unrecorded. ⚠ Omitting `count` is a 400
- * and is deliberately NOT the same as sending 0: nil overdue on 27 July is a
- * claim somebody made, and no figure is the PIP deliverable still outstanding.
- */
-router.post('/baseline', (req, res) => {
-  try {
-    const body = req.body || {};
-    if (!('count' in body)) {
-      return res.status(400).json({ error: 'A baseline needs a count. Send `count: null` to clear it — omitting it is not the same as zero.' });
-    }
-    const agreed = body.count === null
-      ? managementLog.setAgreedBaseline(null)
-      : managementLog.setAgreedBaseline({ count: body.count, agreedOn: body.agreedOn, note: body.note });
-    res.json({ ok: true, agreed, baseline: managementLog.status().baseline });
-  } catch (err) { fail(res, err, 400); }
 });
 
 /**
@@ -259,25 +225,31 @@ router.post('/chris-agenda/:id/restore', (req, res) => {
   } catch (err) { fail(res, err, err.status || 400); }
 });
 
-// ── Deliverables ─────────────────────────────────────────────────────────────
+// ── Report tracker ───────────────────────────────────────────────────────────
 
 /**
- * GET /api/weekly-risk/deliverables — what Nick owes Chris and what exists.
+ * GET /api/weekly-risk/report-tracker — which weekly reports to Chris were
+ * written and sent, which are due or late, and the management-log standards.
  *
  * A tracker, deliberately not a burn-down: counts of what was produced, names
- * of what was not, and dates. No percentage and no grade — Chris assesses the
- * PIP, and a tool that scores it produces a number to argue with instead of a
- * list to act on. See the service header.
+ * of what was not, and dates. No percentage, no score and no RAG — a number to
+ * argue with is worse than a list to act on. See the service header.
  *
  * Read-only, and every figure is LIFTED from weekly-risk's own stores and
  * `management-log.assess()` rather than recomputed, so this cannot disagree
  * with the two screens it summarises.
+ *
+ * `/deliverables` is the old path, kept as an alias: the iOS Weekly Risk screen
+ * still reads it.
  */
-router.get('/deliverables', (req, res) => {
+function reportTrackerRoute(req, res) {
   try {
-    res.json(pipDeliverables.build());
+    res.json(reportTracker.build());
   } catch (err) { fail(res, err); }
-});
+}
+router.get('/report-tracker', reportTrackerRoute);
+// GET /api/weekly-risk/deliverables — old path for the report tracker.
+router.get('/deliverables', reportTrackerRoute);
 
 /**
  * POST /api/weekly-risk/mark-sent — record a send Nick made himself.
@@ -326,12 +298,10 @@ router.post('/mark-sent', (req, res) => {
 
 // ── Management log ───────────────────────────────────────────────────────────
 
-/** GET /api/weekly-risk/log — rows plus the competency 3/4 assessment. */
+/** GET /api/weekly-risk/log — rows plus the logging and overdue standards. */
 router.get('/log', (req, res) => {
   try {
-    res.json(managementLog.status({
-      baselineDate: req.query.baselineDate || undefined,
-    }));
+    res.json(managementLog.status());
   } catch (err) { fail(res, err); }
 });
 
@@ -385,7 +355,7 @@ router.get('/log-suggestions', (req, res) => {
  * `scripts/seed-management-log.js` makes — and `source` carries the recording
  * id so the claim is auditable rather than asserted. With no usable stamp it is
  * omitted, `create()` falls back to now, and the entry is correctly reported as
- * logged late; guessing would manufacture competency-3 compliance out of
+ * logged late; guessing would manufacture two-working-day compliance out of
  * nothing.
  */
 router.post('/log-suggestions/accept', (req, res) => {

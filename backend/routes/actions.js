@@ -129,6 +129,8 @@ router.get('/', (req, res) => {
     // should not show a prep card for a meeting that started two hours ago just
     // because nothing has loaded Focus since.
     suggestionEngine.expireStaleNavigation();
+    // And spotted suggestions nobody answered in 7 days — `expired`, never `rejected`.
+    try { require('../services/action-candidates').expireStaleSpotted(); } catch (e) { console.warn('[Actions] Spotted expiry failed:', e.message); }
 
     const decorate = (a) => ({ ...a, presentation: actionPresenter.describe(a) });
 

@@ -377,6 +377,55 @@ function rememberReviewedAction(action, status) {
   });
 }
 
+// ── Spotted-queue expiry (1 Nov 2026) ───────────────────────────────────────
+//
+// A pending capture_todo nobody answered for 7 days goes `expired` — NEURO
+// decided, Nick did not, exactly like navigationExpiry. The Spotted queue was
+// 14% approved; the rest sat. Three rules, all pinned:
+//   - it is NOT a rejection: nothing is written to the review / recording /
+//     signature memory, so a genuinely new sighting (another note or recording)
+//     raises it again. Re-reading the SAME note does not — `alreadyTracked`
+//     sees the expired row, as it sees every decided row for that note;
+//   - it counts in no feedback or approval stat (those count executed/rejected);
+//   - a snoozed card is left alone while it sleeps, and gets 7 days from when it
+//     wakes — "not now" is not "never answered".
+
+const SPOTTED_EXPIRY_DAYS = 7;
+
+/** Why this pending spotted suggestion is spent, or null. PURE. */
+function spottedExpiry(action, now = new Date()) {
+  if (!action || action.type !== 'capture_todo' || action.status !== 'pending') return null;
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const parse = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return NaN;
+    return Date.parse(s.replace(' ', 'T') + (/[Zz]|[+-]\d\d:?\d\d$/.test(s) || s.includes('T') ? '' : 'Z'));
+  };
+  const snooze = parse(action.snoozed_until);
+  if (Number.isFinite(snooze) && snooze > nowMs) return null;
+  const created = parse(action.created_at);
+  if (!Number.isFinite(created)) return null;   // undateable: kept, never guessed old
+  const from = Number.isFinite(snooze) ? Math.max(created, snooze) : created;
+  if (nowMs - from <= SPOTTED_EXPIRY_DAYS * 24 * 60 * 60 * 1000) return null;
+  return `nobody answered it in ${SPOTTED_EXPIRY_DAYS} days`;
+}
+
+/** Retire every spent pending capture_todo. Writes status only — never the decision memory. */
+function expireStaleSpotted(now = new Date()) {
+  const expired = [];
+  try {
+    for (const action of db.getPendingSaimActionsByType('capture_todo', 100000)) {
+      if (!spottedExpiry(action, now)) continue;
+      db.updateSaimActionStatus(action.id, 'expired');
+      expired.push(action.id);
+    }
+  } catch (e) {
+    console.warn('[ActionCandidates] Spotted expiry failed:', e.message);
+  }
+  if (expired.length) console.log(`[ActionCandidates] Expired ${expired.length} spotted suggestion(s) unanswered for ${SPOTTED_EXPIRY_DAYS}+ days`);
+  return { expired: expired.length, ids: expired };
+}
+
 function cleanCandidateText(text) {
   return String(text || '')
     .replace(/^\s*[-*+]\s*/, '')
@@ -1309,7 +1358,7 @@ function candidatesFor(content, relativePath) {
 function scanRecentNotes(options = {}) {
   // scope 'meetings' (default) restricts the sweep to Meetings/. Everywhere else
   // still runs the old checkbox heuristics, which auto-promote at 0.93 and were
-  // measured proposing 258 items from a single PIP meeting-actions record and 61
+  // measured proposing 258 items from a single meeting-actions record and 61
   // from the NOVA backlog — both of which Tasks/Task System Boundary.md routes
   // away from Master Todo. Widen to 'all' only with a dry run in hand.
   // maxCreate bounds what ONE run may add to the review queue. 911 candidates
@@ -1503,6 +1552,9 @@ module.exports = {
   assignedToSomeoneElse,
   rememberReviewedAction,
   reviewStatusFor,
+  SPOTTED_EXPIRY_DAYS,
+  spottedExpiry,
+  expireStaleSpotted,
   // Exported for the pin in candidate-recording-scope.test.js: "unknown never
   // matches unknown" is the rule that stops every non-PLAUD note sharing one
   // decision memory, and it is worth asserting directly rather than only through

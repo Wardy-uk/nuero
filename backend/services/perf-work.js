@@ -47,7 +47,7 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // ── sends ────────────────────────────────────────────────────────────────────
 
 const SEND_TYPES = new Set(['compose_email', 'chase_commitment', 'chase_agenda', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
-const ONE_TO_ONE = new Set(['1to1-book', '1to1-move', '1to1-cancel']);
+const ONE_TO_ONE = new Set(['1to1-book', '1to1-auto', '1to1-move', '1to1-cancel']);
 
 function sends(db, w) {
   const rows = db.prepare(`
@@ -95,7 +95,7 @@ function sends(db, w) {
     });
   }
   for (const f of folds.values()) {
-    const verb = f.origin === '1to1-book' ? 'Booked' : f.origin === '1to1-move' ? 'Moved' : 'Cancelled';
+    const verb = f.origin === '1to1-book' ? 'Booked' : f.origin === '1to1-auto' ? 'Booked automatically' : f.origin === '1to1-move' ? 'Moved' : 'Cancelled';
     out.push({
       id: `send:${f.origin}:${f.day}`,
       source: 'sends', kind: `send:${f.origin}`, hint: null,

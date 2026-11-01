@@ -55,6 +55,8 @@ const REGISTRY = {
   // ── embeddings (Voyage): input only, batch of ≤128 chunks × ≤32k tokens ─
   embeddings_index: { local: false, noOutput: true, maxInputTokens: 128 * 32000, maxConcurrent: 2 },
   embeddings_query: { local: false, noOutput: true, maxInputTokens: 32000 },
+  // Task wordings for semantic dedupe (task-semantic.js): ≤64 short texts a call.
+  task_dedupe_embed: { local: false, noOutput: true, maxInputTokens: 64 * 1000, maxConcurrent: 2 },
   // ── speech ─────────────────────────────────────────────────────────────
   // OpenRouter audio: output is audio tokens; the bound is the request's own.
   tts_speak: { local: false, maxInputTokens: 4000, maxOutputTokens: 4096, maxConcurrent: 2 },

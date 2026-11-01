@@ -7,9 +7,9 @@ import './WeeklyRiskPanel.css';
 /**
  * The Weekly Risk & Anomaly Summary, and the management log beside it.
  *
- * This is the surface for two PIP deliverables: the report Nick owes Chris by
- * midday every Monday (competency 2) and the actions/conversations log
- * (competencies 3 and 4). The backend already ranks and judges — `assess()`
+ * This is the surface for the weekly report Nick sends Chris by midday every
+ * Monday, and for the actions/conversations log beside it (logged within two
+ * working days, nothing overdue by more than five). The backend already ranks and judges — `assess()`
  * returns findings in the order they should be read — so this component renders
  * that order rather than re-deciding it. Same split as StateOfPlay.
  *
@@ -45,21 +45,22 @@ function Stat({ label, value, sub, tone = 'neutral' }) {
 }
 
 /**
- * What Nick owes Chris, and what exists. A TRACKER, not a burn-down.
+ * The weekly report to Chris: what was written and sent. A TRACKER, not a
+ * burn-down.
  *
- * All the judgement is in `services/pip-deliverables.js`; this renders it and
+ * All the judgement is in `services/report-tracker.js`; this renders it and
  * adds nothing. Three rules survive into the markup:
  *
- *  - No percentage, no bar, no RAG. Chris assesses the PIP; a score here is a
- *    number to argue with instead of a list to act on.
+ *  - No percentage, no bar, no RAG. A score here is a number to argue with
+ *    instead of a list to act on.
  *  - "Written" and "sent" stay visibly apart — a draft on disk is not something
  *    Chris has received, and conflating them is the expensive mistake.
  *  - A failed read says so and never renders as a clean record. "I couldn't
  *    look" and "you didn't do it" are opposite facts and only one accuses him.
  */
-function DeliverableTracker({ data, onMarkSent, busy }) {
+function ReportTracker({ data, onMarkSent, busy }) {
   if (!data) return null;
-  const { window: win, weekly, log, gaps = [], known } = data;
+  const { weekly, log, gaps = [], known } = data;
 
   const currentLabel = {
     sent: 'recorded as sent',
@@ -70,12 +71,7 @@ function DeliverableTracker({ data, onMarkSent, busy }) {
 
   return (
     <section className="wr-section wr-deliverables">
-      <h3>What you owe Chris</h3>
-      <p className="wr-hint">
-        {win.daysToReview > 0
-          ? `${win.daysToReview} days to the review on ${fmtUk(win.review)}, ${win.daysToEnd} to ${fmtUk(win.end)}.`
-          : `Review passed ${fmtUk(win.review)} — ${win.daysToEnd} days to ${fmtUk(win.end)}.`}
-      </p>
+      <h3>Weekly report to Chris</h3>
 
       <div className="wr-deliv-row">
         <span className="wr-deliv-item">
@@ -83,8 +79,8 @@ function DeliverableTracker({ data, onMarkSent, busy }) {
         </span>
         <span className="wr-deliv-item">
           <strong>{weekly.built}</strong> of {weekly.owed} written
-          {/* Counted from the cadence agreed on 12 Aug, not from the PIP start —
-              weeks before the standard existed were never owed. */}
+          {/* Counted from the cadence agreed on 12 Aug — weeks before the
+              standard existed were never owed. */}
           <em className="wr-deliv-note"> since {fmtUk(weekly.owedFrom)}</em>
         </span>
       </div>
@@ -93,7 +89,7 @@ function DeliverableTracker({ data, onMarkSent, busy }) {
         ⚠ "No send recorded", never "not sent". NEURO only learns about a send it
         made itself through the approve-in-Actions flow — a report emailed from
         Outlook is invisible here for ever. Saying "not sent" would state as fact
-        something nothing measured, about the one deliverable his job depends on.
+        something nothing measured.
       */}
       {weekly.noSendRecord.length > 0 && (
         <div className="wr-deliv-warn">
@@ -297,7 +293,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
         // Never allowed to fail the panel: this is a summary of the two reads
         // above, so a page that refused to render without it would take the
         // report itself down for a tracker.
-        fetch(apiUrl('/api/weekly-risk/deliverables')).then(res => res.json()).catch(() => null),
+        fetch(apiUrl('/api/weekly-risk/report-tracker')).then(res => res.json()).catch(() => null),
       ]);
       if (r.error) throw new Error(r.error);
       setReport(r);
@@ -560,13 +556,13 @@ export default function WeeklyRiskPanel({ onNavigate }) {
         <button className="wr-refresh" onClick={load} type="button">Rebuild</button>
       </header>
 
-      <DeliverableTracker
+      <ReportTracker
         data={deliverables}
         busy={busy}
         onMarkSent={async (week) => {
           // Records only — nothing leaves NEURO here. The confirm is because a
-          // send record is evidence about a deliverable his job depends on, and
-          // a mis-tap that quietly asserts one is worse than an extra click.
+          // send record is evidence about the weekly report, and a mis-tap that
+          // quietly asserts one is worse than an extra click.
           if (!window.confirm(`Record w/c ${fmtUk(week)} as sent to Chris?\n\nThis records it in NEURO. It does not send anything.`)) return;
           const r = await post('/api/weekly-risk/mark-sent', { week }, `mark-${week}`);
           if (r?.ok) {
@@ -998,7 +994,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           <>
             {log.missingDue.length > 0 && (
               <p className="wr-warn-line">
-                {log.missingDue.length} items have no due date — competency 3 needs an owner and a date on every one.
+                {log.missingDue.length} items have no due date — every open item needs an owner and a date.
               </p>
             )}
             {log.hrGap.length > 0 && (

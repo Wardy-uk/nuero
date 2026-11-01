@@ -329,6 +329,22 @@
 }
 .wo-flash.bad { color: var(--danger); background: rgba(224, 85, 85, 0.07); }
 
+/* "Looks done" — Build 5 evidence, shown and never applied (1 Nov 2026). */
+.wo-looks-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 6px;
+  font-size: 12px;
+}
+.wo-looks-done-text { flex: 1 1 260px; color: var(--success); }
+
+/* Lapsed — nobody mentioned it in 90 days; not done, not dropped. */
+.wo-lapsed { margin-top: 8px; }
+.wo-lapsed-head { margin-left: 0; display: flex; align-items: center; gap: 6px; }
+.wo-row.is-lapsed .wo-row-text { color: var(--text-muted); }
+
 .wo-more {
   margin-top: 8px;
   font-family: var(--font-mono);

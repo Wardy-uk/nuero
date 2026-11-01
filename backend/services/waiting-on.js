@@ -54,6 +54,7 @@ function _fromRow(r) {
     reopenedAt: r.reopened_at,
     resolvedAt: r.resolved_at,
     snoozedUntil: r.snoozed_until,
+    lastMentionedAt: r.last_mentioned_at ?? null,
   };
 }
 
@@ -69,8 +70,9 @@ function _upsert(item) {
   db.run(
     `INSERT INTO waiting_on
        (key, person, person_full, text, source_path, source_date, status, asked_at,
-        chase_count, first_seen, last_seen, sightings, reopened_at, resolved_at, snoozed_until)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        chase_count, first_seen, last_seen, sightings, reopened_at, resolved_at, snoozed_until,
+        last_mentioned_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(key) DO UPDATE SET
        person = excluded.person, person_full = excluded.person_full,
        text = excluded.text, source_path = excluded.source_path,
@@ -78,13 +80,14 @@ function _upsert(item) {
        asked_at = excluded.asked_at, chase_count = excluded.chase_count,
        last_seen = excluded.last_seen, sightings = excluded.sightings,
        reopened_at = excluded.reopened_at, resolved_at = excluded.resolved_at,
-       snoozed_until = excluded.snoozed_until`,
+       snoozed_until = excluded.snoozed_until,
+       last_mentioned_at = excluded.last_mentioned_at`,
     [
       item.key, item.person, item.personFull ?? null, item.text,
       item.sourcePath ?? null, item.sourceDate ?? null, item.status ?? 'open',
       item.askedAt ?? null, item.chaseCount ?? 0, item.firstSeen, item.lastSeen,
       item.sightings ?? 1, item.reopenedAt ?? null, item.resolvedAt ?? null,
-      item.snoozedUntil ?? null,
+      item.snoozedUntil ?? null, item.lastMentionedAt ?? null,
     ],
   );
   // Build 4B: the world model reads this table as commitments. Debounced, and
@@ -184,6 +187,13 @@ function record({ person, text, sourcePath = null, sourceDate = null }) {
   if (existing) {
     existing.lastSeen = new Date().toISOString();
     existing.sightings = (existing.sightings || 1) + 1;
+    // A DIFFERENT note naming it again is a mention; a re-read of the same note
+    // is not (it stamps last_seen, which is why the lapse pass cannot use that).
+    // Dated from the note when it has one, and only ever moved forward.
+    if (sourcePath && sourcePath !== existing.sourcePath) {
+      const at = _sourceDateToIso(sourceDate) || existing.lastSeen;
+      if (!existing.lastMentionedAt || Date.parse(at) > Date.parse(existing.lastMentionedAt)) existing.lastMentionedAt = at;
+    }
     // Re-opening is deliberate: if it shows up in a NEW meeting note after being
     // marked done, it evidently is not done.
     if (existing.status !== 'open' && sourcePath && sourcePath !== existing.sourcePath) {
@@ -214,6 +224,7 @@ function record({ person, text, sourcePath = null, sourceDate = null }) {
     // only two things this list is sorted and filtered by.
     firstSeen: _sourceDateToIso(sourceDate) || now,
     lastSeen: now,
+    lastMentionedAt: _sourceDateToIso(sourceDate) || now,
     sightings: 1,
     chaseCount: 0,
     snoozedUntil: null,
@@ -242,7 +253,8 @@ function list({ status = 'open', person = null } = {}) {
 /** Grouped by person — how you actually think about it before a 1-2-1. */
 function byPerson() {
   const groups = new Map();
-  for (const item of list({ status: 'open' })) {
+  // "Looks done" rides on the open items (Build 5 evidence, shown, never applied).
+  for (const item of attachLooksDone(list({ status: 'open' }))) {
     if (!groups.has(item.person)) groups.set(item.person, []);
     groups.get(item.person).push(item);
   }
@@ -300,6 +312,178 @@ function markChased(key, { now = Date.now() } = {}) {
   item.chaseCount = (item.chaseCount || 0) + 1;
   _upsert(item);
   return item;
+}
+
+// ── Lapse: an open commitment nobody has mentioned in 90 days (1 Nov 2026) ──
+//
+// Live, 1 Nov: 508 open rows, growing, and nothing closed one except Nick.
+// `lapsed` is NOT done and NOT dropped — Nick decided nothing, the same reason
+// navigation shortcuts go `expired` rather than `rejected`. A lapsed row is not
+// counted as kept or as broken, leaves the open list, and has a Reopen. A
+// NEW note naming it again reopens it on its own (record()'s rule for any
+// non-open row).
+
+const LAPSE_DAYS = 90;
+const DAY_MS = 86400000;
+const NOT_YET_KEY = 'waiting_on_not_yet';
+
+const _ms = (v) => (v == null || v === '' ? NaN : Date.parse(v));
+
+/**
+ * Whether one item lapses now. PURE: the item and the clock, nothing else.
+ *
+ * null = keep. Lapses only when ALL hold:
+ *   - it is OPEN (done / dropped / lapsed are never touched) and not snoozed now;
+ *   - its age (first_seen — the MEETING date) is readable and over 90 days —
+ *     an unreadable age KEEPS it, because not knowing how old something is is
+ *     not evidence that it is old;
+ *   - nothing has happened to it in 90 days: no new-note mention
+ *     (`last_mentioned_at`, else `last_seen` for rows from before that column —
+ *     conservative, since a legacy re-read cannot be told from a mention), no
+ *     reopen, no chase, no snooze date it was pointed at.
+ */
+function lapseVerdict(item, now = Date.now()) {
+  if (!item || item.status !== 'open') return null;
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const snooze = _ms(item.snoozedUntil);
+  if (Number.isFinite(snooze) && snooze > nowMs) return null;
+  const born = _ms(item.firstSeen);
+  if (!Number.isFinite(born)) return null;
+  if (nowMs - born <= LAPSE_DAYS * DAY_MS) return null;
+  const mention = item.lastMentionedAt || item.lastSeen;
+  const activity = [mention, item.reopenedAt, item.askedAt, item.snoozedUntil, item.firstSeen, _sourceDateToIso(item.sourceDate)]
+    .map(_ms).filter(Number.isFinite);
+  const latest = Math.max(...activity);
+  if (nowMs - latest <= LAPSE_DAYS * DAY_MS) return null;
+  return { ageDays: Math.floor((nowMs - born) / DAY_MS), quietDays: Math.floor((nowMs - latest) / DAY_MS),
+    lastActivity: new Date(latest).toISOString() };
+}
+
+/** Local calendar day — never toISOString(); the Pi may run in UTC. */
+function _localDay(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * The nightly pass. Marks every open item `lapseVerdict` says lapses, and
+ * writes ONE Activity line with the count (never the items — no names in
+ * Activity). `apply: false` counts without writing.
+ */
+function lapseStale({ now = Date.now(), apply = true } = {}) {
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const at = new Date(nowMs).toISOString();
+  let lapsed = 0;
+  let open = 0;
+  for (const item of _all()) {
+    if (item.status !== 'open') continue;
+    open += 1;
+    if (!lapseVerdict(item, nowMs)) continue;
+    lapsed += 1;
+    if (!apply) continue;
+    item.status = 'lapsed';
+    item.resolvedAt = at;
+    _upsert(item);
+  }
+  if (apply && lapsed > 0) {
+    try {
+      require('./personal-obligations').logEvent('waiting-on-lapsed', {
+        detail: { count: lapsed, days: LAPSE_DAYS },
+        dedupeKey: `waiting-on-lapsed:${_localDay(nowMs)}`,
+        now: nowMs,
+      });
+    } catch { /* Activity is a record, never a reason to fail the pass */ }
+    console.log(`[WaitingOn] Lapsed ${lapsed} of ${open} open item(s) — quiet for ${LAPSE_DAYS}+ days`);
+  }
+  return { lapsed, open, applied: apply };
+}
+
+/** Nick puts a lapsed item back. Only from lapsed — done/dropped come back by a new sighting. */
+function reopen(key, { now = Date.now() } = {}) {
+  const item = _get(key);
+  if (!item) return { ok: false, code: 404, error: 'No such item' };
+  if (item.status !== 'lapsed') return { ok: false, code: 409, error: `it is ${item.status}, not lapsed` };
+  item.status = 'open';
+  // A reopen is activity, so the lapse clock restarts from here.
+  item.reopenedAt = new Date(now instanceof Date ? now.getTime() : now).toISOString();
+  item.resolvedAt = null;
+  _upsert(item);
+  return { ok: true, item };
+}
+
+// ── "Looks done" — Build 5 progress evidence, shown, never applied ──────────
+
+function _notYet() {
+  try {
+    const v = JSON.parse(db.getState(NOT_YET_KEY) || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch { return null; }   // unreadable: suppress nothing, write nothing
+}
+
+/** Words for the evidence behind "Looks done". PURE. */
+function looksDoneWords(evidence = []) {
+  const e = evidence[0];
+  if (!e) return 'something NEURO saw says it was done';
+  const d = e.detail || {};
+  const more = evidence.length > 1 ? ` (+${evidence.length - 1} more)` : '';
+  if (e.kind === 'later-note' && d.text) {
+    const where = String(d.notePath || '').startsWith('Daily/') ? 'your daily note' : 'a later meeting note';
+    const day = String(e.at || '').slice(0, 10);
+    const said = String(d.text).replace(/^\s*[-*+]\s*(\[[^\]]\]\s*)?/, '').slice(0, 140);
+    return `${where}${day ? ` (${day})` : ''} says “${said}”${more}`;
+  }
+  return `${e.reason || 'something NEURO saw says it was done'}${more}`;
+}
+
+/**
+ * Attach `looksDone` to open items whose world-model commitment derives as
+ * `likely_fulfilled`. Reads only the commitments that HAVE strong done evidence
+ * (one query), so this costs nothing on the other 500. Evidence Nick answered
+ * "Not yet" to is not shown again; a NEW piece of evidence is. Never closes.
+ */
+function attachLooksDone(items, { deps = {} } = {}) {
+  let ids;
+  try {
+    ids = new Set(db.all(`SELECT DISTINCT commitment_id FROM wm_progress_evidence
+                          WHERE commitment_id LIKE 'commitment:waiting:%' AND polarity = 'done' AND strength = 'strong'`, [])
+      .map((r) => r.commitment_id));
+  } catch { return items; }   // no projection: nothing to say, which is not "not done"
+  if (!ids.size) return items;
+  const wo = deps.worldObligations || require('./world-obligations');
+  const pe = deps.progressEvidence || require('./progress-evidence');
+  const notYetStore = _notYet() || {};
+  let cov;
+  try { cov = pe.coverage(); } catch { cov = undefined; }
+  return items.map((item) => {
+    if (item.status !== 'open') return item;
+    const cid = wo.waitingCommitmentId(item.key);
+    if (!ids.has(cid)) return item;
+    let p = null;
+    try { p = pe.progressFor(cid, cov ? { cov } : undefined); } catch { p = null; }
+    if (!p || p.state !== 'likely_fulfilled') return item;
+    const suppressed = new Set(notYetStore[item.key] || []);
+    const fresh = (p.evidenceIds || []).filter((id) => !suppressed.has(id));
+    if (!fresh.length) return item;
+    const ev = (p.evidence || []).filter((e) => fresh.includes(e.evidenceId));
+    return { ...item, looksDone: { words: looksDoneWords(ev), evidenceIds: fresh, commitmentId: cid } };
+  });
+}
+
+/**
+ * "Not yet" — the evidence shown is wrong about this item. Suppresses exactly
+ * those evidence ids for this item; the item stays open and a NEW piece of
+ * evidence brings the question back.
+ */
+function notYet(key, evidenceIds = []) {
+  const item = _get(key);
+  if (!item) return { ok: false, code: 404, error: 'No such item' };
+  const ids = (Array.isArray(evidenceIds) ? evidenceIds : []).map(String).filter(Boolean).slice(0, 50);
+  if (!ids.length) return { ok: false, code: 400, error: 'evidenceIds is required — which evidence is wrong?' };
+  const store = _notYet();
+  if (store === null) return { ok: false, code: 503, error: 'the not-yet store could not be read; nothing written' };
+  store[key] = [...new Set([...(store[key] || []), ...ids])];
+  db.setState(NOT_YET_KEY, JSON.stringify(store));
+  return { ok: true, key, suppressed: store[key].length };
 }
 
 /*
@@ -381,4 +565,6 @@ module.exports = {
   setPersonFull,
   record, list, byPerson, resolve, snooze, markChased,
   backfill, migrateFromState, STALE_DAYS, _key,
+  LAPSE_DAYS, lapseVerdict, lapseStale, reopen,
+  looksDoneWords, attachLooksDone, notYet,
 };

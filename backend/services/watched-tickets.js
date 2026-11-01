@@ -176,17 +176,24 @@ const NAMED_TIMES = [
   [/\btomorrow afternoon\b/i, '17:00'],
 ];
 
-function _clock(sentence) {
+// The first two NAMED_TIMES (end of day / COB, midday) name an exact time; the
+// rest ("this afternoon", "tomorrow morning") are a part of a day.
+const EXACT_NAMED = 2;
+
+/** { time: 'HH:MM', kind: 'clock' | 'named' | 'vague' } or null. PURE. */
+function _clockKind(sentence) {
   const ampm = /\b(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)\b/i.exec(sentence);
   if (ampm) {
     let h = Number(ampm[1]) % 12; const m = Number(ampm[2] || 0);
     if (ampm[3].toLowerCase() === 'pm') h += 12;
     if (h > 23 || m > 59) return null;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    return { time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, kind: 'clock' };
   }
   const h24 = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/.exec(sentence);
-  if (h24) return `${h24[1].padStart(2, '0')}:${h24[2]}`;
-  for (const [re, t] of NAMED_TIMES) if (re.test(sentence)) return t;
+  if (h24) return { time: `${h24[1].padStart(2, '0')}:${h24[2]}`, kind: 'clock' };
+  for (let i = 0; i < NAMED_TIMES.length; i++) {
+    if (NAMED_TIMES[i][0].test(sentence)) return { time: NAMED_TIMES[i][1], kind: i < EXACT_NAMED ? 'named' : 'vague' };
+  }
   return null;
 }
 
@@ -217,7 +224,8 @@ function detectCommitment(text, madeAt) {
   for (const raw of sentences) {
     const s = raw.trim();
     if (!s || !PROMISE_RE.test(s) || !TELL_RE.test(s)) continue;
-    const clock = _clock(s);
+    const ck = _clockKind(s);
+    const clock = ck?.time || null;
     const day = _day(s, madeDate);
     if (!clock && !day) continue;
     let dateKey = day || madeDate;
@@ -225,9 +233,29 @@ function detectCommitment(text, madeAt) {
     // "by 9am" written at 16:00 with no day named means tomorrow morning.
     if (!day && due <= madeMs) { dateKey = addDays(dateKey, 1); due = londonInstant(dateKey, clock || '17:00'); }
     if (!Number.isFinite(due) || due <= madeMs) continue;
-    return { dueAt: new Date(due).toISOString(), phrase: s.length > 240 ? `${s.slice(0, 239)}…` : s };
+    return { dueAt: new Date(due).toISOString(), phrase: s.length > 240 ? `${s.slice(0, 239)}…` : s,
+      dueDate: dateKey, madeDate, timeKind: ck ? ck.kind : null };
   }
   return null;
+}
+
+/**
+ * Auto-confirm (1 Nov 2026, Nick): a promise is confirmed without a press ONLY
+ * when it names an EXACT time — a clock time, end of day/COB (17:00) or midday
+ * (12:00) — AND that time falls today or on the next working day after the
+ * reply. A weekday on its own, "tomorrow" with no time, "this afternoon" stay
+ * proposals. PURE: `nextWorkingDay(Date) → Date` (local).
+ */
+function autoConfirmable(found, nextWorkingDay) {
+  if (!found || (found.timeKind !== 'clock' && found.timeKind !== 'named')) return false;
+  if (!found.dueDate || !found.madeDate) return false;
+  if (found.dueDate === found.madeDate) return true;
+  if (typeof nextWorkingDay !== 'function') return false;
+  const [y, m, d] = found.madeDate.split('-').map(Number);
+  const n = nextWorkingDay(new Date(y, m - 1, d, 12));
+  if (!(n instanceof Date) || Number.isNaN(n.getTime())) return false;
+  const p = (x) => String(x).padStart(2, '0');
+  return found.dueDate === `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
 }
 
 /** The commitment's state at an instant. PURE. */
@@ -246,7 +274,31 @@ function commentId(c) {
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-function _row(key) { return db.get('SELECT * FROM watched_tickets WHERE ticket_key = ?', [key]); }
+// Columns added 1 Nov 2026 (ready drafts, auto-confirm), added here rather than
+// in database.js so the live DB gains them on first use. ADD COLUMN only.
+let _colsReady = false;
+function _ensureColumns() {
+  if (_colsReady) return;
+  try {
+    let tables = 0;
+    const add = (table, cols) => {
+      const have = db.all(`PRAGMA table_info(${table})`).map((r) => r.name);
+      if (!have.length) return;
+      tables += 1;
+      for (const [name, type] of cols) if (!have.includes(name)) db.run(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+    };
+    // draft_state: ready | unavailable (the model did not answer — not re-bought)
+    // | superseded (a later customer reply) | used (Nick posted from NEURO)
+    // | answered (a public reply from the team came after it). NULL = no draft.
+    add('watched_ticket_replies', [['draft_text', 'TEXT'], ['draft_visibility', 'TEXT'], ['draft_model', 'TEXT'],
+      ['draft_state', 'TEXT'], ['drafted_at', 'TEXT']]);
+    // confirmed_by: auto | nick. NULL on rows from before it existed.
+    add('watched_ticket_commitments', [['confirmed_by', 'TEXT']]);
+    if (tables === 2) _colsReady = true;
+  } catch (e) { console.warn(`[Watched] column check failed: ${e.message}`); }
+}
+
+function _row(key) { _ensureColumns(); return db.get('SELECT * FROM watched_tickets WHERE ticket_key = ?', [key]); }
 
 function _defaultDeps() {
   const jira = require('./jira');
@@ -256,6 +308,9 @@ function _defaultDeps() {
     states: (keys) => jira.fetchIssueStates(keys),
     comments: (key) => jira.fetchIssueComments(key),
     judge: judgeByModel,
+    // The ready draft on a customer reply: the SAME golden-rules drafter the
+    // Reply composer uses, as an internal note. Never posts.
+    draft: (key) => require('./ticket-replies').draft({ key, visibility: 'internal' }),
     push: (title, body, data) => require('./webpush').sendToAll(title, body, data),
     nextWorkingDay: (d) => wd.nextWorkingDay(d),
     // Nick, as Jira knows him: the API token's own email, else his display name.
@@ -294,10 +349,14 @@ function _proposeFrom(key, comment, deps, nowMs) {
   if (!_isMyPublicReply(comment, deps)) return null;
   const found = detectCommitment(adfText(comment.body), comment.created);
   if (!found || Date.parse(found.dueAt) <= nowMs) return null;
+  const auto = autoConfirmable(found, deps.nextWorkingDay);
+  const at = new Date(nowMs).toISOString();
   const r = db.run(`INSERT OR IGNORE INTO watched_ticket_commitments
-      (ticket_key, due_at, source, state, phrase, comment_id, made_at) VALUES (?, ?, 'detected', 'proposed', ?, ?, ?)`,
-  [key, found.dueAt, found.phrase, String(comment.id), comment.created || new Date(nowMs).toISOString()]);
-  return r?.changes ? found : null;
+      (ticket_key, due_at, source, state, phrase, comment_id, made_at, confirmed_at, confirmed_by)
+      VALUES (?, ?, 'detected', ?, ?, ?, ?, ?, ?)`,
+  [key, found.dueAt, auto ? 'open' : 'proposed', found.phrase, String(comment.id), comment.created || at,
+    auto ? at : null, auto ? 'auto' : null]);
+  return r?.changes ? { ...found, autoConfirmed: auto } : null;
 }
 
 /**
@@ -436,6 +495,7 @@ function _present(row) {
     lastCheckedAt: row.last_checked_at,
     lastError: row.last_error,
     unread,
+    draft: _draftFor(row.ticket_key),
     commitments: _commitmentsFor(row.ticket_key),
     replies: replies.map((r) => ({
       id: r.comment_id, author: r.author, created: r.created, excerpt: r.excerpt,
@@ -444,11 +504,28 @@ function _present(row) {
   };
 }
 
+/** The unused ready draft on the ticket's newest drafted customer reply, or null. */
+function _draftFor(key) {
+  const r = db.get(`SELECT * FROM watched_ticket_replies WHERE ticket_key = ? AND draft_state = 'ready'
+                    ORDER BY CAST(comment_id AS INTEGER) DESC LIMIT 1`, [key]);
+  if (!r || !r.draft_text) return null;
+  return { replyId: r.comment_id, replyAuthor: r.author, replyCreated: r.created, text: r.draft_text,
+    visibility: r.draft_visibility || 'internal', model: r.draft_model || null, draftedAt: r.drafted_at };
+}
+
+/** Nick posted on the ticket from NEURO: the ready draft has been used (or overtaken). */
+function markDraftUsed(rawKey) {
+  const key = normaliseKey(rawKey);
+  if (!key) return 0;
+  _ensureColumns();
+  return db.run(`UPDATE watched_ticket_replies SET draft_state = 'used' WHERE ticket_key = ? AND draft_state = 'ready'`, [key])?.changes || 0;
+}
+
 function _shapeCommitment(c, nowMs = Date.now()) {
   const t = commitmentTiming(c, nowMs);
   return {
     id: c.id, dueAt: c.due_at, source: c.source, state: c.state, phrase: c.phrase,
-    madeAt: c.made_at, confirmedAt: c.confirmed_at, closedAt: c.closed_at, closedBy: c.closed_by,
+    madeAt: c.made_at, confirmedAt: c.confirmed_at, confirmedBy: c.confirmed_by || null, closedAt: c.closed_at, closedBy: c.closed_by,
     keptLate: c.kept_late === 1, dueSoon: c.state === 'open' && t.dueSoon, missed: c.state === 'open' && t.missed,
   };
 }
@@ -497,12 +574,13 @@ function addCommitment(rawKey, due, nowMs = Date.now()) {
  * The wrong state for the action is 409 and changes nothing.
  */
 function actOnCommitment(rawKey, id, action, nowMs = Date.now()) {
+  _ensureColumns();
   const key = normaliseKey(rawKey);
   const c = key && db.get('SELECT * FROM watched_ticket_commitments WHERE id = ? AND ticket_key = ?', [Number(id), key]);
   if (!c) return { ok: false, status: 404, error: 'No such commitment on that ticket' };
   const at = new Date(nowMs).toISOString();
   if (action === 'confirm' && c.state === 'proposed') {
-    db.run(`UPDATE watched_ticket_commitments SET state = 'open', confirmed_at = ? WHERE id = ?`, [at, c.id]);
+    db.run(`UPDATE watched_ticket_commitments SET state = 'open', confirmed_at = ?, confirmed_by = 'nick' WHERE id = ?`, [at, c.id]);
   } else if (action === 'dismiss' && (c.state === 'proposed' || c.state === 'open')) {
     db.run(`UPDATE watched_ticket_commitments SET state = ?, closed_at = ?, closed_by = 'nick' WHERE id = ?`,
       [c.state === 'proposed' ? 'dismissed' : 'cancelled', at, c.id]);
@@ -593,6 +671,7 @@ function nowCards(nowMs = Date.now()) {
  * proposes nothing new.
  */
 function recordMyReply(rawKey, comment, nowMs = Date.now()) {
+  _ensureColumns();
   const key = normaliseKey(rawKey);
   if (!key || !comment || comment.id == null) return { kept: 0, commitment: null };
   const isPublic = comment.jsdPublic !== false;
@@ -603,10 +682,10 @@ function recordMyReply(rawKey, comment, nowMs = Date.now()) {
     if (found && Date.parse(found.dueAt) > nowMs) {
       const at = new Date(nowMs).toISOString();
       db.run(`INSERT OR IGNORE INTO watched_ticket_commitments
-          (ticket_key, due_at, source, state, phrase, comment_id, made_at, confirmed_at) VALUES (?, ?, 'detected', 'open', ?, ?, ?, ?)`,
+          (ticket_key, due_at, source, state, phrase, comment_id, made_at, confirmed_at, confirmed_by) VALUES (?, ?, 'detected', 'open', ?, ?, ?, ?, 'nick')`,
       [key, found.dueAt, found.phrase, String(comment.id), comment.created || at, at]);
       // watch() may already have proposed it from the same reply — confirm that one.
-      db.run(`UPDATE watched_ticket_commitments SET state = 'open', confirmed_at = COALESCE(confirmed_at, ?) WHERE comment_id = ? AND state = 'proposed'`,
+      db.run(`UPDATE watched_ticket_commitments SET state = 'open', confirmed_at = COALESCE(confirmed_at, ?), confirmed_by = 'nick' WHERE comment_id = ? AND state = 'proposed'`,
         [at, String(comment.id)]);
       commitment = _shapeCommitment(db.get('SELECT * FROM watched_ticket_commitments WHERE comment_id = ?', [String(comment.id)]), nowMs);
     }
@@ -616,6 +695,7 @@ function recordMyReply(rawKey, comment, nowMs = Date.now()) {
 
 /** What the Escalations page renders. */
 function list() {
+  _ensureColumns();
   const rows = db.all(`SELECT * FROM watched_tickets WHERE phase IN ('active', 'background') ORDER BY watched_at ASC`);
   const items = rows.map(_present);
   const ended = db.all(`SELECT * FROM watched_tickets WHERE phase = 'ended' AND ended_at >= ? ORDER BY ended_at DESC LIMIT 10`,
@@ -695,6 +775,7 @@ async function _process(row, issue, deps, now, sent) {
   // Comments — only when something changed on the ticket, or the baseline is owed.
   let seen = row.seen_comment_id;
   const fresh = [];
+  let lastTeamReply = 0;
   if (seen == null || issue.updated !== row.jira_updated) {
     const r = await deps.comments(row.ticket_key);
     const comments = r?.comments || [];
@@ -712,6 +793,12 @@ async function _process(row, issue, deps, now, sent) {
       }
       // Oldest first: a reply keeps what came before it, then (Nick's only) may promise again.
       mine.sort((a, b) => commentId(a) - commentId(b));
+      if (mine.length) {
+        lastTeamReply = commentId(mine[mine.length - 1]);
+        // The team has answered: a draft written for an earlier customer reply is stale.
+        db.run(`UPDATE watched_ticket_replies SET draft_state = 'answered' WHERE ticket_key = ? AND draft_state = 'ready'
+                AND CAST(comment_id AS INTEGER) < ?`, [row.ticket_key, lastTeamReply]);
+      }
       for (const c of mine) {
         const isMe = deps.isMe(c.author);
         _keepWith(row.ticket_key, c, isMe ? null : (c.author?.displayName || 'a colleague'));
@@ -726,6 +813,7 @@ async function _process(row, issue, deps, now, sent) {
   fresh.sort((a, b) => commentId(a) - commentId(b));
 
   let followUps = 0; let thanks = 0;
+  const newlyFlagged = [];
   for (const c of fresh) {
     const text = adfText(c.body);
     let verdict = 'reply'; let by = null;
@@ -743,6 +831,7 @@ async function _process(row, issue, deps, now, sent) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
     [String(c.id), row.ticket_key, author, c.created || null, excerpt, listening ? 'background' : 'active',
       verdict, by, flagged ? 1 : 0, now.toISOString()]);
+    if (flagged && ins?.changes) newlyFlagged.push(c);
     if (flagged && ins?.changes) {
       const title = verdict === 'follow-up'
         ? `${row.ticket_key}: customer came back after it was resolved`
@@ -754,6 +843,8 @@ async function _process(row, issue, deps, now, sent) {
       } catch (e) { console.warn(`[Watched] push for ${row.ticket_key} failed: ${e.message}`); }
     }
   }
+
+  await _readyDraft(row.ticket_key, newlyFlagged, lastTeamReply, deps, now);
 
   if (listening) {
     if (followUps > 0) { phase = 'active'; resolvedAt = null; until = null; }
@@ -779,12 +870,46 @@ async function _process(row, issue, deps, now, sent) {
 }
 
 /**
+ * Ready draft (1 Nov 2026, Nick): a NEW flagged customer reply gets a
+ * golden-rules draft, stored on that reply, INTERNAL, never posted. One model
+ * call per reply and never re-bought: a failed call is recorded 'unavailable'
+ * and nothing else changes. Several new replies in one pass draft only the
+ * newest (the draft reads the whole thread); a new one supersedes an unused
+ * older draft. A reply the team has already answered in the same pass gets none.
+ */
+async function _readyDraft(key, newlyFlagged, lastTeamReply, deps, now) {
+  if (!newlyFlagged.length || typeof deps.draft !== 'function') return null;
+  const newest = newlyFlagged.reduce((a, b) => (commentId(b) > commentId(a) ? b : a));
+  const id = String(newest.id);
+  const at = now.toISOString();
+  db.run(`UPDATE watched_ticket_replies SET draft_state = 'superseded' WHERE ticket_key = ? AND comment_id <> ?
+          AND (draft_state = 'ready' OR (draft_state IS NULL AND comment_id IN (${newlyFlagged.map(() => '?').join(',')})))`,
+  [key, id, ...newlyFlagged.map((c) => String(c.id))]);
+  if (lastTeamReply > commentId(newest)) {
+    db.run(`UPDATE watched_ticket_replies SET draft_state = 'answered' WHERE comment_id = ?`, [id]);
+    return null;
+  }
+  let r = null;
+  try { r = await deps.draft(key); } catch (e) { r = { ok: false, error: e.message }; }
+  const text = r && r.ok ? String(r.text || '').trim() : '';
+  if (!text) {
+    console.warn(`[Watched] ready draft for ${key} not made: ${(r && r.error) || 'no text'}`);
+    db.run(`UPDATE watched_ticket_replies SET draft_state = 'unavailable', drafted_at = ? WHERE comment_id = ?`, [at, id]);
+    return null;
+  }
+  db.run(`UPDATE watched_ticket_replies SET draft_text = ?, draft_visibility = 'internal', draft_model = ?,
+          draft_state = 'ready', drafted_at = ? WHERE comment_id = ?`, [text.slice(0, 20000), r.model || null, at, id]);
+  return id;
+}
+
+/**
  * One pass over every watched ticket. Never throws. `depsOver` replaces Jira,
  * the model, the push and the clock in tests.
  */
 async function check(depsOver) {
   if (_running) return { ok: true, skipped: 'already running' };
   _running = true;
+  _ensureColumns();
   const deps = _deps(depsOver);
   const now = deps.now();
   try {
@@ -823,8 +948,8 @@ async function check(depsOver) {
 }
 
 module.exports = {
-  watch, unwatch, markRead, list, check, addCommitment, actOnCommitment, nowCards, recordMyReply, isWatched: (k) => { const r = _row(normaliseKey(k)); return !!r && r.phase !== 'ended'; },
+  watch, unwatch, markRead, list, check, addCommitment, actOnCommitment, nowCards, recordMyReply, markDraftUsed, isWatched: (k) => { const r = _row(normaliseKey(k)); return !!r && r.phase !== 'ended'; },
   PUSH_TYPE, LISTEN_WORKING_DAYS,
   // pure, for the tests
-  normaliseKey, isCustomerReply, detectCommitment, commitmentTiming, parseDue, ownWords, judgeByRule, listenUntil, adfText, excerptOf,
+  normaliseKey, isCustomerReply, detectCommitment, autoConfirmable, commitmentTiming, parseDue, ownWords, judgeByRule, listenUntil, adfText, excerptOf,
 };

@@ -61,6 +61,20 @@ function WaitingRow({ item, onAct, busy }) {
         </span>
       </div>
 
+      {/* Build 5 evidence says it is probably done. Shown, never applied:
+          Close marks it done, Not yet hides THIS evidence for this item. */}
+      {item.looksDone && (
+        <div className="wo-looks-done">
+          <span className="wo-looks-done-text">Looks done — {item.looksDone.words}</span>
+          <button className="wo-btn wo-btn-ok" disabled={busy} onClick={() => onAct('done')} title="Mark it done">
+            Close
+          </button>
+          <button className="wo-btn wo-btn-ghost" disabled={busy} onClick={() => onAct('not-yet', { evidenceIds: item.looksDone.evidenceIds })} title="That evidence is wrong — keep it open">
+            Not yet
+          </button>
+        </div>
+      )}
+
       {snoozing ? (
         <div className="wo-snooze">
           {SNOOZE_PRESETS.map(p => (
@@ -124,15 +138,22 @@ export default function WaitingOn({ person = null, embedded = false }) {
   const [flash, setFlash] = useState(null);       // { key, text }
 
   const [queueKey, setQueueKey] = useState(0);    // remounts the chase queue after a press
+  // Lapsed (1 Nov 2026): nobody mentioned it in 90 days, so NEURO set it aside.
+  // Not done, not dropped — collapsed, each with Reopen. null = not read.
+  const [lapsed, setLapsed] = useState(null);
+  const [showLapsed, setShowLapsed] = useState(false);
 
   const load = useCallback(() => {
     fetch(apiUrl('/api/waiting-on/by-person'))
       .then(r => r.json())
       .then(d => setGroups(d.people || []))
       .catch(e => setError(e.message));
+    fetch(apiUrl(`/api/waiting-on?status=lapsed${person ? `&person=${encodeURIComponent(person)}` : ''}`))
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(d => setLapsed(Array.isArray(d.items) ? d.items : null))
+      .catch(() => setLapsed(null));
 
-
-  }, []);
+  }, [person]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -157,12 +178,16 @@ export default function WaitingOn({ person = null, embedded = false }) {
       ? `chase`
       : action === 'snooze'
         ? `snooze`
-        : `resolve`;
-    const payload = action === 'chase'
+        : action === 'reopen' || action === 'not-yet'
+          ? action
+          : `resolve`;
+    const payload = action === 'chase' || action === 'reopen'
       ? {}
       : action === 'snooze'
         ? { until: body.until }
-        : { status: action === 'drop' ? 'dropped' : 'done' };
+        : action === 'not-yet'
+          ? { evidenceIds: body.evidenceIds || [] }
+          : { status: action === 'drop' ? 'dropped' : 'done' };
 
     try {
       const res = await fetch(apiUrl(`/api/waiting-on/${encodeURIComponent(item.key)}/${path}`), {
@@ -195,15 +220,20 @@ export default function WaitingOn({ person = null, embedded = false }) {
 
   if (visible.length === 0) {
     if (person) return null;                        // person overlay: silent when clear
-    if (snoozedCount > 0) {
+    const lapsedCount = Array.isArray(lapsed) ? lapsed.length : 0;
+    if (snoozedCount > 0 || lapsedCount > 0) {
       return (
         <div className="waiting-on">
           <div className="wo-head">
             <span className="wo-title">Waiting on</span>
-            <button className="wo-toggle" onClick={() => setShowSnoozed(true)}>
-              nothing due · {snoozedCount} snoozed
-            </button>
+            {snoozedCount > 0 && (
+              <button className="wo-toggle" onClick={() => setShowSnoozed(true)}>
+                nothing due · {snoozedCount} snoozed
+              </button>
+            )}
           </div>
+          <LapsedGroup items={lapsed} open={showLapsed} onToggle={() => setShowLapsed(s => !s)}
+            busyKey={busyKey} onReopen={(item) => act(item, 'reopen')} />
         </div>
       );
     }
@@ -306,6 +336,46 @@ export default function WaitingOn({ person = null, embedded = false }) {
         <button className="wo-more" onClick={() => setShowAll(s => !s)}>
           {showAll ? 'Show fewer' : `Show all ${visible.length} people`}
         </button>
+      )}
+
+      <LapsedGroup items={lapsed} open={showLapsed} onToggle={() => setShowLapsed(s => !s)}
+        busyKey={busyKey} onReopen={(item) => act(item, 'reopen')} showPerson={!person} />
+    </div>
+  );
+}
+
+/**
+ * Items nobody mentioned in 90 days. NOT done and NOT dropped — NEURO set them
+ * aside; it decided nothing about whether they were delivered. Collapsed by
+ * default; Reopen puts one back on the open list (and restarts its clock).
+ */
+export function LapsedGroup({ items, open, onToggle, onReopen, busyKey = null, showPerson = true }) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  return (
+    <div className="wo-lapsed">
+      <button className="wo-toggle wo-lapsed-head" onClick={onToggle}>
+        <span className="wo-caret">{open ? '▾' : '▸'}</span>
+        Lapsed ({items.length}) — nobody mentioned these in 90 days; not done, not dropped
+      </button>
+      {open && (
+        <div className="wo-items">
+          {items.map(item => (
+            <div key={item.key} className="wo-row is-lapsed">
+              <div className="wo-row-main">
+                <span className="wo-row-text">{showPerson ? `${item.personFull || item.person}: ` : ''}{item.text}</span>
+                <span className="wo-row-meta">
+                  {item.sourceDate && <span className="wo-src">{item.sourceDate}</span>}
+                  <span className="wo-snoozed-tag">lapsed</span>
+                </span>
+              </div>
+              <div className="wo-row-actions">
+                <button className="wo-btn" disabled={busyKey === item.key} onClick={() => onReopen(item)} title="Put it back on the open list">
+                  Reopen
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

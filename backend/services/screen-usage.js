@@ -307,7 +307,7 @@ function screenRows(rows) {
  * ⚠ It states and never advises. A screen with no opens in the window is
  * reported as such; whether that means it should go is Nick's call and the
  * PARKED DIRECTION says so explicitly. No score, no "unused" verdict, no
- * suggestion to delete anything — this is the same refusal `pip-deliverables`
+ * suggestion to delete anything — this is the same refusal `report-tracker`
  * makes about a burn-down.
  */
 function assess(rows, columns, surfaces) {

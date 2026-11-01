@@ -37,7 +37,7 @@ const FLAG = {
   unknown: { label: 'Activity could not be fully checked', tone: 'muted' },
 };
 
-/** The PIP competency 1 five steps, each answered from what NOVA checked. */
+/** The five overtime checks, each answered from what NOVA checked. */
 function fiveSteps(check) {
   const a = check.activity;
   const w = check.wtr;

@@ -37,14 +37,14 @@ test('a solo block never becomes critical; a real meeting does at 10 minutes', (
 });
 
 test('the weekly report to Chris surfaces when late and unsent, never once sent', () => {
-  const pd = require('./pip-deliverables');
+  const pd = require('./report-tracker');
   const { collectWeeklyReport } = require('./decision-engine');
   const real = pd.build;
   try {
-    pd.build = () => ({ window: { daysToEnd: 6 }, weekly: { notBuilt: ['2026-09-28', '2026-10-05'], current: { week: '2026-10-05', built: false, sendRecorded: false, state: 'late' } } });
+    pd.build = () => ({ weekly: { notBuilt: ['2026-09-28', '2026-10-05'], current: { week: '2026-10-05', built: false, sendRecorded: false, state: 'late' } } });
     const [item] = collectWeeklyReport();
     assert.equal(item.urgency, 'critical');
-    assert.match(item.reason, /Not built yet\. PIP ends in 6 days\. 1 earlier week not built\./);
+    assert.match(item.reason, /^Not built yet\. 1 earlier week not built\.$/);
     pd.build = () => ({ weekly: { current: { week: '2026-10-05', built: true, sendRecorded: true, state: 'late' } } });
     assert.deepEqual(collectWeeklyReport(), []);
     pd.build = () => { throw new Error('unreadable'); };

@@ -885,7 +885,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- or 'improvement' (Nick's own). NULL means NOT YET CLASSIFIED and is a real,
   -- reported state — deliberately NOT defaulted, unlike `domain` above. The two
   -- mistakes point in opposite directions and both are expensive in a report
-  -- read by the person assessing a PIP: guessing 'commitment' manufactures
+  -- read by Nick's manager: guessing 'commitment' manufactures
   -- broken promises out of Nick's own stretch goals, guessing 'improvement'
   -- hides a real one. See shared/task-origin.cjs.
   origin TEXT CHECK(origin IS NULL OR origin IN ('commitment', 'improvement')),
@@ -1212,7 +1212,14 @@ CREATE TABLE IF NOT EXISTS watched_ticket_replies (
   judged_by TEXT,
   flagged INTEGER NOT NULL DEFAULT 0,
   read_at TEXT,
-  detected_at TEXT NOT NULL
+  detected_at TEXT NOT NULL,
+  -- Ready draft (1 Nov 2026): a golden-rules internal draft made when a flagged
+  -- reply arrives, never posted. draft_state ready|unavailable|superseded|used|answered.
+  draft_text TEXT,
+  draft_visibility TEXT,
+  draft_model TEXT,
+  draft_state TEXT,
+  drafted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_watched_replies_ticket ON watched_ticket_replies(ticket_key, created);
 
@@ -1234,7 +1241,8 @@ CREATE TABLE IF NOT EXISTS watched_ticket_commitments (
   missed_at TEXT,
   closed_at TEXT,
   closed_by TEXT,
-  kept_late INTEGER
+  kept_late INTEGER,
+  confirmed_by TEXT -- auto | nick (1 Nov 2026)
 );
 CREATE INDEX IF NOT EXISTS idx_watched_commitments_ticket ON watched_ticket_commitments(ticket_key, state);
 
@@ -1407,7 +1415,7 @@ CREATE TABLE IF NOT EXISTS waiting_on (
   text          TEXT NOT NULL,
   source_path   TEXT,
   source_date   TEXT,
-  status        TEXT NOT NULL DEFAULT 'open',   -- open | done | dropped
+  status        TEXT NOT NULL DEFAULT 'open',   -- open | done | dropped | lapsed
   asked_at      TEXT,
   chase_count   INTEGER NOT NULL DEFAULT 0,
   -- Dated from the MEETING, not from when the row was written, or a backfill
@@ -1417,7 +1425,11 @@ CREATE TABLE IF NOT EXISTS waiting_on (
   sightings     INTEGER NOT NULL DEFAULT 1,
   reopened_at   TEXT,
   resolved_at   TEXT,
-  snoozed_until TEXT
+  snoozed_until TEXT,
+  -- When a DIFFERENT note last mentioned it (1 Nov 2026). `last_seen` is
+  -- stamped on every re-read of the same note, so it cannot say "mentioned
+  -- again"; this can. NULL on rows from before it existed.
+  last_mentioned_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_waiting_on_status ON waiting_on(status, first_seen);
@@ -1455,22 +1467,15 @@ CREATE INDEX IF NOT EXISTS idx_sent_replies_sent ON sent_replies(sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sent_replies_email ON sent_replies(email_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Management Actions & Conversations Log — PIP competencies 3 and 4.
+-- Management Actions & Conversations Log.
 --
--- Competency 3: every management conversation, concern or action logged within
--- TWO WORKING DAYS, each with an owner and a due date, followed to resolution.
--- Competency 4: the count of OVERDUE management actions, baselined at
--- 27 Jul 2026, to reach zero by the 60-day review (11 Sep 2026) and thereafter
--- nothing overdue by more than five working days.
---
--- The baseline is deliberately NOT a stored number. A hand-agreed integer is
--- unfalsifiable a month later and cannot be recomputed when a row turns out to
--- have been miscounted; derived from due_date and resolved_date it can be
--- re-run against any date and always agrees with the rows underneath it.
+-- Every management conversation, concern or action logged within TWO WORKING
+-- DAYS, each with an owner and a due date, followed to resolution; and nothing
+-- overdue by more than five working days.
 --
 -- `logged_at` is separate from `entry_date` because the two-working-day rule is
 -- a fact about the GAP between them. Collapsing them into one column would make
--- the one thing competency 3 is measured on impossible to evidence.
+-- the two-working-day standard impossible to evidence.
 CREATE TABLE IF NOT EXISTS management_log (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   entry_date    TEXT NOT NULL,              -- when the conversation/concern happened
@@ -1510,7 +1515,7 @@ CREATE INDEX IF NOT EXISTS idx_mgmt_log_status ON management_log(status);
 CREATE INDEX IF NOT EXISTS idx_mgmt_log_entry ON management_log(entry_date DESC);
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Overtime approvals — PIP competency 1.
+-- Overtime approvals.
 --
 -- The finding was that overtime was approved on headline indicators (ticket
 -- counts, activity status) without cross-checking logged work, and that Working

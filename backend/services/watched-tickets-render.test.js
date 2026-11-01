@@ -333,3 +333,33 @@ test('a rejected ticket, opened, offers Approve and Decline', () => {
   assert.doesNotMatch(none, /Approve/);
   assert.match(none, /no pending approval/);
 });
+
+// ── Ready draft + auto-confirmed commitments (1 Nov 2026) ───────────────────
+
+test('an expanded ticket with a ready draft opens the composer prefilled, INTERNAL, labelled, unposted', () => {
+  const draft = { replyId: '545400', replyCreated: '2026-10-23T14:05:00Z', text: 'Sam says the portal is still down. [owner] to check by [time].', visibility: 'internal' };
+  const html = render({ escalations: [], watched: { active: [watched({ key: 'NT-35291', draft })], listening: [] }, initialExpanded: ['NT-35291'] });
+  const hm = new Date(draft.replyCreated).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  assert.ok(html.includes(`Drafted when the customer replied at ${hm} — check it`));
+  assert.match(html, /<textarea[^>]*>Sam says the portal is still down/);
+  assert.match(html, /aria-checked="true" class="esc-seg-on"[^>]*>Internal note/);
+  assert.doesNotMatch(html, /Post reply to customer|Post internal note/);
+  assert.match(html, /draft ready/);
+});
+
+test('collapsed, a ticket with a draft shows only the pill — the composer waits for a click', () => {
+  const html = render({ escalations: [], watched: { active: [watched({ key: 'NT-35292', draft: { replyId: '1', text: 'hidden draft text', replyCreated: '2026-10-23T14:05:00Z' } })], listening: [] } });
+  assert.match(html, /draft ready/);
+  assert.doesNotMatch(html, /hidden draft text/);
+});
+
+test('an auto-confirmed commitment says so and offers Dismiss; a proposal still asks to Confirm', () => {
+  const html = render({ escalations: [], watched: { active: [
+    watched({ key: 'NT-35293', commitments: [{ id: 7, state: 'open', dueAt: in90(), confirmedBy: 'auto', phrase: 'I will update you before 5pm today' }] }),
+    watched({ key: 'NT-35294', commitments: [{ id: 8, state: 'open', dueAt: in90(), confirmedBy: 'nick' }] }),
+  ], listening: [] }, initialExpanded: ['NT-35293', 'NT-35294'] });
+  assert.match(html, /Confirmed automatically — “I will update you before 5pm today”/);
+  assert.match(html, />Dismiss</);
+  assert.match(html, />Remove</, 'a hand-confirmed one keeps Remove');
+  assert.equal((html.match(/Confirmed automatically/g) || []).length, 1);
+});

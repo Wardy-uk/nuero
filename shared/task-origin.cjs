@@ -12,7 +12,7 @@
  *   • A COMMITMENT is work somebody else is expecting. It was asked for, or it
  *     was agreed in front of people who are now waiting on it. Missing one is a
  *     fact about Nick's reliability to other people, and it is exactly what
- *     competencies 3 and 4 are measured on.
+ *     the weekly report to Chris is about.
  *
  *   • A CONTINUAL IMPROVEMENT task is one Nick set himself — a system to build,
  *     a process to tighten, a report to automate. Nobody is waiting. It slipping
@@ -31,7 +31,7 @@
  * asymmetric in OPPOSITE DIRECTIONS, and both are expensive:
  *
  *   • An improvement task counted as a COMMITMENT inflates the overdue figure in
- *     a report read by the person assessing a PIP. It manufactures broken
+ *     a report read by Nick's manager. It manufactures broken
  *     promises out of Nick's own stretch goals.
  *   • A commitment counted as IMPROVEMENT hides a real broken promise from that
  *     same report — the worse failure, because the report's whole job is to

@@ -1080,3 +1080,12 @@
 }
 
 .book-warn ul { margin: 4px 0 0 16px; padding: 0; }
+
+/* 1-2-1s booked automatically (1 Nov 2026) */
+.auto-booked { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border, #333); border-radius: 8px; }
+.auto-booked-title { font-weight: 600; margin-bottom: 6px; }
+.auto-booked-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 4px 0; }
+.auto-booked-who { font-weight: 500; min-width: 140px; }
+.auto-booked-when { color: var(--text-muted, #999); min-width: 120px; }
+.auto-booked-tag { font-size: 0.85em; color: var(--text-muted, #999); flex: 1; }
+.auto-booked-note { flex-basis: 100%; font-size: 0.85em; }

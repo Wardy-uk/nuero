@@ -89,7 +89,7 @@ test('an approval recorded without the full checklist escalates', () => {
       approvedWithoutFullChecklist: 2, checklistOutstanding: 0, overLimit: [] },
   }));
   const f = a.findings.find(x => x.kind === 'overtime-checklist-gap');
-  assert.equal(f.severity, 'escalate', 'this is the exact behaviour competency 1 was written about');
+  assert.equal(f.severity, 'escalate', 'an approval without the full checklist is the behaviour the checklist exists to prevent');
 });
 
 test('over the 48h average escalates without an opt-out, warns with one', () => {
@@ -732,7 +732,7 @@ const SAMPLE_MD = [
   '',
   '# Weekly Risk & Anomaly Summary',
   '',
-  '> Standing agenda item. Flagged **ESCALATE**. See [[Nick Ward - PIP Reference]].',
+  '> Standing agenda item. Flagged **ESCALATE**. See [[Weekly Report Reference]].',
   '',
   '## Headline',
   '',
@@ -786,7 +786,7 @@ test('inline emphasis, code, checkboxes and lists all convert', () => {
 test('a vault wikilink is not shown as one — it means nothing in a mail client', () => {
   const html = weeklyRisk.toEmailHtml(SAMPLE_MD);
   assert.doesNotMatch(html, /\[\[/);
-  assert.match(html, /<em>Nick Ward - PIP Reference<\/em>/);
+  assert.match(html, /<em>Weekly Report Reference<\/em>/);
 });
 
 test('markup in the report content is escaped, not rendered', () => {

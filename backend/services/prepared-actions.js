@@ -384,7 +384,7 @@ const switchOn = (type) => require('./feature-flags').isEnabled(registry.switchF
  * says which. Executing is the executor's job, triggered by the route.
  */
 function approve(actionId, {
-  payloadHash = null, challengeId = null, approvalCode = null, intentGrantId = null, approver = null, note: why = null,
+  payloadHash = null, challengeId = null, approvalCode = null, intentGrantId = null, standingSwitch = null, approver = null, note: why = null,
   now = Date.now(), sending = sendingEnabled,
 } = {}) {
   const nowMs = msOf(now);
@@ -395,7 +395,8 @@ function approve(actionId, {
   if (cur.status === 'approved' || (cur.approved_payload_hash && cur.status !== 'prepared')) {
     // A grant authorises ONE execution: a second press — a double click, a
     // refresh, a replayed request — is refused, never answered "already ok".
-    if (intentGrantId) return { ok: false, code: 409, error: `That confirmation has already been used — it is ${cur.status}.`, already: true };
+    // A standing switch likewise approves one action once.
+    if (intentGrantId || standingSwitch) return { ok: false, code: 409, error: `That confirmation has already been used — it is ${cur.status}.`, already: true };
     if (cur.approved_payload_hash && payloadHash === cur.approved_payload_hash) return { ok: true, already: true, action: shape(cur), executable: policy.executable };
     return { ok: false, code: 409, error: `it is already ${cur.status}` };
   }
@@ -434,7 +435,19 @@ function approve(actionId, {
   const proofs = require('./approval-proof');
   const grants = require('./intent-grants');
   let proof = null;
-  if (intentGrantId) {
+  if (standingSwitch) {
+    // 1 Nov 2026: a Settings switch Nick turned on approves ONE listed origin
+    // (intent-grants.STANDING_SWITCH_ORIGINS) — never a grant and a switch at once,
+    // never an unlisted origin, never while the switch is off. Re-read here, at the
+    // moment of approval: a switch turned off a second ago approves nothing.
+    if (intentGrantId || challengeId || approvalCode) return { ok: false, code: 400, error: 'a standing switch is a proof on its own — not combined with another' };
+    if (grants.STANDING_SWITCH_ORIGINS[cur.origin] !== standingSwitch) {
+      return { ok: false, code: 403, error: `the ${standingSwitch} switch does not approve ${cur.origin || 'this'} actions` };
+    }
+    if (!require('./feature-flags').isEnabled(standingSwitch)) {
+      return { ok: false, code: 409, error: `the ${standingSwitch} switch is off — nothing was approved` };
+    }
+  } else if (intentGrantId) {
     // 9 Oct 2026: Nick pressed the final button on an action HE started
     // (services/intent-grants.js). The grant is burned, checked and recorded
     // as proof INSIDE the approval transaction below — a refused grant stays
@@ -449,13 +462,16 @@ function approve(actionId, {
   }
   const decide = () => {
     let p = proof;
-    if (intentGrantId) {
+    if (standingSwitch) {
+      p = proofs.recordSwitchProof({ flagKey: standingSwitch, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
+    } else if (intentGrantId) {
       const g = grants.consume({ grantId: intentGrantId, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
       if (!g.ok) return { ok: false, code: g.code, error: g.error, needsConfirm: true, reason: g.reason };
       p = proofs.recordIntentProof({ grantId: intentGrantId, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
     }
     if (!p.ok) return { ok: false, code: p.code || 403, error: p.error };
     const viaGrant = p.proof.mechanism === proofs.INTENT_MECHANISM;
+    const viaSwitch = p.proof.mechanism === proofs.SWITCH_MECHANISM;
     return transition(actionId, 'approved', {
       note: why, now: nowMs, allowedFrom: ['prepared'],
       set: {
@@ -469,7 +485,7 @@ function approve(actionId, {
         // Provenance: derived from the origin and the proof spent — never from
         // anything a client said about itself.
         initiated_by: grants.initiatedByFor(cur.origin),
-        authority_proof: viaGrant ? 'intent_grant' : 'approval_code',
+        authority_proof: viaGrant ? 'intent_grant' : viaSwitch ? 'standing_switch' : 'approval_code',
         intent_grant_id: viaGrant ? intentGrantId : null,
       },
       eventExtra: { mechanism: p.proof.mechanism, challengeRef: p.proof.challengeId.slice(0, 11) },

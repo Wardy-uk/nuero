@@ -207,8 +207,11 @@ function Commitments({ t, busy, onCommit }) {
               </span>
               <span className="esc-commitment-actions">
                 <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/done`)}>Done</button>
-                <button type="button" className="esc-mini" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>Remove</button>
+                <button type="button" className="esc-mini" disabled={busy} onClick={() => onCommit(t.key, `/${c.id}/dismiss`)}>{c.confirmedBy === 'auto' ? 'Dismiss' : 'Remove'}</button>
               </span>
+              {c.confirmedBy === 'auto' && (
+                <span className="esc-commitment-phrase">Confirmed automatically{c.phrase ? ` — “${c.phrase}”` : ''}</span>
+              )}
             </>
           )}
           {c.state === 'kept' && (
@@ -402,6 +405,13 @@ function EscalatePanel({ ticketKey, reasons, onEscalated, onClose, showDetail = 
 
 // ── Reply on the ticket ──────────────────────────────────────────────────────
 
+/** "Drafted when the customer replied at HH:MM — check it". PURE apart from the locale. */
+export function readyDraftLabel(draft) {
+  const d = new Date(draft?.replyCreated || draft?.draftedAt || '');
+  const hm = Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return hm ? `Drafted when the customer replied at ${hm} — check it` : 'Drafted when the customer replied — check it';
+}
+
 async function postJson(path, body) {
   const res = await fetch(apiUrl(path), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
@@ -417,10 +427,13 @@ async function postJson(path, body) {
  * watching the ticket. A gap the draft left ("[time of next update]") must be
  * filled before it can be posted.
  */
-export function ReplyComposer({ ticketKey, onClose, onPosted }) {
+export function ReplyComposer({ ticketKey, onClose, onPosted, draft = null }) {
+  // A ready draft (made when the customer replied) opens prefilled, INTERNAL,
+  // and is never posted without the same preview and click as anything else.
   const [visibility, setVisibility] = useState('internal');
   const [guidance, setGuidance] = useState('');
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => draft?.text || '');
+  const [fromDraft, setFromDraft] = useState(!!draft?.text);
   const [step, setStep] = useState('edit');
   const [pv, setPv] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -434,6 +447,7 @@ export function ReplyComposer({ ticketKey, onClose, onPosted }) {
     setBusy(false);
     if (!ok) { setError(data.error || 'Could not draft it.'); return; }
     setText(data.text || '');
+    setFromDraft(false);
   };
   const runPreview = async () => {
     setBusy(true); setError(null);
@@ -496,6 +510,9 @@ export function ReplyComposer({ ticketKey, onClose, onPosted }) {
 
       {step === 'edit' && (
         <>
+          {fromDraft && draft && (
+            <p className="esc-reply-note esc-reply-ready">{readyDraftLabel(draft)}</p>
+          )}
           <div className="esc-reply-draft">
             <input value={guidance} onChange={(e) => setGuidance(e.target.value)} maxLength={2000}
               placeholder="What should it say? e.g. fix is in testing, next update 5pm" aria-label="What should the reply say" />
@@ -1004,6 +1021,8 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
   const { esc, watch } = item;
   const [replying, setReplying] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const [draftClosed, setDraftClosed] = useState(false);
+  const draft = watch?.draft || null;
   const route = escalationRoute(esc);
   const latest = watch?.replies?.[0];
   const raised = ageDays(esc?.created);
@@ -1032,6 +1051,7 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
           {route && <span className="esc-pill esc-pill-esc" title={route.title}>{route.label.replace('escalated · ', '')}</span>}
           {item.sent && <span className="esc-pill esc-pill-alert" title="NOVA's current sentiment score for the customer, -1 to +1">angry {item.sent.score}</span>}
           {watch && !item.listening && <span className="esc-pill esc-pill-watch" title="You get a push when the customer replies">watching</span>}
+          {draft && <span className="esc-pill esc-pill-watch" title="NEURO drafted a reply when the customer replied — open the ticket to check it. Never posted on its own.">draft ready</span>}
           {item.raisedInJira && <span className="esc-pill esc-pill-esc" title="Also raised in Jira (it is in the escalated list)">raised in Jira</span>}
           {item.mail?.length > 0 && (
             <span className="esc-pill esc-pill-mail" title={item.mail.map((m) => `Emailed ${mailLabel(m)}${m.status === 'verified' ? '' : ` (${m.status})`}`).join('; ')}>
@@ -1099,9 +1119,12 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
           {watch && onCommit && <Commitments t={watch} busy={busy} onCommit={onCommit} />}
 
           {escalating && <EscalatePanel ticketKey={item.key} reasons={reasons || []} onClose={onCloseEscalate} onEscalated={onEscalated} />}
-          {replying && !escalating && <ReplyComposer ticketKey={item.key} onClose={() => setReplying(false)} onPosted={onPosted} />}
+          {(replying || (draft && !draftClosed && !emailing)) && !escalating && (
+            <ReplyComposer key={draft?.replyId || 'reply'} ticketKey={item.key} draft={draftClosed ? null : draft}
+              onClose={() => { setReplying(false); setDraftClosed(true); }} onPosted={onPosted} />
+          )}
           {emailing && !escalating && !replying && <EmailEscalation item={item} onClose={() => setEmailing(false)} onSent={onEmailed} />}
-          {!escalating && !replying && !emailing && (
+          {!escalating && !replying && !emailing && !(draft && !draftClosed) && (
               <div className="esc-ticket-actions">
                 <button type="button" className="esc-mini esc-mini-primary" onClick={() => setReplying(true)}>Reply</button>
                 {!watch && <button type="button" className="esc-mini esc-mini-primary" disabled={busy} onClick={() => onWatch(item.key)}>Watch</button>}
@@ -1467,6 +1490,7 @@ export default function EscalationPanel() {
     if (!r) return false;
     if (opened === k) setOpened(null);
     if (r.already) setNote(`${r.ticket.key} is already being watched.`);
+    else if (r.proposed?.autoConfirmed) setNote(`Your latest reply on ${r.ticket.key} promised an update by ${clockLabel(r.proposed.dueAt)} — confirmed automatically; dismiss it on the ticket if it isn't one.`);
     else if (r.proposed) setNote(`Spotted a promise in your latest reply on ${r.ticket.key}: an update by ${clockLabel(r.proposed.dueAt)}. Confirm it on the ticket to get reminders.`);
     else if (r.ticket?.phase === 'background') setNote(`${r.ticket.key} is already resolved — NEURO will listen for a follow-up until ${dayMonth(r.ticket.listeningUntil)}.`);
     highlight(k);

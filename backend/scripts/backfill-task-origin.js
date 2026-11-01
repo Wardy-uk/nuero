@@ -13,8 +13,7 @@
  *
  * The `origin` column is added with no default, deliberately (see
  * shared/task-origin.cjs): there is no value that is true of every existing row,
- * and the answer is counted in a report that goes to the manager assessing
- * Nick's PIP. So the column arrives empty and the guessing is a separate, opt-in
+ * and the answer is counted in a report that goes to Nick's manager. So the column arrives empty and the guessing is a separate, opt-in
  * pass with a dry run in front of it — the same shape as seed-management-log and
  * migrate-121-booked.
  *

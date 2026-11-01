@@ -1,31 +1,31 @@
 'use strict';
 
 /**
- * What Nick owes Chris, whether it was produced, and when the next one is due.
+ * The weekly report to Chris: which weeks were written, which were sent, and
+ * when the next one is due — plus the management-log standards beside it.
  *
  * ── What this is, and the thing it deliberately is not ──────────────────────
  *
- * It is a DELIVERABLE TRACKER. It answers "what do I owe and when", from
- * records that already exist, and it never grades him.
+ * It is a REPORT TRACKER. It answers "what is due and when", from records that
+ * already exist, and it never grades him.
  *
- * The obvious version of this feature is a burn-down: a percentage against
- * 11 Oct, four competency bars filling up. That version is refused, and the
- * reason is written down in VANTAGE's `self.js`, about exactly this data:
- * *"None of this is scored or graded. It is assembled so a coach can ask a
- * better question, and a tool that turned it into a performance number would be
- * doing the opposite of the job."* Chris is the one assessing the PIP. A tool
- * that scores it for him produces a number Nick will argue with instead of a
- * list he can act on — and on a bad week it is a screen that tells a man whose
- * failure mode is avoidance that he is failing. So: counts of what exists,
- * names of what does not, dates. No percentage, no score, no RAG, no trend
- * arrow. Pinned by a test that scans the payload for the vocabulary.
+ * The obvious version of this feature is a burn-down: a percentage, bars
+ * filling up. That version is refused, and the reason is written down in
+ * VANTAGE's `self.js`, about exactly this data: *"None of this is scored or
+ * graded. It is assembled so a coach can ask a better question, and a tool that
+ * turned it into a performance number would be doing the opposite of the
+ * job."* A score produces a number Nick will argue with instead of a list he
+ * can act on — and on a bad week it is a screen that tells a man whose failure
+ * mode is avoidance that he is failing. So: counts of what exists, names of
+ * what does not, dates. No percentage, no score, no RAG, no trend arrow.
+ * Pinned by a test that scans the payload for the vocabulary.
  *
  * ── Where the facts come from ───────────────────────────────────────────────
  *
  * Nothing here is a new measurement. `weekly-risk` has recorded every published
  * and every sent weekly summary since it shipped, and `management-log.assess()`
- * already computes both competency-3 and competency-4 figures. This joins them
- * and adds the calendar. If a number here disagrees with those screens, those
+ * already computes the logging and overdue figures. This joins them and adds
+ * the calendar. If a number here disagrees with those screens, those
  * screens are right.
  *
  * ── The refusals ────────────────────────────────────────────────────────────
@@ -38,8 +38,8 @@
  *    that is one but not the other is named.
  *
  * 2. A WEEK BEFORE THE CADENCE EXISTED IS NOT OWED. The Monday-midday cadence
- *    was agreed at the 1-2-1 on 12 Aug 2026, three weeks after the PIP began.
- *    Counting the weeks before it as missed would manufacture failures against
+ *    was agreed at the 1-2-1 on 12 Aug 2026. Counting the weeks before it as
+ *    missed would manufacture failures against
  *    a standard that did not exist — the tracker inventing a worse record than
  *    the real one, in the place he checks before writing to his manager.
  *
@@ -57,20 +57,6 @@
  *
  * CommonJS — NEURO backend convention.
  */
-
-// ── The plan's own dates ─────────────────────────────────────────────────────
-//
-// Hard-coded deliberately, following `management-log`'s BASELINE_DATE: these are
-// fixed by the PIP document, not by anything NEURO can observe, and a file that
-// failed to load would otherwise silently produce a tracker measuring nothing.
-// If the plan changes, change them here on purpose.
-
-/** PIP start. */
-const PIP_START = '2026-07-27';
-/** The 60-day review. `management-log.REVIEW_DATE` is the same date. */
-const PIP_REVIEW = '2026-09-11';
-/** PIP end. */
-const PIP_END = '2026-10-11';
 
 /**
  * The first week the weekly summary was owed.
@@ -266,38 +252,15 @@ function pastDue(week, today, nowHour, nonWorking) {
   return nowHour >= WEEKLY_DUE_HOUR;
 }
 
-// ── The window ───────────────────────────────────────────────────────────────
-
-/**
- * Where today sits in the plan. Dates and a day count, and nothing else — no
- * "x% through", which is the score this file exists not to produce.
- */
-function assessWindow(today = dateKey()) {
-  const toReview = daysBetween(today, PIP_REVIEW);
-  const toEnd = daysBetween(today, PIP_END);
-  return {
-    start: PIP_START,
-    review: PIP_REVIEW,
-    end: PIP_END,
-    daysToReview: toReview,
-    daysToEnd: toEnd,
-    // Which half of the plan the standards come from. Competency 4's baseline
-    // must reach zero by the review; the five-working-day standard is what is
-    // judged after it.
-    phase: toReview === null ? 'unknown' : toReview > 0 ? 'before-review' : 'after-review',
-  };
-}
-
 // ── The whole read ───────────────────────────────────────────────────────────
 
 /**
  * `log` is `management-log.assess()`'s output, or null when it could not be
  * read. Nothing is recomputed from it — the figures are lifted, so this screen
- * and the management log cannot disagree about the same competency.
+ * and the management log cannot disagree about the same figure.
  */
 function assess({ weekly = [], log = null, today = dateKey(), nowHour = 0, gaps = [], nonWorking } = {}) {
   const out = {
-    window: assessWindow(today),
     weekly: assessWeekly(weekly, { today, nowHour, nonWorking }),
     log: null,
     gaps,
@@ -309,23 +272,12 @@ function assess({ weekly = [], log = null, today = dateKey(), nowHour = 0, gaps 
 
   if (log) {
     out.log = {
-      // Competency 3: written down within two working days, with an owner and
-      // a due date on every open item.
+      // Written down within two working days, with an owner and a due date on
+      // every open item.
       lateLogged: log.lateLogged?.length ?? 0,
       missingOwner: log.missingOwner?.length ?? 0,
       missingDue: log.missingDue?.length ?? 0,
-      // Competency 4: the 27 Jul baseline, which must reach zero by the review.
-      baselineStillOpen: log.baseline?.stillOpen ?? null,
-      // ⚠ THREE answers, not one. `baselineKnown: false` means the figure was
-      // never recorded — the PIP leaves it blank and the log postdates the
-      // baseline date — and `baselineCount` is then null, NEVER 0. Reporting a
-      // zero here told Nick an outstanding PIP deliverable was already met.
-      baselineKnown: log.baseline?.known !== false,
-      baselineSource: log.baseline?.source ?? null,
-      baselineReason: log.baseline?.reason ?? null,
-      baselineCount: log.baseline?.count ?? null,
-      baselineTargetDate: log.baseline?.targetDate ?? PIP_REVIEW,
-      // The post-review standard, visible before it is the thing being judged.
+      // Nothing overdue by more than five working days.
       breachesFiveDay: log.breachesFiveDay?.length ?? 0,
       overdueCount: log.overdueCount ?? 0,
       // Never a finding — nothing measured it. Carried so the panel can ask
@@ -390,16 +342,12 @@ module.exports = {
   build,
   // Exported for tests — the pure halves carry the judgement worth pinning.
   assessWeekly,
-  assessWindow,
   firstWorkingDay,
   pastDue,
   weeksOwed,
   weekCommencing,
   daysBetween,
   dateKey,
-  PIP_START,
-  PIP_REVIEW,
-  PIP_END,
   WEEKLY_OWED_FROM,
   SEND_RECORDING_FROM,
   WEEKLY_DUE_HOUR,

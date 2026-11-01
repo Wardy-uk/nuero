@@ -12,6 +12,7 @@ const router = express.Router();
 const taskStore = require('../services/task-store');
 const dedupe = require('../services/task-dedupe');
 const vaultCache = require('../services/vault-cache');
+const taskSemantic = require('../services/task-semantic');
 
 /**
  * The Microsoft half. Read from the vault's Microsoft Tasks.md via the same parser
@@ -46,11 +47,25 @@ function neuroTasks() {
     .filter(t => t.status === 'open' || t.status === 'in-progress');
 }
 
-// GET /api/task-dedupe/candidates — ?minScore= to look under the line deliberately
-router.get('/candidates', (req, res) => {
+// GET /api/task-dedupe/candidates — ?minScore= (words) and ?semanticMinScore= (meaning) to look under the line deliberately
+router.get('/candidates', async (req, res) => {
   try {
     const ms = microsoftTasks();
     const neuro = neuroTasks();
+
+    // The semantic arm: one vector per open wording, cached, embedded only when
+    // new. A failure leaves `vectors` partial or null and is REPORTED — the
+    // lexical pairs below stand either way. Pruned only on a complete pass, so a
+    // Voyage outage never throws away vectors already paid for.
+    const { vectors, semantic } = await taskSemantic.vectorsFor(
+      [...neuro.map(t => t.text), ...ms.map(t => t.text)],
+      { pruneOthers: true },
+    );
+    const askedSem = Number(req.query.semanticMinScore);
+    const semanticMinScore = Number.isFinite(askedSem)
+      ? Math.min(Math.max(askedSem, 0.8), 1)
+      : dedupe.SEMANTIC_MIN_SCORE;
+    semantic.threshold = semanticMinScore;
 
     // A floor on the floor. Below ~0.15 every pair sharing one stock word matches
     // and the list stops being a list, so a caller asking for 0 gets the weak tier
@@ -65,6 +80,8 @@ router.get('/candidates', (req, res) => {
       msTasks: ms,
       dismissed: dedupe.dismissedKeySet(),
       minScore,
+      vectors,
+      semanticMinScore,
     });
 
     // NEURO against itself. A separate floor, and a much higher one: these are all
@@ -79,6 +96,8 @@ router.get('/candidates', (req, res) => {
       tasks: neuro,
       dismissed: dedupe.dismissedKeySet(),
       minScore: internalMinScore,
+      vectors,
+      semanticMinScore,
     });
 
     res.json({
@@ -88,6 +107,10 @@ router.get('/candidates', (req, res) => {
       internalMinScore,
       defaultMinScore: dedupe.MIN_SCORE,
       defaultInternalMinScore: dedupe.INTERNAL_MIN_SCORE,
+      defaultSemanticMinScore: dedupe.SEMANTIC_MIN_SCORE,
+      // Whether the meaning half ran. `available:false` names why; the word
+      // matches above are complete either way.
+      semantic,
       strongScore: dedupe.STRONG_SCORE,
       // Counts so an empty list is readable. "No duplicates found" and "Microsoft
       // is unreachable so there was nothing to compare" look identical otherwise,

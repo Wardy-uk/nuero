@@ -68,6 +68,7 @@ const ORIGIN_WORDS = {
   // Build 11K: calendar changes.
   '1to1-book': 'You pressed Book on a 1-2-1',
   '1to1-move': 'You pressed Move on a 1-2-1',
+  '1to1-auto': 'NOVA had it due; NEURO booked it under your auto-book switch',
   'event-composer': 'You made it in Calendar',
   chat: 'Asked for in chat',
   'machine-client': 'Prepared by a connected tool',
@@ -100,6 +101,7 @@ const INITIATOR_WORDS = {
 const PROOF_WORDS = {
   intent_grant: 'your click (one-use)',
   approval_code: 'your approval code',
+  standing_switch: 'your Settings switch (Book 1-2-1s NOVA asks for automatically)',
 };
 // Approvals given before 9 Oct 2026 by a trusted browser: shown, never produced.
 const LEGACY_PROOF = { 'trusted-device': 'Legacy trusted-device confirmation' };

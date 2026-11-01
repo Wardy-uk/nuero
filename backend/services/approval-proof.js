@@ -314,13 +314,33 @@ function recordIntentProof({ grantId, actionId, version, payloadHash, now = Date
   return { ok: true, proof: { mechanism: INTENT_MECHANISM, challengeId, actionId, version: Number(version) || 1, payloadHash, at: iso(nowMs), grantId } };
 }
 
+// ── a standing Settings switch (1 Nov 2026) ─────────────────────────────────
+//
+// One origin (intent-grants.STANDING_SWITCH_ORIGINS) may be approved by a switch
+// Nick turned on, not a press: today only `1to1-auto`, under one_to_one_auto_book.
+// This records the ACCEPTED challenge row the Build 7 trigger requires, issued_to
+// `switch:<flag>`, so the database gate holds on this path too and the row names
+// the switch. Called only by prepared-actions.approve(), after it has checked the
+// origin is listed for that switch and the switch is ON at that moment.
+const SWITCH_MECHANISM = 'standing-switch';
+function recordSwitchProof({ flagKey, actionId, version, payloadHash, now = Date.now() }) {
+  _ensureTable();
+  if (!flagKey || typeof flagKey !== 'string') return { ok: false, code: 403, error: 'no standing switch' };
+  const nowMs = msOf(now);
+  const challengeId = `ch_${crypto.randomBytes(16).toString('hex')}`;
+  db.run(`INSERT INTO approval_challenges (challenge_id, action_id, version, payload_hash, issued_at, expires_at, issued_to, used_at, used_outcome)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
+  [challengeId, actionId, Number(version) || 1, payloadHash, iso(nowMs), iso(nowMs), `switch:${flagKey}`, iso(nowMs)]);
+  return { ok: true, proof: { mechanism: SWITCH_MECHANISM, challengeId, actionId, version: Number(version) || 1, payloadHash, at: iso(nowMs), flagKey } };
+}
+
 function challenge(challengeId) {
   _ensureTable();
   return db.get('SELECT * FROM approval_challenges WHERE challenge_id = ?', [challengeId]) || null;
 }
 
 module.exports = {
-  MECHANISM, DEVICE_MECHANISM, INTENT_MECHANISM, recordIntentProof, CHALLENGE_TTL_MS, MAX_FAILURES, LOCKOUT_MS, MIN_CODE_LENGTH,
+  MECHANISM, DEVICE_MECHANISM, INTENT_MECHANISM, SWITCH_MECHANISM, recordIntentProof, recordSwitchProof, CHALLENGE_TTL_MS, MAX_FAILURES, LOCKOUT_MS, MIN_CODE_LENGTH,
   codeStatus, setCode, issue, consume, lockStatus, challenge, _ensureTable,
   deviceStatus, listDevices, revokeDevice, setCodeFromScreen,
 };

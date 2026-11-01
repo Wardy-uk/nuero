@@ -558,7 +558,7 @@ function summary() {
 module.exports = {
   STATES, LATER_NOTE_DAYS, LINE_MATCH_SCORE, SCAN_STATE_KEY,
   applyEvidence, reset,
-  deriveProgress, matchSentEmail, classifyLine, lineCoverage, targetsFor, DELIVERY_VERB,
+  deriveProgress, matchSentEmail, classifyLine, lineCoverage, targetsFor, DELIVERY_VERB, AUTOMATED_SUBJECT,
   publishEvidence, scanSentMail, scanLaterNotes, refresh, coverage,
   evidenceFor, progressFor, summary,
 };

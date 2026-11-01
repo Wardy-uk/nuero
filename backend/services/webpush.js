@@ -76,10 +76,10 @@ const ALWAYS_DELIVER = new Set([
   'meeting_prep',
   'system_alert',
   'capture_failed',
-  // Fires 07:30 on a Monday, once a week, and is a PIP deliverable owed to Chris
-  // by midday. The live log shows the hourly cap dropping it once. One
-  // notification a week cannot cause fatigue; a missed compliance report in
-  // front of the person assessing the PIP is the expensive direction.
+  // Fires 07:30 on a Monday, once a week, for the report Nick sends Chris by
+  // midday. The live log shows the hourly cap dropping it once. One
+  // notification a week cannot cause fatigue; a missed weekly report to his
+  // manager is the expensive direction.
   'weekly_risk',
   // Hike safety: "back from your walk?", "alert in 30 min", "alert sent". A walk
   // ending at 22:30 still needs its check-in prompt, and missing one is how an

@@ -62,7 +62,7 @@ test('Weekly Risk no longer writes to the log — one mutating surface, not two'
 });
 
 test('the panel never offers to set when something was logged', () => {
-  // ⚠ The whole of competency 3 is the gap between a conversation happening and
+  // ⚠ The two-working-day standard is the gap between a conversation happening and
   // being written down. `entryDate` is editable — correcting when it happened is
   // a legitimate fix — but `loggedAt` is the server's stamp and the API refuses
   // one from a manual caller. A field for it here would advertise a forgery the

@@ -8,8 +8,8 @@
  * so a compliance log that only fills up when he remembers to fill it is one
  * that runs behind — and the evidence is already on disk, with a date on it.
  *
- * ⚠ **IT PROPOSES AND NEVER WRITES.** A wrong row in a log that goes to the
- * person assessing the PIP is worse than a missing one: a missing entry is a
+ * ⚠ **IT PROPOSES AND NEVER WRITES.** A wrong row in a log that goes to
+ * Chris is worse than a missing one: a missing entry is a
  * gap Nick can close, an invented one is a claim he has to defend. Nothing here
  * calls `create()`; accepting is a separate, deliberate act on a card Nick has
  * read, and every field is editable before he does.
@@ -173,12 +173,12 @@ function namesWord(haystack, needle) {
  *
  * What that swallowed, measured across the live vault, is the most loggable
  * population there is: three return-to-work meetings, a **formal disciplinary
- * hearing**, a PIP meeting, "Employee Health, Reasonable Adjustments and Role
+ * hearing**, a performance meeting, "Employee Health, Reasonable Adjustments and Role
  * Transition for Kayleigh", "Employee Retention Discussion — Addressing Burnout
  * and Systemic Issues", "Performance Intervention Note — Call Handling Deficit
  * and Accountability Plan for Naomi", a payroll issue and an HR flexible-work
- * escalation. Absence and conduct management is exactly what competency 3 is
- * about; excluding it left the routine and dropped the serious.
+ * escalation. Absence and conduct management is exactly what the log is
+ * for; excluding it left the routine and dropped the serious.
  *
  * So the test is now only the two signals that evidence the CADENCE rather than
  * the headcount:
@@ -243,7 +243,7 @@ function reportsNamed(note, roster) {
  *
  * ⚠ But it is only honest while the stamp is REAL. An unreadable or absent
  * `created_at` returns **null**, and the caller then logs it as happening NOW
- * and says so — guessing would manufacture competency-3 compliance out of
+ * and says so — guessing would manufacture two-working-day compliance out of
  * nothing, which is the fabricated-baseline bug wearing a different hat.
  */
 function recordedAt(note) {
@@ -390,7 +390,7 @@ function assess({ notes = [], roster = [], rows = [], dismissed = [], gaps = [],
 
     const date = meetingDate(note);
     // ⚠ Refused rather than dated today. `entry_date` is when the conversation
-    // HAPPENED and the whole competency-3 measurement hangs off it; a guess
+    // HAPPENED and the whole two-working-day measurement hangs off it; a guess
     // there is a measurement about nothing.
     if (!date) { skip.undated += 1; continue; }
 

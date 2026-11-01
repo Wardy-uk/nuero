@@ -241,6 +241,12 @@ function start() {
     require('./watched-tickets').check().catch((e) => console.warn('[Scheduler] watched tickets failed:', e.message));
   });
 
+  // Every 30 min in working hours: "Looks done" — evidence an open task is already
+  // done (task-done-evidence.js). It only OFFERS; nothing is closed. Idempotent.
+  cron.schedule('9,39 8-18 * * 1-5', () => {
+    require('./task-done-evidence').refresh().catch((e) => console.warn('[Scheduler] looks-done pass failed:', e.message));
+  });
+
   cron.schedule('4,19,34,49 * * * *', () => {
     require('./drink-profiles').lookupPending().catch((e) => console.warn('[Scheduler] drink lookup failed:', e.message));
   });
@@ -559,6 +565,21 @@ function start() {
     } catch (e) { console.error('[Scheduler] Nightly sweep failed:', e.message); }
   });
 
+  // 2:40am — the waiting-on and Spotted tidy (1 Nov 2026). Waiting-on items
+  // nobody has mentioned in 90 days go `lapsed` (not done; Reopen on the People
+  // board; one count-only Activity line). Spotted suggestions unanswered for 7
+  // days go `expired` (never a rejection). Both are NEURO deciding, not Nick.
+  scheduleDaily('waiting-on-tidy', '40 2 * * *', 2, 40, () => {
+    try {
+      const r = require('./waiting-on').lapseStale();
+      console.log(`[Scheduler] Waiting-on tidy: ${r.lapsed} of ${r.open} open item(s) lapsed`);
+    } catch (e) { console.error('[Scheduler] Waiting-on lapse failed:', e.message); }
+    try {
+      const s = require('./action-candidates').expireStaleSpotted();
+      console.log(`[Scheduler] Spotted tidy: ${s.expired} suggestion(s) expired`);
+    } catch (e) { console.error('[Scheduler] Spotted expiry failed:', e.message); }
+  });
+
   // Monday 7:40am — capability suggestions: "I could do X, but I need Y". One
   // cloud call a week, BEFORE the 08:00 brief so Monday's brief offers this
   // week's top one. Pushes ONCE, and only when something new passed the
@@ -597,11 +618,11 @@ function start() {
   // Monday 7:30am — build the Weekly Risk & Anomaly Summary.
   //
   // Nick owes this to Chris by MIDDAY every Monday (agreed at the 1-2-1 on
-  // 12 Aug 2026, PIP competency 2), so it is built early enough to leave a
+  // 12 Aug 2026), so it is built early enough to leave a
   // working morning for the manual sections. It BUILDS and notifies; it never
   // publishes or sends. Overtime, the escalation list and the data-quality
   // judgements are Nick's to state, and a report that auto-sent itself with
-  // those blank would be a false all-clear to the person assessing the PIP.
+  // those blank would be a false all-clear to his manager.
   scheduleWeekly('weekly-risk-report', '30 7 * * 1', 1, 7, 30, async () => {
     try {
       const weeklyRisk = require('./weekly-risk');

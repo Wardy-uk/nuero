@@ -20,6 +20,7 @@ import TaskTriage from './TaskTriage.jsx';
 import AutoSchedule from './AutoSchedule.jsx';
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
 import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
+import { DoneEvidenceRow } from '../../../saim/shared-ui/DoneEvidence.jsx';
 import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
 import { desktopCall } from '../desktopCall';
 import { openInVault } from '../openVault';
@@ -147,8 +148,7 @@ export const FILTER_PREDICATES = {
   },
   // ⚠ Positively "has no date", never "is not overdue". An undated task is
   // invisible to every date-driven surface NEURO has — the Must Move lane,
-  // time-fit, the day planner — so no other filter can find it. It is also PIP
-  // competency 3, which counts open items missing a date.
+  // time-fit, the day planner — so no other filter can find it.
   // Today to Sunday. Overdue is NOT included — it has its own chip in the same
   // group, and picking both widens the list to "late or due by Sunday".
   week: t => {
@@ -1417,6 +1417,10 @@ export function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch
       />
       <div className="todo-text-col" onClick={() => onExpand(isExpanded ? null : rowKey(todo))} style={{ cursor: 'pointer' }}>
         <span className={`todo-text ${isExpanded ? '' : 'todo-text-truncated'}`}>{todo.text}</span>
+        {/* "Looks done" — NEURO's evidence this is already done; it offers, Nick closes. */}
+        {todo.task_id && !todo.done && (
+          <DoneEvidenceRow taskId={todo.task_id} call={desktopCall} onClosed={() => onRefresh && onRefresh()} />
+        )}
         <div className="todo-meta-row">
           {/* The task's own id, first, so the card can be NAMED. Absent on a
               row NEURO does not own — see taskIdBadge. */}

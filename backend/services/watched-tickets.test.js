@@ -45,6 +45,8 @@ function world(key) {
     states: async (keys) => ({ issues: keys.includes(key) ? [{ ...w.issue }] : [] }),
     comments: async () => ({ comments: [...w.comments].reverse(), complete: true }),
     judge: async (t) => { w.judged.push(t); return w.modelSays; },
+    // No ready draft unless a test wires the real drafter in (draftWorld below).
+    draft: async () => ({ ok: false, error: 'not wired in this test' }),
     push: async (title, body, data) => { w.pushes.push({ title, body, data }); },
     nextWorkingDay: (d) => { const x = new Date(d); x.setDate(x.getDate() + 1); return x; },
     now: () => w.now,
@@ -285,19 +287,20 @@ function w2(key) {
   return w;
 }
 const commitment = (key) => db.get('SELECT * FROM watched_ticket_commitments WHERE ticket_key = ? ORDER BY id DESC', [key]);
-const tcPushes = (w) => w.pushes.filter((p) => p.data.type === 'ticket_commitment');
+// Reminders are global (every open commitment on every ticket), so a test may scope to its own ticket.
+const tcPushes = (w, key = null) => w.pushes.filter((p) => p.data.type === 'ticket_commitment' && (!key || p.title.startsWith(`${key}:`)));
 
-test('watching proposes the promise in my latest public reply; confirm, remind, miss, keep', async () => {
+test('watching auto-confirms the exact-time promise in my latest public reply; remind, miss, keep', async () => {
   const w = w2('NT-2001');
   w.add(ME, NT_35291);
   const r = await wt.watch('NT-2001', w.deps);
   assert.equal(r.proposed.dueAt, '2026-10-23T16:00:00.000Z');
+  assert.equal(r.proposed.autoConfirmed, true, '"before 5pm today" is an exact time today');
   let c = commitment('NT-2001');
-  assert.equal(c.state, 'proposed');
-  assert.equal(wt.nowCards(Date.parse('2026-10-23T15:45:00Z')).filter((x) => x.meta.ticket_key === 'NT-2001').length, 0, 'a proposal is not on Now until confirmed');
-
-  assert.equal(wt.actOnCommitment('NT-2001', c.id, 'confirm', w.now.getTime()).ok, true);
-  assert.equal(wt.actOnCommitment('NT-2001', c.id, 'confirm', w.now.getTime()).status, 409);
+  assert.equal(c.state, 'open');
+  assert.equal(c.confirmed_by, 'auto');
+  assert.equal(wt.list().active.find((t) => t.key === 'NT-2001').commitments[0].confirmedBy, 'auto');
+  assert.equal(wt.actOnCommitment('NT-2001', c.id, 'confirm', w.now.getTime()).status, 409, 'already open');
 
   // A customer reply does not keep it.
   w.add(CUSTOMER, 'Any news?');
@@ -353,7 +356,7 @@ test('a colleague’s public reply keeps my promised update; an app reply or an 
 test('a new promise in a later reply is proposed, and replaces an unconfirmed one', async () => {
   const w = w2('NT-2002');
   await wt.watch('NT-2002', w.deps);
-  w.add(ME, 'I will update you by 3pm today.');
+  w.add(ME, 'I will update you this afternoon.'); // a part of the day, not a time: stays a proposal
   await wt.check(w.deps);
   const first = commitment('NT-2002');
   assert.equal(first.state, 'proposed');
@@ -362,6 +365,7 @@ test('a new promise in a later reply is proposed, and replaces an unconfirmed on
   await wt.check(w.deps);
   assert.equal(db.get('SELECT state FROM watched_ticket_commitments WHERE id = ?', [first.id]).state, 'dismissed');
   assert.equal(commitment('NT-2002').due_at, '2026-10-23T16:00:00.000Z');
+  assert.equal(commitment('NT-2002').state, 'open', 'the exact-time promise is confirmed automatically');
 });
 
 test('confirmed inside the 30-minute window: no "due soon" push, still one if missed', async () => {
@@ -370,10 +374,10 @@ test('confirmed inside the 30-minute window: no "due soon" push, still one if mi
   w.now = new Date('2026-10-23T15:45:00Z'); // 16:45
   assert.equal(wt.addCommitment('NT-2003', '17:00', w.now.getTime()).ok, true);
   await wt.check(w.deps);
-  assert.equal(tcPushes(w).length, 0);
+  assert.equal(tcPushes(w, 'NT-2003').length, 0);
   w.now = new Date('2026-10-23T16:01:00Z');
   await wt.check(w.deps);
-  assert.equal(tcPushes(w).length, 1);
+  assert.equal(tcPushes(w, 'NT-2003').length, 1);
 });
 
 test('adding by hand refuses junk and the past; dismiss, done and unwatch close it', async () => {
@@ -428,4 +432,190 @@ test('a reply only keeps commitments made BEFORE it (one added by hand after the
   const c = wt.addCommitment('NT-2006', '17:00', w.now.getTime()).commitment;
   await wt.check(w.deps);
   assert.equal(db.get('SELECT state FROM watched_ticket_commitments WHERE id = ?', [c.id]).state, 'open');
+});
+
+// ── Auto-confirm an unambiguous update promise (1 Nov 2026) ──────────────────
+
+// A fake week where Saturday and Sunday are not working days.
+const nextWeekday = (d) => { const x = new Date(d); do { x.setDate(x.getDate() + 1); } while (x.getDay() === 0 || x.getDay() === 6); return x; };
+const auto = (text, made) => wt.autoConfirmable(wt.detectCommitment(text, made), nextWeekday);
+
+test('auto-confirm only an EXACT time today or the next working day', () => {
+  // NT-35291, Fri 23 Oct 13:37 BST.
+  assert.equal(auto(NT_35291, '2026-10-23T13:37:51.097+01:00'), true);
+  const mon = '2026-11-02T10:00:00Z';
+  assert.equal(auto('I will update you by 17:00.', mon), true);
+  assert.equal(auto('I will update you by end of day.', mon), true);
+  assert.equal(auto('We will get back to you by midday tomorrow.', mon), true, 'midday on the next working day');
+  assert.equal(auto('I will update you by COB tomorrow.', mon), true);
+  // Not exact, or not soon enough: proposals.
+  assert.equal(wt.detectCommitment('I will update you later this week.', mon), null, 'no time at all: not even a proposal');
+  assert.equal(auto('I will update you tomorrow.', mon), false, '"tomorrow" with no time');
+  assert.equal(auto('I will update you on Friday.', mon), false, 'a weekday alone');
+  assert.equal(auto('I will update you this afternoon.', mon), false, 'a part of the day');
+  assert.equal(auto('I will update you tomorrow morning.', mon), false);
+  assert.equal(auto('I will update you by 3pm on Thursday.', mon), false, 'an exact time, but not the next working day');
+  // Friday → Monday is the next working day.
+  assert.equal(auto('I will update you by 10am on Monday.', '2026-10-30T15:00:00Z'), true);
+  assert.equal(auto('I will update you by 10am tomorrow.', '2026-10-30T15:00:00Z'), false, 'Saturday is not a working day');
+});
+
+test('the poll auto-confirms "before 5pm today", leaves "on Monday" a proposal, ignores "later this week"', async () => {
+  const w = w2('NT-2101');
+  await wt.watch('NT-2101', w.deps);
+  w.add(ME, 'Hi Anthony. I will update you later this week.');
+  await wt.check(w.deps);
+  assert.equal(commitment('NT-2101'), null, 'later this week: nothing');
+
+  w.add(ME, 'Still looking. I will update you on Monday.');
+  await wt.check(w.deps);
+  assert.equal(commitment('NT-2101').state, 'proposed');
+  assert.equal(commitment('NT-2101').confirmed_by, null);
+
+  w.now = new Date('2026-10-23T13:00:00Z');
+  w.add(ME, NT_35291);
+  await wt.check(w.deps);
+  const c = commitment('NT-2101');
+  assert.equal(c.state, 'open');
+  assert.equal(c.confirmed_by, 'auto');
+  assert.equal(c.due_at, '2026-10-23T16:00:00.000Z');
+  // It follows the normal cycle: Dismiss cancels it.
+  assert.equal(wt.actOnCommitment('NT-2101', c.id, 'dismiss', w.now.getTime()).commitment.state, 'cancelled');
+});
+
+test('a proposal confirmed by hand records confirmedBy nick', async () => {
+  const w = w2('NT-2102');
+  await wt.watch('NT-2102', w.deps);
+  w.add(ME, 'I will update you tomorrow.');
+  await wt.check(w.deps);
+  const c = commitment('NT-2102');
+  assert.equal(c.state, 'proposed');
+  assert.equal(wt.actOnCommitment('NT-2102', c.id, 'confirm', w.now.getTime()).commitment.confirmedBy, 'nick');
+});
+
+// ── Ready draft on a customer reply (1 Nov 2026) ─────────────────────────────
+
+const tr = require('./ticket-replies');
+
+/** The REAL golden-rules drafter, with Jira and the model faked. */
+function draftWorld(key) {
+  const w = w2(key);
+  w.modelCalls = 0; w.posted = 0;
+  w.modelText = 'Sam says the portal is still down. [owner] to check the login service by [time].';
+  w.deps.draft = (k) => tr.draft({ key: k, visibility: 'internal' }, {
+    basics: async () => ({ key: k, summary: w.issue.summary, status: w.issue.status }),
+    comments: async () => ({ comments: [...w.comments] }),
+    model: async () => { w.modelCalls += 1; if (w.modelText == null) throw new Error('no AI provider answered'); return { text: w.modelText, model: 'fake' }; },
+    post: async () => { w.posted += 1; throw new Error('a ready draft must never be posted'); },
+    isWatched: () => true,
+    now: () => w.now.getTime(),
+  });
+  return w;
+}
+const replyRow = (id) => db.get('SELECT * FROM watched_ticket_replies WHERE comment_id = ?', [String(id)]);
+const listed = (key) => [...wt.list().active, ...wt.list().listening].find((t) => t.key === key);
+const lastId = (w) => w.comments[w.comments.length - 1].id;
+
+test('a new customer reply gets ONE internal draft, stored on the reply, never posted', async () => {
+  const w = draftWorld('NT-2201');
+  await wt.watch('NT-2201', w.deps);
+  w.add(CUSTOMER, 'The portal is still down for us.');
+  const id = lastId(w);
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 1);
+  assert.equal(w.posted, 0);
+  const r = replyRow(id);
+  assert.equal(r.draft_state, 'ready');
+  assert.equal(r.draft_visibility, 'internal');
+  assert.match(r.draft_text, /portal is still down/);
+  const d = listed('NT-2201').draft;
+  assert.equal(d.replyId, String(id));
+  assert.equal(d.visibility, 'internal');
+  assert.equal(w.pushes.length, 1, 'the push still goes');
+
+  // Never re-bought: another pass over the same comments.
+  w.issue.updated = 'bumped';
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 1);
+
+  // A later customer reply replaces the unused draft.
+  w.add(CUSTOMER, 'Any news? Still down.');
+  const id2 = lastId(w);
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 2);
+  assert.equal(replyRow(id).draft_state, 'superseded');
+  assert.equal(listed('NT-2201').draft.replyId, String(id2));
+  assert.equal(w.posted, 0);
+});
+
+test('two replies in one pass draft only the newest; a team reply after it marks it answered', async () => {
+  const w = draftWorld('NT-2202');
+  await wt.watch('NT-2202', w.deps);
+  w.add(CUSTOMER, 'It is down.');
+  const a = lastId(w);
+  w.add(CUSTOMER, 'And the reports are empty too.');
+  const b = lastId(w);
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 1);
+  assert.equal(replyRow(a).draft_state, 'superseded');
+  assert.equal(replyRow(b).draft_state, 'ready');
+
+  w.add(AGENT, 'Hi Sam, we are on it and will update you by 3pm.');
+  await wt.check(w.deps);
+  assert.equal(replyRow(b).draft_state, 'answered');
+  assert.equal(listed('NT-2202').draft, null);
+});
+
+test('a thank-you in the listen gets no draft and no model call', async () => {
+  const w = draftWorld('NT-2203');
+  w.issue.statusCategory = 'done';
+  await wt.watch('NT-2203', w.deps);
+  w.add(CUSTOMER, 'Thank you so much, all sorted now. Kind regards, Sam');
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 0);
+  assert.equal(replyRow(lastId(w)).draft_state, null);
+  assert.equal(listed('NT-2203').draft, null);
+
+  // A real follow-up in the listen does get one.
+  w.add(CUSTOMER, 'Thanks, but it is broken again this morning');
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 1);
+  assert.ok(listed('NT-2203').draft);
+});
+
+test('model unavailable: no draft, the push still goes, and it is not re-bought', async () => {
+  const w = draftWorld('NT-2204');
+  w.modelText = null;
+  await wt.watch('NT-2204', w.deps);
+  w.add(CUSTOMER, 'Still down.');
+  const id = lastId(w);
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 1);
+  assert.equal(replyRow(id).draft_state, 'unavailable');
+  assert.equal(listed('NT-2204').draft, null);
+  assert.equal(w.pushes.length, 1);
+  assert.equal(replyRow(id).flagged, 1);
+  w.modelText = 'Back now.'; w.issue.updated = 'bumped';
+  await wt.check(w.deps);
+  assert.equal(w.modelCalls, 1, 'one call per reply, never retried');
+});
+
+test('posting from NEURO uses the ready draft up', async () => {
+  const w = draftWorld('NT-2205');
+  await wt.watch('NT-2205', w.deps);
+  w.add(CUSTOMER, 'Still down.');
+  await wt.check(w.deps);
+  assert.ok(listed('NT-2205').draft);
+  const r = await tr.post({ key: 'NT-2205', text: 'Chased the login service team; next update 3pm.', visibility: 'internal' }, {
+    post: async (k, body) => {
+      const c = { id: String(nextCommentId++), author: ME, jsdPublic: false, body: adf(body), created: w.now.toISOString() };
+      w.comments.push(c);
+      return { id: c.id };
+    },
+    comments: async () => ({ comments: [...w.comments] }),
+    isMe: (a) => a === ME,
+    now: () => w.now.getTime(),
+  });
+  assert.equal(r.ok, true);
+  assert.equal(listed('NT-2205').draft, null);
 });

@@ -57,6 +57,7 @@ const CAPABILITIES = Object.freeze({
   'file.write': { authority: 'A2', effect: 'a file written into the vault (capture file/photo, docx export)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: null, idempotent: false },
   'calendar.solo': { authority: 'A2', effect: "events with NO attendees in Nick's own calendar (task blocks, day planner, Plaud admin blocks)", machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.calendar.solo', ledger: false, verification: null, idempotent: 'UNIQUE(date,start) / ledgers' },
   'mail.read-state': { authority: 'A2', effect: 'mark an email read on dismiss', machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.mail.read-state', ledger: false, verification: null, idempotent: true },
+  'mail.muted-archive': { authority: 'A2', effect: "move Outlook Inbox mail from a sender Nick muted to Archive and mark it read (never delete, never flagged)", machine: 'refuse', approval: 'Nick muting the sender, behind the email_muted_archive switch', registry: 'external-writes:microsoft.mail.archive', ledger: true, verification: 'Graph read-back of parentFolderId', idempotent: false },
   'weather.wu-publish': { authority: 'A2', effect: "upload our own weather station's readings to Weather Underground (ICOALV59)", machine: 'execute', approval: 'none', registry: 'external-writes:wunderground.publish', ledger: false, verification: 'WU answers "success"', idempotent: 'WU folds a repeat dateutc' },
   'calendar.invite-respond': { authority: 'A3', effect: 'accept, tentatively accept or decline a meeting invite Nick did not organise; the organiser is told', machine: 'refuse', approval: 'Nick pressing the button on the invite card', registry: 'external-writes:microsoft.calendar.respond', ledger: true, verification: 'Graph read-back', idempotent: true },
   'calendar.leave-decline': { authority: 'A3', effect: "decline an invite Nick did not organise, on a day People HR says he is on leave", machine: 'refuse', approval: 'the leave_auto_decline switch, or a tap on the Leave clashes card', registry: 'external-writes:microsoft.calendar.leave-decline', ledger: true, verification: 'Graph read-back', idempotent: true },
@@ -115,6 +116,13 @@ const CAPABILITIES = Object.freeze({
   'email.send': { authority: 'A4', effect: 'email to another person as Nick', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:chase_commitment,reply_email,compose_email,chase_agenda,send_weekly_risk_report,send_soap_report', ledger: true, verification: 'Sent Items match', idempotent: 'one attempt per approved version' },
   'calendar.attendee.create': { authority: 'A4', effect: 'invite other people as Nick', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:create_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
   'calendar.attendee.reschedule': { authority: 'A4', effect: 'move a meeting other people are in', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:reschedule_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
+  // 1 Nov 2026: a 1-2-1 NOVA asked for, BOOKED without a press when everything is
+  // certain. The same governed create_calendar_event (prepared, approved, executed,
+  // read back) — the approval is the one_to_one_auto_book switch Nick turned on
+  // (authority_proof standing_switch), never a machine. NOVA's request
+  // (/api/1to1/booking-request, calendar.attendee.create, machine: prepare) can only
+  // ASK; nothing a caller sends can approve. No route maps here: it runs in-process.
+  'calendar.1to1-auto-book': { authority: 'A4', effect: 'invite a direct report to their next 1-2-1 as Nick, without a press', machine: 'refuse', approval: 'the one_to_one_auto_book switch (standing approval)', registry: null, ledger: true, verification: 'read-back (the governed executor)', idempotent: 'one live booking per person; one attempt per approved version' },
   'calendar.attendee.cancel': { authority: 'A4', effect: 'cancel a meeting other people are in', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:cancel_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
   'approval.decide': { authority: 'A4', effect: "approve / reject / challenge / edit an action — Nick's decision", machine: 'refuse', approval: 'approval-code', registry: 'action-registry', ledger: true, verification: null, idempotent: true },
   'approval.internal': { authority: 'A1', effect: 'approve a queued INTERNAL suggestion (add a captured task, open a screen)', machine: 'execute-bounded', approval: 'none', registry: null, ledger: true, verification: null, idempotent: 'pending → executed once',
@@ -150,6 +158,9 @@ const ROUTE_RULES = Object.freeze([
   // 22 Oct 2026: abandoning (or restoring) a saved draft is Nick's call about his own work.
   R('POST', '/api/prepared-moves/drafts/outcome', 'saim.prepared-move.propose', { machine: 'refuse' }),
   R('GET', '/api/prepared-moves/promises', 'read'),
+  // 1 Nov 2026: "Looks done" — closing on evidence, or saying "not yet", is Nick's call.
+  R('GET', '/api/tasks/done-evidence', 'read'),
+  R('POST', '/api/tasks/:id/done-evidence/:verb', 'task.status', { machine: 'refuse' }),
   R('POST', '/api/prepared-moves/prepare', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/respond', 'saim.prepared-move.propose'),
   R('POST', '/api/prepared-moves/answer', 'saim.prepared-move.propose'),

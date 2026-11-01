@@ -263,6 +263,8 @@ app.use('/api/report-fixes', require('./routes/report-fixes'));
 // — only about presentation, which is the point of having both while Nick
 // decides which he actually opens.
 // /api/kpi-tracker moved to VANTAGE (Build 10L): departmental KPI management is not NEURO's.
+// "Looks done" suggestions — ahead of routes/tasks so the literal path wins.
+app.use('/api/tasks', require('./routes/task-done-evidence'));
 app.use('/api/tasks', require('./routes/tasks'));
 // Its own mount, deliberately NOT under /api/tasks — a sibling registered after
 // the parameterised /api/tasks/:id would have "task-dedupe" parsed as an id.

@@ -739,6 +739,10 @@ function fromPersonalOps(rows) {
         summary: d.rosterName && d.rosterName !== d.name ? `"${d.rosterName}" kept as an alias, so Home Assistant's name matches.` : null, status: 'set' });
       case 'person-merged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You merged ${d.merged} into ${d.kept}`, summary: 'No note was deleted; the merged one is marked merged-into.', status: 'linked' });
       // 15 Oct 2026 — the address itself never reaches an entry (privacy rule).
+      // 1 Nov 2026 — the nightly waiting-on tidy. A count only: no names, no items.
+      case 'waiting-on-lapsed': return entry({ ...base, category: 'decided', type: 'waiting-on.lapsed',
+        headline: `NEURO set aside ${d.count} waiting-on item${d.count === 1 ? '' : 's'} nobody had mentioned in ${d.days || 90} days`,
+        summary: 'Lapsed, not done: they are under "Lapsed" on the People board, each with Reopen.', status: 'lapsed' });
       case 'person-email-learned': return entry({ ...base, category: 'sensed', type: 'people.email', headline: `NEURO added an email address to ${d.name}'s People note`, summary: d.why ? `${d.why[0].toUpperCase()}${d.why.slice(1)}.` : null, status: 'set' });
       case 'person-unmerged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You separated ${d.restored} from ${d.kept} again`, status: 'unlinked' });
       case 'person-kept-separate': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You said ${d.a} and ${d.b} are different people`, status: 'set' });

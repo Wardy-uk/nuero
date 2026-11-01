@@ -1012,6 +1012,65 @@ function CancelOneToOneDialog({ name, onClose, onCancelled }) {
   );
 }
 
+/**
+ * The 1-2-1s NEURO booked automatically (one_to_one_auto_book). Each row says so
+ * and offers Undo = the existing governed cancel (/api/1to1/cancel + this press's
+ * intent grant): Microsoft tells the person, and NEURO stops auto-booking them for a
+ * while so the next sweep offers the tap card instead. Renders nothing when there is
+ * nothing to show; an unreadable list says so.
+ */
+export function AutoBookedOneToOnes() {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [notes, setNotes] = useState({});
+  const load = () => fetch(apiUrl('/api/1to1/auto-booked'))
+    .then(r => r.json()).then(setData).catch(e => setData({ ok: false, error: e.message }));
+  useEffect(() => { load(); }, []);
+  return <AutoBookedView data={data} busy={busy} notes={notes} onUndo={async (item) => {
+    if (!window.confirm(`Cancel the 1-2-1 with ${item.person} on ${item.when}? Microsoft tells them.`)) return;
+    setBusy(item.actionId);
+    try {
+      const res = await fetch(apiUrl('/api/1to1/cancel'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person: item.person, eventId: item.eventId, reason: 'Booked automatically by NEURO — undone' }),
+      });
+      const d = await res.json();
+      if (!d.ok) setNotes(n => ({ ...n, [item.actionId]: `Not undone — ${d.error || 'could not cancel'}` }));
+      else {
+        const x = await executeDirect(d.action);
+        setNotes(n => ({ ...n, [item.actionId]: x.needsConfirm ? 'Press Undo again to confirm.' : directOutcome(x).text }));
+      }
+    } catch (e) { setNotes(n => ({ ...n, [item.actionId]: `Not undone — ${e.message}` })); }
+    setBusy(null);
+    load();
+  }} />;
+}
+
+export function AutoBookedView({ data, busy, notes = {}, onUndo }) {
+  if (!data) return null;
+  if (!data.ok) return <div className="book-error">Could not read the 1-2-1s booked automatically — {data.error || 'unknown error'}</div>;
+  const items = data.items || [];
+  if (!items.length) return null;
+  return (
+    <div className="auto-booked">
+      <div className="auto-booked-title">1-2-1s booked for you</div>
+      {items.map(item => (
+        <div className="auto-booked-row" key={item.actionId}>
+          <span className="auto-booked-who">{item.person}</span>
+          <span className="auto-booked-when">{item.when}</span>
+          <span className="auto-booked-tag">{item.undone ? 'Booked automatically · undone' : 'Booked automatically'}</span>
+          {!item.undone && item.eventId && (
+            <button className="btn" disabled={busy === item.actionId} onClick={() => onUndo?.(item)}>
+              {busy === item.actionId ? 'Undoing…' : 'Undo'}
+            </button>
+          )}
+          {notes[item.actionId] && <span className="auto-booked-note">{notes[item.actionId]}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NoteEditor({ name, onClose, onSaved }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -1329,6 +1388,11 @@ export default function PeopleBoard() {
         showLegacy={false}
         filter={a => a.actionType === 'create_calendar_event' && a.origin === '1to1-book'}
       />
+
+      {/* 1-2-1s NEURO booked by itself under the auto-book switch (1 Nov 2026):
+          "Booked automatically · Undo". Undo is the ordinary governed cancel,
+          confirmed by this press — never a machine. */}
+      <AutoBookedOneToOnes />
 
       {/* UAT volunteers (26 Oct 2026): Dan's weekly request — picks, invites, answers, reply. */}
       <UatVolunteers />

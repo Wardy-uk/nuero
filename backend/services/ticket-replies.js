@@ -229,6 +229,9 @@ async function post({ key: rawKey, text, visibility, initiatedBy = 'nick' }, dep
   ext.settle(claim.entry.id, { status: confirmed ? 'confirmed' : 'applied-unverified',
     result: { commentId: created?.id || null }, readback, now: d.now() });
 
+  // A reply posted from NEURO uses up the ready draft (whether or not it was the draft).
+  try { wt.markDraftUsed(key); } catch (e) { console.warn(`[TicketReplies] marking the draft used on ${key} failed: ${e.message}`); }
+
   let watchedNow = false; let commitment = null;
   if (isPublic) {
     try {

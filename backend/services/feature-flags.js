@@ -185,6 +185,35 @@ const FLAGS = [
     impact: 'declines meeting invites as you, on your leave days only',
   },
   {
+    // 1 Nov 2026 — email-muted-archive.js. Default ON (Nick's call): muting a
+    // whole sender means he never wants their mail in his Inbox.
+    key: 'email_muted_archive',
+    env: 'EMAIL_MUTED_ARCHIVE',
+    default: true,
+    label: 'Archive muted senders in Outlook',
+    description: 'When you mute a whole sender, NEURO also moves their mail out of your Outlook Inbox into the '
+      + 'Archive folder and marks it read — straight away and on every inbox check after. Only an exact muted '
+      + 'address, never a flagged email, never your own address, and nothing is ever deleted. Un-muting stops it '
+      + 'but does not move anything back.',
+    impact: 'moves mail from muted senders to Archive in your work mailbox',
+  },
+  {
+    // 1 Nov 2026: Nick approved 32 of 32 NOVA-requested 1-2-1 bookings in 60
+    // days (0 rejections). Default ON — this switch IS the approval of each
+    // automatic booking (the leave_auto_decline precedent). Only when everything
+    // is certain (slot, both leave feeds, one address); anything else stays a
+    // one-tap card. Off = the tap card, exactly as before.
+    key: 'one_to_one_auto_book',
+    env: 'ONE_TO_ONE_AUTO_BOOK',
+    default: true,
+    requires: 'governed_calendar',
+    label: 'Book 1-2-1s NOVA asks for automatically',
+    description: 'When NOVA says a direct report\'s next 1-2-1 is due, NEURO books the first free slot that meets every '
+      + 'booking rule — but only when it could check BOTH your leave and theirs and has their address. It sends the invite '
+      + 'as you, reads it back from Outlook, and tells you once, with an Undo. Anything uncertain stays a one-tap card on People.',
+    impact: 'sends 1-2-1 invites to your direct reports as you',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

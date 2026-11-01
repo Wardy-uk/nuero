@@ -1,18 +1,18 @@
 'use strict';
 
 /**
- * Overtime approvals — PIP competency 1.
+ * Overtime approvals — the five-step check and the Working Time limits.
  *
  * The finding: overtime was approved on headline productivity indicators —
  * ticket counts, activity status — without cross-checking against logged work in
  * Jira/NOVA, and Working Time Regulation limits were not considered at the point
  * of approval.
  *
- * The plan's remedy is specific: from 27 Jul 2026, 100% of approvals follow the
- * five-step checklist in Section 8 of the WTR briefing, each check recorded in
- * the overtime approval log, with the line manager auditing a sample at the
- * 30/60/90-day checkpoints. Success is measured as "all sampled approvals
- * evidence completion of the five-step checklist with no WTR breach".
+ * The remedy is specific: every approval follows the five-step checklist in
+ * Section 8 of the WTR briefing, each check recorded in the overtime approval
+ * log, so a sample can be audited at any time. Success is measured as "all
+ * sampled approvals evidence completion of the five-step checklist with no WTR
+ * breach".
  *
  * That last sentence is the whole design brief. The evidence has to be a
  * BY-PRODUCT of approving, not a thing to be written up afterwards — because a
@@ -114,7 +114,7 @@ function setProfile(person, { contractedHours, optoutSigned, optoutDate, notes }
  * swallowing `list()` handed it an empty array. That would have put "0 overtime
  * hours, no checklist gaps" into the weekly report on the strength of a dead
  * database, AND cleared the publication blocker while doing it — a false
- * all-clear on a PIP competency, which is the precise failure this codebase is
+ * all-clear on overtime, which is the precise failure this codebase is
  * built to refuse.
  *
  * So there are two reads. This one is the truth; `list()` is the convenience.
@@ -420,7 +420,7 @@ function status({ from, to, asOf = todayLocal() } = {}) {
     approved: approved.length,
     pending: pending.length,
     declined: rows.filter(r => r.outcome === 'declined').length,
-    // The competency-1 success measure, expressed as a number: approvals that
+    // The overtime success measure, expressed as a number: approvals that
     // reached "approved" without the full checklist answered. Target is zero,
     // and it should be structurally impossible via approve() — this counts it
     // anyway, because a rule enforced in one code path is not a guarantee.

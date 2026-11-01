@@ -345,8 +345,8 @@
 /* ── The second gate, shown where the report is ──────────────────────────────
    Not a new send path: the same queued action and the same approve route the
    Actions queue uses. It is styled as a distinct panel rather than another
-   notice, because approving it puts a document in front of the manager
-   assessing a PIP and should not read like a toast. */
+   notice, because approving it puts a document in front of Nick's manager
+   and should not read like a toast. */
 .wr-approval {
   margin-top: 14px;
   padding: 14px 16px;
@@ -427,10 +427,10 @@
 .wr-notice-warn { border-left-color: var(--warning, #d97706); }
 .wr-hint-warn { color: var(--warning, #d97706); }
 
-/* ── Deliverable tracker ────────────────────────────────────────────────────
-   What Nick owes Chris. Deliberately no progress bar, no RAG and no percentage:
-   Chris assesses the PIP, and a score rendered here is a number to argue with
-   instead of a list to act on. Amber is used only for a named outstanding item,
+/* ── Report tracker ─────────────────────────────────────────────────────────
+   The weekly report to Chris. Deliberately no progress bar, no RAG and no
+   percentage: a score rendered here is a number to argue with instead of a
+   list to act on. Amber is used only for a named outstanding item,
    never for an overall verdict. */
 .wr-deliverables {
   border-left: 3px solid var(--accent, #6aa9ff);

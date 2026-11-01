@@ -3,7 +3,8 @@ import { apiUrl } from '../api';
 import './ManagementLogPanel.css';
 
 /**
- * Management Actions & Conversations Log — PIP competencies 3 and 4.
+ * Management Actions & Conversations Log — logged within two working days,
+ * nothing overdue by more than five.
  *
  * ⚠ Its own view since 7 Sep 2026 (Nick's call). It was a section inside
  * WeeklyRiskPanel, and two things were wrong with that. The log is a RUNNING
@@ -21,7 +22,8 @@ import './ManagementLogPanel.css';
  * The load-bearing honesty rule, restated wherever it is visible: Nick chooses
  * when a conversation HAPPENED; he cannot choose when it was LOGGED. The server
  * stamps that from its own clock and refuses an earlier one unless the caller
- * names a non-manual source. The gap between the two IS competency 3, and a
+ * names a non-manual source. The gap between the two IS the two-working-day
+ * measurement, and a
  * freely backdatable stamp makes the measurement unfalsifiable — the difference
  * between evidence and a self-report.
  */
@@ -308,8 +310,8 @@ export default function ManagementLogPanel({ onNavigate }) {
 
   /**
    * Close an item. The server stamps `resolved_date` when none is given —
-   * competency 4 measures how long things stayed open, so an item closed with
-   * no date is uncountable.
+   * the overdue standard measures how long things stayed open, so an item
+   * closed with no date is uncountable.
    */
   async function closeRow(id) {
     setBusy(`edit${id}`);
@@ -401,7 +403,7 @@ export default function ManagementLogPanel({ onNavigate }) {
         <div>
           <h2>Management log</h2>
           <p className="ml-sub">
-            Conversations, concerns and actions — PIP competencies 3 and 4.
+            Conversations, concerns and actions — logged within two working days, nothing overdue by more than five.
             {onNavigate && (
               <button type="button" className="ml-link" onClick={() => onNavigate('weekly-risk')}>
                 weekly report
@@ -688,8 +690,8 @@ export default function ManagementLogPanel({ onNavigate }) {
               ) : (
                 <li>Inside the two-working-day standard.</li>
               )}
-              {logged.missingOwner && <li className="ml-bad">No owner — competency 3 needs one on every open item.</li>}
-              {logged.missingDue && <li className="ml-bad">No due date — competency 3 needs one on every open item.</li>}
+              {logged.missingOwner && <li className="ml-bad">No owner — every open item needs one.</li>}
+              {logged.missingDue && <li className="ml-bad">No due date — every open item needs one.</li>}
               {logged.hrPending && <li>Not yet answered for People HR — it is below, and says nothing to Chris until you answer.</li>}
             </ul>
             <button type="button" className="ml-toggle" onClick={() => setLogged(null)}>dismiss</button>
@@ -722,22 +724,6 @@ export default function ManagementLogPanel({ onNavigate }) {
             <span className="ml-stat-label">Entries in total</span>
           </div>
         </div>
-
-        {/* ⚠ Three answers, not one. Reporting an unrecorded baseline as 0 told
-            Nick an outstanding PIP deliverable was already met — the bug of
-            7 Sep 2026. See management-log.assessBaseline. */}
-        {log.baseline.known === false ? (
-          <p className="ml-warn-line">
-            Competency 4 baseline at {fmtUk(log.baseline.date)}: <strong>not recorded</strong> —
-            {' '}{log.baseline.reason} This is <strong>not</strong> zero · target 0 by {fmtUk(log.baseline.targetDate)}
-          </p>
-        ) : (
-          <p className="ml-hint">
-            Competency 4 baseline at {fmtUk(log.baseline.date)}: <strong>{log.baseline.count}</strong>
-            {log.baseline.source === 'agreed' ? ' (agreed with Chris)' : ' (counted from the log)'}
-            {' '}({log.baseline.stillOpen} still open) · target 0 by {fmtUk(log.baseline.targetDate)}
-          </p>
-        )}
 
         {log.hrGap.length > 0 && (
           <p className="ml-warn-line">
