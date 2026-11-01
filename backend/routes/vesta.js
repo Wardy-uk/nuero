@@ -451,6 +451,7 @@ router.get('/wall', requireAccount, (req, res) => {
     }
   };
   block('outlook', 'house', 'could not read the forecast', () => board.readOutlook());
+  block('weekAhead', 'house', 'could not read the week ahead', () => board.readWeekAhead());
   block('care', 'house', "could not read Ember's care", () => board.readCare());
   block('tea', 'tasks', 'could not read tea', () => board.readTea());
   block('notes', 'tasks', 'could not read the notes', () => board.readNotes());

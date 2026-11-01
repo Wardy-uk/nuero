@@ -403,48 +403,6 @@ body {
 .energy__bar--partial { opacity: 0.35; }
 .energy__bar--none { opacity: 0; }
 
-/* ── The family wall's features on the phone (1 Nov 2026) ──────────────────
-   Compact blocks on Home; each opens the wall's own sheet (WallCinema `Sheet`),
-   hosted full-screen below. */
-.hb__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-.hb__tile {
-  appearance: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
-  display: flex; flex-direction: column; gap: 2px; min-height: 64px; padding: 10px 12px;
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
-}
-.hb__tile--static { cursor: default; }
-.hb__tilelabel { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
-.hb__tilevalue { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hb__tilevalue--gap { color: var(--warn); font-weight: 400; }
-.hb__countdowns { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.hb__cd { display: flex; justify-content: space-between; gap: 12px; }
-.hb__cdtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hb__cdsay { flex: none; color: var(--ink-dim); }
-.hb__cd--today .hb__cdsay { color: var(--ember); font-weight: 600; }
-.hb__outside { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: baseline; gap: 12px; text-align: left; }
-.hb__temp { font-size: 34px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.hb__cond { color: var(--ink-dim); }
-.hb__outlook { margin: 8px 0 0; color: var(--ink-dim); }
-.hb__presence { margin: 0 0 10px; font-size: 17px; }
-.hb__people { display: flex; flex-wrap: wrap; gap: 8px; }
-.hb__person { appearance: none; font: inherit; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); }
-.hb__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); }
-.hb__person--home .hb__dot { background: var(--good); }
-.hb__person--out .hb__dot { background: var(--ink-dim); }
-.hb__jobbtns { display: flex; flex-wrap: wrap; gap: 8px; }
-.hb__care { margin-top: 12px; }
-.hb__care .cine__care { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.hb__care .cine__careitem { display: flex; gap: 8px; }
-.hb__care .cine__careitem--late { color: var(--warn); }
-.hb__week { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.hb__day { display: flex; flex-direction: column; gap: 4px; }
-.hb__dayhead { appearance: none; border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
-.hb__work, .hb__quiet { font-size: 14px; color: var(--ink-faint); }
-.hb__work--off { color: var(--good); }
-.hb__event { appearance: none; border: 0; background: none; padding: 4px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: 8px; min-height: 32px; }
-.hb__etime { color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-.hb__ewhat { min-width: 0; }
-
 /* The wall's sheet, hosted full-screen on the phone. `.cine` brings its colours;
    these undo its wall-sized box. */
 .cine.cine--sheethost { position: fixed; inset: 0; z-index: 50; height: 100dvh; background: transparent; overflow: visible; }
@@ -457,4 +415,113 @@ body {
 @media (min-width: 700px) {
   .cine--sheethost .cine__sheetwrap { align-items: center; }
   .cine--sheethost .cine__sheet { height: auto; max-height: 90dvh; border-radius: 20px; }
+}
+
+/* ── The phone in the wall's look (1 Nov 2026, Nick: "like the wall") ────────
+   The landscape photograph fixed behind, dark glass cards, amber, cream type.
+   The theme variables are overridden here so every existing block (tasks,
+   kitchen, energy…) picks the look up without its own CSS changing. No
+   backdrop-filter: it stalled the wall's browser and costs a phone battery. */
+.home--cine {
+  --bg: transparent;
+  --panel: rgba(14, 11, 9, 0.74);
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.11);
+  --ink: #f6efe7;
+  --ink-dim: rgba(246, 239, 231, 0.72);
+  --ink-faint: rgba(246, 239, 231, 0.48);
+  --ember: #f0a43a;
+  --ember-soft: rgba(240, 164, 58, 0.25);
+  --good: #46c96b;
+  --warn: #f0a43a;
+  --radius: 20px;
+  position: relative;
+  color: var(--ink);
+}
+body:has(.home--cine) { background: #050608; }
+.vh__backdrop.cine { position: fixed; inset: 0; z-index: -1; height: 100lvh; }
+.vh__backdrop .cine__credit { position: fixed; }
+.home--cine .section {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.home--cine .section__title { color: var(--ember); letter-spacing: .14em; font-size: 13px; }
+.home--cine .btn { border-radius: 999px; background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.18); }
+.home--cine .btn--primary { background: var(--ember); border-color: var(--ember); color: #1a1208; border-radius: 14px; }
+.home--cine .btn--quiet { background: none; border-color: transparent; color: var(--ink-faint); }
+.home--cine .field__input, .home--cine .composer__input { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.2); color: var(--ink); }
+.home--cine .home__foot { color: var(--ink-faint); }
+.home__acct { color: var(--ink-faint); font-size: 14px; }
+
+/* The hero: the wall's left column, sized for a phone. */
+.vh__hero { padding: 18px 4px 22px; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45); }
+.vh__date { margin: 0; font-size: 13px; letter-spacing: .32em; text-transform: uppercase; color: rgba(246, 239, 231, 0.85); }
+.vh__rule { display: block; width: 46px; height: 3px; margin: 14px 0 16px; border-radius: 2px; background: var(--ember); }
+.vh__headline { margin: 0; font-size: clamp(32px, 9vw, 46px); font-weight: 650; line-height: 1.05; letter-spacing: -0.01em; }
+.vh__sub { margin: 8px 0 0; font-size: 18px; color: var(--ink-dim); }
+.vh__faces { margin-top: 18px; }
+.vh__faces .cine__people { margin: 0; gap: 18px; flex-wrap: wrap; }
+.vh__faces .cine__avatar { width: 62px; height: 62px; }
+.vh__faces .cine__avatar .wall__face { font-size: 24px; }
+.vh__faces .cine__pname { margin-top: 6px; font-size: 15px; }
+.vh__faces .cine__pstate { font-size: 13px; }
+
+.vh__weather { margin-top: 20px; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 20px; background: rgba(14, 11, 9, 0.62); border: 1px solid var(--line); text-shadow: none; }
+.vh__wnow { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.vh__wicon { flex: none; width: 40px; height: 40px; color: #f6efe7; }
+.vh__wicon svg, .vh__dayicon svg, .vh__ticon svg, .vh__cdicon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.vh__wtemp { flex: none; font-size: 34px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.vh__wtext { min-width: 0; display: flex; flex-direction: column; }
+.vh__wlabel { font-weight: 600; }
+.vh__wline { font-size: 14px; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vh__wline--wet { color: #8fc3ff; }
+.vh__wline--gap { color: var(--warn); }
+.vh__weekbtn { flex: none; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(240, 164, 58, 0.55); background: rgba(240, 164, 58, 0.16); color: #ffd9a6; font: inherit; font-size: 14px; cursor: pointer; }
+
+/* The dock as tiles. */
+.vh__tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: var(--gap); }
+.vh__tile {
+  position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center;
+  min-height: 72px; padding: 12px 14px; border-radius: 20px; text-align: left; cursor: pointer;
+  font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.vh__tile--static { cursor: default; }
+.vh__ticon { grid-row: 1 / 3; width: 30px; height: 30px; color: var(--ember); }
+.vh__tlabel { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+.vh__tvalue { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vh__tvalue--gap { color: var(--warn); font-weight: 400; }
+.vh__tbadge { position: absolute; top: 8px; right: 10px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--ember); color: #1a1208; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+.vh__countdowns { list-style: none; margin: 0 0 var(--gap); padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.vh__cd { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); }
+.vh__cdicon { width: 18px; height: 18px; color: var(--ember); flex: none; }
+.vh__cdtitle { font-weight: 600; }
+.vh__cdsay { color: var(--ink-dim); }
+.vh__cd--today { border-color: var(--ember); }
+.vh__cd--today .vh__cdsay { color: var(--ember); font-weight: 600; }
+
+.vh__jobsmore { display: flex; flex-direction: column; gap: 10px; margin: calc(-1 * var(--gap) + 6px) 0 var(--gap); padding: 0 4px; }
+.vh__jobsmore .btn { align-self: flex-start; }
+.vh__care .cine__care { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vh__care .cine__careitem { display: flex; gap: 8px; padding: 8px 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); }
+.vh__care .cine__careitem--late { border-color: var(--ember); color: #ffd9a6; }
+
+.vh__add { color: var(--ember) !important; }
+.vh__week { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.vh__day { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.vh__day:last-child { border-bottom: 0; }
+.vh__dayhead { display: flex; align-items: baseline; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.vh__dayname { font-weight: 650; font-size: 17px; }
+.vh__day--today .vh__dayname { color: var(--ember); }
+.vh__daydate { color: var(--ink-faint); font-size: 14px; }
+.vh__dayfc { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.vh__dayicon { width: 22px; height: 22px; display: inline-flex; }
+.vh__work, .vh__quiet { font-size: 14px; color: var(--ink-faint); }
+.vh__work--off { color: var(--good); }
+.vh__event { display: grid; grid-template-columns: 4.4em minmax(0, 1fr); gap: 10px; padding: 5px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.vh__etime { color: var(--ember); font-variant-numeric: tabular-nums; }
+
+@media (min-width: 900px) {
+  .home--cine .vh__hero, .home--cine .vh__tiles, .home--cine .vh__countdowns, .home--cine .vh__jobsmore, .home--cine > .section__gap { grid-column: 1 / -1; margin-bottom: 0; }
+  .vh__tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

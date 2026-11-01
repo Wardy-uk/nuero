@@ -508,6 +508,32 @@ function readOutlook({ now = Date.now() } = {}) {
   return composeOutlook({ points, nowcast, nowMs: now, todayStart, tomorrowStart, dayAfterStart });
 }
 
+/**
+ * The week ahead (1 Nov 2026): Home Assistant's daily forecast, as already cached
+ * by outdoor.refresh() every half hour — no network on this read. Today first,
+ * at most seven days. A cache that is missing or over 12 hours old is
+ * `known:false` with its reason, never an empty week. PURE given `cache`.
+ */
+function weekAheadView(cache, todayKey) {
+  if (!cache || !cache.known) return { known: false, why: (cache && cache.why) || 'no forecast yet' };
+  const label = (c) => { try { return require('./home-board').conditionLabel(c); } catch { return c || null; } };
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const days = (cache.days || [])
+    .filter((d) => isDateKey(d.date) && d.date >= todayKey)
+    .slice(0, 7)
+    .map((d) => ({
+      date: d.date, condition: d.condition || null, label: label(d.condition),
+      highC: num(d.tempHighC) != null ? Math.round(d.tempHighC) : null,
+      lowC: num(d.tempLowC) != null ? Math.round(d.tempLowC) : null,
+      rainMm: num(d.precipitationMm), rainChance: num(d.precipitationProbability), windKmh: num(d.windKmh) != null ? Math.round(d.windKmh) : null,
+    }));
+  if (!days.length) return { known: false, why: 'the forecast has no days from today' };
+  return { known: true, days, fetchedAt: cache.fetchedAt || null };
+}
+function readWeekAhead({ now = Date.now() } = {}) {
+  return weekAheadView(require('./outdoor').dailyForecast(now), localKey(now));
+}
+
 /** Tests only. */
 function _resetCaches({ location = null } = {}) {
   _loc = location ? { at: Date.now(), value: location, pending: false } : { at: 0, value: null, pending: false };
@@ -519,7 +545,7 @@ module.exports = {
   teaView, countdownView, countdownSay, stampWeek, shoppingView, careLine, composeOutlook, isDateKey, daysBetween, addDays, localKey,
   // stores
   readTea, setTea, readNotes, addNote, clearNote, readCountdowns, setCountdown, markedKeys,
-  readShopping, shoppingAdd, shoppingBought, readCare, readOutlook, cachedNowcast, _resetCaches,
+  readShopping, shoppingAdd, shoppingBought, readCare, readOutlook, readWeekAhead, weekAheadView, cachedNowcast, _resetCaches,
   // constants
   TEA_KEY, NOTES_KEY, COUNTDOWN_KEY, TEA_MAX, NOTE_MAX, NOTE_KEPT, NOTE_TTL_MS, SHOPPING_SLUG, TO_BUY, BOUGHT,
 };

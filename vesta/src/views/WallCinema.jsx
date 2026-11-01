@@ -76,7 +76,7 @@ export function photoSlot(now, sun = null) {
  * stays as the fallback). The weather is Home Assistant's observed condition;
  * a weather-only change is held 30 minutes (`steadyChoice`) so it never flickers.
  */
-function Photo({ slot, condition }) {
+export function Photo({ slot, condition }) {
   const weather = weatherCategory(condition);
   const wanted = backgroundFor(slot, weather);
   const provisional = !weather;
@@ -182,7 +182,7 @@ const SKIES = {
   dusk:   { top: '#120f22', mid: '#5b2c3a', low: '#d06a3c', sun: '#ffb070', hills: ['#2e1c1e', '#211415', '#150d0e', '#0a0607'], mist: 0.3 },
 };
 
-function Sky({ phase }) {
+export function Sky({ phase }) {
   const s = SKIES[phase] || SKIES.day;
   // Static SVG — nothing animates, so it costs nothing while the wall is on.
   return (
@@ -225,7 +225,7 @@ function Sky({ phase }) {
 }
 
 /* ── Small line icons (stroke only, so they tint with the text) ──────────── */
-const I = {
+export const I = {
   cal: <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>,
   tools: <svg viewBox="0 0 24 24"><path d="M14.5 4.5a4 4 0 0 0 4.9 5.2l-8.6 8.6a2 2 0 1 1-2.8-2.8l8.6-8.6" /><path d="M4 5l3 3M7 4l-3 3" /></svg>,
   bolt: <svg viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" /></svg>,
@@ -304,7 +304,7 @@ export function nextLine(day, now) {
 
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
 
-function Presence({ who, onPerson }) {
+export function Presence({ who, onPerson }) {
   if (!who) return null;
   if (!who.known) return <p className="cine__gap">{who.why || "I can't see the house"} — that isn’t the same as everyone being out.</p>;
   return (
@@ -361,7 +361,41 @@ function OutlookRows({ outlook }) {
   );
 }
 
-function Outside({ station, outlook, onOpen }) {
+/**
+ * The week ahead (1 Nov 2026): one row per day from Home Assistant's daily
+ * forecast. `week` undefined = not drawn (no scope); null or known:false = says
+ * why, never an empty week. Rain shows the chance when HA gives one, else the
+ * amount. Shared by the wall and the phone.
+ */
+export function WeekAheadSheet({ week, today }) {
+  if (week === undefined) return null;
+  if (!week || !week.known) return <p className="cine__gap">{(week && week.why) ? `No forecast just now — ${week.why}.` : 'I couldn’t read the forecast just now.'}</p>;
+  return (
+    <div className="cine__weekahead">
+      <ul className="cine__wa">
+        {week.days.map((d, i) => {
+          const { dow, day } = dayOfKey(d.date);
+          const name = d.date === today ? 'Today' : i === 1 && week.days[0].date === today ? 'Tomorrow' : `${DAYS_LONG[dow].slice(0, 3)} ${day}`;
+          const ic = weatherIcon(d.condition);
+          const rain = d.rainChance != null ? `${d.rainChance}%` : d.rainMm != null && d.rainMm >= 0.1 ? `${Math.round(d.rainMm * 10) / 10} mm` : null;
+          return (
+            <li key={d.date} className="cine__waday">
+              <span className="cine__waname">{name}</span>
+              <span className="cine__waicon" title={d.label || ''}>{ic ? I[ic] : null}</span>
+              <span className="cine__walabel">{d.label || ''}</span>
+              <span className="cine__watemp"><b>{d.highC != null ? `${d.highC}°` : '—'}</b> {d.lowC != null ? `${d.lowC}°` : ''}</span>
+              <span className={`cine__warain${rain ? '' : ' cine__warain--dry'}`}>{rain ? <><Icon name="rain" /> {rain}</> : 'Dry'}</span>
+              <span className="cine__wawind">{d.windKmh != null ? `${d.windKmh} km/h` : ''}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="cine__note">From Home Assistant’s daily forecast.</p>
+    </div>
+  );
+}
+
+function Outside({ station, outlook, onOpen, onWeek = null }) {
   if (!station && outlook === undefined) return null;
   if (!station || !station.known) {
     return (
@@ -390,6 +424,7 @@ function Outside({ station, outlook, onOpen }) {
           {station.pressureHpa != null && <li><Icon name="gauge" /> {`${station.pressureHpa} hPa`}</li>}
         </ul>
         {station.indoorLikely && <p className="cine__note">The sensor reads like it’s indoors.</p>}
+        {onWeek && <button className="cine__weekbtn" onClick={(e) => { e.stopPropagation(); onWeek(); }}>Week ahead ›</button>}
       </div>
     </div>
   );
@@ -670,7 +705,7 @@ function DayBits({ data, can, onTea, onWalk, part }) {
 
 /* ── The dock: Home / Shopping / Notes (25 Oct 2026) ───────────────────────── */
 
-const DOCK_ICONS = {
+export const DOCK_ICONS = {
   home: <svg viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5" /><path d="M10 20v-5h4v5" /></svg>,
   shop: <svg viewBox="0 0 24 24"><path d="M3 4h2.5l2.2 11h10.6l2-8H6.3" /><circle cx="9.5" cy="19" r="1.4" /><circle cx="17" cy="19" r="1.4" /></svg>,
   notes: <svg viewBox="0 0 24 24"><path d="M5 4h14v12l-5 4H5z" /><path d="M14 20v-4h5M8 9h8M8 12.5h6" /></svg>,
@@ -755,6 +790,9 @@ export function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, 
   } else if (sheet.kind === 'weather') {
     title = 'Outside';
     body = <WeatherSheet station={data.station} dew={data.station ? dewPoint(data.station.tempC, data.station.humidityPct) : null} />;
+  } else if (sheet.kind === 'forecast') {
+    title = 'The week ahead'; wide = true;
+    body = <WeekAheadSheet week={data.weekAhead} today={data.today} />;
   } else if (sheet.kind === 'energy') {
     title = 'Energy';
     body = <EnergySheet energy={data.energy} />;
@@ -868,7 +906,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
               {data && can('house') && <Presence who={data.who} onPerson={(p) => setSheet({ kind: 'member', person: p })} />}
             </div>
             <div className="cine__right">
-              {data && can('house') && <Outside station={data.station} outlook={data.outlook} onOpen={() => setSheet({ kind: 'weather' })} />}
+              {data && can('house') && <Outside station={data.station} outlook={data.outlook} onOpen={() => setSheet({ kind: 'weather' })} onWeek={data.weekAhead !== undefined ? () => setSheet({ kind: 'forecast' }) : null} />}
               {act && <Dock items={dockItems(data, can)} onOpen={(id) => setSheet({ kind: id })} />}
               {data && <DayBits part="chips" data={data} can={can} onTea={() => setSheet({ kind: 'tea' })} />}
             </div>

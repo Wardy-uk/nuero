@@ -7,8 +7,8 @@ import Meals from '../components/Meals.jsx';
 import Presence from '../components/Presence.jsx';
 import Walk from '../components/Walk.jsx';
 import Energy from '../components/Energy.jsx';
-import HouseBoard from '../components/HouseBoard.jsx';
-import { Sheet } from './WallCinema.jsx';
+import HouseBoard, { HouseHero, JobsMore, Week } from '../components/HouseBoard.jsx';
+import { Sheet, Photo, Sky, skyPhase, photoSlot } from './WallCinema.jsx';
 import { SheetBoundary } from './WallSheets.jsx';
 import './WallCinema.css';
 
@@ -38,6 +38,9 @@ export default function Home({ onSignedOut, onWall }) {
   const [boardErr, setBoardErr] = useState(null);
   const [sheet, setSheet] = useState(null);
   const [dirty, setDirty] = useState(false);
+  // The minute, for the date, the greeting and the time-of-day photograph.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60 * 1000); return () => clearInterval(t); }, []);
 
   const token = api.getToken();
 
@@ -65,11 +68,22 @@ export default function Home({ onSignedOut, onWall }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  if (loading) return <p className="home__loading">Getting things…</p>;
+  // The wall's landscape behind the phone (1 Nov 2026: "like the wall"),
+  // chosen by the time of day and the station's weather, exactly as the wall chooses.
+  const sun = board && board.sun;
+  const backdrop = (
+    <div className={`cine cine--${skyPhase(now, sun)} vh__backdrop`} aria-hidden="true">
+      <Sky phase={skyPhase(now, sun)} />
+      <Photo slot={photoSlot(now, sun)} condition={board && board.station ? board.station.condition : null} />
+    </div>
+  );
+
+  if (loading) return <div className="home home--cine">{backdrop}<p className="home__loading">Getting things…</p></div>;
 
   if (error && !data) {
     return (
-      <div className="home__error" role="alert">
+      <div className="home__error home--cine" role="alert">
+        {backdrop}
         <p>{error}</p>
         <button className="btn" onClick={refresh}>Try again</button>
       </div>
@@ -152,14 +166,9 @@ export default function Home({ onSignedOut, onWall }) {
   const closeSheet = () => { setDirty(false); setSheet(null); };
 
   return (
-    <div className="home">
-      <header className="home__head">
-        <h1 className="home__title">Vesta</h1>
-        <div className="home__who">
-          <span>{data.label}</span>
-          <button className="btn btn--quiet" onClick={onSignedOut}>Sign out</button>
-        </div>
-      </header>
+    <div className="home home--cine">
+      {backdrop}
+      <HouseHero board={board} label={data.label} now={now} open={setSheet} />
 
       {/* A refresh that failed while we still have the last good screen: say so
           rather than either blanking it or pretending it is current. */}
@@ -168,7 +177,11 @@ export default function Home({ onSignedOut, onWall }) {
       {/* First when he is out on a walk: if he is overdue it is the most important thing on the page. */}
       {can('hike') && <Walk hike={data.hike} gap={gapFor('hike')} token={token} />}
 
+      {/* Tea, shopping, notes, the house controls, countdowns — the wall's dock. */}
+      <HouseBoard board={board} boardErr={boardErr} open={setSheet} />
+
       <Tasks tasks={data.tasks} gap={gapFor('tasks')} people={data.people || []} onAdd={addTask} onUpdate={updateTask} />
+      <JobsMore board={board} open={setSheet} />
 
       {/* Above the calendar: "where is he right now" is the question she is most
           likely to have opened this for, and it is one line. Gated on the scope
@@ -178,14 +191,11 @@ export default function Home({ onSignedOut, onWall }) {
 
       {can('energy') && <Energy energy={data.energy} gap={gapFor('energy')} />}
 
-      {can('calendar') && (
-        <Calendar events={data.calendar} gap={gapFor('calendar')} todayKey={data.calendarDate} />
-      )}
-
-      {/* The family wall's features (1 Nov 2026): tea, shopping, notes, the house
-          controls, countdowns, outside, who's in, jobs in full, Ember's care and
-          the week — each opens the wall's own sheet. */}
-      <HouseBoard board={board} boardErr={boardErr} open={setSheet} />
+      {/* The week from the wall's payload; today's diary from /home only when
+          the board could not be read, so the same day is never listed twice. */}
+      {board && Array.isArray(board.week)
+        ? <Week board={board} open={setSheet} />
+        : can('calendar') && <Calendar events={data.calendar} gap={gapFor('calendar')} todayKey={data.calendarDate} />}
 
       {can('kitchen') && (
         kitchenMissing ? (
@@ -214,6 +224,8 @@ export default function Home({ onSignedOut, onWall }) {
       )}
 
       <footer className="home__foot">
+        <span className="home__acct">{data.label}</span>
+        <button className="btn btn--quiet" onClick={onSignedOut}>Sign out</button>
         <button className="btn btn--quiet" onClick={refresh}>Refresh</button>
         {onWall && <button className="btn btn--quiet" onClick={onWall}>Wall view</button>}
         <span className="home__build">{api.BUILD_LABEL}</span>

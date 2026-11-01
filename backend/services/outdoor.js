@@ -471,6 +471,6 @@ const TABLES = ['outdoor_routes', 'outdoor_activity_links'];
 
 module.exports = {
   CONTRACT, FORECAST_KEY, TABLES,
-  read, nowBlock, refresh, sourceHealth, weatherFor, weatherNear, shapeRoute, radar,
+  read, nowBlock, refresh, sourceHealth, weatherFor, dailyForecast: _dailyCache, weatherNear, shapeRoute, radar,
   createRoute, updateRoute, linkRoute, unlinkRoute, addCompanion, removeCompanion,
 };

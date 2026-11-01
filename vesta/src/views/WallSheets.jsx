@@ -362,7 +362,7 @@ export function WeatherSheet({ station, dew }) {
       <dl className="cine__dl">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
       {station.verdict && <p className="cine__sub">{station.verdict}</p>}
       {station.indoorLikely && <p className="cine__note">The sensor reads like it’s indoors.</p>}
-      <p className="cine__note">Readings from the garden weather station; conditions from Home Assistant. No forecast is held for the wall.</p>
+      <p className="cine__note">Readings from the garden weather station; conditions from Home Assistant.</p>
     </div>
   );
 }
