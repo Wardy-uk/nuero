@@ -154,6 +154,18 @@ async function cancel121({ agentName }) {
   return call('/api/neuro-bridge/121/cancel', { method: 'POST', body: { agentName } });
 }
 
+/**
+ * The booked meeting is gone but the 1-2-1 is still owed (Nick cancelled or undid a
+ * booking): NOVA puts the session back to awaiting a booking and keeps its prep.
+ * Unlike cancel121, the session survives (1 Nov 2026).
+ */
+async function unbook121({ agentName, outlookEventId }) {
+  return call('/api/neuro-bridge/121/unbook', {
+    method: 'POST',
+    body: { agentName, outlookEventId: outlookEventId || undefined },
+  });
+}
+
 /** Push a person's cadence, in days. `null` = off the rota (`cadence: n/a`). */
 async function push121Cadence({ agentName, cadenceDays }) {
   return call('/api/neuro-bridge/121/cadence', { method: 'POST', body: { agentName, cadenceDays } });
@@ -238,7 +250,7 @@ async function get121KnownRecordings() {
 
 module.exports = {
   isConfigured, listUrgencyReasons, listEscalations, listSentimentEscalations, getTicket, escalate, call,
-  push121Booking, cancel121, push121Cadence, get121State, get121Completed,
+  push121Booking, cancel121, unbook121, push121Cadence, get121State, get121Completed,
   get121Overview, set121PeopleHr,
   push121SweepStats,
   push121TranscriptCandidate, push121TranscriptCorrection, get121KnownRecordings, get121PendingCandidates,

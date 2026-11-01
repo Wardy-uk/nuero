@@ -557,6 +557,12 @@ function afterGovernedCalendar(a) {
     // remember it, so the next sweep offers the tap card instead of re-booking.
     try { require('./one-to-one-requests').noteCancelled(person, t.eventId); }
     catch (e) { console.warn('[1-2-1] Could not record the undo:', e.message); }
+    // Tell NOVA the meeting is gone but the 1-2-1 is still owed, so its session
+    // goes back to awaiting a booking rather than prepping a meeting that no longer
+    // exists. Fire and forget; a NOVA without /121/unbook answers 404 and is logged.
+    Promise.resolve()
+      .then(() => require('./nova-client').unbook121({ agentName: person, outlookEventId: t.eventId || null }))
+      .catch((e) => console.warn('[1-2-1] Could not tell NOVA the booking is gone:', e.message));
     return;
   }
   const start = (a.draft && a.draft.start) || '';
