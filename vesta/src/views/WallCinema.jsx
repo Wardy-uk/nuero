@@ -713,8 +713,12 @@ function liveEvent(data, event) {
   return null;
 }
 
-/** A sheet over the wall: every job, or one day in full. Tap outside or Done to close. */
-function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirty }) {
+/**
+ * A sheet over the wall: every job, or one day in full. Tap outside or Done to close.
+ * Also mounted by the phone's Home (1 Nov 2026), full-screen, so the wall and the
+ * phone share one editor for each thing — the two cannot drift.
+ */
+export function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirty }) {
   const [confirm, setConfirm] = useState(false);
   useEffect(() => { setConfirm(false); }, [sheet]);
   // The last version of the open job NEURO returned, so a job that has just been
@@ -793,7 +797,7 @@ function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, setDirt
           ))}
         </ul>
         <div className="cine__dayfoot">
-          <button className="cine__sheetbtn" onClick={onOpenWeek}>Open the week</button>
+          {onOpenWeek && <button className="cine__sheetbtn" onClick={onOpenWeek}>Open the week</button>}
           {fam.canEdit && <button className="cine__sheetbtn cine__sheetbtn--primary" onClick={() => setSheet({ kind: 'addEvent', date: d.date })}>+ Add event</button>}
         </div>
       </div>

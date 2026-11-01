@@ -7,6 +7,10 @@ import Meals from '../components/Meals.jsx';
 import Presence from '../components/Presence.jsx';
 import Walk from '../components/Walk.jsx';
 import Energy from '../components/Energy.jsx';
+import HouseBoard from '../components/HouseBoard.jsx';
+import { Sheet } from './WallCinema.jsx';
+import { SheetBoundary } from './WallSheets.jsx';
+import './WallCinema.css';
 
 const KITCHEN_SLUG = 'kitchen';
 
@@ -28,9 +32,24 @@ export default function Home({ onSignedOut, onWall }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // The family wall's payload, for the wall's features on the phone (1 Nov
+  // 2026): undefined = not read yet, null = could not be read (boardErr says why).
+  const [board, setBoard] = useState(undefined);
+  const [boardErr, setBoardErr] = useState(null);
+  const [sheet, setSheet] = useState(null);
+  const [dirty, setDirty] = useState(false);
+
   const token = api.getToken();
 
+  // Both reads at once; a failed board never costs the rest of Home.
   const refresh = useCallback(async () => {
+    const boardRead = api.wall(token, { timeoutMs: 20000 })
+      .then((b) => { setBoard(b); setBoardErr(null); })
+      .catch((err) => {
+        if (err.expired) return;
+        setBoardErr(err.message);
+        setBoard((prev) => (prev === undefined ? null : prev));
+      });
     try {
       setData(await api.home(token));
       setError(null);
@@ -41,6 +60,7 @@ export default function Home({ onSignedOut, onWall }) {
     } finally {
       setLoading(false);
     }
+    await boardRead;
   }, [token, onSignedOut]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -101,6 +121,36 @@ export default function Home({ onSignedOut, onWall }) {
     await refresh();
   }
 
+  // The wall's sheets change things through this — the SAME shape the wall
+  // passes them. NEURO answers, then Home is re-read; nothing is changed here first.
+  const after = async (p) => { const res = await p; await refresh(); return res; };
+  const act = {
+    task: (id, patch) => after(api.updateTask(token, id, patch)),
+    addTask: ({ text, dueDate, assignees, notes, priority }) => after(api.addTask(token, text, assignees, dueDate, {
+      ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
+    })),
+    event: {
+      add: (body) => after(api.addFamilyEvent(token, body)),
+      update: (id, body) => after(api.updateFamilyEvent(token, id, body)),
+      remove: (id) => after(api.deleteFamilyEvent(token, id)),
+    },
+    tea: (date, text) => after(api.setTea(token, date, text)),
+    note: {
+      add: (text) => after(api.addNote(token, text)),
+      clear: (id) => after(api.clearNote(token, id)),
+    },
+    countdown: (body) => after(api.setCountdown(token, body)),
+    shopping: {
+      add: (name) => after(api.shoppingAdd(token, name)),
+      bought: (name, undo) => after(api.shoppingBought(token, name, undo)),
+    },
+    home: {
+      get: () => api.getHomeControl(token),
+      control: (entity, action) => api.homeControl(token, entity, action),
+    },
+  };
+  const closeSheet = () => { setDirty(false); setSheet(null); };
+
   return (
     <div className="home">
       <header className="home__head">
@@ -131,6 +181,11 @@ export default function Home({ onSignedOut, onWall }) {
       {can('calendar') && (
         <Calendar events={data.calendar} gap={gapFor('calendar')} todayKey={data.calendarDate} />
       )}
+
+      {/* The family wall's features (1 Nov 2026): tea, shopping, notes, the house
+          controls, countdowns, outside, who's in, jobs in full, Ember's care and
+          the week — each opens the wall's own sheet. */}
+      <HouseBoard board={board} boardErr={boardErr} open={setSheet} />
 
       {can('kitchen') && (
         kitchenMissing ? (
@@ -163,6 +218,16 @@ export default function Home({ onSignedOut, onWall }) {
         {onWall && <button className="btn btn--quiet" onClick={onWall}>Wall view</button>}
         <span className="home__build">{api.BUILD_LABEL}</span>
       </footer>
+
+      {/* The wall's sheet, full-screen on the phone. `.cine` carries its colours. */}
+      {sheet && board && (
+        <div className="cine cine--sheethost">
+          <SheetBoundary key={sheet.kind} onFail={closeSheet}>
+            <Sheet sheet={sheet} data={board} act={act} setSheet={setSheet} dirty={dirty} setDirty={setDirty}
+                   onClose={closeSheet} onOpenWeek={null} />
+          </SheetBoundary>
+        </div>
+      )}
     </div>
   );
 }

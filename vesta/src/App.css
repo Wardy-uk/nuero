@@ -402,3 +402,59 @@ body {
 .energy__bar { flex: 1 1 0; background: currentColor; opacity: 0.7; border-radius: 2px 2px 0 0; min-width: 2px; }
 .energy__bar--partial { opacity: 0.35; }
 .energy__bar--none { opacity: 0; }
+
+/* ── The family wall's features on the phone (1 Nov 2026) ──────────────────
+   Compact blocks on Home; each opens the wall's own sheet (WallCinema `Sheet`),
+   hosted full-screen below. */
+.hb__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.hb__tile {
+  appearance: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px; min-height: 64px; padding: 10px 12px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+}
+.hb__tile--static { cursor: default; }
+.hb__tilelabel { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.hb__tilevalue { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb__tilevalue--gap { color: var(--warn); font-weight: 400; }
+.hb__countdowns { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hb__cd { display: flex; justify-content: space-between; gap: 12px; }
+.hb__cdtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb__cdsay { flex: none; color: var(--ink-dim); }
+.hb__cd--today .hb__cdsay { color: var(--ember); font-weight: 600; }
+.hb__outside { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: baseline; gap: 12px; text-align: left; }
+.hb__temp { font-size: 34px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.hb__cond { color: var(--ink-dim); }
+.hb__outlook { margin: 8px 0 0; color: var(--ink-dim); }
+.hb__presence { margin: 0 0 10px; font-size: 17px; }
+.hb__people { display: flex; flex-wrap: wrap; gap: 8px; }
+.hb__person { appearance: none; font: inherit; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); }
+.hb__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); }
+.hb__person--home .hb__dot { background: var(--good); }
+.hb__person--out .hb__dot { background: var(--ink-dim); }
+.hb__jobbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.hb__care { margin-top: 12px; }
+.hb__care .cine__care { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hb__care .cine__careitem { display: flex; gap: 8px; }
+.hb__care .cine__careitem--late { color: var(--warn); }
+.hb__week { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.hb__day { display: flex; flex-direction: column; gap: 4px; }
+.hb__dayhead { appearance: none; border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+.hb__work, .hb__quiet { font-size: 14px; color: var(--ink-faint); }
+.hb__work--off { color: var(--good); }
+.hb__event { appearance: none; border: 0; background: none; padding: 4px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: 8px; min-height: 32px; }
+.hb__etime { color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.hb__ewhat { min-width: 0; }
+
+/* The wall's sheet, hosted full-screen on the phone. `.cine` brings its colours;
+   these undo its wall-sized box. */
+.cine.cine--sheethost { position: fixed; inset: 0; z-index: 50; height: 100dvh; background: transparent; overflow: visible; }
+.cine--sheethost .cine__sheetwrap { position: fixed; padding-top: 0; align-items: stretch; }
+.cine--sheethost .cine__sheet {
+  width: 100%; max-width: 680px; max-height: none; height: 100dvh; margin: 0 auto;
+  border-radius: 0; gap: 14px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+@media (min-width: 700px) {
+  .cine--sheethost .cine__sheetwrap { align-items: center; }
+  .cine--sheethost .cine__sheet { height: auto; max-height: 90dvh; border-radius: 20px; }
+}
