@@ -52,6 +52,7 @@
 const crypto = require('crypto');
 const db = require('../db/database');
 const reportFixes = require('./report-fixes');
+const { itemKey: IK, sectionOf, customerTickets } = require('../../shared/soap-items.cjs');
 
 const AMBER_BAND = 20; // weekly-risk's rule: within 20 points of target is amber, further is red
 const STAR_LIMIT_SUCCESS = 6;
@@ -359,7 +360,10 @@ function fixesFor(report) {
 const SECTION_KEYS = ['success', 'star', 'amber', 'red', 'carried', 'corrections', 'perQueue', 'slaDaily', 'ageing', 'volumes',
   'csat', 'agents', 'customers', 'winning', 'plan', 'findings', 'leading', 'slm'];
 
-function emptyManual() { return { intro: '', reds: {}, carried: {}, weakest: '', notes: '', excluded: [] }; }
+function emptyManual() { return { intro: '', reds: {}, carried: {}, weakest: '', notes: '', excluded: [], excludedItems: [] }; }
+
+// Lines of the report Nick left out, by key (shared/soap-items.cjs names them).
+const MAX_EXCLUDED_ITEMS = 500;
 
 function getManual(weekFrom) {
   try { return { ...emptyManual(), ...JSON.parse(db.getState(`${MANUAL_PREFIX}${weekFrom}`) || '{}') }; } catch { return emptyManual(); }
@@ -386,6 +390,16 @@ function setManual(weekFrom, patch = {}) {
     if (bad.length) throw Object.assign(new Error(`unknown section(s): ${bad.join(', ')}`), { status: 400 });
     cur.excluded = [...new Set(patch.excluded)];
   }
+  if (patch.excludedItems !== undefined) {
+    // Refused, never repaired: a key that names no section is a client bug, and
+    // dropping it silently would leave a line in the email Nick took out.
+    if (!Array.isArray(patch.excludedItems)) throw Object.assign(new Error('excludedItems must be a list of item keys'), { status: 400 });
+    const bad = patch.excludedItems.filter((x) => typeof x !== 'string' || x.length > 400 || !x.includes(':') || !SECTION_KEYS.includes(sectionOf(x)));
+    if (bad.length) throw Object.assign(new Error(`unknown item key(s): ${bad.slice(0, 3).join(', ')}`), { status: 400 });
+    const uniq = [...new Set(patch.excludedItems)];
+    if (uniq.length > MAX_EXCLUDED_ITEMS) throw Object.assign(new Error(`at most ${MAX_EXCLUDED_ITEMS} excluded items`), { status: 400 });
+    cur.excludedItems = uniq;
+  }
   db.setState(`${MANUAL_PREFIX}${weekFrom}`, JSON.stringify(cur));
   return cur;
 }
@@ -395,11 +409,13 @@ function blockers(report, manual) {
   const out = [];
   const m = manual || emptyManual();
   const ex = new Set(m.excluded || []);
+  const exItem = new Set(m.excludedItems || []);
   if (!ex.has('red')) for (const r of report.verdicts.reds) {
+    if (exItem.has(IK.red(r))) continue;
     if (!(m.reds[r.key] && m.reds[r.key].action)) out.push(`Red needs what you will do to make it green by next Monday: ${r.text}`);
   }
   if (!ex.has('carried')) for (const c of report.carried || []) {
-    if (c.green || c.retired) continue;
+    if (c.green || c.retired || exItem.has(IK.carried(c))) continue;
     const e = m.carried[c.key] || {};
     // Why only (Nick, 26 Oct 2026): the consequences box was dropped from the report.
     if (!e.why) out.push(`Last week's red is still red — say why: ${c.text}`);
@@ -419,8 +435,15 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   const fx = fixes || { fixed: [], corrections: [], rowNotes: {}, unreadable: null };
   // Each line is tagged with the section it belongs to, so a section Nick
   // excluded is dropped whole at the end (heading, body and blank line).
-  const L = { rows: [], cur: null, push(...xs) { for (const x of xs) this.rows.push([this.cur, x]); } };
+  // An ITEM line carries its key (shared/soap-items.cjs): one Nick left out is
+  // dropped, and a section whose every item he left out is dropped whole.
+  const L = {
+    rows: [], cur: null,
+    push(...xs) { for (const x of xs) this.rows.push([this.cur, x, null]); },
+    item(key, ...xs) { for (const x of xs) this.rows.push([this.cur, x, key]); },
+  };
   const excluded = new Set(m.excluded || []);
+  const exItems = new Set(m.excludedItems || []);
   const title = report.kind === 'provisional'
     ? `SOAP — week of ${shortDate(report.from)}–${shortDate(report.to)} (provisional, data to ${shortDate(report.upTo)})`
     : `SOAP — week of ${shortDate(report.from)}–${shortDate(report.to)}`;
@@ -433,9 +456,9 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
 
   L.cur = 'success';
   L.push('## ✅ Success', '');
-  if (v.success.length) for (const s of v.success) L.push(`- ${s.text}`);
+  if (v.success.length) for (const s of v.success) L.item(IK.success(s), `- ${s.text}`);
   else if (!fx.fixed.length) L.push('- Nothing met its mark this week.');
-  for (const f of fx.fixed) L.push(`- ${reportFixes.fixedLine(f)}`);
+  for (const f of fx.fixed) L.item(IK.fixed(f), `- ${reportFixes.fixedLine(f)}`);
   L.push('');
 
   L.cur = 'star';
@@ -450,7 +473,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
 
   L.cur = 'amber';
   L.push('## 🟠 Turning amber', '');
-  if (v.ambers.length) for (const a of v.ambers) L.push(`- ${a.text}`);
+  if (v.ambers.length) for (const a of v.ambers) L.item(IK.amber(a), `- ${a.text}`);
   else L.push('- Nothing turning amber.');
   L.push('');
 
@@ -459,7 +482,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   if (v.reds.length) {
     for (const r of v.reds) {
       const act = m.reds[r.key] && m.reds[r.key].action;
-      L.push(`- **${r.text}** — ${act ? `I will: ${act}` : '_(action not written yet)_'}`);
+      L.item(IK.red(r), `- **${r.text}** — ${act ? `I will: ${act}` : '_(action not written yet)_'}`);
     }
   } else L.push('- Nothing red.');
   L.push('');
@@ -468,10 +491,10 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
     L.cur = 'carried';
     L.push("## Last week's reds", '');
     for (const c of report.carried) {
-      if (c.green) { L.push(`- 🟢 Delivered green: ${c.text}`); continue; }
-      if (c.retired) { L.push(`- ⚪ ${c.text} — ${c.retired}`); continue; }
+      if (c.green) { L.item(IK.carried(c), `- 🟢 Delivered green: ${c.text}`); continue; }
+      if (c.retired) { L.item(IK.carried(c), `- ⚪ ${c.text} — ${c.retired}`); continue; }
       const e = m.carried[c.key] || {};
-      L.push(`- 🔴 **Still red: ${c.text}** — why: ${e.why || '_(not written yet)_'}`);
+      L.item(IK.carried(c), `- 🔴 **Still red: ${c.text}** — why: ${e.why || '_(not written yet)_'}`);
     }
     L.push('');
   }
@@ -483,7 +506,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   if (fx.corrections.length || fx.unreadable) {
     L.cur = 'corrections';
     L.push('## Data corrections', '');
-    fx.corrections.forEach((c, i) => L.push(`- ${reportFixes.correctionLine(c, i + 1)}`));
+    fx.corrections.forEach((c, i) => L.item(IK.correction(c), `- ${reportFixes.correctionLine(c, i + 1)}`));
     // An unreadable fixes log is not "no corrections".
     if (fx.unreadable) L.push(`- Not available — the fixes log could not be read: ${fx.unreadable}. There may be corrections not shown here.`);
     if (fx.corrections.length) L.push('', '_Rows marked [n] below were affected; their figures stand as reported at the time._');
@@ -494,7 +517,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## SLA compliance by queue (this week vs last)', '');
   if (report.perQueue && report.perQueue.length) {
     L.push('| Queue | This week | Last week | Target |', '|---|---|---|---|');
-    for (const q of report.perQueue) L.push(`| ${reportFixes.markLabel(q.label, fx.rowNotes)} | ${light(q.rag)} ${pctOr(q.value)} | ${pctOr(q.was)} | ${q.target !== null ? `${q.target}%` : '—'} |`);
+    for (const q of report.perQueue) L.item(IK.perQueue(q), `| ${reportFixes.markLabel(q.label, fx.rowNotes)} | ${light(q.rag)} ${pctOr(q.value)} | ${pctOr(q.was)} | ${q.target !== null ? `${q.target}%` : '—'} |`);
     L.push('', '_"no data" means the queue solved nothing that week._');
   } else L.push(na('perQueue', 'NOVA did not answer'));
   L.push('');
@@ -503,7 +526,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## SLA adherence, day on day (Support: CC + T2 + Production)', '');
   if (report.slaDaily && report.slaDaily.length) {
     L.push('| Day | FRT | Resolution |', '|---|---|---|');
-    for (const d of report.slaDaily) L.push(`| ${d.label} | ${fmtPct(d.frt)} | ${fmtPct(d.res)} |`);
+    for (const d of report.slaDaily) L.item(IK.slaDaily(d), `| ${d.label} | ${fmtPct(d.frt)} | ${fmtPct(d.res)} |`);
   } else L.push(`- Not available — ${report.gapsBySection.sla || 'no daily SLA figures were returned'}`);
   L.push('');
 
@@ -511,7 +534,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## Ageing vs target (oldest actionable ticket per queue)', '');
   if (report.ageing && report.ageing.length) {
     L.push('| Queue | Days | Target | Over by |', '|---|---|---|---|');
-    for (const a of report.ageing) L.push(`| ${String(a.kpi).replace(/^Oldest actionable \(days\):\s*/i, '')} | ${a.value} | ${a.target} | ${a.ratio}× |`);
+    for (const a of report.ageing) L.item(IK.ageing(a), `| ${String(a.kpi).replace(/^Oldest actionable \(days\):\s*/i, '')} | ${a.value} | ${a.target} | ${a.ratio}× |`);
     L.push('', '_NOVA advises confirming extreme figures are genuine backlog, not a due-date configuration artefact._');
   } else if (report.ageing) L.push('- No queue is carrying tickets past its target age.');
   else L.push(na('kpi', 'NOVA did not answer'));
@@ -521,24 +544,24 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## Volumes and backlog', '');
   if (report.volumes && report.volumes.length) {
     L.push('| | This week | Last week |', '|---|---|---|');
-    for (const r of report.volumes) L.push(`| ${r.label} | ${r.now === null ? 'no data' : r.now}${!r.flow && r.asOf ? ` (at ${shortDate(r.asOf)})` : ''} | ${r.was === null ? 'no data' : r.was} |`);
+    for (const r of report.volumes) L.item(IK.volume(r), `| ${r.label} | ${r.now === null ? 'no data' : r.now}${!r.flow && r.asOf ? ` (at ${shortDate(r.asOf)})` : ''} | ${r.was === null ? 'no data' : r.was} |`);
   } else L.push(na('sla', 'NOVA did not answer'));
-  if (report.myEscalations && 'total' in report.myEscalations) L.push('', require('./my-escalations').line(report.myEscalations));
+  if (report.myEscalations && 'total' in report.myEscalations) { L.push(''); L.item(IK.myEscalations(), require('./my-escalations').line(report.myEscalations)); }
   L.push('');
 
   L.cur = 'csat';
   L.push('## CSAT', '');
   if (report.csat && report.csat.length) {
-    for (const r of report.csat) L.push(`- ${r.label}: ${r.now} (last week ${r.was}) ${r.delta}`);
+    for (const r of report.csat) L.item(IK.csat(r), `- ${r.label}: ${r.now} (last week ${r.was}) ${r.delta}`);
   } else L.push(na('kpi', 'NOVA did not answer'));
   L.push('');
 
   L.push('## Sentiment (last 7 days)', '');
   const se = report.sentiment;
   if (se) {
-    if (se.survey) L.push(`- Customer survey: ${se.survey.responded} replies from ${se.survey.sent} sent (${se.survey.ratePct}%)${se.survey.thin ? ' — too few to quote a score' : ''}.`);
-    if (se.tickets) L.push(`- Customer sentiment on problem tickets: ${se.tickets.scored} scored, ${se.tickets.negative} negative${se.tickets.average !== null && se.tickets.average !== undefined ? `, average ${se.tickets.average}` : ''}.`);
-    if (se.team) L.push(`- Team: ${se.team.title} — average ${se.team.avg} from ${se.team.responses} responses${se.team.thin ? ' (thin)' : ''}.`);
+    if (se.survey) L.item(IK.sentiment('survey'), `- Customer survey: ${se.survey.responded} replies from ${se.survey.sent} sent (${se.survey.ratePct}%)${se.survey.thin ? ' — too few to quote a score' : ''}.`);
+    if (se.tickets) L.item(IK.sentiment('tickets'), `- Customer sentiment on problem tickets: ${se.tickets.scored} scored, ${se.tickets.negative} negative${se.tickets.average !== null && se.tickets.average !== undefined ? `, average ${se.tickets.average}` : ''}.`);
+    if (se.team) L.item(IK.sentiment('team'), `- Team: ${se.team.title} — average ${se.team.avg} from ${se.team.responses} responses${se.team.thin ? ' (thin)' : ''}.`);
     if (se.unavailable.length) L.push(`- Not read: ${se.unavailable.join(', ')}.`);
   } else L.push(na('sentiment', 'NOVA did not answer'));
   L.push('');
@@ -547,14 +570,14 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## Agents', '');
   const lb = report.leaderboard;
   if (lb && lb.top) {
-    L.push(`- Top: **${lb.top.agentName}**${lb.top.compositeScore !== null && lb.top.compositeScore !== undefined ? ` (score ${lb.top.compositeScore})` : ''}`);
+    L.item(IK.agent('top'), `- Top: **${lb.top.agentName}**${lb.top.compositeScore !== null && lb.top.compositeScore !== undefined ? ` (score ${lb.top.compositeScore})` : ''}`);
     if (lb.weakest) {
       const w = lb.weakest;
       const bits = [w.solved !== null && w.solved !== undefined ? `${w.solved} solved` : null,
         w.slaCompliancePct !== null && w.slaCompliancePct !== undefined ? `SLA ${w.slaCompliancePct}%` : null,
         w.qaOverall !== null && w.qaOverall !== undefined ? `QA ${w.qaOverall}` : 'QA —'].filter(Boolean);
-      L.push(`- Least performing: **${w.agentName}** — ${bits.join(' · ')}`);
-      L.push(`  - ${m.weakest ? m.weakest : '_(commentary not written yet)_'}`);
+      L.item(IK.agent('weakest'), `- Least performing: **${w.agentName}** — ${bits.join(' · ')}`,
+        `  - ${m.weakest ? m.weakest : '_(commentary not written yet)_'}`);
     }
     if (lb.rule) L.push(`- Ranked by NOVA: ${lb.rule}.`);
   } else L.push(`- Not available — ${report.gapsBySection.leaderboard || 'no ranked agents'}`);
@@ -565,7 +588,10 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   const wc = report.customers;
   if (wc && wc.rows && wc.rows.length) {
     L.push(`As at ${String(wc.generatedAt || '').slice(0, 16).replace('T', ' ')}, in NOVA's order${wc.stale ? ' — NOVA says this list is stale' : ''}.`, '');
-    for (const c of wc.rows) L.push(`${c.rank}. **${c.name}**${c.why ? ` — ${c.why}` : ''}`);
+    for (const c of wc.rows) {
+      const t = customerTickets(c);
+      L.item(IK.customer(c), `${c.rank}. **${c.name}**${c.why ? ` — ${c.why}` : ''}${t ? `. Tickets: ${t}` : ''}`);
+    }
   } else if (wc && (wc.status === 'none_qualify' || wc.status === 'stale')) L.push(`- No customer has 2 or more unhappy current tickets (Frustrated or worse)${wc.stale ? ' (NOVA says this list is stale)' : ''}.`);
   else L.push(`- Not available — ${report.gapsBySection.customers || 'NOVA did not answer'}`);
   L.push('');
@@ -574,7 +600,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push(`## Customers winning after support`, '');
   const wn = report.winning;
   if (wn && wn.rows && wn.rows.length) {
-    for (const c of wn.rows) L.push(`${c.rank}. **${c.name}** — ${c.why}`);
+    for (const c of wn.rows) L.item(IK.winning(c), `${c.rank}. **${c.name}** — ${c.why}`);
   } else if (wn && wn.status === 'none_qualify') L.push('- No customer had 2 or more tickets resolved this week ending better than they started.');
   else L.push(na('winning', 'NOVA did not answer'));
   L.push('');
@@ -584,17 +610,17 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   const p = report.plan;
   if (p && p.known) {
     const rag = p.rag || planRag(p.open.length, p.overdue.length);
-    L.push(`- **Plan status: ${light(rag.rag)} ${String(rag.rag).toUpperCase()}** — ${p.overdue.length} of ${p.open.length} open actions past due.`);
-    L.push(`- **Completed this week: ${p.completedThisWeek ?? p.doneThisWeek.length}.** ${p.totals.done} of ${p.totals.mine} done overall.`);
-    for (const d of p.doneThisWeek) L.push(`- Delivered this week: ${d.id} — ${d.action}`);
-    for (const o of p.overdue.slice(0, 5)) L.push(`- Past due (${o.dueText}): ${o.id} — ${o.action}${o.percent !== null ? ` (${o.percent}%)` : ''}`);
+    L.item(IK.planStatus(), `- **Plan status: ${light(rag.rag)} ${String(rag.rag).toUpperCase()}** — ${p.overdue.length} of ${p.open.length} open actions past due.`);
+    L.item(IK.planCompleted(), `- **Completed this week: ${p.completedThisWeek ?? p.doneThisWeek.length}.** ${p.totals.done} of ${p.totals.mine} done overall.`);
+    for (const d of p.doneThisWeek) L.item(IK.planDone(d), `- Delivered this week: ${d.id} — ${d.action}`);
+    for (const o of p.overdue.slice(0, 5)) L.item(IK.planOverdue(o), `- Past due (${o.dueText}): ${o.id} — ${o.action}${o.percent !== null ? ` (${o.percent}%)` : ''}`);
   } else L.push(`- Not available — ${report.gapsBySection.plan || 'VANTAGE did not answer'}`);
   L.push('');
 
   L.cur = 'findings';
   L.push('## Open findings', '');
   if (report.findings && report.findings.length) {
-    for (const f of report.findings) L.push(`- ${f.severity ? `**${f.severity}** — ` : ''}${f.title}${f.foundOn ? ` (since ${shortDate(f.foundOn)})` : ''}`);
+    for (const f of report.findings) L.item(IK.finding(f), `- ${f.severity ? `**${f.severity}** — ` : ''}${f.title}${f.foundOn ? ` (since ${shortDate(f.foundOn)})` : ''}`);
     if (report.findingsOpen > report.findings.length) L.push(`- …and ${report.findingsOpen - report.findings.length} more open.`);
   } else if (report.findings) L.push('- No open findings.');
   else L.push(na('findings', 'VANTAGE did not answer'));
@@ -604,7 +630,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## Leading indicators', '');
   const ld = report.leading;
   if (ld && ld.available) {
-    if (ld.fired.length) for (const i of ld.fired) L.push(`- **${i.title}**${i.change ? ` — ${i.change}` : ''}${i.horizonDays ? ` (useful for ~${i.horizonDays} days, confidence ${i.confidence})` : ''}`);
+    if (ld.fired.length) for (const i of ld.fired) L.item(IK.leading(i), `- **${i.title}**${i.change ? ` — ${i.change}` : ''}${i.horizonDays ? ` (useful for ~${i.horizonDays} days, confidence ${i.confidence})` : ''}`);
     else L.push(`- No early warning this week (${ld.quiet} checks running, all quiet).`);
   } else L.push(na('leading', 'VANTAGE did not answer'));
   L.push('');
@@ -615,7 +641,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   if (sl) {
     for (const [h, list] of [['Highlights', sl.highlights], ['Lowlights', sl.lowlights], ['Blockers', sl.blockers]]) {
       L.push(`**${h}**`);
-      if (list && list.length) for (const x of list) L.push(`- ${x}`);
+      if (list && list.length) for (const x of list) L.item(IK.slm(h, x), `- ${x}`);
       else L.push('- None.');
     }
   } else L.push(na('slm', 'no meeting note found'));
@@ -629,7 +655,19 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
     for (const g of report.gaps) L.push(`- ${g.source}: ${g.why}`);
     L.push('');
   }
-  return L.rows.filter(([k]) => !k || !excluded.has(k)).map(([, x]) => x).join('\n');
+  // A section whose every item Nick left out goes whole, heading and all: a
+  // heading over nothing reads as "nothing happened", which is not what he said.
+  const counts = new Map();
+  for (const [sec, , key] of L.rows) {
+    if (!sec || !key) continue;
+    const e = counts.get(sec) || { all: 0, out: 0 };
+    e.all += 1; if (exItems.has(key)) e.out += 1;
+    counts.set(sec, e);
+  }
+  const emptied = new Set([...counts].filter(([, e]) => e.out === e.all).map(([sec]) => sec));
+  return L.rows
+    .filter(([sec, , key]) => (!sec || (!excluded.has(sec) && !emptied.has(sec))) && (!key || !exItems.has(key)))
+    .map(([, x]) => x).join('\n');
 }
 
 // ── Gather (I/O) ─────────────────────────────────────────────────────────────
@@ -728,7 +766,7 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
   const leading = leadRaw ? {
     available: leadRaw.available !== false, asOf: leadRaw.asOf || null,
     fired: (leadRaw.indicators || []).filter((i) => i.shadow !== true).map((i) => ({
-      title: i.title, severity: i.severity || null, change: i.change || null, horizonDays: i.horizonDays ?? null,
+      key: i.key || null, title: i.title, severity: i.severity || null, change: i.change || null, horizonDays: i.horizonDays ?? null,
       confidence: i.confidence ? i.confidence.level : null, action: i.action || null,
     })),
     quiet: Array.isArray(leadRaw.quiet) ? leadRaw.quiet.length : 0,

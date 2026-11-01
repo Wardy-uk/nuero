@@ -372,3 +372,61 @@ test("a red whose measure was replaced is never carried as 'delivered green'", (
   const report = { verdicts: { reds: [] }, carried: [c] };
   assert.deepEqual(soap.blockers(report, soap.emptyManual()), [], 'a replaced measure asks for no why');
 });
+
+// ── Per-item include / exclude (1 Nov 2026) ─────────────────────────────────
+
+const { itemKey: IK, customerTickets } = require('../../shared/soap-items.cjs');
+
+function itemReport() {
+  return {
+    kind: 'final', from: '2026-10-19', to: '2026-10-25', upTo: '2026-10-25', carried: [], gaps: [], gapsBySection: {},
+    verdicts: { success: [{ key: 's1', text: 'FRT green' }, { key: 's2', text: 'CSAT up' }], star: null, ambers: [{ key: 'a1', text: 'Tier 2 slipping' }], reds: [{ key: 'r1', text: 'Dev backlog' }] },
+    customers: { status: 'ok', generatedAt: '2026-10-30T16:58:07Z', rows: [
+      { rank: 1, bcAccountNumber: 'CU1', name: 'Roger Coupe', why: '2 of 2 current tickets unhappy', open: 2, openDev: 1, last30Days: 2 },
+      { rank: 2, bcAccountNumber: 'CU2', name: 'Shinerocks', why: '2 of 2 current tickets unhappy', open: 0, openDev: 0, last30Days: 2 },
+    ] },
+    leading: { available: true, fired: [{ key: 'T2:nt_cc', title: 'CC incidents drifting' }], quiet: 3 },
+  };
+}
+
+test('a single line Nick unticks leaves the email; the rest of its section stays', () => {
+  const m = { ...soap.emptyManual(), reds: { r1: { action: 'x' } }, excludedItems: [IK.success({ key: 's2' }), IK.customer({ bcAccountNumber: 'CU2' })] };
+  const md = soap.render(itemReport(), m);
+  assert.match(md, /FRT green/);
+  assert.doesNotMatch(md, /CSAT up/, 'the unticked success line is gone');
+  assert.match(md, /Roger Coupe/);
+  assert.doesNotMatch(md, /Shinerocks/, 'the unticked customer is gone');
+});
+
+test('a section whose every item is unticked goes whole — no heading over nothing', () => {
+  const m = { ...soap.emptyManual(), reds: { r1: { action: 'x' } }, excludedItems: [IK.leading({ key: 'T2:nt_cc' })] };
+  const md = soap.render(itemReport(), m);
+  assert.doesNotMatch(md, /Leading indicators/);
+  assert.match(md, /Turning amber/, 'other sections untouched');
+});
+
+test('an unticked red needs no action and an unticked still-red needs no why', () => {
+  const report = { verdicts: { reds: [{ key: 'r1', text: 'Red one' }] }, carried: [{ key: 'c1', text: 'Old', green: false }] };
+  assert.equal(soap.blockers(report, soap.emptyManual()).length, 2);
+  const m = { ...soap.emptyManual(), excludedItems: [IK.red({ key: 'r1' }), IK.carried({ key: 'c1' })] };
+  assert.deepEqual(soap.blockers(report, m), []);
+});
+
+test('excludedItems: kept per week; a key naming no section is refused, never dropped', () => {
+  const ok = soap.setManual('2026-10-19', { excludedItems: [IK.customer({ bcAccountNumber: 'CU2' }), IK.customer({ bcAccountNumber: 'CU2' })] });
+  assert.deepEqual(ok.excludedItems, ['customers:CU2']);
+  assert.throws(() => soap.setManual('2026-10-19', { excludedItems: ['nonsense:1'] }), /unknown item key/);
+  assert.throws(() => soap.setManual('2026-10-19', { excludedItems: ['customers'] }), /unknown item key/);
+  assert.throws(() => soap.setManual('2026-10-19', { excludedItems: 'customers:CU2' }), /list of item keys/);
+  assert.deepEqual(soap.getManual('2026-10-19').excludedItems, ['customers:CU2'], 'a refused save changes nothing');
+  assert.deepEqual(soap.setManual('2026-10-19', { notes: 'n' }).excludedItems, ['customers:CU2'], 'omitted leaves it alone');
+});
+
+test('worst customers say how their open tickets split between Support and Development', () => {
+  assert.equal(customerTickets({ open: 2, openDev: 1, last30Days: 2 }), '2 open now (1 Support, 1 Development) · 2 raised in the last 30 days');
+  assert.equal(customerTickets({ open: 0, openDev: 0, last30Days: 2 }), 'none open now · 2 raised in the last 30 days');
+  assert.equal(customerTickets({ open: 3, last30Days: null }), '3 open now', 'a split NOVA did not send is not shown as 0 Development');
+  assert.equal(customerTickets({}), null);
+  const md = soap.render(itemReport(), { ...soap.emptyManual(), reds: { r1: { action: 'x' } } });
+  assert.match(md, /Roger Coupe\*\* — 2 of 2 current tickets unhappy\. Tickets: 2 open now \(1 Support, 1 Development\)/);
+});

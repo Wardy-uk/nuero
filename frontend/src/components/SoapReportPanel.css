@@ -50,3 +50,9 @@
 .soap-dist-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .soap-dist-add input { flex: 1 1 220px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font: inherit; font-size: 0.9rem; }
 .soap-btn--small { padding: 4px 10px; font-size: 0.8rem; }
+
+/* One line's own include box (1 Nov 2026): unticked = left out of the report. */
+.soap-inc { margin: 0 6px 0 0; vertical-align: middle; cursor: pointer; }
+.soap-inc-cell { width: 1.5em; }
+.soap-item--out { opacity: 0.45; text-decoration: line-through; }
+.soap-item--out .soap-inc { opacity: 1; }

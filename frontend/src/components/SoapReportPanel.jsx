@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
+import soapItems from '../../../shared/soap-items.cjs';
 import './SoapReportPanel.css';
+
+const { itemKey: IK, customerTickets } = soapItems;
 
 // ── SOAP report — the Monday debrief for Chris, Ricky and Liam (15 Oct 2026) ─
 //
@@ -49,6 +52,23 @@ function Sec({ k, title, className, draft, setDraft, locked, children }) {
   );
 }
 
+// One line of the report with its own "include" box (1 Nov 2026). Unticked, the
+// line is left out of the email and the vault note; the key comes from
+// shared/soap-items.cjs, the same one the server drops.
+const ItemCtx = createContext(null);
+function It({ id, as: Tag = 'li', children }) {
+  const c = useContext(ItemCtx);
+  const off = !!c && (c.draft.excludedItems || []).includes(id);
+  const toggle = (e) => c.setDraft((d) => {
+    const cur = new Set(d.excludedItems || []);
+    if (e.target.checked) cur.delete(id); else cur.add(id);
+    return { ...d, excludedItems: [...cur] };
+  });
+  const box = c && <input type="checkbox" className="soap-inc" title={off ? 'Left out of the report — tick to include' : 'In the report — untick to leave it out'} checked={!off} disabled={c.locked} onChange={toggle} />;
+  if (Tag === 'tr') return <tr className={off ? 'soap-item--out' : undefined}><td className="soap-inc-cell">{box}</td>{children}</tr>;
+  return <Tag className={off ? 'soap-item--out' : undefined}>{box}{children}</Tag>;
+}
+
 function Gap({ text }) {
   return <p className="soap-gap">Not available — {text}</p>;
 }
@@ -77,6 +97,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
   const setCarried = (key, field, val) => setDraft((d) => ({ ...d, carried: { ...d.carried, [key]: { ...(d.carried[key] || {}), [field]: val } } }));
 
   return (
+    <ItemCtx.Provider value={{ draft, setDraft, locked }}>
     <div className="soap-body">
 
       <div className="soap-head">
@@ -105,7 +126,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
 
       <Sec k="success" title="✅ Success" {...secProps}>
         {vd.success.length || (v.fixes && v.fixes.fixed.length)
-          ? <ul>{vd.success.map((s) => <li key={s.key}>{s.text}</li>)}{((v.fixes && v.fixes.fixed) || []).map((f) => <li key={`fix-${f.id}`}>Fixed: {f.title} — {f.problem} ({f.systemLabel}{f.fixedIn ? ` ${f.fixedIn}` : ''})</li>)}</ul>
+          ? <ul>{vd.success.map((s) => <It key={s.key} id={IK.success(s)}>{s.text}</It>)}{((v.fixes && v.fixes.fixed) || []).map((f) => <It key={`fix-${f.id}`} id={IK.fixed(f)}>Fixed: {f.title} — {f.problem} ({f.systemLabel}{f.fixedIn ? ` ${f.fixedIn}` : ''})</It>)}</ul>
           : <p className="soap-meta">Nothing met its mark this week.</p>}
       </Sec>
 
@@ -115,16 +136,18 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       </Sec>
 
       <Sec k="amber" title="🟠 Turning amber" className="soap-section--amber" {...secProps}>
-        {vd.ambers.length ? <ul>{vd.ambers.map((a) => <li key={a.key}>{a.text}</li>)}</ul> : <p className="soap-meta">Nothing turning amber.</p>}
+        {vd.ambers.length ? <ul>{vd.ambers.map((a) => <It key={a.key} id={IK.amber(a)}>{a.text}</It>)}</ul> : <p className="soap-meta">Nothing turning amber.</p>}
       </Sec>
 
       <Sec k="red" title="🔴 Red — and what you will do" className="soap-section--red" {...secProps}>
         {vd.reds.length ? vd.reds.map((x) => (
           <div key={x.key} className="soap-red">
-            <p><strong>{x.text}</strong>{x.detail ? <span className="soap-meta"> — {x.detail}</span> : null}</p>
-            <label>What I will do to make it green by next Monday
-              <textarea rows={2} value={(draft.reds[x.key] && draft.reds[x.key].action) || ''} onChange={(e) => setRed(x.key, e.target.value)} />
-            </label>
+            <It as="p" id={IK.red(x)}><strong>{x.text}</strong>{x.detail ? <span className="soap-meta"> — {x.detail}</span> : null}</It>
+            {!(draft.excludedItems || []).includes(IK.red(x)) && (
+              <label>What I will do to make it green by next Monday
+                <textarea rows={2} value={(draft.reds[x.key] && draft.reds[x.key].action) || ''} onChange={(e) => setRed(x.key, e.target.value)} />
+              </label>
+            )}
           </div>
         )) : <p className="soap-meta">Nothing red.</p>}
       </Sec>
@@ -133,8 +156,8 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         <Sec k="carried" title="Last week’s reds" {...secProps}>
           {r.carried.map((c) => (
             <div key={c.key} className="soap-red">
-              <p>{c.green ? '🟢 Delivered green: ' : c.retired ? '⚪ ' : '🔴 Still red: '}<strong>{c.text}</strong>{c.retired ? ` — ${c.retired}` : ''}</p>
-              {!c.green && !c.retired && (
+              <It as="p" id={IK.carried(c)}>{c.green ? '🟢 Delivered green: ' : c.retired ? '⚪ ' : '🔴 Still red: '}<strong>{c.text}</strong>{c.retired ? ` — ${c.retired}` : ''}</It>
+              {!c.green && !c.retired && !(draft.excludedItems || []).includes(IK.carried(c)) && (
                 <label>Why it isn’t green
                   <textarea rows={2} value={(draft.carried[c.key] && draft.carried[c.key].why) || ''} onChange={(e) => setCarried(c.key, 'why', e.target.value)} />
                 </label>
@@ -148,14 +171,14 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         {r.perQueue && r.perQueue.length ? (
           <>
             <table className="soap-table">
-              <thead><tr><th>Queue</th><th>This week</th><th>Last week</th><th>Target</th></tr></thead>
+              <thead><tr><th /><th>Queue</th><th>This week</th><th>Last week</th><th>Target</th></tr></thead>
               <tbody>{r.perQueue.map((q) => (
-                <tr key={q.key}>
+                <It as="tr" key={q.key} id={IK.perQueue(q)}>
                   <td>{q.label}</td>
                   <td>{LIGHT[q.rag] || ''} {q.value == null ? 'no data' : `${q.value}%`}</td>
                   <td>{q.was == null ? 'no data' : `${q.was}%`}</td>
                   <td>{q.target != null ? `${q.target}%` : '—'}</td>
-                </tr>
+                </It>
               ))}</tbody>
             </table>
             <p className="soap-meta">“no data” means the queue solved nothing that week.</p>
@@ -166,8 +189,8 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="slaDaily" title="SLA adherence, day on day (CC + T2 + Production)" {...secProps}>
         {r.slaDaily && r.slaDaily.length ? (
           <table className="soap-table">
-            <thead><tr><th>Day</th><th>FRT</th><th>Resolution</th></tr></thead>
-            <tbody>{r.slaDaily.map((d) => <tr key={d.day}><td>{d.label}</td><td>{pct(d.frt)}</td><td>{pct(d.res)}</td></tr>)}</tbody>
+            <thead><tr><th /><th>Day</th><th>FRT</th><th>Resolution</th></tr></thead>
+            <tbody>{r.slaDaily.map((d) => <It as="tr" key={d.day} id={IK.slaDaily(d)}><td>{d.label}</td><td>{pct(d.frt)}</td><td>{pct(d.res)}</td></It>)}</tbody>
           </table>
         ) : <Gap text={g.sla || 'no daily SLA figures'} />}
       </Sec>
@@ -176,9 +199,9 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         {r.ageing && r.ageing.length ? (
           <>
             <table className="soap-table">
-              <thead><tr><th>Queue</th><th>Days</th><th>Target</th><th>Over by</th></tr></thead>
+              <thead><tr><th /><th>Queue</th><th>Days</th><th>Target</th><th>Over by</th></tr></thead>
               <tbody>{r.ageing.map((a) => (
-                <tr key={a.kpi}><td>{String(a.kpi).replace(/^Oldest actionable \(days\):\s*/i, '')}</td><td>{a.value}</td><td>{a.target}</td><td>{a.ratio}×</td></tr>
+                <It as="tr" key={a.kpi} id={IK.ageing(a)}><td>{String(a.kpi).replace(/^Oldest actionable \(days\):\s*/i, '')}</td><td>{a.value}</td><td>{a.target}</td><td>{a.ratio}×</td></It>
               ))}</tbody>
             </table>
             <p className="soap-meta">NOVA advises confirming extreme figures are genuine backlog, not a due-date configuration artefact.</p>
@@ -189,21 +212,21 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="volumes" title="Volumes and backlog" {...secProps}>
         {r.volumes && r.volumes.length ? (
           <table className="soap-table">
-            <thead><tr><th></th><th>This week</th><th>Last week</th></tr></thead>
+            <thead><tr><th /><th></th><th>This week</th><th>Last week</th></tr></thead>
             <tbody>{r.volumes.map((v2) => (
-              <tr key={v2.name}><td>{v2.label}</td><td>{v2.now == null ? 'no data' : v2.now}</td><td>{v2.was == null ? 'no data' : v2.was}</td></tr>
+              <It as="tr" key={v2.name} id={IK.volume(v2)}><td>{v2.label}</td><td>{v2.now == null ? 'no data' : v2.now}</td><td>{v2.was == null ? 'no data' : v2.was}</td></It>
             ))}</tbody>
           </table>
         ) : <Gap text={g.sla || 'NOVA did not answer'} />}
       </Sec>
 
       <Sec k="csat" title="CSAT and sentiment" {...secProps}>
-        {r.csat && r.csat.length ? <ul>{r.csat.map((c) => <li key={c.key || c.label}>{c.label}: {c.now} (last week {c.was}) {c.delta}</li>)}</ul> : <Gap text={g.kpi || 'NOVA did not answer'} />}
+        {r.csat && r.csat.length ? <ul>{r.csat.map((c) => <It key={c.key || c.label} id={IK.csat(c)}>{c.label}: {c.now} (last week {c.was}) {c.delta}</It>)}</ul> : <Gap text={g.kpi || 'NOVA did not answer'} />}
         {r.sentiment ? (
           <ul>
-            {r.sentiment.survey && <li>Customer survey (7 days): {r.sentiment.survey.responded} replies from {r.sentiment.survey.sent} sent ({r.sentiment.survey.ratePct}%){r.sentiment.survey.thin ? ' — too few to quote a score' : ''}</li>}
-            {r.sentiment.tickets && <li>Sentiment on problem tickets: {r.sentiment.tickets.scored} scored, {r.sentiment.tickets.negative} negative{r.sentiment.tickets.average != null ? `, average ${r.sentiment.tickets.average}` : ''}</li>}
-            {r.sentiment.team && <li>Team: {r.sentiment.team.title} — average {r.sentiment.team.avg} from {r.sentiment.team.responses} responses</li>}
+            {r.sentiment.survey && <It id={IK.sentiment('survey')}>Customer survey (7 days): {r.sentiment.survey.responded} replies from {r.sentiment.survey.sent} sent ({r.sentiment.survey.ratePct}%){r.sentiment.survey.thin ? ' — too few to quote a score' : ''}</It>}
+            {r.sentiment.tickets && <It id={IK.sentiment('tickets')}>Sentiment on problem tickets: {r.sentiment.tickets.scored} scored, {r.sentiment.tickets.negative} negative{r.sentiment.tickets.average != null ? `, average ${r.sentiment.tickets.average}` : ''}</It>}
+            {r.sentiment.team && <It id={IK.sentiment('team')}>Team: {r.sentiment.team.title} — average {r.sentiment.team.avg} from {r.sentiment.team.responses} responses</It>}
             {r.sentiment.unavailable.length > 0 && <li className="soap-gap">Not read: {r.sentiment.unavailable.join(', ')}</li>}
           </ul>
         ) : <Gap text={g.sentiment || 'NOVA did not answer'} />}
@@ -212,13 +235,13 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="agents" title="Agents" {...secProps}>
         {r.leaderboard && r.leaderboard.top ? (
           <>
-            <p>Top: <strong>{r.leaderboard.top.agentName}</strong></p>
+            <It as="p" id={IK.agent('top')}>Top: <strong>{r.leaderboard.top.agentName}</strong></It>
             {r.leaderboard.weakest && (
               <>
-                <p>Least performing: <strong>{r.leaderboard.weakest.agentName}</strong>
+                <It as="p" id={IK.agent('weakest')}>Least performing: <strong>{r.leaderboard.weakest.agentName}</strong>
                   {r.leaderboard.weakest.solved != null ? ` · ${r.leaderboard.weakest.solved} solved` : ''}
                   {r.leaderboard.weakest.slaCompliancePct != null ? ` · SLA ${r.leaderboard.weakest.slaCompliancePct}%` : ''}
-                  {` · QA ${r.leaderboard.weakest.qaOverall != null ? r.leaderboard.weakest.qaOverall : '—'}`}</p>
+                  {` · QA ${r.leaderboard.weakest.qaOverall != null ? r.leaderboard.weakest.qaOverall : '—'}`}</It>
                 <label>Your commentary
                   <textarea rows={2} value={draft.weakest || ''} onChange={(e) => setDraft((d) => ({ ...d, weakest: e.target.value }))} />
                 </label>
@@ -232,7 +255,10 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
         {r.customers && r.customers.rows && r.customers.rows.length ? (
           <>
             <p className="soap-meta">As at {when(r.customers.generatedAt)}, in NOVA’s order{r.customers.stale ? ' — NOVA says this list is stale' : ''}.</p>
-            <ol>{r.customers.rows.map((c) => <li key={c.bcAccountNumber || c.name}><strong>{c.name}</strong>{c.why ? ` — ${c.why}` : ''}</li>)}</ol>
+            <ol>{r.customers.rows.map((c) => {
+              const t = customerTickets(c);
+              return <It key={c.bcAccountNumber || c.name} id={IK.customer(c)}><strong>{c.name}</strong>{c.why ? ` — ${c.why}` : ''}{t ? <span className="soap-meta">. Tickets: {t}</span> : null}</It>;
+            })}</ol>
           </>
         ) : r.customers && (r.customers.status === 'none_qualify' || r.customers.status === 'stale')
           ? <p className="soap-meta">No customer has 2 or more unhappy current tickets (Frustrated or worse){r.customers.stale ? ' (NOVA says this list is stale)' : ''}.</p>
@@ -241,7 +267,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
 
       <Sec k="winning" title="Customers winning after support" {...secProps}>
         {r.winning && r.winning.rows && r.winning.rows.length
-          ? <ol>{r.winning.rows.map((c) => <li key={c.bcAccountNumber || c.name}><strong>{c.name}</strong> — {c.why}</li>)}</ol>
+          ? <ol>{r.winning.rows.map((c) => <It key={c.bcAccountNumber || c.name} id={IK.winning(c)}><strong>{c.name}</strong> — {c.why}</It>)}</ol>
           : r.winning && r.winning.status === 'none_qualify'
             ? <p className="soap-meta">No customer had 2 or more tickets resolved this week ending better than they started.</p>
             : <Gap text={g.winning || 'NOVA did not answer'} />}
@@ -250,10 +276,10 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="plan" title="Improvement initiatives" {...secProps}>
         {r.plan && r.plan.known ? (
           <ul>
-            {r.plan.rag && <li><strong>Plan status: {LIGHT[r.plan.rag.rag]} {String(r.plan.rag.rag).toUpperCase()}</strong> — {r.plan.overdue.length} of {r.plan.open.length} open actions past due</li>}
-            <li><strong>Completed this week: {r.plan.completedThisWeek != null ? r.plan.completedThisWeek : r.plan.doneThisWeek.length}</strong> · {r.plan.totals.done} of {r.plan.totals.mine} done overall</li>
-            {r.plan.doneThisWeek.map((d) => <li key={`d${d.id}`}>Delivered this week: {d.id} — {d.action}</li>)}
-            {r.plan.overdue.slice(0, 5).map((o) => <li key={`o${o.id}`}>Past due ({o.dueText}): {o.id} — {o.action}{o.percent != null ? ` (${o.percent}%)` : ''}</li>)}
+            {r.plan.rag && <It id={IK.planStatus()}><strong>Plan status: {LIGHT[r.plan.rag.rag]} {String(r.plan.rag.rag).toUpperCase()}</strong> — {r.plan.overdue.length} of {r.plan.open.length} open actions past due</It>}
+            <It id={IK.planCompleted()}><strong>Completed this week: {r.plan.completedThisWeek != null ? r.plan.completedThisWeek : r.plan.doneThisWeek.length}</strong> · {r.plan.totals.done} of {r.plan.totals.mine} done overall</It>
+            {r.plan.doneThisWeek.map((d) => <It key={`d${d.id}`} id={IK.planDone(d)}>Delivered this week: {d.id} — {d.action}</It>)}
+            {r.plan.overdue.slice(0, 5).map((o) => <It key={`o${o.id}`} id={IK.planOverdue(o)}>Past due ({o.dueText}): {o.id} — {o.action}{o.percent != null ? ` (${o.percent}%)` : ''}</It>)}
           </ul>
         ) : <Gap text={g.plan || 'VANTAGE did not answer'} />}
       </Sec>
@@ -261,7 +287,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="findings" title="Open findings" {...secProps}>
         {r.findings && r.findings.length ? (
           <ul>
-            {r.findings.map((f) => <li key={f.id}>{f.severity ? <strong>{f.severity} — </strong> : null}{f.title}{f.foundOn ? <span className="soap-meta"> (since {f.foundOn})</span> : null}</li>)}
+            {r.findings.map((f) => <It key={f.id} id={IK.finding(f)}>{f.severity ? <strong>{f.severity} — </strong> : null}{f.title}{f.foundOn ? <span className="soap-meta"> (since {f.foundOn})</span> : null}</It>)}
             {r.findingsOpen > r.findings.length && <li className="soap-meta">…and {r.findingsOpen - r.findings.length} more open in VANTAGE</li>}
           </ul>
         ) : r.findings ? <p className="soap-meta">No open findings.</p> : <Gap text={g.findings || 'VANTAGE did not answer'} />}
@@ -270,14 +296,14 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="leading" title="Leading indicators" {...secProps}>
         {r.leading && r.leading.available ? (
           r.leading.fired.length
-            ? <ul>{r.leading.fired.map((i, k) => <li key={k}><strong>{i.title}</strong>{i.change ? ` — ${i.change}` : ''}{i.horizonDays ? <span className="soap-meta"> (useful for ~{i.horizonDays} days, confidence {i.confidence})</span> : null}</li>)}</ul>
+            ? <ul>{r.leading.fired.map((i, k) => <It key={k} id={IK.leading(i)}><strong>{i.title}</strong>{i.change ? ` — ${i.change}` : ''}{i.horizonDays ? <span className="soap-meta"> (useful for ~{i.horizonDays} days, confidence {i.confidence})</span> : null}</It>)}</ul>
             : <p className="soap-meta">No early warning this week ({r.leading.quiet} checks running, all quiet).</p>
         ) : <Gap text={g.leading || 'VANTAGE did not answer'} />}
       </Sec>
 
       <Sec k="slm" title={`Friday Support Leadership Meeting${r.slm && (r.slm.date || (/^\d{4}-\d{2}-\d{2}/.exec(r.slm.note || '') || [])[0]) ? ` — ${r.slm.date || r.slm.note.slice(0, 10)}` : ''}`} {...secProps}>
         {r.slm ? [['Highlights', r.slm.highlights], ['Lowlights', r.slm.lowlights], ['Blockers', r.slm.blockers]].map(([h, list]) => (
-          <div key={h}><p><strong>{h}</strong></p>{list && list.length ? <ul>{list.map((x, k) => <li key={k}>{x}</li>)}</ul> : <p className="soap-meta">None.</p>}</div>
+          <div key={h}><p><strong>{h}</strong></p>{list && list.length ? <ul>{list.map((x, k) => <It key={k} id={IK.slm(h, x)}>{x}</It>)}</ul> : <p className="soap-meta">None.</p>}</div>
         )) : <Gap text={g.slm || 'no meeting note found'} />}
       </Sec>
 
@@ -319,6 +345,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       {data.recipients.length > 0 && <p className="soap-meta">Goes to {data.recipients.map((x) => `${x.name} <${x.email}>`).join(' and ')}.</p>}
       {send && <p className="soap-meta">Send ({send.target && send.target.kind === 'final' ? 'full week' : 'provisional'}): <strong>{STATUS_WORDS[send.status] || send.status}</strong>{send.outcomeDetail ? ` — ${send.outcomeDetail}` : ''}</p>}
     </div>
+    </ItemCtx.Provider>
   );
 }
 
@@ -379,7 +406,7 @@ function Distribution({ onChanged }) {
   );
 }
 
-const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '', intro: m?.intro || '', excluded: [...(m?.excluded || [])] });
+const asDraft = (m) => ({ reds: { ...(m?.reds || {}) }, carried: { ...(m?.carried || {}) }, weakest: m?.weakest || '', notes: m?.notes || '', intro: m?.intro || '', excluded: [...(m?.excluded || [])], excludedItems: [...(m?.excludedItems || [])] });
 
 export default function SoapReportPanel() {
   const [data, setData] = useState(null);
