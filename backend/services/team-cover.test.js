@@ -81,6 +81,12 @@ test('the live 1 Nov shape: Naomi and Zoe off 3–6 Nov is ONE Customer Care cla
   assert.deepEqual(cc[0].people.sort(), ['Naomi Wentworth', 'Zoe Rees']);
 });
 
+test('Digital Design is ignored (Nick, 1 Nov 2026): both of them off is no clash', () => {
+  const r = run(['2026-11-10', '2026-11-11'].flatMap(d => [off('Isabel Busk', d), off('Kayleigh Russell', d)]));
+  assert.equal(r.clashes.filter(c => c.pool === 'digitaldesign').length, 0);
+  assert.ok(!(r.teams || []).some(t => t.pool === 'digitaldesign'));
+});
+
 test('merge: a weekend between flagged days does not split; a working-day gap does', () => {
   // Fri 6 + Mon 9 Nov flagged → one clash; Wed 11 flagged after a clear Tue 10 → second clash.
   const days = ['2026-11-06', '2026-11-09', '2026-11-11'];

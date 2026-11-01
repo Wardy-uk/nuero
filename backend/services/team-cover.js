@@ -48,6 +48,10 @@ const MIN_SHARE = 0.4;
 const PUSH_WITHIN_DAYS = 14;
 const PUSH_KEY = 'team_cover_pushed';
 
+// Teams never judged, whatever the roster says. Nick, 1 Nov 2026: "ignore DD —
+// they might not be my team for much longer". Remove the entry to judge them again.
+const IGNORED_POOLS = Object.freeze(new Set(['digitaldesign']));
+
 const POOL_LABELS = Object.freeze({
   support: 'Tier 2',
   customercare: 'Customer Care',
@@ -181,6 +185,7 @@ function assess({ snap, reports = [], holidays = new Set(), now = new Date(), is
     const row = byName.get(String(p.name || '').trim().toLowerCase());
     if (!row) { out.gaps.push(`${p.name} is not in NOVA's roster — their leave cannot be counted.`); continue; }
     if (!row.pool) { out.gaps.push(`${p.name} has no queue in NOVA — not counted in any team.`); continue; }
+    if (IGNORED_POOLS.has(row.pool)) continue;
     scoped.add(row.pool);
   }
 
@@ -336,7 +341,7 @@ async function check({ now = new Date(), deps = {} } = {}) {
 }
 
 module.exports = {
-  WINDOW_DAYS, MIN_OFF, MIN_SHARE, PUSH_WITHIN_DAYS, POOL_LABELS,
+  WINDOW_DAYS, MIN_OFF, MIN_SHARE, PUSH_WITHIN_DAYS, POOL_LABELS, IGNORED_POOLS,
   assess, read, check,
   // pure, pinned
   isThin, mergeDays, windowDays, rangeLabel, planPush,
