@@ -272,6 +272,7 @@ app.use('/api/task-dedupe', require('./routes/task-dedupe'));
 // Same reason, same trap.
 app.use('/api/task-blocks', require('./routes/task-blocks'));
 app.use('/api/day-plan', require('./routes/day-planner'));
+app.use('/api/focus-blocks', require('./routes/focus-blocks'));
 app.use('/api/notion-sync', require('./routes/notion-sync'));
 app.use('/api/feature-flags', require('./routes/feature-flags'));
 app.use('/api/household', require('./routes/household'));

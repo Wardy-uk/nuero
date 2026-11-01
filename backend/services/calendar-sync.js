@@ -182,7 +182,15 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
   // A task block Nick MOVED in Outlook takes its new time (13 Oct 2026). Real
   // Graph ids only — a synthesised id matches no block, but say nothing either.
   if (!events.some((e) => e && typeof e.id === 'string' && e.id.startsWith('graph-'))) {
-    require('./task-blocks').followCalendar(events);
+    const followed = require('./task-blocks').followCalendar(events);
+    // Focus blocks (1 Nov 2026): a real meeting now on top of a not-yet-started
+    // block slides it to the next free slot today (or drops it, and says so).
+    // A block Nick moved himself is remembered and never moved. Never fails the sync.
+    try {
+      await require('./focus-blocks').afterCalendarSync({ moves: (followed && followed.moves) || [] });
+    } catch (e) {
+      console.warn('[CalendarSync] focus blocks could not follow the diary:', e.message);
+    }
   }
 
   // The cache write has committed: that is what success means for this source.

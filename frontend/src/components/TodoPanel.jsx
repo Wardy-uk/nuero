@@ -1427,6 +1427,10 @@ export function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch
           {taskIdBadge(todo) && (
             <span className="todo-task-id" title="NEURO task id — quote this to SAiM or in a commit">{taskIdBadge(todo)}</span>
           )}
+          {/* The focus block this task is being worked in (1 Nov 2026). */}
+          {todo.inFocusBlock && (
+            <span className="todo-task-id" title="You picked this in a focus block">in focus block until {todo.inFocusBlock.until}</span>
+          )}
           {sizeOf(todo.estimateMinutes) && (
             <span className="todo-task-id" title={`Size ${sizeOf(todo.estimateMinutes)}: estimated ${todo.estimateMinutes} min`}>{sizeOf(todo.estimateMinutes)}</span>
           )}

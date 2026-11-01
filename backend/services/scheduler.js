@@ -1480,6 +1480,23 @@ function start() {
       why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
       run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
     });
+    // Focus blocks (1 Nov 2026): the start prompt, two minutes in, five
+    // minutes left, the end check-in, and the held-push summary. Every minute;
+    // each moment is claimed in its own ledger so a restart fires nothing
+    // twice, and with no block near it is one query. Here (not
+    // registerDurableJobs) because it pushes and writes to Outlook.
+    require('./runtime-jobs').defineJob({
+      name: 'focus-blocks',
+      cron: '* * * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 5 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 60 * 1000,
+      lookbackMs: 60 * 60 * 1000,
+      why: "Drive a focus block's moments: ready, start prompt, two-minute check, wind-down, end check-in, and release held pushes.",
+      run: async () => { const r = await require('./focus-blocks').tick(); return { idle: Boolean(r.idle), blocks: r.blocks, fired: r.fired }; },
+    });
     // 12 Oct 2026: car journeys from Life360 history, stored as PENDING for
     // Nick to approve. Reads HA from a cursor, so a missed pass loses nothing
     // while HA still holds the history (~10 days).

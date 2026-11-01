@@ -157,7 +157,8 @@ test('25. no surface calls /api/focus — every caller moved', () => {
     ...walk('saim/backend/src'), 'mcp-server/index.js'];
   assert.ok(files.length > 50, 'positive control: the surfaces were scanned');
   for (const f of files) {
-    assert.doesNotMatch(code(read(f)), /['"`]\/api\/focus/, `${f} still calls /api/focus`);
+    // `(?![-\w])`: /api/focus-blocks (1 Nov 2026) is a different, live route.
+    assert.doesNotMatch(code(read(f)), /['"`]\/api\/focus(?![-\w])/, `${f} still calls /api/focus`);
   }
   // The phone lock screen checks the PIN against the auth endpoint.
   assert.match(code(read('saim/app/src/components/LockScreen.jsx')), /\/api\/auth\/check/);

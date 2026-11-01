@@ -172,6 +172,12 @@ router.get('/', (req, res) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const activeRanked = taskOrder.rankWithOrder(enriched.filter((task) => !task.done), todayStr);
     const ordered = [...activeRanked, ...enriched.filter((task) => task.done)];
+    // "In focus block until HH:MM" (1 Nov 2026): the one task a running focus
+    // block is on. Read from the block's explicit state; never inferred.
+    try {
+      const inBlock = require('../services/focus-blocks').activeFor(new Date());
+      if (inBlock) for (const t of ordered) if (Number(t.task_id) === inBlock.taskId) t.inFocusBlock = { until: inBlock.until, blockId: inBlock.blockId };
+    } catch { /* a chip, never a reason to fail the list */ }
     const triageCount = activeRanked.filter((t) => t.triage && t.triage.missing.length).length;
     // What Nick has said "not today" to. A cheap read of open records — no
     // writes on this path, and a record whose window has already passed is not

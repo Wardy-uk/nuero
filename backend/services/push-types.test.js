@@ -40,6 +40,9 @@ const SUPPRESSIBLE = new Set([
   // Leave guard (21 Oct 2026): a review card and a summary of declines — both
   // can wait for the morning.
   'leave_clashes', 'leave_declined',
+  // Focus blocks (1 Nov 2026): the pushes held during a block, delivered as one
+  // summary at its end. Ordinary, so the governor may hold it like any other.
+  'block_summary',
   // The ambient layer — water, sitting, exercise, a health trend. SUPPRESSIBLE
   // by definition: it is the most interruptible thing SAiM says, and the whole
   // design rests on it respecting quiet hours, the dedupe and the hourly cap.

@@ -29,6 +29,13 @@ export const interactive = {
   // 1 Nov 2026: closing a task on evidence, or saying "not yet", is Nick's call in NEURO.
   post_tasks_by_id_done_evidence_close: "Closing a task because NEURO thinks it looks done is Nick's decision, in NEURO → Tasks.",
   post_tasks_by_id_done_evidence_not_yet: "Telling NEURO a task is not done yet is Nick's answer, in NEURO → Tasks.",
+  // 1 Nov 2026: answering a focus block (pick a task, two minutes in, not now,
+  // the wind-down note, the end check-in) is Nick on his own screen.
+  post_focus_blocks_by_id_choose: 'Picking a task for a focus block starts Nick’s session — he does it on his phone or desktop, not an agent.',
+  post_focus_blocks_by_id_two_minute: 'Carrying on or stopping after two minutes is Nick’s answer, on his own screen.',
+  post_focus_blocks_by_id_not_now: 'Putting a focus block off is Nick’s answer, on his own screen.',
+  post_focus_blocks_by_id_wind_down: 'Noting where he got to in a focus block is Nick’s own note, on his own screen.',
+  post_focus_blocks_by_id_end: 'The end of a focus block (Done / More time / Stuck) is Nick’s answer; Done completes his task.',
   post_prepared_moves_confirm: 'Confirming a prepared move writes to Nick\'s calendar and vault. Only Nick can confirm it, in NEURO.',
   // 22 Oct 2026: task context. Reading, searching and linking/unlinking one item are
   // open to chats (on Nick's explicit word); running the whole-vault scan is his.

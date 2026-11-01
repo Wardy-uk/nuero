@@ -1,0 +1,145 @@
+/* The focus block (1 Nov 2026). Full width of whatever column it sits in;
+   only declared SAiM colours (see saim-palette.test.js). Her light comes from
+   --saim-rgb, so the block moves with her like every other surface. */
+
+.fblock {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #26313f;
+  border-left: 3px solid rgba(var(--saim-rgb, 120, 170, 255), 0.9);
+  border-radius: 10px;
+  background: #1c2530;
+  color: #e6edf3;
+}
+
+.fblock--ready,
+.fblock--notice {
+  border-left-color: #26313f;
+  background: transparent;
+}
+
+.fblock__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.fblock__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b98a8;
+}
+
+.fblock__clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.fblock__basis,
+.fblock__quiet,
+.fblock__cand-step,
+.fblock__cand-ctx {
+  color: #8b98a8;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.fblock__say {
+  margin: 6px 0 4px;
+  font-size: 1.05rem;
+}
+
+.fblock__task {
+  margin: 2px 0 6px;
+  font-weight: 600;
+}
+
+.fblock__cands {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.fblock__cands--quiet li {
+  color: #8b98a8;
+}
+
+.fblock__cand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid #26313f;
+}
+
+.fblock__cand-text {
+  font-weight: 600;
+}
+
+.fblock__cand-big {
+  color: #f0d6a6;
+  font-size: 0.9rem;
+}
+
+.fblock__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.fblock__acts--foot {
+  margin-top: 10px;
+}
+
+.fblock__btn {
+  appearance: none;
+  border: 1px solid #26313f;
+  background: transparent;
+  color: #e6edf3;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.fblock__btn--go {
+  background: rgba(var(--saim-rgb, 120, 170, 255), 0.85);
+  border-color: transparent;
+  color: #04121f;
+  font-weight: 600;
+}
+
+.fblock__btn--quiet {
+  color: #8b98a8;
+}
+
+.fblock__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fblock__input {
+  flex: 1 1 220px;
+  min-width: 0;
+  background: #0b0f14;
+  color: #e6edf3;
+  border: 1px solid #26313f;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+}
+
+.fblock__said {
+  margin: 8px 0 0;
+  color: #e6edf3;
+}

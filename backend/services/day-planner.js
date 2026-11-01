@@ -758,27 +758,27 @@ async function run(windowKey, { now = new Date(), apply = false, force = false }
   try {
     for (const block of draft.blocks) {
       try {
-        const res = await taskBlocks.schedule(block.tasks.map(t => t.id), {
+        // ⚠ THE TIME, NOT THE TASK (1 Nov 2026). 70 blocks booked with a task
+        // fixed at 07:15: 1 finished, 59 aged out. The block is now OPEN — the
+        // ranked tasks above only SIZE it (with the measured multiplier), and
+        // focus-blocks offers the top two at the moment it starts. Nothing is
+        // written back as a task's estimate: the window is sized by
+        // multiplying an assumption, and storing it would launder a guess into
+        // a measurement (#87).
+        const res = await require('./focus-blocks').createOpenBlock({
           date: dateKey,
           startTime: hhmm(block.startMin),
           minutes: block.minutes,
-          // NOT written back as the task's estimate. This window was sized by
-          // multiplying an assumption; storing it would launder a guess into a
-          // measurement, which is the one thing #87 rules out. The real number
-          // comes from the end-of-block prompt, where the answer is known.
-          saveEstimates: false,
+          basis: mult,
           now,
         });
         if (res.ok) {
-          created.push({ blockId: res.blockId ?? null, startTime: hhmm(block.startMin), tasks: block.tasks });
+          created.push({ blockId: res.blockId ?? null, startTime: hhmm(block.startMin), endTime: hhmm(block.startMin + block.minutes), tasks: block.tasks });
           // Stamped per successful create, never batched at the end — a crash
           // mid-run would otherwise duplicate everything on the next pass.
-          stampPlanned(
-            dateKey,
-            windowKey,
-            created.map(c => c.blockId),
-            created.flatMap(c => (c.tasks || []).map(t => Number(t.id)).filter(Number.isFinite)),
-          );
+          // No taskIds: an open block holds no task, so nothing is "planned"
+          // that a later run should leave alone.
+          stampPlanned(dateKey, windowKey, created.map(c => c.blockId), []);
         } else {
           failed.push({ startTime: hhmm(block.startMin), error: res.error });
         }
@@ -816,10 +816,8 @@ function nonWorkingSet() {
 async function announce(window, created, mult, capacity, dateKey) {
   try {
     const webpush = require('./webpush');
-    const lines = created.map(c => {
-      const names = c.tasks.map(t => t.text).join('; ');
-      return `${c.startTime} — ${names}`;
-    });
+    // Open blocks: the time is booked; the task is picked when it starts.
+    const lines = created.map(c => `${c.startTime}${c.endTime ? `–${c.endTime}` : ''} — focus block (I'll offer two tasks when it starts)`);
     const caveat = mult.learned ? '' : ` (durations are a ${mult.multiplier}x guess for now)`;
     // A lighter plan says it is lighter. Silently planning less is
     // indistinguishable from a planner that has stopped finding gaps.

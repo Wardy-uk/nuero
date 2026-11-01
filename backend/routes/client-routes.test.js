@@ -399,7 +399,10 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // the shared views make there — GET /task-context/tasks/<id> — is a GET-only door
 // (neuroProxy READ_ONLY_DOORS), pinned by saim/backend's neuroProxy tests.
 // task-agent (23 Oct 2026): "Do this" is Nick's own surface; TaskAgent renders nothing on the kiosk.
-const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent']);
+// focus-blocks (1 Nov 2026): answering a focus block starts Nick's work, so the
+// kiosk shows the block read-only (it arrives on /api/canonical/now) and the
+// Surface passes no handler there; the route also refuses the kiosk.
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent', 'focus-blocks']);
 
 // EXACT paths a shared view calls only when it is NOT read-only — the kiosk renders
 // those views read-only (platformNow() === 'kiosk'), so the control that calls them

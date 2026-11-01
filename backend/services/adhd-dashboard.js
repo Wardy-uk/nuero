@@ -434,8 +434,15 @@ async function build() {
     console.warn('[ADHD] Live block unavailable:', e.message);
   }
 
+  // The focus block (1 Nov 2026) — the same composition the attention feed
+  // carries, so desktop Now and SAiM show one block one way.
+  let focusBlock = null;
+  try { focusBlock = require('./focus-blocks').view({ now }); }
+  catch (e) { console.warn('[ADHD] Focus block unavailable:', e.message); }
+
   const payload = {
     generatedAt: now.toISOString(),
+    focusBlock,
     dateKey,
     shape: _shape(hour, isWeekend),
     rightNow,

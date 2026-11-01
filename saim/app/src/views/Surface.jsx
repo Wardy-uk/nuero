@@ -384,6 +384,19 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     load();
   }
 
+  // The focus block (1 Nov 2026): Nick's answers go to /api/focus-blocks; the
+  // reply's own words come back on the card. Never on the kiosk (read-only).
+  async function focusBlockAct(blockId, action, body = {}) {
+    let res;
+    try {
+      res = await apiFetch(`/api/focus-blocks/${encodeURIComponent(blockId)}/${action}`, { method: 'POST', body: JSON.stringify(body) });
+    } catch (e) {
+      res = { ok: false, error: e.message };
+    }
+    load({ quiet: true });
+    return res;
+  }
+
   // The router restart question (1 Nov 2026). NEURO re-checks the router is
   // still wedging before it restarts it, and answers in its own words.
   const [routerNote, setRouterNote] = useState(null);
@@ -712,6 +725,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       onAct={act}
       onRoomAct={roomAct}
       onRouterAct={routerAct}
+      onFocusBlock={platformNow() === 'kiosk' ? null : focusBlockAct}
+      onSomethingElse={platformNow() === 'kiosk' ? null : () => onNavigate?.('tasks')}
       onLifeAnswer={lifeAnswer}
       lifeBusy={lifeBusy}
       onDeskOpen={deskReachable === false ? null : deskOpen}

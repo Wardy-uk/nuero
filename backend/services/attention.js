@@ -1699,8 +1699,21 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
     field = null;
   }
 
+  // The focus block (1 Nov 2026): the one running, about to start, or waiting
+  // on its end check-in — with its clock, so desktop Now, SAiM and iOS count
+  // down from ONE composition. A pure read (no table is created on a read).
+  // Null most of the day; never allowed to fail the feed.
+  let focusBlock = null;
+  try {
+    focusBlock = require('./focus-blocks').view({ now });
+  } catch (e) {
+    console.warn('[Attention] focus block unavailable:', e.message);
+    focusBlock = null;
+  }
+
   return {
     generatedAt: now.toISOString(),
+    focusBlock,
     context: shownContext,
     weeklyTarget,
     readiness,

@@ -53,6 +53,12 @@ const OWNERS = Object.freeze({
   teams_mention: SAIM,
   nudge_cleared: SAIM,
   plan_milestone: SAIM,
+  // Focus blocks (1 Nov 2026): the start, its check-ins, and the held summary.
+  block_start: SAIM,
+  block_two_minute: SAIM,
+  block_wind_down: SAIM,
+  block_end: SAIM,
+  block_summary: SAIM,
 
   // ── NEURO: the system, and reports/reviews ready ───────────────────────────
   router_health: NEURO,

@@ -374,7 +374,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 930,
+    "line": 936,
     "description": "DELETE /api/todos/moscow. remove MoSCoW rating for a task",
     "params": [],
     "query": [],
@@ -394,7 +394,7 @@
     "route": "/api/todos/ms-queue/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 464,
+    "line": 470,
     "description": "DELETE /api/todos/ms-queue/:msId.",
     "params": [
       "msId"
@@ -2763,6 +2763,22 @@
     "source": "routes/finance.js",
     "line": 37,
     "description": "GET /api/finance/reconnect. bank feed health per account, as Tally reports it. Keywords: TrueLayer, NatWest, reconnect.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_focus_blocks",
+    "method": "GET",
+    "route": "/api/focus-blocks",
+    "domain": "focus-blocks",
+    "source": "routes/focus-blocks.js",
+    "line": 42,
+    "description": "GET /api/focus-blocks. the block on screen now (focus-block-v1), or null.",
     "params": [],
     "query": [],
     "body": [],
@@ -6162,7 +6178,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 296,
+    "line": 297,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -6689,7 +6705,7 @@
     "route": "/api/todos/focus",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 281,
+    "line": 287,
     "description": "GET /api/todos/focus. smart prioritised shortlist for drill-downs",
     "params": [],
     "query": [
@@ -6709,7 +6725,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 879,
+    "line": 885,
     "description": "GET /api/todos/moscow. MoSCoW ratings, keyed by task id for the tasks NEURO owns",
     "params": [],
     "query": [],
@@ -6725,7 +6741,7 @@
     "route": "/api/todos/moscow/review",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 944,
+    "line": 950,
     "description": "GET /api/todos/moscow/review. untriaged tasks for the swipe review.",
     "params": [],
     "query": [],
@@ -6741,7 +6757,7 @@
     "route": "/api/todos/ms/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 697,
+    "line": 703,
     "description": "GET /api/todos/ms/:msId.",
     "params": [
       "msId"
@@ -6762,7 +6778,7 @@
     "route": "/api/todos/ms-queue",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 443,
+    "line": 449,
     "description": "GET /api/todos/ms-queue.",
     "params": [],
     "query": [],
@@ -7861,7 +7877,7 @@
     "route": "/api/todos/ms/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 762,
+    "line": 768,
     "description": "PATCH /api/todos/ms/:msId.",
     "params": [
       "msId"
@@ -7887,7 +7903,7 @@
     "route": "/api/todos/ms/:msId/local",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 608,
+    "line": 614,
     "description": "PATCH /api/todos/ms/:msId/local.",
     "params": [
       "msId"
@@ -10842,6 +10858,109 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_focus_blocks_by_id_choose",
+    "method": "POST",
+    "route": "/api/focus-blocks/:id/choose",
+    "domain": "focus-blocks",
+    "source": "routes/focus-blocks.js",
+    "line": 48,
+    "description": "POST /api/focus-blocks/:id/choose. pick a task for a focus block: starts a focus session on it.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "force",
+      "smallerStep",
+      "taskId",
+      "twoMinute"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_focus_blocks_by_id_end",
+    "method": "POST",
+    "route": "/api/focus-blocks/:id/end",
+    "domain": "focus-blocks",
+    "source": "routes/focus-blocks.js",
+    "line": 79,
+    "description": "POST /api/focus-blocks/:id/end. the end check-in: done, more time (15/30), or stuck (make it smaller).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "answer",
+      "minutes",
+      "step"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_focus_blocks_by_id_not_now",
+    "method": "POST",
+    "route": "/api/focus-blocks/:id/not-now",
+    "domain": "focus-blocks",
+    "source": "routes/focus-blocks.js",
+    "line": 64,
+    "description": "POST /api/focus-blocks/:id/not-now. not now: slide the focus block later today, else let it go.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_focus_blocks_by_id_two_minute",
+    "method": "POST",
+    "route": "/api/focus-blocks/:id/two-minute",
+    "domain": "focus-blocks",
+    "source": "routes/focus-blocks.js",
+    "line": 56,
+    "description": "POST /api/focus-blocks/:id/two-minute. two minutes in: carry on, or stop there (counts as a start).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "answer"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_focus_blocks_by_id_wind_down",
+    "method": "POST",
+    "route": "/api/focus-blocks/:id/wind-down",
+    "domain": "focus-blocks",
+    "source": "routes/focus-blocks.js",
+    "line": 71,
+    "description": "POST /api/focus-blocks/:id/wind-down. five minutes left: note where you got to (optional).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -16407,7 +16526,7 @@
     "route": "/api/todos/auto-schedule/plan",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 750,
+    "line": 756,
     "description": "POST /api/todos/auto-schedule/plan. auto-schedule, auto schedule, reschedule tasks, spread due dates.",
     "params": [],
     "query": [],
@@ -16427,7 +16546,7 @@
     "route": "/api/todos/complete-ms",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 839,
+    "line": 845,
     "description": "POST /api/todos/complete-ms. complete a Microsoft To-Do/Planner task and",
     "params": [],
     "query": [],
@@ -16447,7 +16566,7 @@
     "route": "/api/todos/lane/defer",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 523,
+    "line": 529,
     "description": "POST /api/todos/lane/defer.",
     "params": [],
     "query": [],
@@ -16467,7 +16586,7 @@
     "route": "/api/todos/lane/undefer",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 573,
+    "line": 579,
     "description": "POST /api/todos/lane/undefer.",
     "params": [],
     "query": [],
@@ -16485,7 +16604,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 908,
+    "line": 914,
     "description": "POST /api/todos/moscow.",
     "params": [],
     "query": [],
@@ -16504,7 +16623,7 @@
     "route": "/api/todos/ms-queue/drain",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 451,
+    "line": 457,
     "description": "POST /api/todos/ms-queue/drain.",
     "params": [],
     "query": [],
@@ -16520,7 +16639,7 @@
     "route": "/api/todos/order",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 669,
+    "line": 675,
     "description": "POST /api/todos/order. drag and drop task order: save the order of one MoSCoW band (keys task:N / ms:id). Keywords: reorder, manual order, priority order.",
     "params": [],
     "query": [],
@@ -16539,7 +16658,7 @@
     "route": "/api/todos/order/reset",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 683,
+    "line": 689,
     "description": "POST /api/todos/order/reset. drop Nick's manual order for one MoSCoW band, so the score orders it again.",
     "params": [],
     "query": [],
@@ -16557,7 +16676,7 @@
     "route": "/api/todos/suggestions/batch",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1172,
+    "line": 1178,
     "description": "POST /api/todos/suggestions/batch. add or dismiss several spotted task",
     "params": [],
     "query": [],
@@ -16576,7 +16695,7 @@
     "route": "/api/todos/suggestions/:actionId/add",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1141,
+    "line": 1147,
     "description": "POST /api/todos/suggestions/:actionId/add. add a spotted task suggestion",
     "params": [
       "actionId"
@@ -16594,7 +16713,7 @@
     "route": "/api/todos/suggestions/:actionId/dismiss",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1156,
+    "line": 1162,
     "description": "POST /api/todos/suggestions/:actionId/dismiss. dismiss a spotted task",
     "params": [
       "actionId"
@@ -16612,7 +16731,7 @@
     "route": "/api/todos/suggestions/:actionId/fields",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 1003,
+    "line": 1009,
     "description": "POST /api/todos/suggestions/:actionId/fields. set the moscow, priority and",
     "params": [
       "actionId"
@@ -16634,7 +16753,7 @@
     "route": "/api/todos/toggle",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 334,
+    "line": 340,
     "description": "POST /api/todos/toggle. toggle a task's done status in the vault",
     "params": [],
     "query": [],
@@ -16653,7 +16772,7 @@
     "route": "/api/todos/wip-ms",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 363,
+    "line": 369,
     "description": "POST /api/todos/wip-ms.",
     "params": [],
     "query": [],

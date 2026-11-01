@@ -63,6 +63,11 @@ const CAPABILITIES = Object.freeze({
   'calendar.leave-decline': { authority: 'A3', effect: "decline an invite Nick did not organise, on a day People HR says he is on leave", machine: 'refuse', approval: 'the leave_auto_decline switch, or a tap on the Leave clashes card', registry: 'external-writes:microsoft.calendar.leave-decline', ledger: true, verification: 'Graph read-back', idempotent: true },
   'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
   'gmail.unsubscribe': { authority: 'A3', effect: "POST a mailing list's own one-click unsubscribe, on Nick's press", machine: 'refuse', approval: 'click', registry: 'external-writes:gmail.unsubscribe', ledger: true, verification: 'http status', idempotent: true },
+  // 1 Nov 2026: Nick's answers to a focus block — pick a task (starts a focus
+  // session, writes the task onto his own attendee-free block), two minutes in,
+  // not now (slides the block), the wind-down note, the end check-in (Done
+  // completes the task). Each is a press on his screen; no machine answers for him.
+  'focus-block.answer': { authority: 'A2', effect: "answer a focus block: start a session on the picked task, slide or let go of the block, note where he got to, Done / More time / Stuck at the end", machine: 'refuse', approval: 'click', registry: null, ledger: false, verification: 'focus_block_state + focus_block_moments', idempotent: 'per answer' },
   'saim.prepared-move': { authority: 'A2', effect: "confirm ONE prepared move: exactly the writes it lists (one solo block, one new note) and nothing else", machine: 'refuse', approval: 'click (intent grant)', registry: null, ledger: true, verification: 'per-step read-back', idempotent: 'per step' },
   // 21 Oct 2026: preparing a PROPOSAL (make ready, defer, decline, answer SAiM's
   // question). Writes only NEURO's own prepared_moves rows — nothing is saved,
@@ -257,6 +262,7 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/task-blocks/:id/tasks/:taskId', 'calendar.solo'),
   R('POST', '/api/task-blocks/sweep', 'calendar.solo'),
   R('POST', '/api/day-plan/apply', 'calendar.solo'),
+  R('POST', '/api/focus-blocks/:id/:verb', 'focus-block.answer'),
   R('POST', '/api/plaud/admin-blocks/apply', 'calendar.solo'),
   // Archiving a transcript moves Nick's notes out of the way — his decision, never a machine's.
   R('POST', '/api/plaud/transcripts/archive', 'vault.write', { machine: 'refuse' }),

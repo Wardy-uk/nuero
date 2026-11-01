@@ -14,6 +14,7 @@ import { surfaceRgb } from './fieldDrive.mjs';
 // would be a second opinion about what she is doing.
 import { labelFor, isActivePhase } from '../../shared/operation-phase.cjs';
 import { nextStep } from './presentation/nextStep.mjs';
+import FocusBlockView from './FocusBlock.jsx';
 import './AttentionSurface.css';
 
 // AttentionSurface — the attention feed, rendered.
@@ -189,6 +190,11 @@ export default function AttentionSurface({
   // Would the shell's onOpen do anything for this card? Unset = yes (the old behaviour).
   // A button that does nothing is not drawn — "Open State of Play" on a phone (25 Oct 2026).
   canOpen = null,
+  // The focus block (1 Nov 2026): `(blockId, action, body) => Promise<{ok,…}>`.
+  // Null (the kiosk) = the block is shown read-only, never a button that fails.
+  onFocusBlock = null,
+  // Opens the task list ("Something else"). Null = not offered.
+  onSomethingElse = null,
   footAside = null,
   footExtra = null,
   // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
@@ -687,6 +693,14 @@ export default function AttentionSurface({
         {routerRestart.note && <p className="surface__recorded-say">{routerRestart.note}</p>}
       </div>
     ) : null;
+    // The focus block leads when there is one — it is the thing to start.
+    const focusEl = data && data.focusBlock ? (
+      <FocusBlockView
+        block={data.focusBlock}
+        onAct={onFocusBlock ? (action, body) => onFocusBlock(data.focusBlock.blockId, action, body) : null}
+        onSomethingElse={onSomethingElse}
+      />
+    ) : null;
     const otherLead = notAttendedEl || sayOverride || beforeSay || (outcome ? (
       <button type="button" className={`surface__outcome surface__outcome--${outcome.tone}`} onClick={() => setOutcome(null)} aria-label="Clear this note">
         <span className="surface__outcomelead">{outcome.lead}</span>
@@ -717,7 +731,7 @@ export default function AttentionSurface({
           onCorrect={onLifeAnswer ? (doing) => onLifeAnswer(doing) : null}
           onNotNow={onLifeAnswer ? () => onLifeAnswer(null) : null}
           correcting={lifeBusy}
-          lead={routerEl ? <>{routerEl}{otherLead}</> : otherLead}
+          lead={(focusEl || routerEl) ? <>{focusEl}{routerEl}{otherLead}</> : otherLead}
           // ⚠ On a WALL the mic is opt-in by URL (`?mic=1`, the tablet's start
           // address): Chromium on the Pi exposes speech recognition with no
           // service behind it, so capability alone offers a control that fails.
@@ -813,6 +827,13 @@ export default function AttentionSurface({
         )}
 
         {askLife && <LifeAsk ask={data.life.ask} onAnswer={onLifeAnswer} busy={lifeBusy} />}
+        {data && data.focusBlock && (
+          <FocusBlockView
+            block={data.focusBlock}
+            onAct={onFocusBlock ? (action, body) => onFocusBlock(data.focusBlock.blockId, action, body) : null}
+            onSomethingElse={onSomethingElse}
+          />
+        )}
         {beforeSay}
 
         {/* ⚠ `--stacked` WHEN THE TRANSITION IS ALSO HERE. The cap below was

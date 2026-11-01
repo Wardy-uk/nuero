@@ -858,6 +858,29 @@ function finish({ completeTask = false, reflection = null } = {}, now = Date.now
   return { ...result, taskCompleted };
 }
 
+/**
+ * End the session for a focus block's own reason (1 Nov 2026).
+ *
+ * `two-minute-stop` — Nick opened it for two minutes and stopped there. That is
+ * a START, and is archived as one (initiation-signals never filters on
+ * endedReason), never as a failure or an abandonment of the work.
+ * `block-ended` — the block's window closed with no answer; the session ends
+ * with it and NOTHING is completed.
+ */
+const BLOCK_END_REASONS = ['two-minute-stop', 'block-ended'];
+function endWith(reason, now = Date.now()) {
+  if (!BLOCK_END_REASONS.includes(reason)) return { ok: false, reason: 'unknown-reason' };
+  const session = _read();
+  if (!session) return { ok: false, reason: 'no-session' };
+  const result = _end(reason, now);
+  try {
+    db.logActivity('focus_session_ended', {
+      sessionId: session.id, taskId: session.taskId, reason, actualMinutes: result.actualMinutes,
+    });
+  } catch {}
+  return result;
+}
+
 function abandon(now = Date.now()) {
   const session = _read();
   if (!session) return { ok: false, reason: 'no-session' };
@@ -871,6 +894,8 @@ function abandon(now = Date.now()) {
 }
 
 module.exports = {
+  endWith,
+  BLOCK_END_REASONS,
   checkIn,
   shrink,
   setNextStep,

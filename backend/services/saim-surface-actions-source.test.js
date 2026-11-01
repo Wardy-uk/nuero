@@ -62,7 +62,8 @@ test('no action falls back to the legacy dismissal — /api/focus is retired', (
   // suppression timer to fall back TO: a card without a record is refused.
   assert.match(phoneSrc, /if \(!card\.recordId\) \{/);
   const code = phoneSrc.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-  assert.doesNotMatch(code, /\/api\/focus/, 'the Surface still calls the retired /api/focus');
+  // `(?![-\w])`: /api/focus-blocks (1 Nov 2026) is a different, live route.
+  assert.doesNotMatch(code, /\/api\/focus(?![-\w])/, 'the Surface still calls the retired /api/focus');
 });
 
 test('the result is described from the response, never implied', () => {

@@ -89,6 +89,14 @@ const ALWAYS_DELIVER = new Set([
   // once if it passes (watched-tickets). Nick's call, 23 Oct 2026 — a missed
   // promise to a customer is the expensive failure.
   'ticket_commitment',
+  // Focus blocks (1 Nov 2026, Nick): the start prompt goes at once, and the
+  // block's own check-ins (two minutes in, five minutes left, the end) are the
+  // block itself — the hourly cap must not eat the one prompt that helps him
+  // start. Blocks only run 09:00–17:30, so quiet hours never apply in practice.
+  'block_start',
+  'block_two_minute',
+  'block_wind_down',
+  'block_end',
   'test',
 ]);
 
@@ -337,6 +345,21 @@ async function sendToAll(title, body, data = {}) {
     data = { ...(data || {}), ...packed };
     delete data.title;
     delete data.body;
+  }
+
+  // ── Gate −1: in a focus block (1 Nov 2026) ─────────────────────────────────
+  // While Nick is working a focus block he picked, an ordinary push is HELD —
+  // kept, not dropped — and the block's end delivers them as one summary.
+  // ⚠ Only on the EXPLICIT state focus-blocks.choose sets (focus-hold), never
+  // inferred from a calendar entry or a running session; ALWAYS_DELIVER and
+  // probes are never held, and the summary itself is never held.
+  if (!PROBE_TYPES.has(data?.type) && !ALWAYS_DELIVER.has(data?.type) && data?.type !== 'block_summary') {
+    const held = require('./focus-hold').holdIfInBlock({ title, body, type: data?.type }, new Date());
+    if (held) {
+      console.log(`[WebPush] Held for the focus block (until ${held.until}): "${title}"`);
+      _record(title, data, 'held', `in focus block until ${held.until}`);
+      return;
+    }
   }
 
   // Both of the returns below were SILENT. A notification NEURO decided to send

@@ -18,6 +18,7 @@ import { useWorkOnly } from '../workOnly';
 // SAiM Home — never a second save path (26 Oct 2026).
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
 import LooksDoneSection from '../../../saim/shared-ui/DoneEvidence.jsx';
+import FocusBlockView from '../../../saim/shared-ui/FocusBlock.jsx';
 import { openInVault } from '../openVault';
 // "Make this ready" after a Now row's own action — the SAME control and /eligible list the phone uses (22 Oct 2026).
 import { desktopCall } from '../desktopCall';
@@ -503,7 +504,23 @@ export default function AdhdPanel({ onNavigate }) {
   if (error) return <div className="adhd"><div className="adhd__card adhd__card--err">{error}</div></div>;
   if (!data) return null;
 
-  const { shape, momentum, winsToday, avoidance, quickWins, session, recovery, signals, blockNow } = data;
+  const { shape, momentum, winsToday, avoidance, quickWins, session, recovery, signals, focusBlock } = data;
+  // The focus block (1 Nov 2026) replaces the old block card for the same
+  // window — one block, said one way.
+  const blockNow = focusBlock && focusBlock.blockId && data.blockNow && data.blockNow.blockId === focusBlock.blockId ? null : data.blockNow;
+  async function focusBlockAct(action, body = {}) {
+    let out;
+    try {
+      const res = await apiFetch(`/api/focus-blocks/${encodeURIComponent(focusBlock.blockId)}/${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      out = await res.json().catch(() => ({ ok: res.ok }));
+    } catch (e) {
+      out = { ok: false, error: e.message };
+    }
+    load();
+    return out;
+  }
   // The task in focus: the running session's, else the running block task, else a block's only task.
   const focusTaskId = focusTaskOf(session && !recovery ? session : null, blockNow);
 
@@ -594,6 +611,14 @@ export default function AdhdPanel({ onNavigate }) {
         window opens; once something IS running, the container below is what
         matters and this shrinks to the line that says so.
       */}
+      {focusBlock && (
+        <FocusBlockView
+          block={focusBlock}
+          onAct={focusBlock.blockId ? focusBlockAct : null}
+          onSomethingElse={onNavigate ? () => onNavigate('todos') : null}
+        />
+      )}
+
       {blockNow && (
         <section className="adhd__block">
           <div className="adhd__block-head">
