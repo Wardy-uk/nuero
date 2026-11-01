@@ -1,0 +1,25 @@
+/* Team cover (1 Nov 2026) — full width, like the rest of Now. */
+.team-cover {
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.team-cover__head h3 { margin: 0; font-size: 14px; color: var(--warning); }
+.team-cover__head p { margin: 2px 0 8px; font-size: 12px; color: var(--text-secondary); }
+.team-cover__list { list-style: none; margin: 0; padding: 0; }
+.team-cover__item { padding: 8px 0 8px 10px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--border); }
+.team-cover__item:last-child { border-bottom: none; }
+.team-cover__item--high { border-left-color: var(--warning); }
+.team-cover__item--medium { border-left-color: var(--accent); }
+.team-cover__title { font-size: 13px; color: var(--text-primary); }
+.team-cover__people { font-size: 13px; color: var(--text-primary); margin-top: 2px; }
+.team-cover__person {
+  background: none; border: none; padding: 0; color: var(--accent); cursor: pointer;
+  font: inherit; text-decoration: underline;
+}
+.team-cover__say { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.team-cover__action { font-size: 12px; color: var(--text-primary); margin-top: 2px; }
+.team-cover__none { font-size: 12px; color: var(--text-secondary); margin: 0; }
+.team-cover__gaps { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--warning); }

@@ -47,6 +47,9 @@ function rankedTodos(filter = 'overdue') {
       moscowSet: t.moscow || null,
       moscowProposed: Boolean(t.moscowProposed),
       estimateMinutes: t.estimateMinutes == null ? null : t.estimateMinutes,
+      // NEURO's suggestions for missing fields (task-proposals) — the phone
+      // shows them with a "?" and a Confirm; never a value.
+      proposals: t.proposals && typeof t.proposals === 'object' ? t.proposals : {},
       household: t.household === 1 || t.household === true ? 1 : 0,
       due_date: t.due_date || null,
       source: t.source || null,

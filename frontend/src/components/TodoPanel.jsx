@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { HandOverHint } from './HandOver';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import { duePresets } from '../../../shared/due-dates.cjs';
@@ -21,6 +22,7 @@ import AutoSchedule from './AutoSchedule.jsx';
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
 import TaskAgent from '../../../saim/shared-ui/TaskAgent.jsx';
 import { DoneEvidenceRow } from '../../../saim/shared-ui/DoneEvidence.jsx';
+import ProposalChips from '../../../saim/shared-ui/ProposalChips.jsx';
 import PreparedMove from '../../../saim/app/src/components/PreparedMove.jsx';
 import { desktopCall } from '../desktopCall';
 import { openInVault } from '../openVault';
@@ -1266,6 +1268,9 @@ function TaskProvenance({ todo, expanded, onRefresh }) {
         </>
       )}
       <JiraRefresh todo={todo} onRefresh={onRefresh} />
+      {p.autoFiled && todo.status !== 'dropped' && (
+        <button className="btn btn-secondary btn-sm" title="Drop it — within 7 days this also counts against auto-filing" onClick={async (e) => { e.stopPropagation(); await fetch(apiUrl(`/api/meeting-actions/auto-filed/${todo.task_id}/undo`), { method: 'POST' }); onRefresh && onRefresh(); }}>Undo</button>
+      )}
     </div>
   );
 }
@@ -1350,6 +1355,8 @@ function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
     return (
       <>
         <TaskControls todo={todo} busy={busy} onPatch={onPatch} onRefresh={onRefresh} />
+        {/* Delegation prompts (1 Nov 2026): "Could go to Naomi — …" when NEURO suggests a hand-over. */}
+        {!todo.done && <HandOverHint kind="task" itemId={todo.task_id} />}
         {/* ⚠ stopPropagation: a click inside would otherwise bubble to the row and collapse the card. */}
         <div className="todo-context" onClick={(e) => e.stopPropagation()}>
           <TaskContext taskId={todo.task_id} call={desktopCall} onOpen={openInVault} editable />
@@ -1494,6 +1501,12 @@ export function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch
             >{originBadge(todo)}</span>
           )}
           {todo.taskPriority && <span className="todo-priority-num">P{todo.taskPriority}</span>}
+          {/* NEURO's SUGGESTIONS for a missing MoSCoW / estimate / due date —
+              a trailing "?" and one tap to confirm (task-proposals). Never a
+              value until pressed; confirming is the same PATCH as editing. */}
+          {todo.task_id && !todo.done && onPatch && (
+            <ProposalChips proposals={todo.proposals} onConfirm={(fields) => onPatch(todo, fields)} />
+          )}
           {dueLabel && (
             <span
               className={`todo-due ${overdue ? 'due-overdue' : ''}${myPartDone ? ' due-not-mine' : ''}`}
@@ -1625,7 +1638,7 @@ const PRIORITY_CHOICES = [
   ['1', 'Low (1)'],
 ];
 
-export function SuggestedTodoQueue({ items, actingId, selected, onToggleSelect, onSelectAll, onClearSelection, onBatch, batching, batchError, onApprove, onReject, fields = {}, onFieldChange, fieldError }) {
+export function SuggestedTodoQueue({ gateLine = null, items, actingId, selected, onToggleSelect, onSelectAll, onClearSelection, onBatch, batching, batchError, onApprove, onReject, fields = {}, onFieldChange, fieldError }) {
   if (!items.length) return null;
 
   const allSelected = selected.length === items.length;
@@ -1636,6 +1649,7 @@ export function SuggestedTodoQueue({ items, actingId, selected, onToggleSelect, 
         <div>
           <div className="todo-suggestions-label">Spotted, waiting on you</div>
           <div className="todo-suggestions-copy">From your meeting notes and your email. Nothing here is a task until you approve it.</div>
+          {gateLine && <div className="todo-suggestions-copy">{gateLine}</div>}
         </div>
         <div className="todo-suggestions-header-right">
           <button className="btn btn-secondary btn-sm" onClick={allSelected ? onClearSelection : onSelectAll}>
@@ -2706,6 +2720,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
         ) : (
           <>
             <SuggestedTodoQueue
+              gateLine={fullData?.meetingActionsGate?.line}
               items={suggestedTodos}
               actingId={actingSuggestionId}
               selected={selectedSuggestions}
@@ -3008,6 +3023,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
       </div>
 
       <SuggestedTodoQueue
+        gateLine={fullData?.meetingActionsGate?.line}
         items={suggestedTodos}
         actingId={actingSuggestionId}
         selected={selectedSuggestions}

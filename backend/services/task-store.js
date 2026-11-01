@@ -156,6 +156,11 @@ function toTodoShape(row, jiraKeys) {
     // Triage fields Nick answered "none" (shared/task-triage.cjs). An array,
     // always — never the raw JSON string, so no consumer has to parse it.
     triageNone: triage.normNone(row.triage_none),
+    // NEURO's SUGGESTIONS for missing MoSCoW / estimate / due (task-proposals).
+    // ⚠ Never a value: `moscow`, `estimateMinutes` and `due_date` above stay
+    // null until Nick confirms, so every reader that knows nothing about
+    // proposals sees exactly what it saw before.
+    proposals: require('./task-proposals').parse(row.proposals_json),
     notes: row.notes || null,
     filePath: null,
     lineNumber: null,
@@ -513,7 +518,13 @@ function createTask(input = {}) {
       patch.recurrence_json = JSON.stringify(rule);
       if (!existing.due_date && !patch.due_date) patch.due_date = recurrence.firstDue(rule, { today, nonWorking: _nonWorking() });
     }
-    if (Object.keys(patch).length) { db.updateTaskRow(existing.id, patch); revision++; }
+    if (Object.keys(patch).length) {
+      try {
+        const pruned = require('./task-proposals').pruneFor(existing, patch);
+        if (pruned !== undefined) patch.proposals_json = pruned;
+      } catch { /* cosmetic */ }
+      db.updateTaskRow(existing.id, patch); revision++;
+    }
     return { id: existing.id, created: false, task: withRecurrence(db.getTaskRow(existing.id)) };
   }
 
@@ -590,6 +601,11 @@ function createTask(input = {}) {
   });
 
   if (rule) db.updateTaskRow(id, { recurrence_json: JSON.stringify(rule) });
+
+  // Suggested MoSCoW / estimate / due date for whatever is missing. Stored in
+  // its OWN column, never in the real fields (services/task-proposals.js), and
+  // never allowed to fail the create. `propose: false` opts out.
+  if (input.propose !== false) require('./task-proposals').proposeAndStore(id);
 
   revision++;
   if (input.skipExport !== true) scheduleExport();
@@ -802,6 +818,12 @@ function updateTask(id, fields = {}, opts = {}) {
 
   const completing = patch.status === 'done' && row.status !== 'done';
 
+  // A proposal never sits beside a value Nick chose: setting (or answering
+  // "none" for) a field drops NEURO's suggestion for it (task-proposals).
+  try {
+    const pruned = require('./task-proposals').pruneFor(row, patch);
+    if (pruned !== undefined) patch.proposals_json = pruned;
+  } catch { /* a stale suggestion is cosmetic; never a reason to fail the write */ }
   db.updateTaskRow(id, patch);
 
   // A MoSCoW changed by hand moves the task to another band, and its dragged

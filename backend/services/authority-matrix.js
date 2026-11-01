@@ -61,6 +61,9 @@ const CAPABILITIES = Object.freeze({
   'weather.wu-publish': { authority: 'A2', effect: "upload our own weather station's readings to Weather Underground (ICOALV59)", machine: 'execute', approval: 'none', registry: 'external-writes:wunderground.publish', ledger: false, verification: 'WU answers "success"', idempotent: 'WU folds a repeat dateutc' },
   'calendar.invite-respond': { authority: 'A3', effect: 'accept, tentatively accept or decline a meeting invite Nick did not organise; the organiser is told', machine: 'refuse', approval: 'Nick pressing the button on the invite card', registry: 'external-writes:microsoft.calendar.respond', ledger: true, verification: 'Graph read-back', idempotent: true },
   'calendar.leave-decline': { authority: 'A3', effect: "decline an invite Nick did not organise, on a day People HR says he is on leave", machine: 'refuse', approval: 'the leave_auto_decline switch, or a tap on the Leave clashes card', registry: 'external-writes:microsoft.calendar.leave-decline', ledger: true, verification: 'Graph read-back', idempotent: true },
+  // 1 Nov 2026 (calendar care): decline a whole series Nick did not organise and
+  // has missed the last three times. The organiser is told. His press only.
+  'calendar.series-decline': { authority: 'A3', effect: 'decline every future occurrence of a recurring meeting Nick did not organise; the organiser is told', machine: 'refuse', approval: 'Nick pressing Decline future occurrences on the calendar-care card', registry: 'external-writes:microsoft.calendar.series-decline', ledger: true, verification: 'Graph read-back', idempotent: true },
   'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
   'gmail.unsubscribe': { authority: 'A3', effect: "POST a mailing list's own one-click unsubscribe, on Nick's press", machine: 'refuse', approval: 'click', registry: 'external-writes:gmail.unsubscribe', ledger: true, verification: 'http status', idempotent: true },
   // 1 Nov 2026: Nick's answers to a focus block — pick a task (starts a focus
@@ -128,6 +131,9 @@ const CAPABILITIES = Object.freeze({
   // (/api/1to1/booking-request, calendar.attendee.create, machine: prepare) can only
   // ASK; nothing a caller sends can approve. No route maps here: it runs in-process.
   'calendar.1to1-auto-book': { authority: 'A4', effect: 'invite a direct report to their next 1-2-1 as Nick, without a press', machine: 'refuse', approval: 'the one_to_one_auto_book switch (standing approval)', registry: null, ledger: true, verification: 'read-back (the governed executor)', idempotent: 'one live booking per person; one attempt per approved version' },
+  // 1 Nov 2026 (calendar care): an agenda added to the body of a meeting Nick
+  // organises — attendees get Outlook's update. Prepared, confirmed with a press.
+  'calendar.attendee.agenda': { authority: 'A4', effect: "add an agenda to the invite of a meeting Nick organises (body only; attendees are sent the update)", machine: 'prepare', approval: 'approval-code, or Nick’s press (intent grant)', registry: 'action-registry:update_calendar_event_body', ledger: true, verification: 'read-back', idempotent: 'one live agenda per occurrence; one attempt per approved version' },
   'calendar.attendee.cancel': { authority: 'A4', effect: 'cancel a meeting other people are in', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:cancel_calendar_event', ledger: true, verification: 'read-back', idempotent: 'one attempt per approved version' },
   'approval.decide': { authority: 'A4', effect: "approve / reject / challenge / edit an action — Nick's decision", machine: 'refuse', approval: 'approval-code', registry: 'action-registry', ledger: true, verification: null, idempotent: true },
   'approval.internal': { authority: 'A1', effect: 'approve a queued INTERNAL suggestion (add a captured task, open a screen)', machine: 'execute-bounded', approval: 'none', registry: null, ledger: true, verification: null, idempotent: 'pending → executed once',
@@ -238,6 +244,9 @@ const ROUTE_RULES = Object.freeze([
   // 23 Oct 2026: a session PROPOSES a fix for the reports (domain default,
   // internal.state); what reaches Chris is Nick's — include/dismiss/edit and his
   // own manual entry (which is included at once) are refused to machines.
+  // 1 Nov 2026: accepting a pre-filled section of the weekly report to Chris is Nick's.
+  R('POST', '/api/weekly-risk/proposals/accept', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/weekly-risk/proposals/accept-all', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/report-fixes/manual', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/report-fixes/:id/decide', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/report-fixes/:id/edit', 'internal.state', { machine: 'refuse' }),
@@ -255,6 +264,16 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/leave/auto-decline/run', 'calendar.leave-decline', { machine: 'refuse' }),
   R('POST', '/api/1to1/reschedule', 'calendar.attendee.reschedule', { machine: 'refuse' }),
   R('POST', '/api/1to1/cancel', 'calendar.attendee.cancel', { machine: 'refuse' }),
+  // Calendar care (1 Nov 2026): every press is Nick's.
+  R('POST', '/api/calendar-care/week/protect', 'calendar.solo', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/week/dismiss', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/agenda/refresh', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/agenda/add', 'calendar.attendee.agenda', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/agenda/done', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/agenda/dismiss', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/series/decline', 'calendar.series-decline', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/series/cancel', 'calendar.attendee.cancel', { machine: 'refuse' }),
+  R('POST', '/api/calendar-care/series/answer', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/c/login', 'config.security'),
   R('POST', '/api/v/login', 'config.security'),
   R('POST', '/api/task-blocks', 'calendar.solo'),
@@ -273,6 +292,11 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/escalation/reply/post', 'jira.comment'),
   R('POST', '/api/escalation/approval/:key/decide', 'jira.approval'),
   R('POST', '/api/escalation/email', 'email.send'),
+  // Delegation prompts (1 Nov 2026): preparing the hand-over email, "Not this one" and
+  // the judging pass (it spends model calls) are Nick's, on his screen.
+  R('POST', '/api/delegation/:id/hand-over', 'email.send', { machine: 'refuse' }),
+  R('POST', '/api/delegation/:id/dismiss', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/delegation/scan', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/escalation/people/address', 'vault.write', { machine: 'refuse' }),
 
   // Microsoft tasks.
@@ -329,6 +353,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/v/notes', 'internal.state'),
   R('POST', '/api/v/notes/:id/clear', 'internal.state'),
   R('POST', '/api/v/countdowns', 'internal.state'),
+  R('POST', '/api/v/tea-shopping', 'internal.state'),
   R('POST', '/api/v/shopping/add', 'vault.write'),
   R('POST', '/api/v/shopping/bought', 'vault.write'),
   R('POST', '/api/v/home-control', 'home.control'),
@@ -507,6 +532,11 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/uat/rounds/:id/dismiss', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/uat/rounds/:id/retry', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/uat/tick', 'internal.state', { machine: 'refuse' }),
+  // Meeting follow-ups and auto-filed meeting actions (1 Nov 2026): Nick's presses.
+  R('POST', '/api/meeting-followups/sweep', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/meeting-followups/:id/draft', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/meeting-followups/:id/decline', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/meeting-actions/auto-filed/:taskId/undo', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/u/:token', 'internal.state', { machine: 'refuse' }),
   // Overtime claims from NOVA (29 Oct 2026). Approving, opt-outs and the payroll send are Nick's.
   R('POST', '/api/overtime-claims/:id/decide', 'internal.state', { machine: 'refuse' }),
@@ -515,6 +545,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/overtime-claims/optouts/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/payroll/prepare', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/payroll/test-send', 'email.self'),
+  // Personal automations (1 Nov 2026): the household switch and "not this weekend" are Nick's.
+  R('POST', '/api/personal-auto/tea-shopping', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-auto/hike-suggestion/dismiss', 'internal.state', { machine: 'refuse' }),
 ]);
 
 const DOMAIN_DEFAULTS = Object.freeze({
@@ -538,10 +571,11 @@ const DOMAIN_DEFAULTS = Object.freeze({
   actions: 'internal.state', attention: 'internal.state', activity: 'internal.state', adhd: 'internal.state', canonical: 'internal.state',
   chat: 'internal.state', 'day-plan': 'internal.state', email: 'internal.state', friction: 'internal.state', outcomes: 'internal.state',
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
-  'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', 'perf-evidence': 'internal.state', '1to1': 'internal.state', leave: 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
-  'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state', uat: 'internal.state', u: 'internal.state', 'overtime-claims': 'internal.state',
+  'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', 'perf-evidence': 'internal.state', '1to1': 'internal.state', leave: 'internal.state', 'calendar-care': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
+  'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state', uat: 'internal.state', u: 'internal.state', 'meeting-followups': 'internal.state', 'meeting-actions': 'internal.state', 'overtime-claims': 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
   outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
+  'personal-auto': 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

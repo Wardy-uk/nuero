@@ -293,6 +293,10 @@ export const routerRestart = (token, id, decision) =>
 export const setTea = (token, date, text) =>
   call('/tea', { method: 'POST', body: { date, text }, token, timeoutMs: 20000 });
 
+/** Tea → shopping list (1 Nov 2026): the household switch. */
+export const setTeaShopping = (token, on) =>
+  call('/tea-shopping', { method: 'POST', body: { on }, token, timeoutMs: 20000 });
+
 export const addNote = (token, text) =>
   call('/notes', { method: 'POST', body: { text }, token, timeoutMs: 20000 });
 export const clearNote = (token, id) =>

@@ -156,7 +156,7 @@ function meetingPhrase(commitment) {
 
 function _placeholders(body) {
   const out = [];
-  const re = /\[(date|name|when|time|details?)\]/gi;
+  const re = /\[(date|name|when|time|details?)(?::[^\]\n]*)?\]/gi;
   let m;
   while ((m = re.exec(String(body || ''))) !== null) out.push(m[1].toLowerCase());
   return [...new Set(out)];
@@ -1172,7 +1172,9 @@ function _prepareCalendarChange(actionType, { event, start = null, end = null, c
     if (live.status !== 'prepared') return { ok: false, code: 409, error: `a change to this meeting is already ${live.status} (${live.action_id})` };
   }
   const target = { kind: isMove ? 'calendar-move' : 'calendar-cancel', origin, eventId: event.id,
-    fromStart: _minute(event.start), fromEnd: _minute(event.end), person: context.person || null, displayName: context.person || null };
+    fromStart: _minute(event.start), fromEnd: _minute(event.end), person: context.person || null, displayName: context.person || null,
+    // 1 Nov 2026 (calendar care): a whole series Nick organises; bound into the hash.
+    series: context.series === true ? true : undefined };
   const evidence = { origin, context, calendar: { eventId: event.id, from: _minute(event.start), attendees: r.list.length } };
   const when = (x) => `${x.slice(0, 10)} ${x.slice(11, 16)}`;
   const reason = isMove
@@ -1183,6 +1185,51 @@ function _prepareCalendarChange(actionType, { event, start = null, end = null, c
       actionType, subjectKey, findingId: `calendar:${origin}:${shortSha(event.id)}`, subjectRef: subjectKey, target, draft, evidence,
       origin, reason, idemRoot: `${actionType}:${shortSha(`${event.id}|${draft.start}|${nowMs}`)}`, nowMs,
       supersede: live ? { ...live, how: 'supersede', note: 'a newer change to this meeting was prepared' } : null,
+    });
+    return { ok: true, already: false, action };
+  } catch (e) {
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+/**
+ * PREPARE an agenda added to a meeting Nick organises (1 Nov 2026, calendar
+ * care). Only the BODY changes: the agenda goes on top of the body as it is
+ * NOW, whose hash is bound into the approval — a body edited since is refused
+ * at execution. Times and attendees are recorded and must be unchanged.
+ *
+ *   event     { id, subject, start, end, attendees:[{email}], isOrganizer }
+ *   agenda    the plain text Nick confirmed (no [gaps])
+ *   bodyHtml  the event body as read just now
+ */
+function prepareCalendarBody({ event, agenda, bodyHtml, origin = 'meeting-agenda', now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  if (!event || !event.id) return { ok: false, code: 400, error: 'no meeting' };
+  if (/^graph-/.test(String(event.id))) return { ok: false, code: 409, error: 'that event id cannot address a real calendar event' };
+  if (event.isOrganizer === false) return { ok: false, code: 409, error: 'you are not the organiser of that meeting' };
+  const text = String(agenda || '').trim();
+  if (!text) return { ok: false, code: 400, error: 'the agenda is empty' };
+  const r = _recipients(event.attendees);
+  if (!r.list.length) return { ok: false, code: 409, error: 'nobody else is in that meeting' };
+  const draft = _calendarDraft({ title: event.subject, start: event.start, end: event.end, attendees: r.list, location: null, isOnline: false,
+    body: text, generatedBy: `${origin} (agenda drafted by NEURO, confirmed by Nick; no model call)` });
+  const fromBodyHash = registry.sha256(String(bodyHtml || ''));
+  const subjectKey = `calendar-body:${event.id}@${draft.start}`;
+  const liveRow = _liveFor('update_calendar_event_body', subjectKey, { andSent: true });
+  const live = liveRow ? shape(liveRow) : null;
+  if (live) {
+    if (live.draft && live.draft.body === draft.body && live.target && live.target.fromBodyHash === fromBodyHash) return { ok: true, already: true, action: live };
+    if (live.status !== 'prepared') return { ok: false, code: 409, error: `an agenda for this meeting is already ${live.status} (${live.actionId})` };
+  }
+  const target = { kind: 'calendar-body', origin, eventId: event.id, fromStart: draft.start, fromEnd: draft.end, fromBodyHash };
+  const evidence = { origin, calendar: { eventId: event.id, at: draft.start, attendees: r.list.length } };
+  try {
+    const action = _insertPrepared({
+      actionType: 'update_calendar_event_body', subjectKey, findingId: `calendar-body:${shortSha(`${event.id}@${draft.start}`)}`, subjectRef: subjectKey,
+      target, draft, evidence, origin,
+      reason: `Add an agenda to "${draft.subject}" on ${draft.start.slice(0, 10)} ${draft.start.slice(11, 16)} — ${r.list.length} attendee(s) get the update`,
+      idemRoot: `calendar-body:${shortSha(`${event.id}|${draft.start}|${nowMs}`)}`, nowMs,
+      supersede: liveRow ? { ...liveRow, how: 'supersede', note: 'a newer agenda for this meeting was prepared' } : null,
     });
     return { ok: true, already: false, action };
   } catch (e) {
@@ -1447,7 +1494,7 @@ module.exports = {
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
   prepareReply, prepareCompose, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, prepareSoapReport, soapReportFor, agendaAsked, withdrawAgendaChase,
-  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
+  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel, prepareCalendarBody,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
   get, forFinding, forCommitment, list, listLive, needsYou, countsByStatus,

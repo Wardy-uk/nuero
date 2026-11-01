@@ -185,6 +185,18 @@ const FLAGS = [
     impact: 'declines meeting invites as you, on your leave days only',
   },
   {
+    // 1 Nov 2026 — meeting-followups.js. Default ON (Nick's call): it only ever
+    // DRAFTS; nothing is sent without his press.
+    key: 'meeting_followup_drafts',
+    env: 'MEETING_FOLLOWUP_DRAFTS',
+    default: true,
+    label: 'Draft follow-up emails after meetings',
+    description: 'When a PLAUD write-up matches a meeting with other people in it, NEURO drafts a follow-up email '
+      + '(summary, decisions, who owes what — only from the write-up) for team meetings and 1-2-1s, and asks first for '
+      + 'any other meeting. Never for the daily standup. Nothing is sent until you press Send.',
+    impact: 'drafts emails from your work mailbox for you to send; sends nothing',
+  },
+  {
     // 1 Nov 2026 — email-muted-archive.js. Default ON (Nick's call): muting a
     // whole sender means he never wants their mail in his Inbox.
     key: 'email_muted_archive',

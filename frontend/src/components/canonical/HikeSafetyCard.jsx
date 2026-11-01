@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { takeHikePrefill } from '../../hikePrefill';
 import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions, Headline, Stat, StatTiles, Tile, TileGrid, Group, PrimaryAction, dayLabel as uiDay } from './canonicalUi';
 import './HikeSafetyCard.css';
 import WalkMap from '../WalkMap';
@@ -57,18 +58,20 @@ function localInput(d) {
  * Arm a walk, or (with `trip`) edit the armed one. Edit sends every field, and
  * a GPX only if a new file was chosen — the server keeps the old one otherwise.
  */
-function WalkForm({ act, busy, trip = null, onDone = null }) {
+function WalkForm({ act, busy, trip = null, onDone = null, prefill = null }) {
+  const pf = !trip && prefill ? prefill : null;
   const now = new Date();
   const start = new Date(now.getTime() + 30 * 60000); start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
   const [gpx, setGpx] = useState(null);
   const [gpxName, setGpxName] = useState('');
-  const [name, setName] = useState(trip ? trip.name : '');
-  const [plannedStart, setStart] = useState(trip ? trip.startLocal : localInput(start));
-  const [plannedFinish, setFinish] = useState(trip ? trip.finishLocal : localInput(new Date(start.getTime() + 5 * 3600000)));
+  const [name, setName] = useState(trip ? trip.name : pf ? pf.name || '' : '');
+  const [plannedStart, setStart] = useState(trip ? trip.startLocal : pf && pf.plannedStart ? pf.plannedStart : localInput(start));
+  const [plannedFinish, setFinish] = useState(trip ? trip.finishLocal : pf && pf.plannedFinish ? pf.plannedFinish : localInput(new Date(start.getTime() + 5 * 3600000)));
   const [grace, setGrace] = useState(trip ? trip.graceMin : 60);
-  const [ember, setEmber] = useState(trip ? !!trip.ember : false);
+  const [ember, setEmber] = useState(trip ? !!trip.ember : pf ? !!pf.emberPlanned : false);
   const [notes, setNotes] = useState(trip ? trip.notes || '' : '');
-  const [party, setParty] = useState(trip && trip.party && trip.party.length ? trip.party.map((x) => ({ name: x.name, phone: x.phone || '' })) : []);
+  const [party, setParty] = useState(trip && trip.party && trip.party.length ? trip.party.map((x) => ({ name: x.name, phone: x.phone || '' }))
+    : pf && Array.isArray(pf.party) ? pf.party.map((x) => ({ name: x.name || '', phone: x.phone || '' })) : []);
   const graces = [...new Set([30, 60, 90, 120, Number(grace)])].sort((a, b) => a - b);
   const setPerson = (i, k, v) => setParty(party.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const pick = (e) => {
@@ -148,10 +151,10 @@ function SendsFrom({ s }) {
   );
 }
 
-export function HikeSafetyView({ data, act = null, busy = false }) {
+export function HikeSafetyView({ data, act = null, busy = false, prefill = null }) {
   const t = data.active;
   const [editing, setEditing] = useState(false);
-  const [planning, setPlanning] = useState(false);
+  const [planning, setPlanning] = useState(!!prefill);
   const last = (data.recent || [])[0] || null;
   const [shown, setShown] = useState(null);
   const toggle = (id) => setShown(shown === id ? null : id);
@@ -216,7 +219,7 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
         <div className="hs-idle" data-testid="hike-idle">
           {!contacts.length && <div className="cn-error cn-small">Add who gets the alert before you can arm a walk.</div>}
           {act && contacts.length > 0 && (planning
-            ? <WalkForm act={act} busy={busy} onDone={() => setPlanning(false)} />
+            ? <>{prefill && prefill.note && <div className="cn-small cn-muted" data-testid="hike-prefill-note">{prefill.note}</div>}<WalkForm act={act} busy={busy} prefill={prefill} onDone={() => setPlanning(false)} /></>
             : <div className="cn-actions"><PrimaryAction onClick={() => setPlanning(true)}>Plan a new walk</PrimaryAction></div>)}
           {last && (
             <Group label="Last walk">
@@ -252,6 +255,7 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
 }
 
 export default function HikeSafetyCard() {
+  const [prefill] = useState(() => takeHikePrefill());
   const { data, error, reload } = useCanonical('/api/outdoor/safety', { interval: 60000 });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -263,7 +267,7 @@ export default function HikeSafetyCard() {
   };
   return (
     <>
-      <HikeSafetyView data={data} act={act} busy={busy} />
+      <HikeSafetyView data={data} act={act} busy={busy} prefill={prefill} />
       {msg && <div className="cn-error">Not done — {msg}</div>}
     </>
   );

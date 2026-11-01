@@ -114,6 +114,18 @@ if (-not $PSBoundParameters.ContainsKey('WatchLock')) {
   } catch { }
 }
 . (Join-Path $PSScriptRoot 'watch-lock.ps1')
+# Focus blocks (1 Nov 2026): open NEURO-built links for the picked task, and
+# READ Windows' Do Not Disturb. See focus-laptop.ps1 for why it never sets DND.
+. (Join-Path $PSScriptRoot 'focus-laptop.ps1')
+$OpenUrlEnabled = $true
+$OpenUrlHosts = $script:NeuroDefaultOpenHosts
+$ObsidianVault = $script:NeuroDefaultVault
+try {
+  $flCfg = Get-Content -Raw (Join-Path $env:LOCALAPPDATA 'neuro\desktop-agent.json') | ConvertFrom-Json
+  if ($flCfg.PSObject.Properties['openUrl'] -and $flCfg.openUrl -eq $false) { $OpenUrlEnabled = $false }
+  if ($flCfg.PSObject.Properties['openUrlHosts'] -and @($flCfg.openUrlHosts).Count) { $OpenUrlHosts = @($flCfg.openUrlHosts | ForEach-Object { [string]$_ }) }
+  if ($flCfg.PSObject.Properties['obsidianVault'] -and $flCfg.obsidianVault) { $ObsidianVault = [string]$flCfg.obsidianVault }
+} catch { }
 if (-not $PresenceFile) { $PresenceFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'windows-watch-lock\presence.json' }
 $script:WL = New-WatchLockState
 $script:WLAssessment = $null
@@ -272,6 +284,8 @@ $CanPasteClaude = $AppCommands.ContainsKey('claude')
 function Get-CanOpen {
   $ids = @($AppCommands.Keys)
   if ($CanPasteClaude) { $ids += 'claude:paste' }
+  # Links NEURO built for a focus block's task (focus-laptop.ps1).
+  if ($OpenUrlEnabled) { $ids += 'open-url' }
   return $ids | Sort-Object
 }
 
@@ -338,6 +352,14 @@ function Invoke-ClaudePaste($id) {
 function Invoke-DeskIntent($intent) {
   $id = $intent.id
   $app = [string]$intent.app
+  if ($app -eq 'open-url') {
+    # A link, not a program: checked against THIS machine's own hosts first.
+    if (-not $OpenUrlEnabled) { Report-Intent $id $false 'this laptop does not open links'; return }
+    $r = Invoke-NeuroOpenUrlIntent $intent $OpenUrlHosts $ObsidianVault { Test-SessionLocked } ${function:Invoke-NeuroOpenUrlNative}
+    if ($r.ok) { Write-Host "opened a focus-block link ($id)" } else { Write-Warning "open-url ${id}: $($r.detail)" }
+    Report-Intent $id $r.ok $r.detail
+    return
+  }
   if (-not $AppCommands.ContainsKey($app)) {
     # Refused HERE, independently of the server's own refusal. Two locks.
     Write-Warning "refused unknown app id '$app'"
@@ -518,6 +540,9 @@ function Get-Sample {
     # The Watch lock's own health (Brief 004): mode, presence verdict and
     # counts only. Lets NEURO's Set up tell a running lock from a missing one.
     watchLock   = Get-WatchLockReport
+    # Windows' Do Not Disturb, READ only (on / off / unknown). Nothing here sets
+    # it - see focus-laptop.ps1.
+    dnd         = @{ state = (Read-WindowsDndState) }
   }
 }
 

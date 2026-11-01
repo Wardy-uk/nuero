@@ -147,6 +147,9 @@ function setTea({ date, text } = {}, { by = null, now = Date.now() } = {}) {
     delete days[date];
   }
   _writeKV(TEA_KEY, { days, recent });
+  // Tea → shopping (1 Nov 2026): a listener registered at boot (scheduler) reconciles
+  // the shopping list in the background. Never awaited and never the reason a tea fails.
+  for (const fn of _teaListeners) { try { fn({ date, text: clean || null }); } catch { /* background */ } }
   return { ok: true, tea: teaView({ days, recent }, today) };
 }
 
@@ -253,6 +256,10 @@ function stampWeek(week, marked) {
 // ── Shopping (a shared catalogue) ────────────────────────────────────────────
 
 const _k = (s) => String(s || '').trim().toLowerCase();
+
+const _teaListeners = new Set();
+/** Register a callback run after any tea change. Returns an unregister function. */
+function onTeaChange(fn) { _teaListeners.add(fn); return () => _teaListeners.delete(fn); }
 
 /** The shopping block from a parsed catalogue. PURE. */
 function shoppingView(cat, todayKey) {
@@ -545,7 +552,7 @@ module.exports = {
   teaView, countdownView, countdownSay, stampWeek, shoppingView, careLine, composeOutlook, isDateKey, daysBetween, addDays, localKey,
   // stores
   readTea, setTea, readNotes, addNote, clearNote, readCountdowns, setCountdown, markedKeys,
-  readShopping, shoppingAdd, shoppingBought, readCare, readOutlook, readWeekAhead, weekAheadView, cachedNowcast, _resetCaches,
+  readShopping, shoppingAdd, shoppingBought, onTeaChange, openShoppingForWrite: _openForWrite, readCare, readOutlook, readWeekAhead, weekAheadView, cachedNowcast, _resetCaches,
   // constants
   TEA_KEY, NOTES_KEY, COUNTDOWN_KEY, TEA_MAX, NOTE_MAX, NOTE_KEPT, NOTE_TTL_MS, SHOPPING_SLUG, TO_BUY, BOUGHT,
 };

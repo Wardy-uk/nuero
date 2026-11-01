@@ -296,6 +296,7 @@ const TYPE_WORDS = {
   chase_commitment: 'a chase email', reply_email: 'an email reply', chase_agenda: 'an agenda request',
   send_weekly_risk_report: 'the weekly risk report', send_soap_report: 'the SOAP report', create_calendar_event: 'a calendar invite',
   reschedule_calendar_event: 'a meeting move', cancel_calendar_event: 'a meeting cancellation',
+  update_calendar_event_body: 'a meeting agenda',
 };
 function _typeWords(t) { return TYPE_WORDS[t] || t.replace(/_/g, ' '); }
 
@@ -629,6 +630,12 @@ function fromPersonalOps(rows) {
       case 'outdoor-route-unlinked': return entry({ ...base, category: 'configured', type: 'outdoor.route-link', headline: `You unlinked a route${d.route ? ` ("${d.route}")` : ''} from an activity`, status: 'unlinked' });
       case 'outdoor-companion-added': return entry({ ...base, category: 'configured', type: 'outdoor.companion', headline: `You marked ${d.companion} on ${d.activity || 'an activity'}`, summary: 'Context only — it never makes a walk a hike.', status: 'linked' });
       case 'outdoor-companion-removed': return entry({ ...base, category: 'configured', type: 'outdoor.companion', headline: `You removed ${d.companion} from an activity`, status: 'unlinked' });
+      // Personal automations (1 Nov 2026).
+      case 'renewal-task-created': return entry({ ...base, category: 'acted', type: 'personal.renewal', headline: `Added a task: "${d.title}"`, summary: [d.why ? `From ${d.why}.` : null, d.due ? `Due ${d.due}.` : null].filter(Boolean).join(' ') || null, status: 'open' });
+      case 'tea-shopping-changed': return entry({ ...base, category: 'acted', type: 'home.shopping', headline: `Shopping list updated from the tea plan`, summary: [d.added && d.added.length ? `Added ${d.added.length}: ${d.added.slice(0, 4).join(', ')}${d.added.length > 4 ? '…' : ''}.` : null, d.removed && d.removed.length ? `Took back ${d.removed.length} no longer needed.` : null].filter(Boolean).join(' ') || null, status: 'set' });
+      case 'tea-shopping-setting': return entry({ ...base, category: 'configured', type: 'home.shopping', headline: d.on ? 'Tea → shopping list switched on' : 'Tea → shopping list switched off', summary: d.by ? `By ${d.by}.` : null, status: 'set' });
+      case 'hike-suggestion-dismissed': return entry({ ...base, category: 'configured', type: 'outdoor.suggestion', headline: `You said not this weekend to a hike suggestion`, summary: `Weekend of ${d.weekend}.`, status: 'dismissed' });
+      case 'gp-pack-written': return entry({ ...base, category: 'acted', type: 'health.gp-pack', headline: `GP pack written for "${d.title}"`, summary: `${d.date} — ${d.path}.`, status: 'written' });
       case 'admin-resolved': return entry({ ...base, category: 'verified', type: 'personal.admin', headline: `Personal admin resolved: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
       // Build 25W — Nick's word on an admin item, and the admin source itself.
       case 'admin-annotated': return entry({ ...base, category: 'configured', type: 'personal.admin',
@@ -743,6 +750,8 @@ function fromPersonalOps(rows) {
       case 'waiting-on-lapsed': return entry({ ...base, category: 'decided', type: 'waiting-on.lapsed',
         headline: `NEURO set aside ${d.count} waiting-on item${d.count === 1 ? '' : 's'} nobody had mentioned in ${d.days || 90} days`,
         summary: 'Lapsed, not done: they are under "Lapsed" on the People board, each with Reopen.', status: 'lapsed' });
+      case 'waiting-on-reopened': return entry({ ...base, category: 'decided', type: 'waiting-on.reopened',
+        headline: `You reopened a waiting-on item NEURO had set aside as lapsed${d.person ? ` (${d.person})` : ''}`, status: 'reopened' });
       case 'person-email-learned': return entry({ ...base, category: 'sensed', type: 'people.email', headline: `NEURO added an email address to ${d.name}'s People note`, summary: d.why ? `${d.why[0].toUpperCase()}${d.why.slice(1)}.` : null, status: 'set' });
       case 'person-unmerged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You separated ${d.restored} from ${d.kept} again`, status: 'unlinked' });
       case 'person-kept-separate': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You said ${d.a} and ${d.b} are different people`, status: 'set' });

@@ -408,6 +408,14 @@ function reopen(key, { now = Date.now() } = {}) {
   item.reopenedAt = new Date(now instanceof Date ? now.getTime() : now).toISOString();
   item.resolvedAt = null;
   _upsert(item);
+  // The weekly "What NEURO did" report counts this as a misfire: Nick undoing
+  // a lapse NEURO made. Only this route reopens FROM lapsed, so it is exact.
+  try {
+    require('./personal-obligations').logEvent('waiting-on-reopened', {
+      subjectId: key, actor: 'nick', detail: { person: item.person, text: String(item.text || '').slice(0, 200) },
+      now: now instanceof Date ? now.getTime() : now,
+    });
+  } catch { /* a record, never a reason to fail the reopen */ }
   return { ok: true, item };
 }
 

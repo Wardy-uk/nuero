@@ -102,3 +102,16 @@ test('both shells mount the shared component', () => {
   const phone = fs.readFileSync(path.join(ROOT, 'saim', 'app', 'src', 'views', 'Surface.jsx'), 'utf8');
   assert.match(phone, /onFocusBlock=\{platformNow\(\) === 'kiosk' \? null : focusBlockAct\}/, 'read-only on the kiosk');
 });
+
+test('the laptop line: links opening, why not, and its Do Not Disturb — words from the server, no buttons', () => {
+  const chosen = { id: 1, text: 'Write the rota cover plan' };
+  const h = render({ ...base, phase: 'running', say: null, candidates: [], chosen, laptop: {
+    opens: [{ kind: 'jira', label: 'NT-123 in Jira', state: 'waiting', say: 'Opening NT-123 in Jira on your laptop' }],
+    unreachable: null, dnd: { state: 'on' }, dndSay: 'Laptop: Do not disturb is on',
+  } }, { onAct: null, onSomethingElse: null });
+  assert.match(h, /Opening NT-123 in Jira on your laptop/);
+  assert.match(h, /Laptop: Do not disturb is on/);
+  assert.doesNotMatch(h, /<button/);
+  const away = render({ ...base, phase: 'running', say: null, candidates: [], chosen, laptop: { opens: [], unreachable: 'the laptop isn’t reachable', dnd: null, dndSay: null } });
+  assert.match(away, /Not opened on your laptop — the laptop isn’t reachable\./);
+});

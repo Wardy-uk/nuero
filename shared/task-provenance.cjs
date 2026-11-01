@@ -294,8 +294,19 @@ function describeTaskProvenance(task = {}, { now = null } = {}) {
     known = false;
   }
 
+  // Filed by the meeting-actions gate rather than by Nick's press (1 Nov 2026).
+  // Said in words, and carried so the card can offer Undo.
+  let autoFiled = null;
+  if (recorded && recorded.autoFiled && typeof recorded.autoFiled === 'object') {
+    const meeting = str(recorded.autoFiled.meeting);
+    autoFiled = { meeting, at: str(recorded.autoFiled.at) };
+    how = meeting ? `Filed automatically from ${meeting}` : 'Filed automatically from a meeting';
+    known = true;
+  }
+
   return {
     source,
+    autoFiled,
     /** "Added 7 Sep 2026" / "Added today" / "Added — date not recorded". */
     added: addedLabel(date),
     addedDate: date.iso,

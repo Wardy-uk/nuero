@@ -252,7 +252,36 @@ function finish(event, now = new Date(), { notAttending = false } = {}) {
     console.warn('[MeetingFinish] could not store override:', e.message);
     return { ok: false, reason: 'store-failed' };
   }
+  if (notAttending) _logSkip(key, event, now);
   return { ok: true, key, entry: entries[key] };
+}
+
+// ── "I'm not in it", remembered (1 Nov 2026) ───────────────────────────────
+//
+// The override above is pruned at the meeting's scheduled end — right for
+// "where is Nick now", useless for "has he skipped this series three times".
+// calendar-care reads this durable log as evidence. Bounded; resume removes
+// the entry (taking it back means it is not evidence). Never fails the press.
+const SKIP_LOG_KEY = 'meeting_skip_log';
+const SKIP_LOG_MAX = 300;
+
+function _readSkipLog() {
+  try { const raw = _db().getState(SKIP_LOG_KEY); const v = raw ? JSON.parse(raw) : []; return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function _logSkip(key, event, now) {
+  try {
+    const log = _readSkipLog().filter((x) => x.key !== key);
+    const id = typeof event.id === 'string' ? event.id : (typeof event.event_id === 'string' ? event.event_id : null);
+    log.push({ key, eventId: id, start: String(event.start || '').slice(0, 16), subject: typeof event.subject === 'string' ? event.subject.trim() : null, at: new Date(toMs(now)).toISOString() });
+    _db().setState(SKIP_LOG_KEY, JSON.stringify(log.slice(-SKIP_LOG_MAX)));
+  } catch (e) { console.warn('[MeetingFinish] could not log the skip:', e.message); }
+}
+function _unlogSkip(key) {
+  try {
+    const log = _readSkipLog();
+    const kept = log.filter((x) => x.key !== key);
+    if (kept.length !== log.length) _db().setState(SKIP_LOG_KEY, JSON.stringify(kept));
+  } catch (e) { console.warn('[MeetingFinish] could not unlog the skip:', e.message); }
 }
 
 /** The way back. Silent about a key that was not there — it is already resumed. */
@@ -266,6 +295,7 @@ function resume(key, now = new Date()) {
     console.warn('[MeetingFinish] could not clear override:', e.message);
     return { ok: false, reason: 'store-failed' };
   }
+  _unlogSkip(key);
   return { ok: true, cleared: had };
 }
 
@@ -280,4 +310,5 @@ module.exports = {
   resume,
   STATE_KEY,
   MAX_ENTRIES,
+  SKIP_LOG_KEY,
 };

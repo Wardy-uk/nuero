@@ -121,7 +121,7 @@ export function AgentWork({ agent, onOpenTask = null }) {
   );
 }
 
-export function DraftsView({ data, agent = null, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, message = null }) {
+export function DraftsView({ data, agent = null, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, onFollowup = null, message = null }) {
   if (!data) return <section className="drafts" aria-label="Drafts"><h1 className="drafts__title">Drafts</h1><p className="drafts__sub">Reading Drafts…</p></section>;
   if (!data.ok) {
     return (
@@ -196,6 +196,13 @@ export function DraftsView({ data, agent = null, openKey = null, openMode = null
             <li key={c.moveKey} className="drafts__row drafts__row--held" data-move-key={c.moveKey}>
               <div className="drafts__head"><span className="drafts__status drafts__status--held">{c.status}</span><span className="drafts__kind">{c.kindLabel}</span></div>
               <p className="drafts__name">{c.title}</p>
+              {/* A meeting follow-up OFFER (1 Nov 2026): nothing is drafted until Draft. */}
+              {!readOnly && onFollowup && c.followupId && !c.actionId && (
+                <>
+                  <button type="button" className="drafts__go" disabled={busy} onClick={() => onFollowup(c, 'draft')}>Draft</button>
+                  <button type="button" className="drafts__go drafts__go--quiet" disabled={busy} onClick={() => onFollowup(c, 'decline')}>Not this one</button>
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -284,6 +291,14 @@ export default function Drafts({ call: injectedCall = null, context = null, onOp
         try {
           const r = await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: w.moveKey, outcome: 'abandoned' } });
           setMessage(r.body && r.body.ok ? `Abandoned “${w.title}”. The note and any booked block are still there; it is in History.` : ((r.body && r.body.error) || `NEURO answered ${r.status}.`));
+        } catch { setMessage('NEURO didn’t answer; nothing changed.'); }
+        await reload(); setBusy(false);
+      }}
+      onFollowup={async (c, verb) => {
+        setBusy(true); setMessage(null);
+        try {
+          const r = await call(`/api/meeting-followups/${encodeURIComponent(c.followupId)}/${verb}`, { method: 'POST', body: {} });
+          setMessage(r.body && r.body.ok ? (verb === 'draft' ? 'Drafted — it is in Actions. Nothing has been sent.' : 'No follow-up for that meeting.') : ((r.body && r.body.error) || `NEURO answered ${r.status}.`));
         } catch { setMessage('NEURO didn’t answer; nothing changed.'); }
         await reload(); setBusy(false);
       }}

@@ -139,7 +139,17 @@ async function processTranscript(filePath) {
       } catch (e) {
         console.warn('[TranscriptProcessor] Could not queue actions:', e.message);
       }
+      // Earned auto-filing (1 Nov 2026): once Nick has approved >=80% of the last
+      // 20, the new ones go straight to tasks through the same approve path.
+      if (queued && queued.created) {
+        try { queued.autoFiled = await require('./meeting-actions-gate').afterTranscript(queued); }
+        catch (e) { console.warn('[TranscriptProcessor] Meeting-actions gate failed — left for review:', e.message); }
+      }
     }
+
+    // The meeting follow-up may have been waiting on this read (who owes what);
+    // kick its sweep rather than wait for the timer. Never fails the read.
+    setImmediate(() => { require('./meeting-followups').sweep().catch((e) => console.warn('[TranscriptProcessor] follow-up sweep failed:', e.message)); });
 
     const output = {
       summary: extracted.summary || null,
@@ -148,7 +158,7 @@ async function processTranscript(filePath) {
       people: matchedPeople,
       actionItems: (actions || []).map((a) => `${a.owner || 'unknown'}: ${a.task}`),
       actions: actions || [],
-      queued: queued ? { created: queued.created, folded: queued.folded || 0 } : null,
+      queued: queued ? { created: queued.created, folded: queued.folded || 0, autoFiled: queued.autoFiled ? queued.autoFiled.filed.length : 0 } : null,
       truncated,
       keyTopics: extracted.keyTopics || [],
       sourceFile: path.basename(filePath),

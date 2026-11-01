@@ -242,6 +242,60 @@ function ChrisAgenda({ onChanged }) {
   );
 }
 
+/** What a suggested value looks like, read-only. */
+function proposalPreview(section, value) {
+  if (section === 'overtime') {
+    return [`${value.hours} overtime hours · ${value.approvalsOutstanding} approvals outstanding`, value.note].filter(Boolean);
+  }
+  if (!Array.isArray(value) || value.length === 0) return ['None this week'];
+  if (section === 'actions') return value.map(a => `${a.done ? '☑' : '☐'} ${a.text}`);
+  return value;
+}
+
+/**
+ * NEURO's pre-filled suggestion for one manual section (weekly-risk-proposals).
+ * A suggestion is not Nick's answer: it says where it came from and waits for
+ * Accept or Edit. Once answered it shows only how.
+ */
+function ProposalCard({ section, proposal, editing, onAccept, onEdit, busy, locked }) {
+  if (!proposal) return null;
+  if (proposal.answered) return null;
+  return (
+    <div className="wr-suggestion" data-section={section}>
+      <div className="wr-suggestion-head">
+        <span className="wr-suggested-badge">Suggested — check</span>
+        <span className="wr-suggestion-label">{proposal.label}</span>
+      </div>
+      {!editing && (
+        <ul className="wr-suggestion-value">
+          {proposalPreview(section, proposal.value).map((line, i) => <li key={i}>{line}</li>)}
+        </ul>
+      )}
+      <p className="wr-hint">Built from: {proposal.sources.join('; ')}.</p>
+      {!editing && (
+        <div className="wr-suggestion-actions">
+          <button type="button" onClick={() => onAccept(section, proposal.hash)} disabled={busy === `accept-${section}` || locked}>
+            {busy === `accept-${section}` ? 'Accepting…' : 'Accept'}
+          </button>
+          <button type="button" onClick={() => onEdit(section, proposal.value)} disabled={locked}>Edit</button>
+        </div>
+      )}
+      {editing && <p className="wr-hint">Editing below — Save to make it your answer.</p>}
+    </div>
+  );
+}
+
+const actionsToText = (list) => (Array.isArray(list) ? list : []).map(a => `${a.done ? '[x] ' : ''}${a.text}`).join('\n');
+function textToActions(text, previous) {
+  const prev = new Map((Array.isArray(previous) ? previous : []).map(a => [String(a.text).toLowerCase(), a]));
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const done = /^\[x\]\s*/i.test(l);
+    const t = l.replace(/^\[[x ]\]\s*/i, '');
+    const old = prev.get(t.toLowerCase());
+    return { text: t, done, ...(old && old.carriedFrom ? { carriedFrom: old.carriedFrom } : {}) };
+  });
+}
+
 function Delta({ value }) {
   if (value === null || value === undefined) return <span className="wr-delta wr-delta-none">—</span>;
   if (value === 0) return <span className="wr-delta wr-delta-flat">no change</span>;
@@ -313,6 +367,12 @@ export default function WeeklyRiskPanel({ onNavigate }) {
         dataQuality: (r.manual?.dataQuality ?? []).join('\n'),
         dataQualityConfirmed: r.manual?.dataQuality !== null,
         showPingPong: r.manual?.showPingPong === true,
+        actions: actionsToText(r.manual?.actions),
+        actionsTouched: false,
+        // Sections whose suggestion Nick chose to Edit. A section with a
+        // pending suggestion is left out of Save unless it is being edited, so
+        // a save of another field never answers it by accident.
+        editing: {},
       });
     } catch (e) {
       setError(e.message);
@@ -364,12 +424,50 @@ export default function WeeklyRiskPanel({ onNavigate }) {
         : null,
       showPingPong: draft.showPingPong === true,
     };
+    if (draft.actionsTouched || draft.editing.actions) {
+      patch.actions = textToActions(draft.actions, report?.manual?.actions);
+    }
+    const sug = report?.proposals?.sections || {};
+    for (const s of ['overtime', 'escalateToChris', 'actions', 'dataQuality']) {
+      if (sug[s] && !sug[s].answered && !draft.editing[s]) delete patch[s];
+    }
     const out = await post('/api/weekly-risk/manual', patch, 'save');
     if (out) {
       confirmOn('save', 'Saved');
       setNotice({ tone: 'ok', text: `Saved. ${out.blockers.length ? `${out.blockers.length} section(s) still needed before this can be sent.` : 'All sections complete — ready to publish and send.'}` });
       load();
     }
+  }
+
+  async function acceptSuggestion(section, hash) {
+    const out = await post('/api/weekly-risk/proposals/accept', { week: report.week, section, hash }, `accept-${section}`);
+    if (out) { confirmOn(`accept-${section}`, 'Accepted'); load(); }
+  }
+
+  async function acceptAllSuggestions() {
+    const out = await post('/api/weekly-risk/proposals/accept-all', { week: report.week }, 'accept-all');
+    if (out) {
+      setNotice({ tone: 'ok', text: `Accepted ${out.accepted.length} suggestion${out.accepted.length === 1 ? '' : 's'}.` });
+      load();
+    }
+  }
+
+  function editSuggestion(section, value) {
+    const next = { ...draft, editing: { ...draft.editing, [section]: true } };
+    if (section === 'overtime') {
+      next.overtimeHours = value.hours;
+      next.overtimeApprovals = value.approvalsOutstanding;
+      next.overtimeNote = value.note || '';
+    } else if (section === 'escalateToChris') {
+      next.escalate = value.join('\n');
+      next.escalateConfirmed = true;
+    } else if (section === 'dataQuality') {
+      next.dataQuality = value.join('\n');
+      next.dataQualityConfirmed = true;
+    } else if (section === 'actions') {
+      next.actions = actionsToText(value);
+    }
+    setDraft(next);
   }
 
   async function doPublish() {
@@ -540,6 +638,13 @@ export default function WeeklyRiskPanel({ onNavigate }) {
     : 'an earlier date';
 
   const ready = blockers.length === 0;
+  // NEURO's pre-filled suggestions (weekly-risk-proposals). A pending one hides
+  // its inputs until Nick chooses Edit, so a stray Save cannot answer it.
+  const suggestions = report.proposals || { sections: {}, gaps: [], pending: 0 };
+  const hideInputs = (section) => {
+    const p = suggestions.sections[section];
+    return Boolean(p && !p.answered && !draft.editing[section]);
+  };
 
   return (
     <div className="wr-panel">
@@ -583,6 +688,23 @@ export default function WeeklyRiskPanel({ onNavigate }) {
       <section className="wr-section wr-manual">
         <h3>Your sections</h3>
         <p className="wr-hint">NOVA cannot answer these. Blank is not nil — leaving one empty stops the report publishing.</p>
+        {suggestions.pending > 0 && (
+          <div className="wr-suggestions-bar">
+            <span><strong>{suggestions.pending}</strong> suggestion{suggestions.pending === 1 ? '' : 's'} to check — NEURO filled {suggestions.pending === 1 ? 'it' : 'them'} in from the week’s data. Nothing sends until you accept or edit each.</span>
+            <button type="button" onClick={acceptAllSuggestions} disabled={busy === 'accept-all' || locked}>
+              {busy === 'accept-all' ? 'Accepting…' : 'Accept all suggestions'}
+            </button>
+          </div>
+        )}
+        {suggestions.gaps.length > 0 && (
+          <ul className="wr-suggestion-gaps">
+            {suggestions.gaps.map((g, i) => <li key={i}>Not suggested — {g.reason}</li>)}
+          </ul>
+        )}
+
+        <ProposalCard section="overtime" proposal={suggestions.sections.overtime} editing={draft.editing.overtime}
+          onAccept={acceptSuggestion} onEdit={editSuggestion} busy={busy} locked={locked} />
+        {hideInputs('overtime') ? null : (<>
 
         <div className="wr-field-row">
           <label>
@@ -609,6 +731,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
             onChange={e => setDraft({ ...draft, overtimeNote: e.target.value })}
           />
         </label>
+        </>)}
 
         <label className="wr-field">
           Headline (optional — NEURO writes one if you leave it blank)
@@ -618,6 +741,9 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           />
         </label>
 
+        <ProposalCard section="escalateToChris" proposal={suggestions.sections.escalateToChris} editing={draft.editing.escalateToChris}
+          onAccept={acceptSuggestion} onEdit={editSuggestion} busy={busy} locked={locked} />
+        {hideInputs('escalateToChris') ? null : (
         <div className="wr-field">
           <label className="wr-check">
             <input
@@ -651,9 +777,26 @@ export default function WeeklyRiskPanel({ onNavigate }) {
             </details>
           )}
         </div>
+        )}
 
         <ChrisAgenda />
 
+        <ProposalCard section="actions" proposal={suggestions.sections.actions} editing={draft.editing.actions}
+          onAccept={acceptSuggestion} onEdit={editSuggestion} busy={busy} locked={locked} />
+        {hideInputs('actions') ? null : (
+          <label className="wr-field">
+            Actions this week (one per line; start with [x] when done)
+            <textarea
+              rows={3} value={draft.actions}
+              onChange={e => setDraft({ ...draft, actions: e.target.value, actionsTouched: true })}
+            />
+          </label>
+        )}
+
+        <ProposalCard section="dataQuality" proposal={suggestions.sections.dataQuality} editing={draft.editing.dataQuality}
+          onAccept={acceptSuggestion} onEdit={editSuggestion} busy={busy} locked={locked} />
+
+        {hideInputs('dataQuality') ? null : (
         <div className="wr-field">
           <label className="wr-check">
             <input
@@ -668,6 +811,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
             onChange={e => setDraft({ ...draft, dataQuality: e.target.value })}
           />
         </div>
+        )}
 
         {/* A display choice, not an answer — it never blocks publication, and
             it hides the SECTION only: a ping-pong escalation still reaches the

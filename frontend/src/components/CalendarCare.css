@@ -1,0 +1,24 @@
+/* Calendar care (1 Nov 2026) — full width, like the rest of Now. */
+.cc {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.cc__h { margin: 0 0 8px; font-size: 14px; color: var(--text-primary); }
+.cc__item { padding: 8px 0; border-top: 1px solid var(--border); }
+.cc__item:first-of-type { border-top: none; }
+.cc__say { font-size: 14px; color: var(--text-primary); }
+.cc__sub { margin-top: 2px; font-size: 12px; color: var(--text-secondary); }
+.cc__evidence { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-secondary); }
+.cc__text {
+  width: 100%; margin-top: 6px; box-sizing: border-box;
+  background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary);
+  border-radius: var(--radius-sm); padding: 6px 8px; font-size: 13px; font-family: inherit;
+}
+.cc__acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.cc__gap { margin-top: 4px; font-size: 12px; color: var(--warning); }
+.cc__note { margin-top: 6px; font-size: 12px; }
+.cc__note--ok { color: var(--success, var(--accent)); }
+.cc__note--warn, .cc__note--bad { color: var(--warning); }

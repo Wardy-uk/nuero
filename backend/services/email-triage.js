@@ -1116,7 +1116,9 @@ function getFlaggedItems() {
 // `left-inbox` is NEURO's own observation, not one of Nick's verdicts, so it is
 // deliberately absent from this set: it can only be written by the merge, never
 // by a caller passing a string.
-const DISMISS_REASONS = new Set(['done', 'not-relevant', 'replied', 'unspecified']);
+// `delegated` (1 Nov 2026): Nick handed it to a direct report and the hand-over
+// email was verified in Sent Items (services/delegation.js). It IS his verdict.
+const DISMISS_REASONS = new Set(['done', 'not-relevant', 'replied', 'unspecified', 'delegated']);
 const LEFT_INBOX = 'left-inbox';
 
 // ── Invites answered (30 Oct 2026) ──────────────────────────────────────────

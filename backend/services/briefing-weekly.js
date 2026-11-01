@@ -476,7 +476,18 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
   const goals = goalsWeek(goalRead);
   if (goalRead && goals.gaps && goals.gaps.length) gaps.push({ source: `goal inputs (${goals.gaps.join(', ')})`, why: 'some goals say “can’t tell”' });
 
-  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, health, weekAhead, goals, gaps };
+  // What NEURO did on its own last week (1 Nov 2026) — screen and push only:
+  // it mixes personal items in, so it never reaches the work email. A failed
+  // read is its own `known:false`, deliberately NOT in `gaps` (the email's
+  // footer prints gaps).
+  let neuroDid = null;
+  try {
+    neuroDid = await use('neuroDid', () => require('./neuro-weekly-report').compose({ week: weeks.report.from, now: now.getTime() }))();
+  } catch (e) {
+    neuroDid = { known: false, why: e.message };
+  }
+
+  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, health, weekAhead, goals, neuroDid, gaps };
 }
 
 module.exports = {

@@ -55,7 +55,8 @@ router.get('/manual', (req, res) => {
   try {
     const week = req.query.week || weeklyRisk.weekCommencing();
     const manual = weeklyRisk.getManual(week);
-    res.json({ week, manual, blockers: weeklyRisk.manualBlockers(manual) });
+    const proposals = weeklyRisk.proposalsFor(week, manual);
+    res.json({ week, manual, proposals, blockers: weeklyRisk.manualBlockers(manual, null, proposals) });
   } catch (err) { fail(res, err); }
 });
 
@@ -65,7 +66,41 @@ router.post('/manual', (req, res) => {
     const week = req.body.week || weeklyRisk.weekCommencing();
     const { week: _ignored, ...patch } = req.body || {};
     const manual = weeklyRisk.setManual(week, patch);
-    res.json({ week, manual, blockers: weeklyRisk.manualBlockers(manual) });
+    const proposals = weeklyRisk.proposalsFor(week, manual);
+    res.json({ week, manual, proposals, blockers: weeklyRisk.manualBlockers(manual, null, proposals) });
+  } catch (err) { fail(res, err); }
+});
+
+/**
+ * POST /api/weekly-risk/proposals/accept — accept NEURO's pre-filled suggestion
+ * for one manual section (overtime, escalateToChris, actions, dataQuality),
+ * exactly as shown: `hash` is the fingerprint the screen displayed, and a
+ * suggestion that changed since is refused (409). Machine-refused: accepting a
+ * section of the report to Chris is Nick's decision.
+ */
+router.post('/proposals/accept', (req, res) => {
+  try {
+    const { week: w, section, hash } = req.body || {};
+    const week = w || weeklyRisk.weekCommencing();
+    const r = weeklyRisk.acceptProposal(week, section, hash);
+    if (!r.ok) return res.status(r.code || 400).json({ error: r.error });
+    const proposals = weeklyRisk.proposalsFor(week, r.manual);
+    res.json({ ok: true, week, section, manual: r.manual, proposals, blockers: weeklyRisk.manualBlockers(r.manual, null, proposals) });
+  } catch (err) { fail(res, err); }
+});
+
+/**
+ * POST /api/weekly-risk/proposals/accept-all — "Accept all suggestions": every
+ * pre-filled section not yet answered, each exactly as stored. Machine-refused.
+ */
+router.post('/proposals/accept-all', (req, res) => {
+  try {
+    const { week: w } = req.body || {};
+    const week = w || weeklyRisk.weekCommencing();
+    const r = weeklyRisk.acceptAllProposals(week);
+    if (!r.ok) return res.status(r.code || 400).json({ error: r.error });
+    const proposals = weeklyRisk.proposalsFor(week, r.manual);
+    res.json({ ok: true, week, accepted: r.accepted, manual: r.manual, proposals, blockers: weeklyRisk.manualBlockers(r.manual, null, proposals) });
   } catch (err) { fail(res, err); }
 });
 

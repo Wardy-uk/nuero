@@ -27,6 +27,10 @@ export const interactive = {
   post_prepared_moves_request: 'Asking to confirm a prepared move is Nick, in NEURO, looking at exactly what it would write. An agent cannot do it.',
   post_promises_by_key_prepare: 'Drafting an email about a promise is Nick’s press in NEURO; sending it still needs his approval code.',
   // 1 Nov 2026: closing a task on evidence, or saying "not yet", is Nick's call in NEURO.
+  // 1 Nov 2026: delegation prompts — handing work to a direct report is Nick's call.
+  post_delegation_by_id_hand_over: "Handing a task or email to one of Nick's people emails them as Nick. He does it in NEURO → Now or on the task/email card.",
+  post_delegation_by_id_dismiss: "Saying a hand-over suggestion is not right is Nick's answer, in NEURO.",
+  post_delegation_scan: 'The delegation pass runs on its own (it spends model calls); Nick can run it in NEURO.',
   post_tasks_by_id_done_evidence_close: "Closing a task because NEURO thinks it looks done is Nick's decision, in NEURO → Tasks.",
   post_tasks_by_id_done_evidence_not_yet: "Telling NEURO a task is not done yet is Nick's answer, in NEURO → Tasks.",
   // 1 Nov 2026: answering a focus block (pick a task, two minutes in, not now,
@@ -202,6 +206,17 @@ export const interactive = {
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
   post_leave_clashes_apply: 'Rearranging the diary around leave declines and moves meetings as Nick. He applies it in NEURO → Now → Leave clashes.',
   post_leave_auto_decline_run: 'Declining invites on leave days is done as Nick, under his own Settings switch.',
+  // Calendar care (1 Nov 2026): protecting an afternoon, adding an agenda to a
+  // meeting, and leaving a series are Nick's presses on NEURO → Now.
+  post_calendar_care_week_protect: 'Blocking time in Nick’s calendar to protect his week is his press, in NEURO → Now.',
+  post_calendar_care_week_dismiss: 'Saying "not this week" to protecting time is Nick’s answer, in NEURO → Now.',
+  post_calendar_care_agenda_refresh: 'Re-reading meeting invites for missing agendas runs on NEURO’s own timer; Nick can run it in NEURO → Now.',
+  post_calendar_care_agenda_add: 'Adding an agenda sends every attendee an update as Nick. He reads it and adds it in NEURO → Now.',
+  post_calendar_care_agenda_done: 'Recording an agenda as added is NEURO’s own bookkeeping after Nick’s press, in NEURO → Now.',
+  post_calendar_care_agenda_dismiss: 'Dismissing a drafted agenda is Nick’s answer, in NEURO → Now.',
+  post_calendar_care_series_decline: 'Declining a recurring meeting tells the organiser as Nick. He decides it in NEURO → Now.',
+  post_calendar_care_series_cancel: 'Cancelling a series tells every attendee as Nick. He decides it in NEURO → Now.',
+  post_calendar_care_series_answer: 'Keeping a series or being reminded later is Nick’s answer, in NEURO → Now.',
   post_email_triage_by_emailId_invite: 'Answering a meeting invite tells the organiser as Nick. He answers it on the invite card in NEURO → Inbox.',
   post_1to1_apply_window: 'Booking and moving 1-2-1s emails real people as Nick. He confirms them in NEURO → People → Schedule 1-2-1s.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',
@@ -228,6 +243,9 @@ export const interactive = {
   post_calendar_events_by_id_respond: 'Retired since Build 8: responding to an invite as Nick is not done from NEURO.',
   post_soap_recipients: 'Who the SOAP report is emailed to is Nick\'s decision, in NEURO → SOAP report → Distribution list.',
   // 23 Oct 2026: an agent PROPOSES a fix (post_report_fixes); what reaches the reports is Nick's.
+  // 1 Nov 2026: NEURO pre-fills the weekly report's manual sections; accepting one is Nick's.
+  post_weekly_risk_proposals_accept: 'Accepting a pre-filled section of the weekly report to Chris is Nick’s decision, in NEURO → Reports → Weekly risk.',
+  post_weekly_risk_proposals_accept_all: 'Accepting the pre-filled sections of the weekly report to Chris is Nick’s decision, in NEURO → Reports → Weekly risk.',
   post_report_fixes_manual: 'Entering a fix straight into the reports is Nick\'s, in NEURO → Reports → Fixes log. An agent proposes one with post_report_fixes.',
   post_report_fixes_by_id_decide: 'Including a fix in the SOAP or Weekly Risk report is Nick\'s decision, in NEURO → Reports → Fixes log.',
   post_report_fixes_by_id_edit: 'Editing a fix that may reach Chris is Nick\'s, in NEURO → Reports → Fixes log.',
@@ -237,11 +255,17 @@ export const interactive = {
   post_uat_rounds_by_id_dismiss: 'Dismissing a UAT request is Nick\'s call, in NEURO → People → UAT volunteers.',
   post_uat_rounds_by_id_retry: 'Re-reading a UAT request is done by Nick, in NEURO → People → UAT volunteers.',
   post_uat_tick: 'The UAT round timer runs on its own; Nick can run it in NEURO.',
+  post_meeting_followups_sweep: 'The meeting follow-up sweep runs on its own timer; Nick can run it in NEURO.',
+  post_meeting_followups_by_id_draft: 'Drafting a follow-up email to a meeting’s attendees is Nick’s press, on Now or in Drafts.',
+  post_meeting_followups_by_id_decline: 'Saying no follow-up for a meeting is Nick’s call, on Now or in Drafts.',
+  post_meeting_actions_auto_filed_by_taskId_undo: 'Undoing an automatically filed meeting action counts against auto-filing — Nick presses Undo on the task card.',
   // Overtime claims (29 Oct 2026): deciding a claim, opt-outs and the payroll send are Nick's.
   post_overtime_claims_by_id_decide: 'Approving or rejecting overtime is Nick\'s decision, in NEURO → People → Overtime.',
   post_overtime_claims_manual: 'Adding an approved overtime line for an agent is Nick\'s, in NEURO → People → Overtime.',
   post_overtime_claims_optouts: 'Recording a Working Time opt-out is Nick\'s, in NEURO → People → Overtime.',
   post_overtime_claims_optouts_by_id_withdraw: 'Recording a Working Time opt-out withdrawal is Nick\'s, in NEURO → People → Overtime.',
+  post_personal_auto_tea_shopping: "Whether a planned tea adds to the household shopping list is the household's switch, in NEURO or on the family wall.",
+  post_personal_auto_hike_suggestion_dismiss: "'Not this weekend' on a hike suggestion is Nick's answer, in NEURO → Now or Life → Outdoor.",
   post_overtime_claims_payroll_prepare: 'Overtime goes to payroll on Nick\'s press, in NEURO → People → Overtime.',
   post_u_by_token: 'This is the answer link for the person invited to UAT — only they press it, from their email.',
   post_canonical_needs_you_synthetic: 'A synthetic P0 interrupts Nick\'s phone. He starts it himself in NEURO → Set up.',

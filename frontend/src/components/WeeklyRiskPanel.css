@@ -551,3 +551,24 @@
 .wr-agenda-date { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .wr-agenda-add { display: flex; gap: 8px; }
 .wr-agenda-add input { flex: 1; }
+
+/* NEURO's pre-filled suggestions for the manual sections. A suggestion is not
+   an answer: it is marked, sourced, and waits for Accept or Edit. */
+.wr-suggestions-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--warning, #f0a040); border-radius: 6px;
+  padding: 8px 12px; margin: 8px 0 12px; font-size: 13px;
+}
+.wr-suggestion-gaps { margin: 0 0 12px; padding-left: 18px; font-size: 12px; color: var(--text-muted); }
+.wr-suggestion {
+  border: 1px dashed var(--warning, #f0a040); border-radius: 6px;
+  padding: 8px 12px; margin: 10px 0;
+}
+.wr-suggestion-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.wr-suggested-badge {
+  font-size: 11px; font-weight: 600; color: var(--warning, #f0a040);
+  border: 1px solid var(--warning, #f0a040); border-radius: 4px; padding: 0 6px;
+}
+.wr-suggestion-label { font-weight: 600; }
+.wr-suggestion-value { margin: 6px 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.wr-suggestion-actions { display: flex; gap: 8px; }

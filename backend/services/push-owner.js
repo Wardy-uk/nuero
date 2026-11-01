@@ -47,12 +47,15 @@ const OWNERS = Object.freeze({
   room_offer: SAIM,
   router_restart: SAIM,
   uat_volunteers: SAIM,
+  // A meeting follow-up drafted automatically (1 Nov 2026): Nick's press sends it.
+  meeting_followup: SAIM,
   capture_failed: SAIM,
   needs_you: SAIM,
   approvals: SAIM,
   teams_mention: SAIM,
   nudge_cleared: SAIM,
   plan_milestone: SAIM,
+  team_cover: SAIM,
   // Focus blocks (1 Nov 2026): the start, its check-ins, and the held summary.
   block_start: SAIM,
   block_two_minute: SAIM,

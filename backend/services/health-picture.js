@@ -23,6 +23,10 @@
 
 const LEVELS = ['act', 'watch', 'gap', 'good'];
 
+// The rule every health surface holds: measurements and thresholds, never a claim
+// that a condition is present. Shared with the GP pack (gp-pack.js) and its test.
+const DIAGNOSIS_CLAIM = /you have (hypertension|sleep apnoea|apnea)|diagnosed with/i;
+
 // NICE NG136: a home (or ambulatory) average of 135/85 or more is the threshold
 // for hypertension, 150/95 for stage 2. Home monitoring averages, not one reading.
 const BP_HOME_STAGE1 = { sys: 135, dia: 85 };
@@ -693,5 +697,6 @@ module.exports = {
   _internals: { monthLabel, bloodPressure, weight, nutrition, fitness, activity, recovery, oxygen, heart, sleep, daylight, medicalGap, daysBetween, median },
   BP_HOME_STAGE1,
   BP_HOME_STAGE2,
+  DIAGNOSIS_CLAIM,
   NHS_WEEKLY_MINUTES,
 };

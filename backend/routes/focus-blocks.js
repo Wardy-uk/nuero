@@ -44,6 +44,13 @@ router.get('/', (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// GET /api/focus-blocks/focus-state — is Nick in a focus block right now? {inFocus, until, task, blockId}. Read
+// by the iPhone Shortcut that turns an iOS Focus on (docs/focus-dnd-shortcut.md). Cheap; never inferred from the diary.
+router.get('/focus-state', (req, res) => {
+  try { res.json({ ok: true, ...focusBlocks.focusState(new Date()) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // POST /api/focus-blocks/:id/choose — pick a task for a focus block: starts a focus session on it.
 router.post('/:id/choose', async (req, res) => {
   if (!guard(req, res, ['taskId', 'twoMinute', 'smallerStep', 'force'])) return;

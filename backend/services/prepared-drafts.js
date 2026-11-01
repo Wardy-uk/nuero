@@ -200,6 +200,9 @@ function savedWork({ now = Date.now(), deps = {} } = {}) {
   // path: a caller with its own db fake gets none unless it passes uatRows.
   const uatRows = deps.uatRows || (deps.db ? () => [] : () => require('./uat-volunteers').draftRows());
   try { out.communication.push(...uatRows()); } catch (e) { out.gaps.push(`SAiM couldn’t read the UAT volunteer drafts (${e.message})`); }
+  // Meeting follow-ups (1 Nov 2026): drafted after team meetings, offered after others.
+  const followupRows = deps.followupRows || (deps.db ? () => [] : () => require('./meeting-followups').draftRows());
+  try { out.communication.push(...followupRows()); } catch (e) { out.gaps.push(`SAiM couldn’t read the meeting follow-ups (${e.message})`); }
   const by = (k) => (a, b) => String(b[k] || '').localeCompare(String(a[k] || ''));
   out.work.sort((a, b) => (a.block ? `${a.block.date} ${a.block.start}` : '9999').localeCompare(b.block ? `${b.block.date} ${b.block.start}` : '9999') || by('savedAt')(a, b));
   out.communication.sort(by('savedAt'));

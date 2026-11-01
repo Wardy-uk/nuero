@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions, Headline, Stat, StatTiles, Tile, TileGrid, Group, PrimaryAction, dayLabel } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
 import { GoalNote } from './GoalsCard';
+import { HikeSuggestion } from '../PersonalAutoOffers';
 
 /**
  * Life → Outdoor (Build 29). One compact section: this week, the Hike weekly
@@ -224,6 +225,7 @@ export default function OutdoorCard() {
   };
   return (
     <>
+      <HikeSuggestion />
       <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} goalNote={<GoalNote kinds="hikes" />} />
       {msg && <div className="cn-error">Not saved — {msg}</div>}
     </>

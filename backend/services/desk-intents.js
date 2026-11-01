@@ -179,7 +179,7 @@ const TTL_MS = 5 * 60 * 1000;
 
 // Bounded: this is a hand-off queue, not a log. More than a couple pending means
 // something is wrong, and the cap stops a stuck agent growing the blob.
-const MAX_PENDING = 5;
+const MAX_PENDING = 8;
 
 function _load() {
   try {
@@ -258,6 +258,103 @@ function takePaste(id, { now = Date.now() } = {}) {
   return { ok: true, text: p.text };
 }
 
+// ── Opening a NEURO-built link on the laptop (1 Nov 2026) ─────────────────────
+//
+// Nick: when a focus block starts, have the laptop ready — the task's note,
+// its Jira ticket, its draft. That is a URL open, and a URL is the one thing
+// the header above says the Pi must never be able to name, because "browser
+// plus an arbitrary URL" is arbitrary execution wearing an allowlist's clothes.
+// So it is a separate, NARROW kind with its own three locks:
+//
+// ⚠⚠ ONLY URLS NEURO BUILT, ON THREE EXACT SHAPES. `urlAllowed` is the whole
+//   policy and it is a shape check, not a host check:
+//     obsidian://open?vault=<THE vault>&file=<path>        (nothing else in the query)
+//     https://<the Jira host>/browse/<KEY-123>              (JIRA_BASE_URL's host)
+//     https://<NEURO desktop host>/?view=task&taskId=<n>    or /?view=drafts
+//   Anything else — another host, a port, credentials, a fragment, another
+//   query key, another obsidian action — is refused at queue AND at claim.
+// ⚠ IT IS NOT A BUTTON. `open-url` is not in APPS, so `offer()` never puts it
+//   on a surface and `queue()` refuses it: the only caller is focus-laptop,
+//   which builds the URL itself from a task's own context.
+// ⚠ THE AGENT MUST SAY `open-url` in canOpen, and it re-checks the shape
+//   against ITS OWN list of hosts (desktop-agent/focus-laptop.ps1) before
+//   anything opens — so a server that widened this list still could not widen
+//   what the laptop does.
+// ⚠ THE ONE TIMER-DRIVEN CALLER. The header's "only a human act queues" rule
+//   has exactly one exception, agreed with Nick: the "ready" moment of a focus
+//   block he made by hand with ONE task already in it (his choice, made
+//   earlier). It opens links, never programs.
+const URL_APP = 'open-url';
+const URL_MAX = 600;
+
+/** Read at call time, so a test or an .env change needs no restart. */
+function urlPolicy() {
+  let jiraHost = null;
+  try { jiraHost = process.env.JIRA_BASE_URL ? new URL(process.env.JIRA_BASE_URL).hostname.toLowerCase() : null; } catch { jiraHost = null; }
+  let neuroHost = null;
+  try { neuroHost = new URL(process.env.NEURO_DESKTOP_URL || 'https://nuero.nickward.co.uk').hostname.toLowerCase(); } catch { neuroHost = null; }
+  return { jiraHost, neuroHost, vault: process.env.OBSIDIAN_VAULT_NAME || 'Nicks knowledge base' };
+}
+
+/** PURE. Is this one of the three link shapes NEURO builds? */
+function urlAllowed(url, policy = urlPolicy()) {
+  if (typeof url !== 'string' || !url || url.length > URL_MAX) return false;
+  // No spaces, control characters, quotes, angle brackets, backticks or backslashes.
+  for (const ch of url) { const c = ch.codePointAt(0); if (c <= 0x20 || c === 0x7f || '"<>`\\'.includes(ch)) return false; }
+  let u;
+  try { u = new URL(url); } catch { return false; }
+  if (u.username || u.password || u.hash) return false;
+  const keys = [...u.searchParams.keys()];
+  if (u.protocol === 'obsidian:') {
+    if (u.hostname !== 'open' || (u.pathname && u.pathname !== '/' && u.pathname !== '')) return false;
+    if (keys.length !== 2 || !keys.includes('vault') || !keys.includes('file')) return false;
+    const file = u.searchParams.get('file') || '';
+    return u.searchParams.get('vault') === policy.vault && Boolean(file) && !file.split('/').includes('..');
+  }
+  if (u.protocol !== 'https:' || u.port) return false;
+  const host = u.hostname.toLowerCase();
+  if (policy.jiraHost && host === policy.jiraHost) {
+    return !u.search && /^\/browse\/[A-Z][A-Z0-9]+-\d+$/.test(u.pathname);
+  }
+  if (policy.neuroHost && host === policy.neuroHost) {
+    if (u.pathname !== '/') return false;
+    const view = u.searchParams.get('view');
+    if (view === 'drafts') return keys.length === 1;
+    if (view === 'task') return keys.length === 2 && keys.includes('taskId') && /^\d{1,9}$/.test(u.searchParams.get('taskId') || '');
+    return false;
+  }
+  return false;
+}
+
+/** Is this queued/claimed entry one we understand and may still hand over? */
+function _known(i) {
+  if (!i) return false;
+  if (i.app === URL_APP) return urlAllowed(i.url);
+  return Boolean(APPS[i.app]);
+}
+
+/**
+ * Queue a link open. Caller: focus-laptop ONLY (see above).
+ * → { ok, intent:{id,label,url} } | { ok:false, reason }
+ */
+function queueUrl(url, { host = null, why = null, label = null } = {}) {
+  if (!urlAllowed(url)) return { ok: false, reason: 'not a link NEURO opens on the laptop' };
+  const state = _load();
+  if (!state) return { ok: false, reason: 'could not read the intent queue' };
+  const intent = {
+    id: 'di_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    app: URL_APP,
+    url,
+    label: String(label || 'a link').slice(0, 80),
+    host,
+    why: why || null,
+    at: new Date().toISOString(),
+  };
+  state.pending = [...claimable(state.pending), intent];
+  if (!_save(state)) return { ok: false, reason: 'could not save the intent' };
+  return { ok: true, intent: { id: intent.id, label: intent.label, url }, expiresInMs: TTL_MS };
+}
+
 /** PURE: has this intent outlived its deadline? */
 function isExpired(intent, now = Date.now()) {
   const at = Date.parse(intent && intent.at);
@@ -267,7 +364,7 @@ function isExpired(intent, now = Date.now()) {
 
 /** PURE: what the agent should be handed, given a queue and the clock. */
 function claimable(pending = [], now = Date.now()) {
-  return pending.filter(i => i && APPS[i.app] && !isExpired(i, now));
+  return pending.filter(i => _known(i) && !isExpired(i, now));
 }
 
 /**
@@ -356,7 +453,7 @@ function claim({ host = null, now = Date.now(), canOpen = null } = {}) {
   //   `claimable()` is what `queue()` prunes with and a claimed intent must
   //   never be handed to a second agent.
   state.claimed = [...(state.claimed || []).filter(c => !isExpired(c, now)),
-    ...mine.map(i => ({ id: i.id, app: i.app, host: i.host || null, at: new Date(now).toISOString() }))];
+    ...mine.map(i => ({ id: i.id, app: i.app, host: i.host || null, at: new Date(now).toISOString(), ...(i.app === URL_APP ? { label: i.label || null } : {}) }))];
   _save(state);
   // A paste is handed over only to an agent that says it can paste into that
   // app; an older agent gets the plain open and the held text is dropped.
@@ -367,7 +464,7 @@ function claim({ host = null, now = Date.now(), canOpen = null } = {}) {
     for (const i of unpastable) delete map[i.id];
     _savePaste(map, now);
   }
-  return { intents: mine.map(i => (canPaste(i) ? { id: i.id, app: i.app, paste: true } : { id: i.id, app: i.app })), gaps: [] };
+  return { intents: mine.map(i => (i.app === URL_APP ? { id: i.id, app: i.app, url: i.url } : canPaste(i) ? { id: i.id, app: i.app, paste: true } : { id: i.id, app: i.app })), gaps: [] };
 }
 
 /** The agent tells us what actually happened. */
@@ -422,8 +519,8 @@ function status(id) {
 function inFlight({ now = Date.now() } = {}) {
   const state = _load();
   if (!state) return { known: false, why: 'could not read the intent queue', requested: [], taken: [] };
-  const live = (entry) => entry && APPS[entry.app] && !isExpired(entry, now);
-  const shape = (entry) => ({ id: entry.id, app: entry.app, label: APPS[entry.app], host: entry.host || null, at: entry.at });
+  const live = (entry) => entry && (APPS[entry.app] || entry.app === URL_APP) && !isExpired(entry, now);
+  const shape = (entry) => ({ id: entry.id, app: entry.app, label: APPS[entry.app] || entry.label || 'a link', host: entry.host || null, at: entry.at });
   const settled = new Set((state.outcomes || []).map(o => o && o.id));
   return {
     known: true,
@@ -433,4 +530,4 @@ function inFlight({ now = Date.now() } = {}) {
   };
 }
 
-module.exports = { queue, claim, record, status, inFlight, isExpired, claimable, offer, takePaste, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY, PASTE_KEY, PASTE_APPS, PASTE_MAX };
+module.exports = { queue, queueUrl, urlAllowed, urlPolicy, URL_APP, claim, record, status, inFlight, isExpired, claimable, offer, takePaste, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY, PASTE_KEY, PASTE_APPS, PASTE_MAX };

@@ -7,6 +7,7 @@ import WaitingOn from './WaitingOn';
 import PreparedActions from './PreparedActions';
 import SuggestedPeople from './SuggestedPeople';
 import UatVolunteers from './UatVolunteers';
+import TeamCover from './TeamCover';
 import './PeopleBoard.css';
 
 // Current direct reports, grouped for display. Leavers and people who move to
@@ -1393,6 +1394,9 @@ export default function PeopleBoard() {
           "Booked automatically · Undo". Undo is the ordinary governed cancel,
           confirmed by this press — never a machine. */}
       <AutoBookedOneToOnes />
+
+      {/* Team cover (1 Nov 2026): queues where two or more are off together; a name opens the person. */}
+      <TeamCover mode="people" onPerson={setSelectedPerson} />
 
       {/* UAT volunteers (26 Oct 2026): Dan's weekly request — picks, invites, answers, reply. */}
       <UatVolunteers />

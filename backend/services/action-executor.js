@@ -428,7 +428,10 @@ function calendarChecks({ action, policy, event, nowLocal }) {
     if (!d.start || !d.end || minuteOf(d.end) <= minuteOf(d.start)) return stopWith('bad-times', 'the approved times are not a real slot');
     if (_wallMinutes(nowLocal, minuteOf(d.start)) < 5) return stopWith('slot-passed', 'the approved slot has started or passed — too late to send it');
   }
-  if (op === 'calendar-update' || op === 'calendar-cancel') {
+  // 1 Nov 2026: an agenda (calendar-body) changes nothing about the slot, but
+  // must still be for a meeting that has not started.
+  if (op === 'calendar-body' && _wallMinutes(nowLocal, minuteOf(t.fromStart || d.start)) < 5) return stopWith('slot-passed', 'the meeting has started or passed — not adding an agenda now');
+  if (op === 'calendar-update' || op === 'calendar-cancel' || op === 'calendar-body') {
     if (!event) return stopWith('event-unreadable', 'could not read the meeting from the calendar', false);
     if (event.exists === false) return stopWith('event-gone', 'the meeting no longer exists');
     const e = event.event || {};
@@ -438,7 +441,9 @@ function calendarChecks({ action, policy, event, nowLocal }) {
     if (t.fromStart && e.start && e.start !== minuteOf(t.fromStart)) return stopWith('event-moved', `the meeting has moved since this was prepared (it is now ${e.start.replace('T', ' ')})`);
     if (d.subject && e.subject !== undefined && e.subject !== d.subject) return stopWith('event-renamed', 'the meeting has been renamed since this was prepared');
     if (!_sameSet(e.attendees || [], _emails(d.to))) return stopWith('attendees-changed', 'the people in the meeting have changed since this was prepared');
-    if (op === 'calendar-cancel' && _wallMinutes(nowLocal, e.start) < 0) return stopWith('slot-passed', 'the meeting has already started — not cancelling it now');
+    // A whole series (calendar care) is cancelled from its master, whose start is
+    // the FIRST occurrence — already past by definition.
+    if (op === 'calendar-cancel' && !t.series && _wallMinutes(nowLocal, e.start) < 0) return stopWith('slot-passed', 'the meeting has already started — not cancelling it now');
   }
   return { ok: true };
 }
@@ -469,6 +474,24 @@ async function _calendarUpdatePreflight(action, policy, d, nowMs) {
 }
 PREFLIGHT.reschedule_calendar_event = _calendarUpdatePreflight;
 PREFLIGHT.cancel_calendar_event = _calendarUpdatePreflight;
+
+/**
+ * 1 Nov 2026 — an agenda added to a meeting Nick organises. Same event checks as
+ * a move, plus: the body is still EXACTLY the one the agenda was drafted on top
+ * of (its hash is bound into the approval). Changed since → cancel, unsent.
+ */
+PREFLIGHT.update_calendar_event_body = async function updateCalendarBody(action, policy, d, nowMs) {
+  const other = _otherSent(action, { ever: true });
+  if (other) return stopWith('duplicate', `an agenda was already added to this meeting (${other.action_id}, ${other.status})`);
+  const read = d.calApi.readEventBody ? await d.calApi.readEventBody(action.target.eventId) : null;
+  if (!read || !read.ok) return stopWith('event-unreadable', 'could not read the meeting from the calendar', false);
+  const sync = calendarChecks({ action, policy, event: read, nowLocal: _nowLocal(nowMs) });
+  if (!sync.ok) return sync;
+  if (registry.sha256(String(read.html || '')) !== action.target.fromBodyHash) {
+    return stopWith('event-body-changed', 'the invite text has changed since the agenda was drafted — nothing added');
+  }
+  return { ok: true };
+};
 
 async function preflight(action, policy, d, nowMs) {
   const common = commonChecks({ action, policy, nowMs });
@@ -703,11 +726,20 @@ async function _calendarExecutor(action, claim, d, clock) {
     if (r.outcome === 'accepted' && r.event && r.event.id) _attemptSet(claim.attemptId, { draft_id: r.event.id });
   } else if (policy.sendMode === 'calendar-update') {
     r = await cal.moveEvent(action.target.eventId, { start: draft.start, end: draft.end, timeZone: draft.timeZone });
+  } else if (policy.sendMode === 'calendar-body') {
+    // Read the body once more and add the agenda on top of EXACTLY the body
+    // that was approved (its hash). Anything else is proven-not-made.
+    const read = await cal.readEventBody(action.target.eventId);
+    if (!read || !read.ok || !read.exists || registry.sha256(String(read.html || '')) !== action.target.fromBodyHash) {
+      r = { outcome: 'rejected', status: null, category: 'body-changed' };
+    } else {
+      r = await cal.updateEventBody(action.target.eventId, { html: require('./calendar-care-model').mergeAgendaIntoBody(read.html, draft.body) });
+    }
   } else {
     r = await cal.cancelEvent(action.target.eventId, { comment: draft.body || '' });
   }
   const now = clock();
-  const what = policy.sendMode === 'calendar-create' ? 'invite' : policy.sendMode === 'calendar-update' ? 'move' : 'cancellation';
+  const what = policy.sendMode === 'calendar-create' ? 'invite' : policy.sendMode === 'calendar-update' ? 'move' : policy.sendMode === 'calendar-body' ? 'agenda' : 'cancellation';
   if (r.outcome === 'accepted') {
     _attemptFinish(claim.attemptId, { send_outcome: 'accepted', send_http_status: r.status, retry_safe: 0, final_state: 'executed' }, now);
     pa.transition(id, 'executed', { now, allowedFrom: ['executing'], note: `Microsoft accepted the ${what} (HTTP ${r.status}) — reading it back`,
@@ -924,6 +956,18 @@ function judgeCalendarEvent(found, { action, handle }) {
     const done = found.exists === false || (found.event && found.event.isCancelled === true);
     return { ok: done, checks: { gone: found.exists === false, cancelled: !!(found.event && found.event.isCancelled) } };
   }
+  // 1 Nov 2026: the agenda is in the body, and nothing else moved.
+  if (policy.sendMode === 'calendar-body') {
+    const e = found.event || {};
+    const checks = {
+      event: e.id === t.eventId,
+      start: e.start === minuteOf(t.fromStart),
+      attendees: _sameSet(e.attendees || [], _emails(d.to)),
+      notCancelled: e.isCancelled !== true,
+      agenda: require('./calendar-care-model').bodyHoldsAgenda(found.html, d.body),
+    };
+    return { ok: Object.values(checks).every((v) => v === true), checks };
+  }
   const e = found.event || {};
   const checks = {
     event: policy.sendMode === 'calendar-create' ? e.marker === handle : e.id === t.eventId,
@@ -977,7 +1021,7 @@ async function _verifyCalendar(action, d, nowMs) {
       else found = { exists: true, event: r.events[0] };
     }
   } else {
-    const r = await cal.readEvent(action.target.eventId);
+    const r = policy.sendMode === 'calendar-body' ? await cal.readEventBody(action.target.eventId) : await cal.readEvent(action.target.eventId);
     if (!r || !r.ok) { outcome = 'provider_unavailable'; proof.category = (r && r.category) || 'unavailable'; }
     else found = r;
   }
@@ -988,6 +1032,7 @@ async function _verifyCalendar(action, d, nowMs) {
     if (j.ok) outcome = 'verified';
     else if (policy.sendMode === 'calendar-update' && found.event && found.event.start === minuteOf(action.target.fromStart)) outcome = 'not_found';
     else if (policy.sendMode === 'calendar-cancel' && found.event && !found.event.isCancelled) outcome = 'not_found';
+    else if (policy.sendMode === 'calendar-body' && found.event && j.checks.agenda === false && found.event.start === minuteOf(action.target.fromStart)) outcome = 'not_found';
     else outcome = 'ambiguous';
   }
   _recordVerification(action, attempt, outcome, proof, nowMs);

@@ -402,7 +402,11 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // focus-blocks (1 Nov 2026): answering a focus block starts Nick's work, so the
 // kiosk shows the block read-only (it arrives on /api/canonical/now) and the
 // Surface passes no handler there; the route also refuses the kiosk.
-const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent', 'focus-blocks']);
+// meeting-followups (1 Nov 2026): Draft / Not this one on a follow-up offer are
+// Nick's presses; Drafts is read-only on the kiosk and passes no handler there.
+// calendar-care (1 Nov 2026): adding an agenda tells every attendee as Nick; the
+// prep sheet shows the drafted agenda read-only on the kiosk (no Add button).
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent', 'focus-blocks', 'meeting-followups', 'calendar-care']);
 
 // EXACT paths a shared view calls only when it is NOT read-only — the kiosk renders
 // those views read-only (platformNow() === 'kiosk'), so the control that calls them
@@ -417,6 +421,9 @@ const KIOSK_NEVER_CALLS = new Map([
   // NOTHING on the kiosk (readOnly), and the task-agent segment is closed anyway.
   ['/api/prepared-actions/${id}/intent-grant', 'saim/shared-ui/TaskAgent.jsx'],
   ['/api/prepared-actions/${id}/execute-direct', 'saim/shared-ui/TaskAgent.jsx'],
+  // Prep → "Add agenda" (calendar care, 1 Nov 2026): the button is not drawn on the kiosk.
+  ['/api/prepared-actions/${encodeURIComponent(a.actionId)}/intent-grant', 'saim/app/src/views/MeetingPrep.jsx'],
+  ['/api/prepared-actions/${encodeURIComponent(a.actionId)}/execute-direct', 'saim/app/src/views/MeetingPrep.jsx'],
 ]);
 
 /**

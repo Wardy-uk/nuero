@@ -71,6 +71,15 @@ const HUMAN_ORIGINS = Object.freeze({
   // meeting Nick sends from the task card with one press.
   'task-claude-send': 'human_assisted',
   'task-claude-meeting': 'human_assisted',
+  // Calendar care (1 Nov 2026): an agenda NEURO drafted that Nick read, edited
+  // and added with one press; leaving a series he never attends.
+  'meeting-agenda': 'human_assisted',
+  'series-exit': 'human_direct',
+  // Delegation prompts (1 Nov 2026): NEURO drafted the hand-over on the card; Nick's press sends it.
+  delegation: 'human_assisted',
+  // A meeting follow-up email (1 Nov 2026): NEURO drafts it from the write-up
+  // (after a team meeting, or when Nick pressed Draft); his one press sends it.
+  'meeting-followup': 'human_assisted',
 });
 
 // What started an action, from its origin alone. Never from a request body.

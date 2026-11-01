@@ -158,6 +158,32 @@ export function GoalsWeek({ g }) {
   );
 }
 
+/** What NEURO did on its own last week (1 Nov 2026). Screen + push only — never emailed. */
+export function NeuroDidWeek({ r }) {
+  if (!r) return null;
+  const week = r.week && r.week.monday;
+  const href = `/?view=neuro-did${week ? `&week=${week}` : ''}`;
+  return (
+    <section className="brf-section" data-testid="brf-neuro-did">
+      <h3>What NEURO did for you</h3>
+      {r.known === false
+        ? <p className="brf-meta">Couldn’t read what NEURO did last week{r.why ? ` (${r.why})` : ''} — not the same as “nothing”.</p>
+        : (<>
+          <p className="brf-detail">{r.headline}</p>
+          {r.misfires && r.misfires.length ? (
+            <ul className="brf-items">
+              {r.misfires.slice(0, 5).map((m, n) => <li key={n} className="brf-item brf-item--personal"><p className="brf-detail">⚠ {m.text}</p></li>)}
+            </ul>
+          ) : null}
+          <p className="brf-meta">
+            {(r.areas || []).filter((a) => !a.informational && a.acted).map((a) => `${a.label}: ${a.acted}`).join(' · ') || 'Nothing done on its own.'}
+            {' '}<a href={href}>See it all →</a>
+          </p>
+        </>)}
+    </section>
+  );
+}
+
 /** The personal half of the weekly: the week ahead, and last week's body. Never emailed. */
 function PersonalWeek({ p }) {
   const ahead = p.weekAhead;
@@ -193,6 +219,7 @@ function PersonalWeek({ p }) {
             : <p className="brf-meta">Nothing personal on the radar for the next 7 days.</p>}
       </section>
       <GoalsWeek g={p.goals} />
+      <NeuroDidWeek r={p.neuroDid} />
       {h || bp ? (
         <section className="brf-section">
           <h3>Your body last week</h3>

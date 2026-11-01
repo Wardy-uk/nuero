@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
 import AttachmentPicker from './AttachmentPicker';
+import { HandOverHint } from './HandOver';
 import './InboxPanel.css';
 
 /**
@@ -536,6 +537,9 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
 
       {/* Work Outlook only: a personal mailbox's invite has no Graph event. */}
       {email.isInvite && endpoint === workEndpoint && <InviteBar base={base} />}
+
+      {/* Delegation prompts (1 Nov 2026): work mail only — a hand-over goes from the work address. */}
+      {endpoint === workEndpoint && <HandOverHint kind="email" itemId={email.id} />}
 
       <div className="inbox-item-actions">
         <button

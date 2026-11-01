@@ -355,6 +355,37 @@ const ACTION_TYPES = Object.freeze({
     execution: 'the SAME event id, still at the time it was when prepared, Nick still its organiser, not already cancelled; read back as cancelled or gone',
     label: 'Cancel a meeting (attendees are told)',
   }),
+  // 1 Nov 2026 — calendar care: an agenda added to a meeting Nick ORGANISES.
+  // Only the event BODY changes (the agenda goes at the top, the rest of the
+  // body — the Teams join block included — is kept). Times and attendees are
+  // never touched. Outlook sends every attendee an update, so it is A4 and
+  // confirmed with a press, like a move.
+  update_calendar_event_body: Object.freeze({
+    type: 'update_calendar_event_body',
+    authority: 'A4',
+    requiresApproval: true,
+    executable: true,
+    executor: 'microsoft.calendar',
+    verification: 'calendar-read-back',
+    channel: 'calendar',
+    switchFlag: 'governed_calendar',
+    retryPolicy: 'human-review',
+    uncertaintyPolicy: 'verify-only',
+    approvalTtlHours: 24,
+    preparedTtlHours: 24,
+    maxRecipients: 50,
+    targetIsRecipient: false,
+    cc: false,
+    attachments: false,
+    sendMode: 'calendar-body',
+    bodyFormat: 'text',
+    editable: false,
+    notEditableWhy: 'change the words on the agenda card and press Add agenda again, which prepares a new version',
+    duplicate: 'one live agenda per meeting occurrence',
+    preparation: 'Add agenda on a meeting Nick organises whose invite says nothing — the event read live, its body hashed, its time and attendees recorded',
+    execution: 'the SAME event, Nick still its organiser, same start, attendees unchanged, the body exactly as it was when prepared; read back with the agenda in it',
+    label: 'Add an agenda to a meeting (attendees get the update)',
+  }),
 
   // A holding note to someone Nick owes. Prepared and approvable since Build 5,
   // NOT executable: its draft carries a [date] only Nick can fill, and Build 6
@@ -393,12 +424,12 @@ const ACTION_TYPES = Object.freeze({
 // The only executor names that exist. An executable type naming anything else
 // fails validateRegistry(), and the executor refuses an unknown name.
 const EXECUTORS = Object.freeze(['microsoft.mail', 'microsoft.calendar']);
-const SEND_MODES = Object.freeze(['new-message', 'reply', 'calendar-create', 'calendar-update', 'calendar-cancel']);
+const SEND_MODES = Object.freeze(['new-message', 'reply', 'calendar-create', 'calendar-update', 'calendar-cancel', 'calendar-body']);
 // Which send modes each executor can perform — an entry pairing an executor
 // with a mode it does not have fails validateRegistry().
 const EXECUTOR_MODES = Object.freeze({
   'microsoft.mail': ['new-message', 'reply'],
-  'microsoft.calendar': ['calendar-create', 'calendar-update', 'calendar-cancel'],
+  'microsoft.calendar': ['calendar-create', 'calendar-update', 'calendar-cancel', 'calendar-body'],
 });
 // The switch that governs each executable type. Email types share Build 8's
 // one switch; calendar types have their own (see create_calendar_event).
@@ -542,7 +573,16 @@ function bindFor(actionType, target, draft) {
       isOnline: d.isOnline === true,
       recurrence: d.recurrence || null,
       calendar: d.calendar || null,
+      // 1 Nov 2026: a whole-series cancel (calendar care). Omitted when not a
+      // series, so every earlier calendar hash is unchanged.
+      series: t.series === true ? true : undefined,
     };
+  }
+  // 1 Nov 2026: the agenda — which event, at which start, and the EXACT body it
+  // is added to (hashed). A body changed since it was shown is a different
+  // payload; the executor refuses it.
+  if (actionType === 'update_calendar_event_body') {
+    return { op: actionType, eventId: t.eventId || null, fromStart: t.fromStart || null, fromBodyHash: t.fromBodyHash || null };
   }
   return null;
 }
@@ -552,7 +592,9 @@ function evidenceHash(evidence) { return sha256(canonical(evidence || null)); }
 
 // A visible placeholder NEURO could not fill ("[date]"). A body still carrying
 // one is not a message anybody should send.
-const PLACEHOLDER_RE = /\[(date|name|when|time|details?)\]/i;
+// `[details: what is missing]` (1 Nov 2026) is the same gap with its question
+// written in — the meeting follow-up draft names what it could not know.
+const PLACEHOLDER_RE = /\[(date|name|when|time|details?)(?::[^\]\n]*)?\]/i;
 function hasUnfilledPlaceholder(body) { return PLACEHOLDER_RE.test(String(body || '')); }
 
 module.exports = {

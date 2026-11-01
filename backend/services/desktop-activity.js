@@ -363,7 +363,7 @@ function _hostKey(host) {
 }
 
 function _blankBucket() {
-  return { samples: [], mentioned: {}, canOpen: null, canOpenAt: null, watchLock: null, watchLockAt: null };
+  return { samples: [], mentioned: {}, canOpen: null, canOpenAt: null, watchLock: null, watchLockAt: null, dnd: null, dndAt: null };
 }
 
 // ── The Watch auto-lock's health, as the agent reports it (Brief 004, D-007) ──
@@ -397,6 +397,20 @@ function sanitiseWatchLock(raw) {
   };
 }
 
+// ── Windows Do Not Disturb, as the agent READS it (1 Nov 2026) ──────────────
+//
+// A CLOSED shape, like watchLock. The agent cannot SET Do Not Disturb (Windows
+// 11 offers no supported way for an unpackaged process — see
+// desktop-agent/focus-laptop.ps1), so this is only what Windows reports: on /
+// off / unknown. Anything else the agent sends is dropped.
+const DND_STATES = new Set(['on', 'off', 'unknown']);
+
+/** PURE. The agent's `dnd` field → `{ state }`, or null if unusable. */
+function sanitiseDnd(raw) {
+  if (!raw || typeof raw !== 'object' || !DND_STATES.has(raw.state)) return null;
+  return { state: raw.state };
+}
+
 function _load() {
   try {
     const raw = db.getState(STATE_KEY);
@@ -416,6 +430,8 @@ function _load() {
           canOpenAt: (b && typeof b.canOpenAt === 'string') ? b.canOpenAt : null,
           watchLock: (b && b.watchLock && typeof b.watchLock === 'object') ? b.watchLock : null,
           watchLockAt: (b && typeof b.watchLockAt === 'string') ? b.watchLockAt : null,
+          dnd: (b && b.dnd && typeof b.dnd === 'object') ? b.dnd : null,
+          dndAt: (b && typeof b.dndAt === 'string') ? b.dndAt : null,
         };
       }
       return { hosts };
@@ -465,6 +481,8 @@ function _save(state) {
       canOpenAt: b.canOpenAt || null,
       watchLock: b.watchLock || null,
       watchLockAt: b.watchLockAt || null,
+      dnd: b.dnd || null,
+      dndAt: b.dndAt || null,
     };
   }
   db.setState(STATE_KEY, JSON.stringify({ hosts }));
@@ -493,7 +511,7 @@ function _buckets(state) {
  */
 const MAX_CAN_OPEN = 32;
 
-function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null, canOpen = null, watchLock = undefined } = {}) {
+function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null, canOpen = null, watchLock = undefined, dnd = undefined } = {}) {
   const state = _load();
   const key = _hostKey(host);
 
@@ -544,6 +562,12 @@ function record({ app = null, idleSeconds = 0, locked = false, host = null, at =
   if (watchLock !== undefined) {
     const wl = sanitiseWatchLock(watchLock);
     if (wl) { bucket.watchLock = wl; bucket.watchLockAt = stamp; }
+  }
+  // Do Not Disturb, as Windows reports it. Omitted = an older agent: keep what
+  // we had; unusable = ignored.
+  if (dnd !== undefined) {
+    const d = sanitiseDnd(dnd);
+    if (d) { bucket.dnd = d; bucket.dndAt = stamp; }
   }
   // Newest first, and out-of-order arrivals are placed rather than assumed — a
   // reporter catching up after a sleep can post a batch.
@@ -596,6 +620,8 @@ function hosts() {
     lastAt: (b.samples || [])[0] ? b.samples[0].at : null,
     watchLock: b.watchLock || null,
     watchLockAt: b.watchLockAt || null,
+    // At the time of the sample that carried it, so a reader can tell a stale one.
+    dnd: b.dnd ? { ...b.dnd, at: b.dndAt || null } : null,
   })).sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
 }
 
@@ -642,6 +668,7 @@ module.exports = {
   // pure
   sanitiseApp,
   sanitiseWatchLock,
+  sanitiseDnd,
   labelFor,
   isActive,
   currentRun,

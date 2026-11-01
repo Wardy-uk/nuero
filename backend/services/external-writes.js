@@ -176,6 +176,17 @@ const WRITERS = Object.freeze({
     why: 'Nick pressed it on an attended screen; machines are refused.',
     readback: 'Graph re-read: responseStatus matches, or the event gone after a decline',
   },
+  // 1 Nov 2026 (calendar care): leaving a recurring meeting Nick has missed the
+  // last three times. One decline of the series master, the organiser told.
+  'microsoft.calendar.series-decline': {
+    target: 'the organiser of a recurring meeting Nick was invited to', authority: 'A3',
+    initiation: 'Nick pressing Decline future occurrences on the calendar-care card', ledger: true,
+    // Declining an already-declined series is harmless — Graph sends the same answer.
+    idempotentTarget: true,
+    effect: 'one decline of a whole recurring series Nick did not organise, with the response sent to the organiser',
+    why: 'Nick pressed it on an attended screen, after NEURO showed the evidence he missed the last three; machines are refused.',
+    readback: 'Graph re-read of the series master: responseStatus declined, or gone',
+  },
   'gmail.unsubscribe': {
     target: "a mailing list's own one-click unsubscribe URL (RFC 8058)", authority: 'A3', initiation: 'Nick pressing Unsubscribe on the Gmail clean-up screen', ledger: true,
     // Unsubscribing twice is harmless, so Nick may re-try an unknown outcome.

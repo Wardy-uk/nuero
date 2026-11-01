@@ -25,6 +25,7 @@ const ACTION_WORDS = Object.freeze({
   create_calendar_event: 'Book',
   reschedule_calendar_event: 'Move',
   cancel_calendar_event: 'Cancel',
+  update_calendar_event_body: 'Add an agenda',
 });
 const RITUAL_WORDS = Object.freeze({ standup: 'The standup', eod: 'The end-of-day wrap' });
 

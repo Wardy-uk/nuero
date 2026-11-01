@@ -37,9 +37,15 @@ const REGISTRY = {
   knowledge_consolidation: text(), knowledge_enrichment: text(),
   capability_suggestions: text(), event_parse: text(), drink_lookup: text(), task_short_title: text(),
   watched_reply_judge: text(), ticket_reply_draft: text(), uat_request_extract: text(),
+  // A follow-up email after a meeting, from its write-up (meeting-followups.js); once per occurrence.
+  meeting_followup_draft: text({ local: false, maxOutputTokens: 2000 }),
   perf_feedback_extract: text(), capture_classify: text(),
+  // A typical UK ingredient list for a planned tea with no recipe in the vault (tea-shopping.js); cached per meal.
+  tea_ingredients: text({ local: false, maxOutputTokens: 400 }),
   // Next steps on Claude's returned work: one call per result, cached (task-next-steps.js).
   task_next_steps: text({ local: false, maxOutputTokens: 2000 }),
+  // Delegation prompts: one call per candidate email/task, judged once (delegation.js).
+  delegation_suggest: text({ local: false, maxOutputTokens: 600 }),
   // ── SAiM prepared moves (drafting only) ────────────────────────────────
   saim_move_reply: text(), saim_move_prep: text(), saim_move_note: text(),
   // ── "Do this" task agent (Anthropic tool loop, cloud only; one ticket per

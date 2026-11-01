@@ -167,6 +167,8 @@ function weeklyPush(w) {
     lines.push(`Goals: ${good} on track${help ? `, ${help} need${help === 1 ? 's' : ''} a push` : ''}`);
   }
   if (!lines.length) lines.push('Could not read the week’s KPIs — open the briefing for what is missing.');
+  // What NEURO did on its own — "NEURO acted 143 times last week — 2 to check".
+  if (w.neuroDid && w.neuroDid.known !== false && w.neuroDid.headline) lines.push(w.neuroDid.headline);
   return { title: `Weekly briefing — week to ${_shortDate(w.weeks.report.to)}`, body: lines.join('\n') };
 }
 
@@ -195,6 +197,8 @@ async function composeWeekly({ now = new Date(), overrides = {} } = {}) {
     health: w.health || null,
     weekAhead: w.weekAhead || null,
     goals: w.goals || null,
+    // What NEURO did on its own last week. Screen and push only — never the email.
+    neuroDid: w.neuroDid || null,
     gaps: w.gaps,
     close: blind.length ? `I couldn’t read ${blind.join(', ')}, so this isn’t the whole picture.` : 'Everything above was read.',
     push: { title, body },

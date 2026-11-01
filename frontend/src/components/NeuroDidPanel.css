@@ -1,0 +1,25 @@
+.nd-panel { width: 100%; padding: 16px 20px; box-sizing: border-box; }
+.nd-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.nd-head, .nd-misfires, .nd-gap, .nd-body > .nd-meta { grid-column: 1 / -1; }
+.nd-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+.nd-head h2 { margin: 0; font-size: 1.15rem; }
+.nd-picker select { margin-left: 6px; background: var(--bg-card, transparent); color: inherit; border: 1px solid var(--border, #444); border-radius: 4px; padding: 3px 6px; }
+.nd-meta { color: var(--text-muted, #888); margin: 0; font-size: 0.9rem; }
+.nd-misfires { border: 1px solid var(--warning, #c98a1b); border-radius: 8px; padding: 10px 14px; }
+.nd-misfires h3, .nd-area h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.nd-gap { border-left: 3px solid var(--warning, #c98a1b); padding: 6px 12px; color: var(--warning, #c98a1b); }
+.nd-gap ul { margin: 4px 0; }
+.nd-area { border: 1px solid var(--border, #333); border-radius: 8px; padding: 10px 14px; background: var(--bg-card, transparent); }
+.nd-area--info { opacity: 0.92; }
+.nd-area-head { display: flex; align-items: center; gap: 8px; }
+.nd-area-head h3 { flex: 1; }
+.nd-count { font-weight: 600; font-size: 1.05rem; }
+.nd-open { background: none; border: 1px solid var(--border, #444); color: inherit; border-radius: 4px; padding: 1px 8px; cursor: pointer; font-size: 0.8rem; }
+.nd-stats { margin: 0 0 6px; font-size: 0.85rem; color: var(--text-muted, #999); }
+.nd-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.nd-line { font-size: 0.88rem; }
+.nd-line--link { background: none; border: none; color: inherit; text-align: left; cursor: pointer; padding: 0; font: inherit; font-size: 0.88rem; }
+.nd-line--link:hover { text-decoration: underline; }
+.nd-go { margin-left: 6px; color: var(--text-muted, #888); }
+.nd-more { color: var(--text-muted, #888); font-size: 0.85rem; }
+.nd-misfire { padding-left: 8px; border-left: 2px solid var(--warning, #c98a1b); }

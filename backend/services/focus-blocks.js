@@ -487,7 +487,27 @@ function composeView(block, state, session, now, phase, notice = null) {
     held: hold && Number(hold.blockId) === Number(block.id) ? (hold.held || []).length + (hold.overflow || 0) : 0,
     clock,
     notice,
+    // What the laptop is doing for this block: links opening, or why not, and
+    // its Do Not Disturb as Windows reports it (focus-laptop). Null when silent.
+    laptop: laptopView(block.id, focusHold.activeAt(hold, now) && Number(hold.blockId) === Number(block.id)),
   };
+}
+
+function laptopView(blockId, holdActive, deps = {}) {
+  try { return (deps.laptop || require('./focus-laptop')).viewFor(blockId, { holdActive, deps: deps.laptopDeps || {} }); }
+  catch { return null; }
+}
+
+/**
+ * Is Nick in a focus block right now? The phone's Shortcut reads this to turn
+ * on an iOS Focus (docs/focus-dnd-shortcut.md). From the push hold, which is
+ * set only when he picks a task and cleared when the block ends — never
+ * inferred from the diary. Cheap: one KV read and, when in focus, one row.
+ */
+function focusState(now = new Date()) {
+  const hold = focusHold.read();
+  if (!focusHold.activeAt(hold, now)) return { inFocus: false, until: null, task: null, blockId: null };
+  return { inFocus: true, until: hold.until, task: hold.taskText || null, blockId: Number(hold.blockId) || null };
 }
 
 function chosenText(st) {
@@ -542,11 +562,31 @@ async function tick({ now = new Date(), deps = {} } = {}) {
   return out;
 }
 
+/** A hand-made block with exactly ONE open task in it → that task id; else null. */
+function fixedTaskOf(block, st) {
+  try {
+    if (!st || st.kind !== 'manual') return null;
+    const open = db.listTaskBlockItems(block.id)
+      .map((i) => Number(i.task_id))
+      .filter((id) => { const t = db.getTaskRow(id); return t && t.status !== 'done' && t.status !== 'dropped'; });
+    return open.length === 1 ? open[0] : null;
+  } catch { return null; }
+}
+
 async function fire(kind, block, st, session, now, deps) {
   const key = (k) => `block:${block.id}:${k}`;
   if (kind === 'ready') {
     const cands = candidatesFor(block, now, { deps });
-    putState(block.id, { ready_json: JSON.stringify({ at: now.toISOString(), taskIds: cands.map((c) => c.taskId), context: prepareContext(cands.map((c) => c.taskId)) }) });
+    const context = prepareContext(cands.map((c) => c.taskId));
+    putState(block.id, { ready_json: JSON.stringify({ at: now.toISOString(), taskIds: cands.map((c) => c.taskId), context }) });
+    // A block Nick made by hand with ONE task in it: that task is his choice
+    // already, so the laptop gets ready for it now (focus-laptop; the one
+    // timer-driven opener, and it opens links, never programs).
+    const fixed = fixedTaskOf(block, st);
+    if (fixed != null) {
+      try { (deps.laptop || require('./focus-laptop')).openForBlock({ blockId: block.id, taskId: fixed, context: context[fixed] || null, now, deps: deps.laptopDeps || {} }); }
+      catch (e) { console.warn('[FocusBlocks] laptop ready:', e.message); }
+    }
     return; // a quiet "Up next" on Now — no push for this
   }
   if (kind === 'start') {
@@ -718,7 +758,14 @@ async function choose(blockId, { taskId, twoMinute = false, smallerStep = null, 
     two_min_answer: null,
   });
   focusHold.set({ blockId, until: win.end, taskText: task.text });
-  return { ok: true, blockId, task: { id, text: task.text }, session: started.session, twoMinute: Boolean(twoMinute), shrunk: Boolean(shrunk && shrunk.ok), eventUpdate, view: view({ now, deps }) };
+  // The laptop gets ready for it: note, ticket, draft. Never costs the choose.
+  let laptop = null;
+  try {
+    let ready = {};
+    try { ready = JSON.parse((getState(blockId) || {}).ready_json || '{}'); } catch { ready = {}; }
+    laptop = (deps.laptop || require('./focus-laptop')).openForBlock({ blockId, taskId: id, context: (ready.context || {})[id] || null, now, deps: deps.laptopDeps || {} });
+  } catch (e) { console.warn('[FocusBlocks] laptop open:', e.message); }
+  return { ok: true, blockId, task: { id, text: task.text }, session: started.session, twoMinute: Boolean(twoMinute), shrunk: Boolean(shrunk && shrunk.ok), eventUpdate, laptop, view: view({ now, deps }) };
 }
 
 /** Two minutes in: carry on, or stop there (a start, ended cleanly). */
@@ -982,6 +1029,8 @@ module.exports = {
   // reads
   view,
   activeFor,
+  focusState,
+  fixedTaskOf,
   candidatesFor,
   prepareContext,
   // engine + presses

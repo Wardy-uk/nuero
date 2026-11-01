@@ -745,6 +745,9 @@ function storeCandidates(relativePath, candidates, reviewState) {
   }
 
   let created = 0;
+  // The ids just queued — the meeting-actions gate (1 Nov 2026) files these
+  // straight to tasks once Nick's approval record has earned it.
+  const createdIds = [];
   // Always 0 now that promotion is review-only, but kept in the result shape
   // because scanRecentNotes() and the routes still tally it.
   const autoPromoted = 0;
@@ -816,6 +819,7 @@ function storeCandidates(relativePath, candidates, reviewState) {
       candidate.focusItemId
     );
     created += 1;
+    createdIds.push(actionId);
 
     // Every candidate stays pending. Auto-promote used to live here behind a
     // hard-false flag; it was removed once suggestionEngine.executeAction became
@@ -835,7 +839,7 @@ function storeCandidates(relativePath, candidates, reviewState) {
     crossPool.add(db.getSaimAction(actionId));
   }
 
-  return { created, autoPromoted, pending, superseded, folded };
+  return { created, autoPromoted, pending, superseded, folded, createdIds };
 }
 
 // ── Actions read from the TRANSCRIPT ────────────────────────────────────────

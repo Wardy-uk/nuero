@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import { ContextItem } from '../../../shared-ui/TaskContext.jsx';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './MeetingPrep.css';
 
 // Meeting prep / calendar = glance at what's next and its prep before you walk in.
@@ -26,6 +27,49 @@ function fromNow(mins) {
 export function prepPath(context) {
   const id = context && typeof context.eventId === 'string' ? context.eventId : '';
   return id ? `/api/meeting-prep?event=${encodeURIComponent(id)}` : '/api/meeting-prep';
+}
+
+/**
+ * Calendar care (1 Nov 2026): the agenda NEURO drafted for a meeting Nick
+ * organises whose invite says nothing. Add agenda prepares the governed body
+ * update and confirms it with one press (every attendee gets Outlook's update).
+ * Read-only on the kiosk — it has no door to change the calendar.
+ */
+function PrepAgenda({ offer }) {
+  const [text, setText] = useState(offer.text);
+  const [state, setState] = useState({ busy: false, note: null, done: false });
+  const kiosk = platformNow() === 'kiosk';
+  const gaps = text.match(/\[[^\]\n]{1,80}\]/g) || [];
+  const post = (path, body) => apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .catch((e) => ({ ok: false, error: e.message }));
+  const add = async () => {
+    setState({ busy: true, note: null, done: false });
+    const r = await post('/api/calendar-care/agenda/add', { key: offer.key, text });
+    if (!r.ok || !r.action) return setState({ busy: false, note: r.error || 'Nothing was added.', done: false });
+    const a = r.action;
+    let sid = '';
+    try { const b = new Uint8Array(12); crypto.getRandomValues(b); sid = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(''); } catch { sid = `s${Date.now()}`; }
+    const g = await post(`/api/prepared-actions/${encodeURIComponent(a.actionId)}/intent-grant`, { version: a.version || 1, payloadHash: a.payloadHash, surface: 'neuro-web', sessionId: sid });
+    if (!g.ok) return setState({ busy: false, note: g.error || 'It needs confirming again.', done: false });
+    const x = await post(`/api/prepared-actions/${encodeURIComponent(a.actionId)}/execute-direct`, { grantId: g.grantId, payloadHash: a.payloadHash });
+    const ok = x.ok && ['executed', 'verified'].includes(x.status);
+    if (ok) await post('/api/calendar-care/agenda/done', { key: offer.key });
+    setState({ busy: false, done: ok, note: ok ? (x.status === 'verified' ? 'Added — checked in your calendar.' : 'Added — confirming it in your calendar now.') : (x.error || x.detail || `Not added (${x.status || 'unknown'}).`) });
+  };
+  return (
+    <div className="mp__block">
+      <LitLabel className="mp__h">No agenda on the invite</LitLabel>
+      {kiosk
+        ? <pre className="mp__agenda">{text}</pre>
+        : <textarea className="mp__agenda" value={text} rows={Math.min(10, text.split('\n').length + 1)} onChange={(e) => setText(e.target.value)} disabled={state.done} />}
+      {gaps.length > 0 && <div className="mp__gapnote">Fill in or delete {gaps.join(', ')} first.</div>}
+      {!kiosk && !state.done && (
+        <button className="btn" disabled={state.busy || gaps.length > 0 || !text.trim()} onClick={add}>{state.busy ? 'Adding…' : 'Add agenda'}</button>
+      )}
+      <div className="mp__gapnote">Every attendee gets Outlook’s update.</div>
+      {state.note && <div className="mp__gapnote">{state.note}</div>}
+    </div>
+  );
 }
 
 export default function MeetingPrep({ context = null }) {
@@ -170,6 +214,8 @@ export default function MeetingPrep({ context = null }) {
               <ul className="mp__list">{prep.suggestedTopics.map((t, i) => <li key={i}>{t}</li>)}</ul>
             </div>
           )}
+
+          {prep?.agendaOffer && <PrepAgenda key={prep.agendaOffer.key} offer={prep.agendaOffer} />}
 
           {/* Task context (22 Oct 2026): open tasks this meeting touches, with what is
               pinned to them — only items the sheet does not already show. */}

@@ -8,6 +8,10 @@ import RoomOfferCard from './RoomOfferCard';
 import RouterRestartCard from './RouterRestart';
 import FrictionSection from './FrictionSection';
 import LeaveClashes from './LeaveClashes';
+import CalendarCare from './CalendarCare';
+import PersonalAutoOffers from './PersonalAutoOffers';
+import MeetingFollowups from './MeetingFollowups';
+import TeamCover from './TeamCover';
 import AmbientSection from './AmbientSection';
 import NowSituation from './canonical/NowSituation';
 import { useWorkOnly } from '../workOnly';
@@ -19,6 +23,7 @@ import { useWorkOnly } from '../workOnly';
 import TaskContext from '../../../saim/shared-ui/TaskContext.jsx';
 import LooksDoneSection from '../../../saim/shared-ui/DoneEvidence.jsx';
 import FocusBlockView from '../../../saim/shared-ui/FocusBlock.jsx';
+import { HandOverSection } from './HandOver';
 import { openInVault } from '../openVault';
 // "Make this ready" after a Now row's own action — the SAME control and /eligible list the phone uses (22 Oct 2026).
 import { desktopCall } from '../desktopCall';
@@ -923,6 +928,10 @@ export default function AdhdPanel({ onNavigate }) {
           are none; it offers, Nick closes. */}
       <LooksDoneSection call={desktopCall} />
 
+      {/* ── Could hand over (1 Nov 2026) ── ≤3 tasks/emails that fit a direct
+          report; renders nothing when there are none. */}
+      <HandOverSection />
+
       {/* ── Friction noticed ──
           Evidence only, and BELOW the work rather than above it. */}
       <FrictionSection onNavigate={onNavigate} />
@@ -1103,7 +1112,21 @@ export default function AdhdPanel({ onNavigate }) {
 
       {/* Leave clashes — below the quick wins (Nick, 21 Oct 2026: not at the top).
           Renders nothing unless something already booked sits on his leave. */}
+      {/* Meeting follow-ups (1 Nov 2026): drafted after team meetings, offered after
+          others. Renders nothing when there is nothing to send or decide. */}
+      <MeetingFollowups onNavigate={onNavigate} />
+
       <LeaveClashes />
+
+      {/* Calendar care (1 Nov 2026): protect a full week, add an agenda, leave a
+          series he never attends. Renders nothing when there is nothing to offer. */}
+      <CalendarCare />
+
+      {/* Personal offers (1 Nov 2026): a GP pack ready, a hike for the weekend. Nothing renders when there is none. */}
+      <PersonalAutoOffers />
+
+      {/* Team cover (1 Nov 2026): two or more off on one queue. Nothing when clear. */}
+      <TeamCover mode="now" onNavigate={onNavigate} />
 
       {/* ── Wins today ── */}
       <section className="adhd__card">

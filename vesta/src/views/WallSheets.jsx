@@ -887,7 +887,7 @@ export function teaDays(tea, todayKey) {
   });
 }
 
-export function TeaSheet({ tea, today, act, setDirty }) {
+export function TeaSheet({ tea, today, act, setDirty, teaShopping = null }) {
   const s = useSaver();
   const days = teaDays(tea, today);
   const [drafts, setDrafts] = useState(() => Object.fromEntries(days.map((d) => [d.date, d.text])));
@@ -933,6 +933,13 @@ export function TeaSheet({ tea, today, act, setDirty }) {
           );
         })}
       </ul>
+      {teaShopping && act.teaShopping && (
+        <label className="cine__formlabel" data-testid="tea-shopping-switch">
+          <input type="checkbox" checked={!!teaShopping.enabled} disabled={s.busy}
+                 onChange={(e) => s.run(() => act.teaShopping(e.target.checked))} />
+          {' '}Add each tea’s ingredients to the shopping list
+        </label>
+      )}
       <SaveState busy={s.busy} error={s.error} ok={ok} />
     </div>
   );

@@ -101,4 +101,17 @@ async function eventsAt(start) {
   return { ok: false, status: r.status, category: r.category || 'unavailable' };
 }
 
-module.exports = { TIMEZONE, MARKER_PROP, normaliseEvent, findByMarker, readEvent, eventsAt };
+/**
+ * Read one event WITH its body (1 Nov 2026, calendar care: does the invite say
+ * what it is for; the agenda read-back). { ok, exists, event, html, contentType }.
+ */
+async function readEventBody(eventId) {
+  const r = await _req('GET', `/me/events/${encodeURIComponent(eventId)}?$select=${SELECT},body&$expand=${encodeURIComponent(EXPAND)}`);
+  if (r.status === 200 && r.data) {
+    return { ok: true, exists: true, event: normaliseEvent(r.data), html: (r.data.body && r.data.body.content) || '', contentType: (r.data.body && r.data.body.contentType) || 'html' };
+  }
+  if (r.status === 404) return { ok: true, exists: false, event: null, html: null };
+  return { ok: false, status: r.status, category: r.category || 'unavailable' };
+}
+
+module.exports = { TIMEZONE, MARKER_PROP, normaliseEvent, findByMarker, readEvent, readEventBody, eventsAt };

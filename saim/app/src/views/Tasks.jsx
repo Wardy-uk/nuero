@@ -9,6 +9,7 @@ import { completeTask } from '../completeTask';
 import { msPlanBadge } from '../../../../shared/ms-task.cjs';
 import { domainBadge } from '../../../../shared/task-domain.cjs';
 import { Lit } from '../../../shared-ui/Lit.jsx';
+import ProposalChips from '../../../shared-ui/ProposalChips.jsx';
 
 import './Tasks.css';
 
@@ -517,6 +518,19 @@ export default function Tasks() {
                 {/* Which Planner board / To Do list. Absent when NEURO could not
                     read it, rather than naming a board the task may not be on. */}
                 {plan && <span className="tasks__plan">{plan}</span>}
+                {/* NEURO's suggestions for a missing MoSCoW / estimate / due —
+                    "?" and one tap to confirm; read-only on the kiosk. */}
+                {item.task_id && !done[item.id] && (
+                  <ProposalChips
+                    proposals={item.proposals}
+                    readOnly={platformNow() === 'kiosk'}
+                    onConfirm={async (body) => {
+                      const res = await apiFetch(`/api/tasks/${item.task_id}`, { method: 'PATCH', body: JSON.stringify(body) });
+                      if (res && res.ok === false) throw new Error(res.error || 'NEURO did not confirm that');
+                      load();
+                    }}
+                  />
+                )}
               </div>
             </div>
             {hasPanel && (

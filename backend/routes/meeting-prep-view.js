@@ -612,6 +612,17 @@ function _buildPrep(meeting) {
     prep.gaps.push({ input: 'task-context', why: e.message });
   }
 
+  // 7c. Calendar care (1 Nov 2026): a meeting Nick organises whose invite has no
+  // agenda carries the drafted one, so it can be added from the prep sheet too.
+  prep.agendaOffer = null;
+  try {
+    const id = meeting.event_id || meeting.id;
+    const start = meeting.start_time || meeting.start;
+    if (id) prep.agendaOffer = require('../services/calendar-care').agendaOfferFor(id, start);
+  } catch (e) {
+    prep.gaps.push({ input: 'agenda', why: e.message });
+  }
+
   // 8. Checklist (context-aware)
   prep.checklist = ['Review agenda'];
   if (prep.attendees.length > 0) prep.checklist.push('Check attendee vault notes');

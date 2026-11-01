@@ -465,6 +465,7 @@ router.get('/wall', requireAccount, (req, res) => {
   block('weekAhead', 'house', 'could not read the week ahead', () => board.readWeekAhead());
   block('care', 'house', "could not read Ember's care", () => board.readCare());
   block('tea', 'tasks', 'could not read tea', () => board.readTea());
+  block('teaShopping', 'tasks', 'could not read the tea → shopping switch', () => ({ enabled: require('../services/tea-shopping').enabled() }));
   block('notes', 'tasks', 'could not read the notes', () => board.readNotes());
   block('countdowns', 'calendar', 'could not read the countdowns', () => board.readCountdowns());
   if (capture.hasScope(req.account, 'calendar') && Array.isArray(out.week)) {
@@ -512,6 +513,18 @@ router.post('/tea', requireAccount, scopeGate('tasks'), (req, res) => {
   if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
   const { date, text } = req.body;
   boardReply(res, () => require('../services/household-board').setTea({ date, text }, { by: req.account.label }), 'Tea');
+});
+
+// GET /api/v/tea-shopping — whether a planned tea puts its ingredients on the shopping list (household switch, default on).
+router.get('/tea-shopping', requireAccount, scopeGate('tasks'), (req, res) => {
+  const t = require('../services/tea-shopping').status();
+  res.json({ ok: true, enabled: t.enabled, rule: t.rule });
+});
+
+// POST /api/v/tea-shopping — switch tea → shopping on or off for the household. Body: { on: true|false }
+router.post('/tea-shopping', requireAccount, scopeGate('tasks'), (req, res) => {
+  const on = req.body && req.body.on;
+  boardReply(res, () => require('../services/tea-shopping').setEnabled(on, { by: req.account.label }), 'Tea shopping switch');
 });
 
 // POST /api/v/notes — leave a note on the family wall (≤140 chars, cleared after 2 days). Body: { text }

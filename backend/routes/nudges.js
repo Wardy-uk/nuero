@@ -76,6 +76,8 @@ router.get('/availability', (req, res) => {
       me: availability.selfAbsenceOn(dateStr, snap),
       othersOffToday: availability.othersOff(dateStr, snap),
       upcoming: (snap.absences || []).slice(0, 40),
+      // Team cover (1 Nov 2026): queues where two or more are off together.
+      teamCover: require('../services/team-cover').read(now),
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

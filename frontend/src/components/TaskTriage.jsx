@@ -76,6 +76,29 @@ export function buildWrites(todo, answers) {
   return { kind: 'ms', local, due: value('due') !== undefined ? value('due') : null };
 }
 
+/**
+ * PURE. NEURO's suggestions for the fields this card is missing, as answers —
+ * so the card opens with them selected and Enter confirms them (1 Nov 2026).
+ * Only fields still MISSING are pre-filled, and only from `todo.proposals`
+ * (services/task-proposals.js). Exported for tests.
+ */
+export function prefillAnswers(todo) {
+  if (!todo || !todo.task_id || !todo.triage) return {};
+  const p = todo.proposals || {};
+  const missing = todo.triage.missing || [];
+  const out = {};
+  if (missing.includes('moscow') && p.moscow && p.moscow.value) out.moscow = p.moscow.value;
+  if (missing.includes('estimate') && p.estimate && p.estimate.minutes > 0) out.estimate = p.estimate.minutes;
+  if (missing.includes('due') && p.due && p.due.date) out.due = p.due.date;
+  return out;
+}
+
+function fmtMinutes(m) {
+  if (m < 60) return `${m}m`;
+  const h = m / 60;
+  return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
+}
+
 async function send(url, method, body) {
   const res = await fetch(apiUrl(url), {
     method,
@@ -106,7 +129,7 @@ export default function TaskTriage({ todos, onClose, onSaved }) {
   // Snapshot on open — see the header.
   const [queue] = useState(() => (todos || []).filter((t) => !t.done && t.triage && t.triage.missing.length));
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] = useState(() => prefillAnswers(queue[0]));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(0);
@@ -119,11 +142,20 @@ export default function TaskTriage({ todos, onClose, onSaved }) {
   const answeredCount = missing.filter((f) => answers[f] !== undefined).length;
 
   const next = useCallback(() => {
-    setAnswers({});
+    // The next card opens with NEURO's suggestions selected (prefillAnswers).
+    setAnswers(prefillAnswers(queue[index + 1]));
     setCustomDue('');
     setError(null);
-    setIndex((i) => i + 1);
-  }, []);
+    setIndex(index + 1);
+  }, [queue, index]);
+  const proposals = (current && current.proposals) || {};
+  const suggests = (field) => {
+    const p = proposals[field];
+    if (!p) return null;
+    const what = field === 'moscow' ? MOSCOW.find((o) => o.key === p.value)?.label || p.value
+      : field === 'estimate' ? fmtMinutes(p.minutes) : String(p.date);
+    return <span className="triage-hint triage-hint--proposal"> — NEURO suggests {what}{p.why ? ` (${p.why})` : ''}; Enter confirms, or change it</span>;
+  };
 
   const set = (field, v) => setAnswers((prev) => ({ ...prev, [field]: prev[field] === v ? undefined : v }));
 
@@ -231,7 +263,8 @@ export default function TaskTriage({ todos, onClose, onSaved }) {
           <div className="triage-field">
             <div className="triage-label">
               {FIELD_TITLE.moscow}
-              {current.moscowProposed && current.meta?.moscow && (
+              {suggests('moscow')}
+              {!proposals.moscow && current.moscowProposed && current.meta?.moscow && (
                 <span className="triage-hint"> — NEURO guessed {current.meta.moscow}; confirm or change</span>
               )}
             </div>
@@ -259,11 +292,14 @@ export default function TaskTriage({ todos, onClose, onSaved }) {
 
         {missing.includes('estimate') && (
           <div className="triage-field">
-            <div className="triage-label">{FIELD_TITLE.estimate}</div>
+            <div className="triage-label">{FIELD_TITLE.estimate}{suggests('estimate')}</div>
             <div className="triage-options">
               {SIZES.map((s) => (
                 <Choice key={s.id} active={answers.estimate === s.minutes} title={s.desc} onClick={() => set('estimate', s.minutes)}>{s.label}</Choice>
               ))}
+              {proposals.estimate && !SIZES.some((s) => s.minutes === proposals.estimate.minutes) && (
+                <Choice active={answers.estimate === proposals.estimate.minutes} title={proposals.estimate.why} onClick={() => set('estimate', proposals.estimate.minutes)}>{fmtMinutes(proposals.estimate.minutes)}?</Choice>
+              )}
               <Choice active={answers.estimate === NONE} onClick={() => set('estimate', NONE)}>{NONE_LABEL.estimate}</Choice>
             </div>
           </div>
@@ -271,8 +307,11 @@ export default function TaskTriage({ todos, onClose, onSaved }) {
 
         {missing.includes('due') && (
           <div className="triage-field">
-            <div className="triage-label">{FIELD_TITLE.due}</div>
+            <div className="triage-label">{FIELD_TITLE.due}{suggests('due')}</div>
             <div className="triage-options">
+              {proposals.due && (
+                <Choice active={answers.due === proposals.due.date} title={proposals.due.why} onClick={() => set('due', proposals.due.date)}>{proposals.due.date}?</Choice>
+              )}
               <Choice active={answers.due === todayStr} onClick={() => set('due', todayStr)}>Today</Choice>
               {presets.map((p) => (
                 <Choice key={p.id} active={answers.due === p.date} title={p.date} onClick={() => set('due', p.date)}>{p.label}</Choice>

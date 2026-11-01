@@ -821,6 +821,7 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
     // Family wall additions (25 Oct 2026): the same rule — NEURO answers, then
     // the wall is re-read; nothing is changed here first.
     tea: async (date, text) => { lastTouch.current = Date.now(); const res = await api.setTea(api.getToken(), date, text); await refresh(); return res; },
+    teaShopping: async (on) => { lastTouch.current = Date.now(); const res = await api.setTeaShopping(api.getToken(), on); await refresh(); return res; },
     note: {
       add: async (text) => { lastTouch.current = Date.now(); const res = await api.addNote(api.getToken(), text); await refresh(); return res; },
       clear: async (id) => { lastTouch.current = Date.now(); const res = await api.clearNote(api.getToken(), id); await refresh(); return res; },

@@ -31,7 +31,7 @@ const TIMEOUT_MS = 20000;
 // The reads (and the event shape) live in calendar-read.js, GET-only, so the
 // PREPARE half can read an event without importing anything that writes.
 const reader = require('./calendar-read');
-const { TIMEZONE, MARKER_PROP, normaliseEvent, findByMarker, readEvent, eventsAt } = reader;
+const { TIMEZONE, MARKER_PROP, normaliseEvent, findByMarker, readEvent, readEventBody, eventsAt } = reader;
 
 const DEFINITIVE_REFUSALS = new Set([400, 401, 403, 404, 409]);
 
@@ -111,6 +111,15 @@ async function moveEvent(eventId, { start, end, timeZone }) {
     start: { dateTime: `${start}:00`, timeZone: timeZone || TIMEZONE },
     end: { dateTime: `${end}:00`, timeZone: timeZone || TIMEZONE },
   });
+  return { outcome: classify(r), status: r.status, category: r.category || null, event: r.data ? normaliseEvent(r.data) : null };
+}
+
+/**
+ * Replace an event's BODY only (1 Nov 2026, the agenda). Times, attendees and
+ * everything else are left alone; Graph tells the attendees it was updated.
+ */
+async function updateEventBody(eventId, { html }) {
+  const r = await _req('PATCH', `/me/events/${encodeURIComponent(eventId)}`, { body: { contentType: 'html', content: String(html || '') } });
   return { outcome: classify(r), status: r.status, category: r.category || null, event: r.data ? normaliseEvent(r.data) : null };
 }
 
@@ -228,7 +237,7 @@ async function markMessageRead(messageId) {
 
 module.exports = {
   MARKER_PROP, TIMEZONE, classify, normaliseEvent, createBody,
-  createEvent, findByMarker, readEvent, eventsAt, moveEvent, cancelEvent,
+  createEvent, findByMarker, readEvent, readEventBody, eventsAt, moveEvent, cancelEvent, updateEventBody,
   declineEvent, responseOf,
   RESPONSES, RESPONSE_STATE, respondEvent, inviteOf, invitesForEvent, markMessageRead,
 };

@@ -40,6 +40,9 @@ const SUPPRESSIBLE = new Set([
   // Leave guard (21 Oct 2026): a review card and a summary of declines — both
   // can wait for the morning.
   'leave_clashes', 'leave_declined',
+  // Team cover (1 Nov 2026): two or more off on one queue, days ahead — once
+  // per clash, never a 03:00 problem.
+  'team_cover',
   // Focus blocks (1 Nov 2026): the pushes held during a block, delivered as one
   // summary at its end. Ordinary, so the governor may hold it like any other.
   'block_summary',
@@ -70,6 +73,9 @@ const SUPPRESSIBLE = new Set([
   // UAT volunteers (26 Oct 2026): picks to send, a decline, names ready for
   // Dan — all wait for Nick's press, none is worth 03:00.
   'uat_volunteers',
+  // A meeting follow-up NEURO drafted after a team meeting (1 Nov 2026) — waits
+  // for Nick's press; quiet hours and the cap apply.
+  'meeting_followup',
   // "Things I could do for you" — weekly, only when something new passed the
   // usefulness test. An idea, never urgent.
   'capability_suggestions',

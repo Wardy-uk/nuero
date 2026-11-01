@@ -833,7 +833,10 @@ async function executeAction(action) {
         // prunable, and the Graph id resolves to nothing without Microsoft.
         // Note-sourced candidates pass nothing — their path already reads as a
         // sentence, and an empty object stores as NULL.
-        origin_detail: payload.email ? { email: payload.email } : null,
+        origin_detail: payload.email ? { email: payload.email }
+          // Filed by the meeting-actions gate, not by Nick's press (1 Nov 2026):
+          // the card says so and offers Undo.
+          : payload.autoFiled ? { autoFiled: payload.autoFiled } : null,
         // ⚠ A personal-inbox candidate says it is personal (12 Oct 2026). Anything
         // that names no domain keeps task-store's default, exactly as before.
         ...(payload.domain ? { domain: payload.domain } : {}),
@@ -842,6 +845,8 @@ async function executeAction(action) {
         ok: true,
         detail: `${created ? 'Added task' : 'Folded into existing task'} #${id}: ${payload.text}`,
         navigate: 'todos',
+        taskId: id,
+        created: Boolean(created),
       };
     }
 

@@ -165,6 +165,10 @@ app.use('/api/escalation', escalationRoutes);
 // UAT volunteers (26 Oct 2026): Nick's half behind the PIN, and the invite's
 // Confirm/Decline link on the PUBLIC mount /api/u (exempt in api-auth.js).
 app.use('/api/uat', require('./routes/uat'));
+app.use('/api/delegation', require('./routes/delegation'));
+// Meeting follow-up emails and earned auto-filing of meeting actions (1 Nov 2026).
+app.use('/api/meeting-followups', require('./routes/meeting-followups'));
+app.use('/api/meeting-actions', require('./routes/meeting-actions'));
 app.use('/api/overtime-claims', require('./routes/overtime-claims'));
 app.use('/api/u', require('./routes/uat-respond'));
 app.use('/api/focus', focusRoutes);
@@ -190,10 +194,13 @@ app.use('/api/person', require('./routes/person-detail'));
 // Build 15D: the Activity timeline. Mounted ahead of the activity router so a
 // future parameterised path there can never swallow /timeline.
 app.use('/api/activity/timeline', require('./routes/activity-timeline'));
+// What NEURO did for you — the weekly autonomy report (1 Nov 2026). Ahead of /api/activity too.
+app.use('/api/activity/weekly-report', require('./routes/neuro-weekly-report'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/screen-usage', require('./routes/screen-usage'));
 app.use('/api/1to1', require('./routes/one-to-one'));
 app.use('/api/leave', require('./routes/leave'));
+app.use('/api/calendar-care', require('./routes/calendar-care'));
 app.use('/api/vault-actions', require('./routes/vault-actions'));
 app.use('/api/development-plan', require('./routes/development-plan'));
 app.use('/api/nova-signals', require('./routes/nova-signals'));
@@ -234,6 +241,8 @@ app.use('/api/vehicle', require('./routes/vehicle'));
 app.use('/api/transport', require('./routes/transport'));
 // Build 29: Life → Outdoor. Hikes stay the hiking loop's verdict.
 app.use('/api/outdoor', require('./routes/outdoor'));
+// Personal automations (1 Nov 2026): renewals to compare, tea → shopping, hike suggestions, GP packs.
+app.use('/api/personal-auto', require('./routes/personal-auto'));
 // Build 30: Life → Leisure. Explicit items + bounded listening aggregates.
 app.use('/api/leisure', require('./routes/leisure'));
 // Build 31: Life → People. Relationships only as Nick states them; writes go into People notes.

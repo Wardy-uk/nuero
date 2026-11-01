@@ -482,6 +482,8 @@ function read({ now = Date.now() } = {}) {
     ok: true, contract: 'personal-admin-v1', asOf: new Date(nowMs).toISOString(), today,
     heading: health.complete && !gaps.length ? 'Personal admin' : 'Personal admin — from the sources NEURO can currently read',
     ...composed, workExcluded, health, gaps,
+    // Renewals to compare (1 Nov 2026): the watch's last pass, and any source it could not read — named, never "no renewals".
+    renewalWatch: (() => { try { return require('./renewal-watch').status(); } catch (e) { return { known: false, why: e.message, gaps: [] }; } })(),
     rule: 'Admin is read from what you classified (a reminder list or task set as admin, finance or transport), what you linked to the car or to Ember\'s care, and the vehicle and finance dates you recorded. Work never appears, wording never decides, and no renewal or date is invented. A ticked task is the action — the MOT or renewal itself is done only when its own record says so.',
   };
 }

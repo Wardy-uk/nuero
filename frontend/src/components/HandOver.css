@@ -1,0 +1,18 @@
+.ho-section { margin: 16px 0; }
+.ho-section__h { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted, #8a8f98); margin: 0 0 8px; }
+.ho { border: 1px solid var(--border, #2a2f37); border-left: 3px solid var(--accent, #4f8cff); border-radius: 6px; padding: 8px 10px; margin: 6px 0; background: var(--bg-card, transparent); }
+.ho__line { display: flex; flex-direction: column; gap: 2px; }
+.ho__title { font-weight: 600; }
+.ho__why { color: var(--text, inherit); }
+.ho__acts { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.ho__btn { font: inherit; font-size: 0.85rem; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border, #2a2f37); background: transparent; color: inherit; cursor: pointer; }
+.ho__btn--go { border-color: var(--accent, #4f8cff); color: var(--accent, #4f8cff); }
+.ho__btn:disabled { opacity: 0.5; cursor: default; }
+.ho__editor { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.ho__to { font-size: 0.8rem; color: var(--text-muted, #8a8f98); }
+.ho__subject, .ho__body { font: inherit; width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid var(--border, #2a2f37); border-radius: 4px; background: var(--bg-input, transparent); color: inherit; }
+.ho__body { font-family: var(--font-mono, inherit); font-size: 0.85rem; }
+.ho__note { font-size: 0.82rem; margin-top: 6px; color: var(--text-muted, #8a8f98); }
+.ho__note--warn { color: var(--warning, #d9a441); }
+.ho__note--bad { color: var(--danger, #e5534b); }
+.ho__note--ok { color: var(--success, #3fb950); }

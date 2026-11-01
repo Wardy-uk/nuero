@@ -850,7 +850,7 @@ export function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, 
     body = <NotesSheet notes={data.notes} act={act} setDirty={setDirty} />;
   } else if (sheet.kind === 'tea' && act && act.tea) {
     title = 'Tea'; top = true;
-    body = <TeaSheet tea={data.tea} today={data.today} act={act} setDirty={setDirty} />;
+    body = <TeaSheet tea={data.tea} today={data.today} act={act} setDirty={setDirty} teaShopping={data.teaShopping} />;
   } else if (sheet.kind === 'walk') {
     title = 'Nick’s walk'; wide = true;
     body = <WalkSheet walk={data.walk} MapView={WalkMap} />;

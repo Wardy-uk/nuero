@@ -120,3 +120,4 @@
 /* Task context (22 Oct 2026) — the related task's wording, then what is pinned to it. */
 .mp__ctx + .mp__ctx { margin-top: 10px; }
 .mp__ctx-task { font-weight: 600; margin-bottom: 4px; }
+.mp__agenda { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; white-space: pre-wrap; }

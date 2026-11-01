@@ -100,6 +100,13 @@ export function FocusBlockView({ block, onAct = null, onSomethingElse = null, no
       {block.held > 0 && ['running', 'two-minute', 'wind-down'].includes(block.phase) && (
         <p className="fblock__quiet">{`${block.held} notification${block.held === 1 ? '' : 's'} held for the end.`}</p>
       )}
+      {/* The laptop: links opening for the task (or why not), and its Do Not
+          Disturb as Windows reports it. Words are the server's; read-only. */}
+      {block.laptop && (block.laptop.opens || []).map((o, i) => (
+        <p key={`lo${i}`} className="fblock__quiet">{o.say}</p>
+      ))}
+      {block.laptop && block.laptop.unreachable && <p className="fblock__quiet">{`Not opened on your laptop — ${block.laptop.unreachable}.`}</p>}
+      {block.laptop && block.laptop.dndSay && <p className="fblock__quiet">{block.laptop.dndSay}</p>}
 
       {block.phase === 'ready' && block.candidates.length > 0 && (
         <ul className="fblock__cands fblock__cands--quiet">

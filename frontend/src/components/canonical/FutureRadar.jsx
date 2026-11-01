@@ -357,8 +357,14 @@ export function PersonalAdminCard() {
       <h3 className="cn-h3">{view ? view.heading : 'Personal admin'}</h3>
       {note && <div className="cn-error">{note}</div>}
       {view ? <AdminView view={view} busy={busy} act={act} onDone={done} setup={setup} /> : <><Headline pill="Empty">Nothing here yet.</Headline>{setup}</>}
+      {view && view.renewalWatch && (view.renewalWatch.gaps || []).length > 0 && (
+        <div className="cn-error cn-small" data-testid="renewal-gaps">
+          Renewals to compare — NEURO couldn’t read: {view.renewalWatch.gaps.map((g) => `${g.name} (${g.why})`).join('; ')}. Nothing was added from {view.renewalWatch.gaps.length === 1 ? 'it' : 'them'}.
+        </div>
+      )}
       <HowItWorks>
         {view ? view.rule : null}
+        {view && view.renewalWatch && view.renewalWatch.rule ? ` ${view.renewalWatch.rule}` : null}
         {view && (
           <ul className="cn-act-lines">
             {view.health.sources.map((s) => <li key={s.id}>{s.label}: {s.state} — {s.why}</li>)}

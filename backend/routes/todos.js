@@ -128,6 +128,10 @@ router.get('/', (req, res) => {
       // still needs triage (shared/task-triage.cjs). Missing from this list and
       // a "No date" answer would read back as unanswered on every reload.
       triageNone: Array.isArray(t.triageNone) ? t.triageNone : [],
+      // NEURO's suggestions for a missing MoSCoW / estimate / due date
+      // (services/task-proposals.js). Never a value — confirming is a PATCH of
+      // the real field, which drops the suggestion.
+      proposals: t.proposals && typeof t.proposals === 'object' ? t.proposals : {},
       // Work or personal. Added at the same time because it was missing too, so
       // `domainBadge` in TodoPanel could never fire in full mode — the personal
       // chip has never once rendered on this screen. Same whitelist, same
@@ -272,6 +276,9 @@ router.get('/', (req, res) => {
       laneGaps,
       suggestedTotal: pendingTotal,
       suggestedCapped: pending.length >= SUGGESTION_CAP,
+      // Earned auto-filing of meeting actions (1 Nov 2026): the state and rate
+      // the Spotted section says in one line.
+      meetingActionsGate: require('../services/meeting-actions-gate').state(),
     });
   } catch (e) {
     console.error('[Todos] Error parsing vault todos:', e);

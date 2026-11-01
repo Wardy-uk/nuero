@@ -255,6 +255,8 @@ async function approveAction(id, { apiClient = null } = {}) {
       // so the caller can show the draft and offer the second approval.
       draft: result.draft || null,
       pendingActionId: result.pendingActionId || null,
+      // capture_todo: the task it became (the meeting-actions gate keeps it for Undo).
+      taskId: result.taskId || null,
       action,
     },
   };

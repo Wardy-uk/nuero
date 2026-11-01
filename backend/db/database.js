@@ -281,6 +281,14 @@ async function init() {
       db.exec('ALTER TABLE tasks ADD COLUMN triage_none TEXT');
       console.log('[DB] tasks.triage_none added');
     }
+    // Migration: tasks.proposals_json — NEURO's SUGGESTED MoSCoW / estimate /
+    // due date for a task missing them (services/task-proposals.js). Its own
+    // column on purpose: a guess written into moscow/estimate_minutes/due_date
+    // would be read as Nick's by every consumer that does not check a flag.
+    if (taskColumns.length && !taskColumns.includes('proposals_json')) {
+      db.exec('ALTER TABLE tasks ADD COLUMN proposals_json TEXT');
+      console.log('[DB] tasks.proposals_json added');
+    }
     // Migration: tasks.estimate_minutes — how long the thing takes. NULL means
     // "not estimated", never zero, so an un-estimated task is distinguishable
     // from an instant one and the assumption used in its place stays visible.
@@ -2615,7 +2623,7 @@ const TASK_FIELDS = [
   'origin_path', 'origin_line', 'origin_detail', 'context', 'domain', 'origin', 'origin_proposed',
   'notes', 'ms_id', 'ms_source', 'ms_plan',
   'estimate_minutes', 'assignee', 'household', 'criticality', 'recurrence_json',
-  'triage_none',
+  'triage_none', 'proposals_json',
 ];
 
 // ── Repeating tasks: one row per completed occurrence (17 Oct 2026) ─────────

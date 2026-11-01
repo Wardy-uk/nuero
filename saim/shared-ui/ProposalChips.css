@@ -1,0 +1,28 @@
+.proposal-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.proposal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px dashed currentColor;
+  border-radius: 999px;
+  padding: 1px 4px 1px 8px;
+  font-size: 0.78em;
+  opacity: 0.85;
+}
+.proposal-chip__label { font-style: italic; }
+.proposal-chip__confirm {
+  border: none;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.95em;
+  cursor: pointer;
+  background: rgba(127, 127, 127, 0.18);
+  color: inherit;
+}
+.proposal-chip__confirm:disabled { opacity: 0.5; cursor: default; }
+.proposal-chips__error { font-size: 0.78em; color: #f59e0b; }

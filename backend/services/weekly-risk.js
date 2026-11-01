@@ -37,6 +37,7 @@ const db = require('../db/database');
 const nova = require('./nova-client');
 const managementLog = require('./management-log');
 const overtime = require('./overtime');
+const proposals = require('./weekly-risk-proposals');
 
 /**
  * The target a compliance KPI is measured against when NOVA states none.
@@ -294,13 +295,43 @@ function emptyManual() {
     // it raises still reaches the escalation list, because an escalation must
     // never be suppressed by a formatting preference.
     showPingPong: false,
+    // Which sections Nick has answered THIS week, and how ('accepted' a NEURO
+    // suggestion, 'edited' / typed it, or 'legacy' for a week saved before this
+    // existed). Kept apart from the values because a carried-forward overtime
+    // figure is a value nobody answered — see weekly-risk-proposals.js.
+    answered: {},
   };
+}
+
+/** The manual sections NEURO pre-fills, in report order. */
+const ANSWERABLE = proposals.SECTIONS;
+
+/** Has Nick answered this section for the week? */
+function isAnswered(manual, section) {
+  return Boolean(manual && manual.answered && manual.answered[section]);
 }
 
 function getManual(week) {
   const stored = db.getState(MANUAL_KEY(week));
   if (stored) {
-    try { return { ...emptyManual(), ...JSON.parse(stored) }; } catch { /* fall through */ }
+    try {
+      const parsed = JSON.parse(stored);
+      const out = { ...emptyManual(), ...parsed };
+      // A week saved before answers were tracked: whatever it stored was saved
+      // by Nick, so a non-null section counts as his answer and is never
+      // overwritten by a suggestion.
+      if (!parsed.answered || typeof parsed.answered !== 'object') {
+        out.answered = {};
+        const filled = {
+          overtime: parsed.overtime && parsed.overtime.hours !== null && parsed.overtime.hours !== undefined,
+          escalateToChris: parsed.escalateToChris != null,
+          actions: parsed.actions != null,
+          dataQuality: parsed.dataQuality != null,
+        };
+        for (const s of ANSWERABLE) if (filled[s]) out.answered[s] = { how: 'legacy', at: null };
+      }
+      return out;
+    } catch { /* fall through */ }
   }
   return carryForward(week);
 }
@@ -331,13 +362,30 @@ function carryForward(week) {
   return base;
 }
 
-function setManual(week, patch = {}) {
+/**
+ * Save Nick's answers. A section present in the patch with a value becomes
+ * answered (`how`: 'edited' from the form, 'accepted' from a suggestion); one
+ * sent as null becomes unanswered again. `answered` itself can never be set
+ * from a patch — a client cannot claim a section was reviewed.
+ */
+function setManual(week, patch = {}, { how = 'edited', now = new Date() } = {}) {
+  const { answered: _forged, ...clean } = patch || {};
   const current = getManual(week);
   const next = {
     ...current,
-    ...patch,
-    overtime: { ...current.overtime, ...(patch.overtime || {}) },
+    ...clean,
+    overtime: { ...current.overtime, ...(clean.overtime || {}) },
+    answered: { ...(current.answered || {}) },
   };
+  for (const s of ANSWERABLE) {
+    if (!(s in clean)) continue;
+    const v = clean[s];
+    const has = s === 'overtime'
+      ? Boolean(v) && v.hours !== null && v.hours !== undefined
+      : v !== null && v !== undefined;
+    if (has) next.answered[s] = { how, at: now.toISOString() };
+    else delete next.answered[s];
+  }
   db.setState(MANUAL_KEY(week), JSON.stringify(next));
   return next;
 }
@@ -353,18 +401,37 @@ function setManual(week, patch = {}) {
  * of building that log. When it is not, the old blocker stands: an empty
  * overtime section reads as nil, and nil is a claim.
  */
-function manualBlockers(manual, overtimeStatus = null) {
+function manualBlockers(manual, overtimeStatus = null, proposed = null) {
   const out = [];
-  if (manual.overtime.hours === null && !overtimeStatus?.available) {
+  // A section NEURO pre-filled is blocked until Nick accepts or edits it — a
+  // suggestion is not his answer, however plausible it looks.
+  const pending = s => Boolean(proposed && proposed.sections && proposed.sections[s]) && !isAnswered(manual, s);
+  for (const s of ANSWERABLE) {
+    if (pending(s)) {
+      const p = proposed.sections[s];
+      out.push(`${proposals.LABEL[s]}: NEURO suggested ${p.none ? '"None this week"' : 'this section'} from ${p.sources.join('; ')} — accept it or edit it.`);
+    }
+  }
+  if (!pending('overtime') && manual.overtime.hours === null && !overtimeStatus?.available) {
     out.push('Overtime hours not entered — the report would otherwise read as nil overtime, which is a claim, not an absence of data.');
   }
-  if (manual.escalateToChris === null) {
+  if (!pending('escalateToChris') && manual.escalateToChris === null) {
     out.push('Escalations to Chris not confirmed — an empty list here means "nothing to escalate", which must be a decision.');
   }
-  if (manual.dataQuality === null) {
+  if (!pending('dataQuality') && manual.dataQuality === null) {
     out.push('Data-quality exceptions not reviewed — NEURO can spot them but cannot judge whether they are real or a reporting artefact.');
   }
   return out;
+}
+
+/** A section with a suggestion Nick has not yet answered. */
+function pendingProposal(a, section) {
+  const p = a && a.proposals && a.proposals.sections && a.proposals.sections[section];
+  return p && !p.answered ? p : null;
+}
+
+function suggestedMarker(p) {
+  return `> 🟡 **Suggested — check.** NEURO filled this in from ${p.sources.join('; ')}. Not yet accepted.`;
 }
 
 // ── Task position ────────────────────────────────────────────────────────────
@@ -519,12 +586,33 @@ function flowTimedOut(res) {
 }
 
 /**
+ * NOVA's overtime claims (approved and still waiting) dated in [from, to].
+ * Asked per calendar month the week touches, because NOVA filters by month.
+ * Any failed call makes the whole read unread — a partial list would understate.
+ */
+async function readOvertimeClaims(from, to, novaReady = nova.isConfigured()) {
+  if (!novaReady) return { ok: false, approved: [], submitted: [], error: 'NOVA bridge not configured' };
+  const claimsApi = require('./overtime-claims');
+  const months = [...new Set([from.slice(0, 7), to.slice(0, 7)])];
+  const out = { ok: true, approved: [], submitted: [] };
+  for (const status of ['approved', 'submitted']) {
+    for (const month of months) {
+      const r = await claimsApi.claims({ status, month });
+      if (!r.ok) return { ok: false, approved: [], submitted: [], error: r.error };
+      const list = Array.isArray(r.claims) ? r.claims : [];
+      out[status].push(...list.filter(c => c && c.date >= from && c.date <= to));
+    }
+  }
+  return out;
+}
+
+/**
  * Gather everything. Each source is wrapped so one failure degrades a section
  * rather than losing the report — and every failure is carried through to the
  * rendered note, because a missing section that says nothing is indistinguishable
  * from a healthy one.
  */
-async function snapshot({ week = weekCommencing(), date } = {}) {
+async function snapshot({ week = weekCommencing(), date, withOvertimeClaims = false } = {}) {
   const novaReady = nova.isConfigured();
   // The completed Monday-to-Sunday this report covers. Derived here as well as
   // in assess() because the CSAT calls must ask for the same weeks the
@@ -624,10 +712,25 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     myEscalations = await require('./my-escalations').weekCounts({ from: reportWeek, to: addDays(reportWeek, 6) });
   } catch (e) { myEscalations = { error: e.message }; }
 
+  // Overtime for the report week, for the pre-filled overtime section: NOVA's
+  // approved and waiting claims, and the older log. Each says whether it was
+  // read — an unread source proposes no figure (weekly-risk-proposals.js).
+  // Only the weekly report's own build asks: SOAP and the weekly briefing share
+  // this snapshot and never read the overtime suggestion (1 Nov 2026).
+  const overtimeClaims = withOvertimeClaims
+    ? await readOvertimeClaims(reportWeek, addDays(reportWeek, 6), novaReady)
+    : { ok: false, skipped: true, error: 'not asked for' };
+  let overtimeLog;
+  try {
+    overtimeLog = { ok: true, rows: overtime.listOrThrow({ from: reportWeek, to: addDays(reportWeek, 6) }) };
+  } catch (e) { overtimeLog = { ok: false, rows: [], error: e.message }; }
+
   return {
     week,
     generatedAt: new Date().toISOString(),
     today: todayLocal(),
+    overtimeClaims,
+    overtimeLog,
     sources: [kpi, tracker, trend, orgTrend, escalationStats, flow, csatNow, csatPrior]
       .map(s => ({ name: s.name, ok: s.ok, error: s.error || null })),
     kpi: kpi.data,
@@ -1810,7 +1913,14 @@ function render(a) {
   // working days, and a section reached after six numbered ones is read last.
   lines.push('## To escalate to Chris');
   lines.push('');
-  if (manual.escalateToChris === null) {
+  const escP = pendingProposal(a, 'escalateToChris');
+  if (escP) {
+    lines.push(suggestedMarker(escP));
+    lines.push('');
+    lines.push(escP.value.length
+      ? escP.value.map((x, i) => `${i + 1}. ${x}`).join('\n')
+      : '**None this week** (suggested).');
+  } else if (manual.escalateToChris === null) {
     lines.push('> ⚠️ **NOT CONFIRMED.** NEURO proposes the following; an empty list must be a decision, not a silence.');
     lines.push('');
     lines.push(escalate.length
@@ -1833,7 +1943,10 @@ function render(a) {
     if (!agenda.known) {
       lines.push('_The discussion list could not be read this week — this is not "nothing to discuss"._');
     } else {
-      lines.push(agenda.open.map((x, i) => `${i + 1}. ${x.text}`).join('\n'));
+      const rest = agenda.open;
+      lines.push(rest.length
+        ? rest.map((x, i) => `${i + 1}. ${x.text}`).join('\n')
+        : '_Everything on the list is in the escalations above._');
     }
     lines.push('');
   }
@@ -1878,7 +1991,13 @@ function render(a) {
   // entered, contradicting him in a document he signs. The log is the better
   // evidence only when it actually holds claims.
   const logHasClaims = ot?.available && (ot.totalClaims || 0) > 0;
-  if (manual.overtime.hours !== null && !logHasClaims) {
+  const otP = pendingProposal(a, 'overtime');
+  if (otP) {
+    lines.push(suggestedMarker(otP));
+    lines.push('');
+    lines.push(`**${otP.value.hours} overtime hours** this cycle. Approvals outstanding: **${otP.value.approvalsOutstanding}**.`);
+    if (otP.value.note) { lines.push(''); lines.push(otP.value.note); }
+  } else if (manual.overtime.hours !== null && !logHasClaims) {
     lines.push(`**${manual.overtime.hours} overtime hours** this cycle. Approvals outstanding against the five-step checklist: **${manual.overtime.approvalsOutstanding ?? 0}**.`);
     if (manual.overtime.note) { lines.push(''); lines.push(manual.overtime.note); }
   } else if (ot?.available) {
@@ -1924,7 +2043,13 @@ function render(a) {
   if (fx.unreadable) lines.push(`- **Fixes log not read:** ${fx.unreadable}. There may be data corrections not shown here.`);
   const plainFixes = fx.fixed.filter(f => !f.impact.includes('figures'));
   if (plainFixes.length) lines.push(bullet(plainFixes, f => `- **${rf.fixedLine(f)}**`));
-  if (Array.isArray(manual.dataQuality) && manual.dataQuality.length) {
+  const dqP = pendingProposal(a, 'dataQuality');
+  if (dqP) {
+    lines.push('');
+    lines.push(suggestedMarker(dqP));
+    lines.push('');
+    lines.push(dqP.value.length ? bullet(dqP.value, x => `- ${x}`) : '- **None this week** (suggested).');
+  } else if (Array.isArray(manual.dataQuality) && manual.dataQuality.length) {
     lines.push(bullet(manual.dataQuality, x => `- ${x}`));
   } else if (manual.dataQuality === null) {
     lines.push('- > ⚠️ **Manual review not done.** NEURO flags candidates; whether each is real or a reporting artefact is a judgement.');
@@ -2039,11 +2164,13 @@ function render(a) {
 
   lines.push('## Actions this week');
   lines.push('');
-  const actions = Array.isArray(manual.actions) ? manual.actions : [];
+  const actP = pendingProposal(a, 'actions');
+  const actions = actP ? actP.value : (Array.isArray(manual.actions) ? manual.actions : []);
+  if (actP) { lines.push(suggestedMarker(actP)); lines.push(''); }
   if (actions.length) {
     lines.push(actions.map(x => `- [${x.done ? 'x' : ' '}] ${x.text}${x.carriedFrom ? ` _(carried from w/c ${formatUk(x.carriedFrom)})_` : ''}`).join('\n'));
   } else {
-    lines.push('_None recorded._');
+    lines.push(actP ? '**None this week** (suggested).' : '_None recorded._');
   }
   lines.push('');
 
@@ -2281,14 +2408,101 @@ async function build(opts = {}) {
       };
     }
   }
-  const snap = await snapshot(opts);
+  const snap = await snapshot({ ...opts, withOvertimeClaims: true });
   const assessed = assess(snap);
+  attachProposals(week, snap, assessed, { store: !isLocked(week) });
   const built = { ...assessed, markdown: render(assessed) };
   const rec = sentRecord(week);
   // A reopened week still says what was sent, and when -- the figures below are
   // live again and may no longer match.
   if (rec) built.sent = sentSummary(rec);
   return built;
+}
+
+/**
+ * Pre-fill the manual sections from the data this build already read, store
+ * them (sparing anything Nick has answered), and re-judge the blockers with
+ * them. A sent week is never refreshed: its proposals are only read back.
+ */
+function attachProposals(week, snap, assessed, { store = true } = {}) {
+  const manual = snap.manual || emptyManual();
+  const answered = s => isAnswered(manual, s);
+  let stored;
+  if (store) {
+    const rf = require('./report-fixes');
+    const from = assessed.reportWeek || previousWeek(week);
+    const computed = proposals.proposeAll({
+      from, to: addDays(from, 6),
+      overtimeClaims: snap.overtimeClaims, overtimeLog: snap.overtimeLog,
+      myEscalations: snap.myEscalations, chrisAgenda: snap.chrisAgenda,
+      findings: assessed.findings, sources: snap.sources,
+      management: snap.management ? { rows: snap.management.rows, overdue: snap.management.overdue } : null,
+      carried: (Array.isArray(manual.actions) ? manual.actions : []).filter(a => a && a.carriedFrom),
+      fixes: assessed.fixes, rf,
+    });
+    stored = proposals.refresh(week, computed, answered);
+  } else {
+    stored = proposals.read(week);
+  }
+  assessed.proposals = proposals.view(stored, answered);
+  assessed.blockers = manualBlockers(manual, snap.overtime, assessed.proposals);
+  return assessed.proposals;
+}
+
+/**
+ * Accept NEURO's suggestion for one section, exactly as shown (`hash` is the
+ * fingerprint the screen displayed — a suggestion that changed since is
+ * refused, so Nick never accepts words he did not read).
+ */
+function acceptProposal(week, section, hash, { now = new Date() } = {}) {
+  if (!ANSWERABLE.includes(section)) return { ok: false, code: 400, error: `Unknown section "${section}".` };
+  if (isLocked(week)) return { ok: false, code: 409, error: 'This week has been sent — reopen it to change it.' };
+  const stored = proposals.read(week);
+  const p = stored && stored.sections[section];
+  if (!p) return { ok: false, code: 404, error: `There is no suggestion for ${proposals.LABEL[section]} this week.` };
+  const manual = getManual(week);
+  if (isAnswered(manual, section)) return { ok: false, code: 409, error: `${proposals.LABEL[section]} is already answered — edit it instead.` };
+  if (hash !== undefined && hash !== null && hash !== p.hash) {
+    return { ok: false, code: 409, error: `The suggestion for ${proposals.LABEL[section]} changed since you read it — check it again.` };
+  }
+  const value = section === 'overtime' ? { ...p.value } : JSON.parse(JSON.stringify(p.value));
+  const next = setManual(week, { [section]: value }, { how: 'accepted', now });
+  return { ok: true, manual: next, section };
+}
+
+/** "Accept all suggestions" — every pending one, each exactly as stored. */
+function acceptAllProposals(week, { now = new Date() } = {}) {
+  if (isLocked(week)) return { ok: false, code: 409, error: 'This week has been sent — reopen it to change it.' };
+  const stored = proposals.read(week);
+  const accepted = [];
+  for (const s of ANSWERABLE) {
+    if (!stored || !stored.sections[s]) continue;
+    const r = acceptProposal(week, s, stored.sections[s].hash, { now });
+    if (r.ok) accepted.push(s);
+  }
+  return { ok: true, accepted, manual: getManual(week) };
+}
+
+/**
+ * The Monday 07:30 push body. PURE. Leads with the suggestions to check;
+ * anything else still blocking, escalations and failed sources follow.
+ */
+function readyNotice(report) {
+  const pending = (report && report.proposals && report.proposals.pending) || 0;
+  const blockers = (report && report.blockers) || [];
+  const other = Math.max(0, blockers.length - pending);
+  const parts = [];
+  if (report && report.escalateCount) parts.push(`${report.escalateCount} to escalate`);
+  if (other) parts.push(`${other} section${other === 1 ? '' : 's'} still to fill in`);
+  const failed = ((report && report.sources) || []).filter(x => !x.ok).length;
+  if (failed) parts.push(`${failed} data source${failed === 1 ? '' : 's'} down`);
+  const head = `Weekly report ready — ${pending} suggestion${pending === 1 ? '' : 's'} to check`;
+  return parts.length ? `${head}. ${parts.join(', ')}.` : `${head}.`;
+}
+
+/** The stored suggestions for a week, as the screen reads them. */
+function proposalsFor(week, manual = getManual(week)) {
+  return proposals.view(proposals.read(week), s => isAnswered(manual, s));
 }
 
 /**
@@ -2616,6 +2830,7 @@ module.exports = {
   snapshot, assess, render, build, publish, publishedAt, queueSend, testSend,
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
+  isAnswered, attachProposals, acceptProposal, acceptAllProposals, proposalsFor, readOvertimeClaims, readyNotice,
   weekCommencing, previousWeek, loggedInWeek, trackerRag, buildTrend, consecutiveBelowTarget, ragBucket,
   taskCounts,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder, isComplianceKpi,

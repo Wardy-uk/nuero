@@ -105,6 +105,7 @@ const CommitmentsPanel = lazyLoad(() => import('./components/canonical/Commitmen
 const SourcesPanel = lazyLoad(() => import('./components/canonical/SourcesPanel'));
 const FindingsPanel = lazyLoad(() => import('./components/canonical/FindingsPanel'));
 const ActivityPanel = lazyLoad(() => import('./components/canonical/ActivityPanel'));
+const NeuroDidPanel = lazyLoad(() => import('./components/NeuroDidPanel'));
 const LifePanel = lazyLoad(() => import('./components/canonical/LifePanel'));
 // The Life overhaul (13 Oct 2026): each part of life is its own page. Named
 // exports of one module — lazy() wants a default, so each is lifted.
@@ -119,6 +120,7 @@ const LifeSourcesPage = lifePage('LifeSourcesPage');
 import { canonicalView, VANTAGE_URL } from './viewIds';
 import ViewTabs from './components/ViewTabs';
 import { registerVaultOpener } from './openVault';
+import { registerNavigator } from './hikePrefill';
 
 /** KPI Tracker moved to VANTAGE (Build 10L) — departmental, not personal. */
 function MovedToVantage() {
@@ -288,7 +290,8 @@ function AuthenticatedApp() {
   // Task context opens a note or folder from inside any card (frontend/src/openVault.js).
   useEffect(() => {
     registerVaultOpener((p) => { setVaultOpenPath(p); setActiveView('vault'); setChatOpen(false); });
-    return () => registerVaultOpener(null);
+    registerNavigator((v) => { setActiveView(v); setChatOpen(false); });
+    return () => { registerVaultOpener(null); registerNavigator(null); };
   }, []);
   const [navContext, setNavContext] = useState(() => readNueroLaunchIntent().context); // context passed from Focus to drill-down views
   // Option B (Brief 003): the `saim_desktop_workspace` switch. Unreadable = off,
@@ -475,6 +478,7 @@ function AuthenticatedApp() {
       case 'sources': return <SourcesPanel onNavigate={handleNavigate} />;
       case 'findings': return <FindingsPanel />;
       case 'activity': return <ActivityPanel />;
+      case 'neuro-did': return <NeuroDidPanel onNavigate={handleNavigate} />;
       case 'life': return <LifePanel />;
       case 'home': return <LifeHomePage />;
       case 'family': return <LifeFamilyPage onNavigate={handleNavigate} />;

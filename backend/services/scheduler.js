@@ -235,10 +235,25 @@ function start() {
     require('./overtime-claims').reconcile().catch((e) => console.warn('[Scheduler] overtime payroll reconcile failed:', e.message));
   });
 
+  // Every 10 min: meeting follow-ups — a write-up now linked to a meeting with
+  // others gets a drafted follow-up (team) or an offer (anyone else). Idempotent
+  // per occurrence; nothing is ever sent from here.
+  cron.schedule('6-59/10 * * * *', () => {
+    require('./meeting-followups').sweep().catch((e) => console.warn('[Scheduler] meeting follow-ups failed:', e.message));
+  });
+
   // Every 5 min: customer replies on watched Jira tickets (watched-tickets.js).
   // Idempotent on the Jira comment id, so a missed tick self-corrects.
   cron.schedule('3-59/5 * * * *', () => {
     require('./watched-tickets').check().catch((e) => console.warn('[Scheduler] watched tickets failed:', e.message));
+  });
+
+  // Delegation prompts: judge new DELEGATE/customer emails and open tasks for a
+  // hand-over (≤6 model calls, stops at 3 open), and read back sent hand-overs.
+  cron.schedule('17,47 8-18 * * 1-5', () => {
+    const del = require('./delegation');
+    try { del.reconcile(); } catch (e) { console.warn('[Scheduler] delegation reconcile failed:', e.message); }
+    del.scan().catch((e) => console.warn('[Scheduler] delegation pass failed:', e.message));
   });
 
   // Every 30 min in working hours: "Looks done" — evidence an open task is already
@@ -249,6 +264,18 @@ function start() {
 
   cron.schedule('4,19,34,49 * * * *', () => {
     require('./drink-profiles').lookupPending().catch((e) => console.warn('[Scheduler] drink lookup failed:', e.message));
+  });
+
+  // Personal automations (1 Nov 2026). Renewals to compare (one task, 30 days out),
+  // tea → shopping (also kicked on every tea change) and the GP pack (2 days before).
+  // Each is idempotent over its ledger; none sends anything.
+  cron.schedule('17 7,13,19 * * *', () => {
+    try { require('./renewal-watch').run(); } catch (e) { console.warn('[Scheduler] renewal watch failed:', e.message); }
+  });
+  require('./household-board').onTeaChange(() => { require('./tea-shopping').kick(); });
+  cron.schedule('11,41 * * * *', () => { require('./tea-shopping').kick(); });
+  cron.schedule('27 7-21 * * *', () => {
+    try { require('./gp-pack').run(); } catch (e) { console.warn('[Scheduler] GP pack failed:', e.message); }
   });
 
   // Feedback about Nick read out of meeting notes for VANTAGE's Performance
@@ -627,21 +654,16 @@ function start() {
     try {
       const weeklyRisk = require('./weekly-risk');
       const report = await weeklyRisk.build();
-      const parts = [];
-      if (report.escalateCount) parts.push(`${report.escalateCount} to escalate`);
-      if (report.blockers.length) parts.push(`${report.blockers.length} section${report.blockers.length === 1 ? '' : 's'} need you`);
-      const failed = report.sources.filter(s => !s.ok).length;
-      if (failed) parts.push(`${failed} data source${failed === 1 ? '' : 's'} down`);
       await require('./webpush').sendToAll(
         'SAiM — Weekly risk report',
-        parts.length
-          ? `Draft ready for Chris by midday: ${parts.join(', ')}.`
-          : 'Draft ready for Chris by midday. Nothing flagged for escalation — confirm and send.',
+        // The build pre-fills the manual sections; each suggestion still needs
+        // Nick's accept or edit before the report can send.
+        weeklyRisk.readyNotice(report),
         // `?view=` — App.jsx reads the query param, never the pathname, so a
         // bare '/weekly-risk' silently lands on Briefing.
         { type: 'weekly_risk', url: '/?view=weekly-risk' },
       ).catch(() => {});
-      console.log(`[Scheduler] Weekly risk report built: ${report.escalateCount} escalations, ${report.blockers.length} blockers.`);
+      console.log(`[Scheduler] Weekly risk report built: ${report.escalateCount} escalations, ${report.proposals?.pending || 0} suggestions, ${report.blockers.length} blockers.`);
     } catch (e) {
       console.error('[Scheduler] Weekly risk report failed:', e.message);
     }
@@ -975,6 +997,8 @@ function start() {
         if (!r.ok) { console.warn(`[Scheduler] Availability refresh (${why}) failed`); return; }
         // Leave guard (21 Oct 2026): new leave → the clash card; and decline
         // anything unanswered on a leave day (only while the switch is on).
+        // Team cover (1 Nov 2026): a NEW thin-cover clash within 14 days pushes once.
+        require('./team-cover').check().catch(e => console.error('[TeamCover] check failed:', e.message));
         const guard = require('./leave-guard');
         return guard.detectNew()
           .then(d => { if (d.fresh && d.fresh.length) console.log(`[LeaveGuard] new leave ${d.fresh.join(', ')} — ${d.items} clash(es)`); })
@@ -1479,6 +1503,22 @@ function start() {
       lookbackMs: 48 * 3600 * 1000,
       why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
       run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
+    });
+    // Calendar care (1 Nov 2026): look for meetings Nick organises in the next
+    // 24h whose invite has no agenda, and draft one. READS only (invite bodies
+    // from Graph); adding it is his press. Hourly in the working day, from 07:05.
+    // The week-load and series offers are computed when Now is read.
+    require('./runtime-jobs').defineJob({
+      name: 'calendar-care-agendas',
+      cron: '5 7-18 * * 1-5',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 50 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 2 * 60 * 1000,
+      lookbackMs: 2 * 60 * 60 * 1000,
+      why: 'Draft an agenda for meetings Nick organises in the next 24 hours whose invite says nothing (proposal only).',
+      run: async () => { const r = await require('./calendar-care').agendaPass(); return { candidates: r.candidates || 0, proposed: r.proposed || 0, unreadable: r.unreadable || 0, error: r.error || null }; },
     });
     // Focus blocks (1 Nov 2026): the start prompt, two minutes in, five
     // minutes left, the end check-in, and the held-push summary. Every minute;

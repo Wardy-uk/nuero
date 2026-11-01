@@ -90,6 +90,8 @@ const GROUPS = [
     // What has not been set up yet, per device, judged from evidence.
     // Build 15D: "what has NEURO done?" — one semantic timeline, first in SYSTEM.
     { id: 'activity',     label: 'Activity',      icon: '≡' },
+    // 1 Nov 2026: the weekly "what NEURO did on its own" + misfires to check.
+    { id: 'neuro-did',    label: 'What NEURO did', icon: '◷' },
     { id: 'setup',        label: 'Set up',        icon: '✓' },
     { id: 'sources',      label: 'Sources',       icon: '◎' },
     // Reminder lists, calendar classifications, coverage — moved off Life.
