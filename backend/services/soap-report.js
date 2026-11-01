@@ -52,7 +52,7 @@
 const crypto = require('crypto');
 const db = require('../db/database');
 const reportFixes = require('./report-fixes');
-const { itemKey: IK, sectionOf, customerTickets } = require('../../shared/soap-items.cjs');
+const { itemKey: IK, sectionOf, customerTickets, TONES, leadingTone, byTone } = require('../../shared/soap-items.cjs');
 
 const AMBER_BAND = 20; // weekly-risk's rule: within 20 points of target is amber, further is red
 const STAR_LIMIT_SUCCESS = 6;
@@ -630,7 +630,7 @@ function render(report, manual, { forEmail = false, fixes = null } = {}) {
   L.push('## Leading indicators', '');
   const ld = report.leading;
   if (ld && ld.available) {
-    if (ld.fired.length) for (const i of ld.fired) L.item(IK.leading(i), `- **${i.title}**${i.change ? ` — ${i.change}` : ''}${i.horizonDays ? ` (useful for ~${i.horizonDays} days, confidence ${i.confidence})` : ''}`);
+    if (ld.fired.length) for (const i of byTone(ld.fired)) L.item(IK.leading(i), `- ${TONES[leadingTone(i)].mark} ${TONES[leadingTone(i)].label}: **${i.title}**${i.change ? ` — ${i.change}` : ''}${i.horizonDays ? ` (useful for ~${i.horizonDays} days, confidence ${i.confidence})` : ''}`);
     else L.push(`- No early warning this week (${ld.quiet} checks running, all quiet).`);
   } else L.push(na('leading', 'VANTAGE did not answer'));
   L.push('');
@@ -766,7 +766,7 @@ async function gather({ kind, now = new Date(), overrides = {} } = {}) {
   const leading = leadRaw ? {
     available: leadRaw.available !== false, asOf: leadRaw.asOf || null,
     fired: (leadRaw.indicators || []).filter((i) => i.shadow !== true).map((i) => ({
-      key: i.key || null, title: i.title, severity: i.severity || null, change: i.change || null, horizonDays: i.horizonDays ?? null,
+      key: i.key || null, tone: i.tone || 'concern', title: i.title, severity: i.severity || null, change: i.change || null, horizonDays: i.horizonDays ?? null,
       confidence: i.confidence ? i.confidence.level : null, action: i.action || null,
     })),
     quiet: Array.isArray(leadRaw.quiet) ? leadRaw.quiet.length : 0,

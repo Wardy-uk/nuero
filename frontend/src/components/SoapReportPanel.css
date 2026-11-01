@@ -56,3 +56,9 @@
 .soap-inc-cell { width: 1.5em; }
 .soap-item--out { opacity: 0.45; text-decoration: line-through; }
 .soap-item--out .soap-inc { opacity: 1; }
+
+/* A leading indicator's tone (1 Nov 2026): concern / positive / worth knowing. */
+.soap-tone { font-size: 0.75rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+.soap-tone--concern { background: rgba(217, 119, 6, 0.18); }
+.soap-tone--positive { background: rgba(22, 163, 74, 0.18); }
+.soap-tone--neutral { background: rgba(120, 120, 120, 0.18); }

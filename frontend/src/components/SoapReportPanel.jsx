@@ -4,7 +4,7 @@ import { executeDirect, directOutcome } from '../directAction';
 import soapItems from '../../../shared/soap-items.cjs';
 import './SoapReportPanel.css';
 
-const { itemKey: IK, customerTickets } = soapItems;
+const { itemKey: IK, customerTickets, TONES, leadingTone, byTone } = soapItems;
 
 // ── SOAP report — the Monday debrief for Chris, Ricky and Liam (15 Oct 2026) ─
 //
@@ -296,7 +296,7 @@ export function SoapReportView({ data, draft, setDraft, dirty, busy, onSave, onB
       <Sec k="leading" title="Leading indicators" {...secProps}>
         {r.leading && r.leading.available ? (
           r.leading.fired.length
-            ? <ul>{r.leading.fired.map((i, k) => <It key={k} id={IK.leading(i)}><strong>{i.title}</strong>{i.change ? ` — ${i.change}` : ''}{i.horizonDays ? <span className="soap-meta"> (useful for ~{i.horizonDays} days, confidence {i.confidence})</span> : null}</It>)}</ul>
+            ? <ul>{byTone(r.leading.fired).map((i, k) => <It key={k} id={IK.leading(i)}><span className={`soap-tone soap-tone--${leadingTone(i)}`}>{TONES[leadingTone(i)].mark} {TONES[leadingTone(i)].label}</span> <strong>{i.title}</strong>{i.change ? ` — ${i.change}` : ''}{i.horizonDays ? <span className="soap-meta"> (useful for ~{i.horizonDays} days, confidence {i.confidence})</span> : null}</It>)}</ul>
             : <p className="soap-meta">No early warning this week ({r.leading.quiet} checks running, all quiet).</p>
         ) : <Gap text={g.leading || 'VANTAGE did not answer'} />}
       </Sec>

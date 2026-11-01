@@ -64,4 +64,24 @@ function customerTickets(c) {
   return bits.length ? bits.join(' · ') : null;
 }
 
-module.exports = { itemKey, sectionOf, customerTickets };
+/**
+ * A leading indicator's tone (VANTAGE, 1 Nov 2026): a CONCERN (moved the bad way),
+ * a POSITIVE (moved the good way) or WORTH KNOWING (the KPI has no good or bad
+ * direction). A card from before tones existed was a warning, so it reads as one.
+ */
+const TONES = Object.freeze({
+  concern: { label: 'Concern', mark: '⚠️', order: 0 },
+  positive: { label: 'Positive', mark: '✅', order: 1 },
+  neutral: { label: 'Worth knowing', mark: 'ℹ️', order: 2 },
+});
+function leadingTone(i) {
+  return TONES[i && i.tone] ? i.tone : 'concern';
+}
+/** Concerns first, then positives, then worth knowing; VANTAGE's order within each. PURE. */
+function byTone(list) {
+  return (list || []).map((x, n) => [x, n])
+    .sort((a, b) => TONES[leadingTone(a[0])].order - TONES[leadingTone(b[0])].order || a[1] - b[1])
+    .map(([x]) => x);
+}
+
+module.exports = { itemKey, sectionOf, customerTickets, TONES, leadingTone, byTone };

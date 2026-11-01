@@ -430,3 +430,18 @@ test('worst customers say how their open tickets split between Support and Devel
   const md = soap.render(itemReport(), { ...soap.emptyManual(), reds: { r1: { action: 'x' } } });
   assert.match(md, /Roger Coupe\*\* — 2 of 2 current tickets unhappy\. Tickets: 2 open now \(1 Support, 1 Development\)/);
 });
+
+test('leading indicators say Concern / Positive / Worth knowing, concerns first; an old card reads as a concern', () => {
+  const r = itemReport();
+  r.leading = { available: true, quiet: 2, fired: [
+    { key: 'drift:nt_solved_nova', tone: 'positive', title: 'Solved by NOVA has drifted to 46.3 a day, from 38.3' },
+    { key: 'drift:nt_legacy_new_tickets', tone: 'neutral', title: 'New tickets has drifted to 80 a day, from 60' },
+    { key: 'drift:nt_legacy_cc_incidents', tone: 'concern', title: 'CC incidents has drifted to 45.9 a day, from 29.4' },
+    { key: 'old', title: 'A card from before tones' },
+  ] };
+  const md = soap.render(r, { ...soap.emptyManual(), reds: { r1: { action: 'x' } } });
+  const sec = md.slice(md.indexOf('## Leading indicators'));
+  const order = ['Concern: **CC incidents', 'Concern: **A card from before', 'Positive: **Solved by NOVA', 'Worth knowing: **New tickets'].map((x) => sec.indexOf(x));
+  assert.ok(order.every((n) => n > 0), `missing a tone line: ${order}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'concerns, then positives, then worth knowing');
+});
