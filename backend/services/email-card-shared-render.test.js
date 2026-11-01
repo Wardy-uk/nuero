@@ -27,7 +27,7 @@ async function bundle(file) {
         build.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)(api|directAction)$/ }, (a) => ({ path: a.path, namespace: 'stub' }));
-        build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = p => p; export const executeDirect = async () => ({}); export const directOutcome = () => null;', loader: 'js' }));
+        build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = p => p; export const apiFetch = async () => ({ ok: true, json: async () => ({}) }); export const executeDirect = async () => ({}); export const directOutcome = () => null;', loader: 'js' }));
       },
     }],
   });

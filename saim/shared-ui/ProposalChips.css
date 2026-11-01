@@ -25,4 +25,4 @@
   color: inherit;
 }
 .proposal-chip__confirm:disabled { opacity: 0.5; cursor: default; }
-.proposal-chips__error { font-size: 0.78em; color: #f59e0b; }
+.proposal-chips__error { font-size: 0.78em; color: #ffb4b4; }

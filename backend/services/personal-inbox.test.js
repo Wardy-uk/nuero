@@ -177,7 +177,7 @@ test('the screen, really rendered: newest first with unread marked, saim@ labels
       b.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
       b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
       b.onResolve({ filter: /(^|\/)(api|directAction)$/ }, (a) => ({ path: a.path, namespace: 'stub' }));
-      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = p => p; export const executeDirect = async () => ({}); export const directOutcome = () => ({});', loader: 'js' }));
+      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = p => p; export const apiFetch = async () => ({ ok: true, json: async () => ({}) }); export const executeDirect = async () => ({}); export const directOutcome = () => ({});', loader: 'js' }));
     } }],
   });
   const mod = { exports: {} };
