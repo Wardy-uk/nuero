@@ -17,7 +17,7 @@ async function load(rel) {
   const out = await esbuild.build({
     entryPoints: [path.join(SRC, rel)],
     bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
-    external: ['react', 'react-dom', 'nosleep.js/*', 'leaflet'], loader: { '.css': 'empty' }, logLevel: 'silent',
+    external: ['react', 'react-dom', 'nosleep.js/*'], loader: { '.css': 'empty' }, logLevel: 'silent',
   });
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
@@ -80,7 +80,8 @@ test('no scope = not drawn; null = says it could not read', async () => {
 test('a failed board read is a named gap; not yet read draws nothing', async () => {
   const { default: HouseBoard } = await load('components/HouseBoard.jsx');
   const failed = text(renderToString(h(HouseBoard, { board: null, boardErr: 'Network down', open() {} })));
-  assert.ok(failed.includes('Network down') && failed.includes('couldn’t read'.replace('’', "'")) || failed.includes('Network down'));
+  assert.ok(failed.includes('Network down'), 'names why');
+  assert.ok(failed.includes('I couldn’t read this.'), 'a gap, never an empty board');
   assert.equal(renderToString(h(HouseBoard, { board: undefined, open() {} })), '');
 });
 
