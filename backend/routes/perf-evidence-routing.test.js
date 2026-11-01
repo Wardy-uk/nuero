@@ -99,10 +99,14 @@ test('the feed carries work, counter-evidence included, and never personal tasks
   assert.match(late.detail, /Done 2026-10-08 \(due 2026-10-05, 3 day\(s\) later\)/);
   assert.doesNotMatch(late.detail, /after its due date/);
   // Confluence has never been read in this database: a named gap, never an empty list.
-  const { confluence, ...local } = body.sources;
-  for (const s of Object.values(local)) assert.equal(s.ok, true);
+  // Sent Items (perf-mail) likewise reads only its own cache, which this database
+  // has never filled — the same named gap, never "no mail".
+  const { confluence, mail, ...local } = body.sources;
+  for (const [k, s] of Object.entries(local)) assert.equal(s.ok, true, `${k}: ${s.error}`);
   assert.equal(confluence.ok, false);
   assert.match(confluence.error, /Confluence not (read yet|configured)/);
+  assert.equal(mail.ok, false);
+  assert.match(mail.error, /Sent Items not read yet/);
 });
 
 test('an unreadable vault is a named gap, not an empty meetings list', () => {

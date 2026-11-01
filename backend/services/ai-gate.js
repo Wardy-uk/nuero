@@ -64,6 +64,7 @@ const PRICES = {
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
   'voyage-3.5-lite': { input: 0.02, output: 0 },
+  'voyage-3.5': { input: 0.06, output: 0 },
 };
 
 // Providers that run on Nick's own hardware: free at the point of use, but still
