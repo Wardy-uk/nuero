@@ -266,3 +266,15 @@ test('the watchdog marks the Microsoft alerts for the desk and points the click 
   const src = fs.readFileSync(path.join(__dirname, 'watchdog.js'), 'utf8');
   assert.match(src, /desk: true, url: '\/\?view=microsoft-signin'/);
 });
+
+test('push_log keeps the words, the destination and the owning app — the watch reads them back', async () => {
+  // VAPID is not configured in this process, so the send is recorded as
+  // undeliverable — the row must still carry what the notification SAID.
+  await webpush.sendToAll('Router needs a restart', 'Want me to restart it now?', { type: 'router_restart', url: '/?view=today' });
+  const row = db.getPushLog(5).find(r => r.title === 'Router needs a restart');
+  assert.ok(row, 'the attempt is in push_log');
+  assert.equal(row.body, 'Want me to restart it now?');
+  assert.equal(row.url, '/?view=today');
+  assert.equal(row.app, 'saim');
+  assert.ok(row.tab, 'a destination tab is resolved even when nothing was sent');
+});

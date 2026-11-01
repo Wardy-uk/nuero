@@ -226,6 +226,13 @@ async function init() {
     if (!pushColumns.includes('app')) {
       db.exec('ALTER TABLE push_subscriptions ADD COLUMN app TEXT');
     }
+    // push_log keeps what the notification SAID and where it led (1 Nov 2026),
+    // so a notification can be read again after it is swiped away (the watch's
+    // Notifications page). Additive; older rows keep NULL.
+    const logColumns = db.prepare('PRAGMA table_info(push_log)').all().map(r => r.name);
+    for (const col of ['body', 'tab', 'url', 'app']) {
+      if (logColumns.length && !logColumns.includes(col)) db.exec(`ALTER TABLE push_log ADD COLUMN ${col} TEXT`);
+    }
 
     // Migration (7 Oct 2026): the household roster on wm_presence (Build 13H).
     try {
@@ -1195,11 +1202,12 @@ function removePushSubscription(endpoint) {
 // pile — the same mistake one step later.
 const PUSH_LOG_RETAIN_DAYS = 90;
 
-function logPushOutcome({ type, title, outcome, reason, sentCount, failedCount }) {
+function logPushOutcome({ type, title, body, tab, url, app, outcome, reason, sentCount, failedCount }) {
   run(
-    `INSERT INTO push_log (type, title, outcome, reason, sent_count, failed_count)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [type || null, title, outcome, reason || null, sentCount || 0, failedCount || 0]
+    `INSERT INTO push_log (type, title, body, tab, url, app, outcome, reason, sent_count, failed_count)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [type || null, title, body ?? null, tab || null, url || null, app || null,
+     outcome, reason || null, sentCount || 0, failedCount || 0]
   );
   run(
     `DELETE FROM push_log WHERE created_at < datetime('now', ?)`,

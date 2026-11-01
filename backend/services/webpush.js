@@ -195,11 +195,21 @@ function _governor(title, body, data) {
  * push has already gone (or already been refused), and a bookkeeping error
  * must not turn into a delivery error. `sent-replies` rule, same reasoning.
  */
-function _record(title, data, outcome, reason, sentCount = 0, failedCount = 0) {
+function _record(title, body, data, outcome, reason, sentCount = 0, failedCount = 0) {
   try {
+    let app = null;
+    try { app = require('./push-owner').ownerOf(data?.type) || null; } catch { /* owner is a label, never a reason to lose the row */ }
     db.logPushOutcome({
       type: data?.type || null,
       title: String(title || '').slice(0, 200),
+      // The words and where they lead (1 Nov 2026) — the watch's Notifications
+      // page reads them back. Bounded like the title.
+      body: body == null ? null : String(body).slice(0, 600),
+      tab: data?.tab || (() => {
+        try { return resolveSaimLiteTab({ type: data?.type, url: data?.url }) || null; } catch { return null; }
+      })(),
+      url: data?.url ? String(data.url).slice(0, 300) : null,
+      app,
       outcome,
       reason,
       sentCount,
@@ -357,7 +367,7 @@ async function sendToAll(title, body, data = {}) {
     const held = require('./focus-hold').holdIfInBlock({ title, body, type: data?.type }, new Date());
     if (held) {
       console.log(`[WebPush] Held for the focus block (until ${held.until}): "${title}"`);
-      _record(title, data, 'held', `in focus block until ${held.until}`);
+      _record(title, body, data, 'held', `in focus block until ${held.until}`);
       return;
     }
   }
@@ -367,7 +377,7 @@ async function sendToAll(title, body, data = {}) {
   // quiet" and "SAiM has nothing to say" are the same observation.
   if (!isConfigured()) {
     console.warn(`[WebPush] Not configured — dropped: "${title}"`);
-    _record(title, data, 'undeliverable', 'VAPID not configured');
+    _record(title, body, data, 'undeliverable', 'VAPID not configured');
     return;
   }
 
@@ -417,7 +427,7 @@ async function sendToAll(title, body, data = {}) {
       if (!verdict.allowed) {
         lifecycle.recordNotification(record.id, { ...verdict, now: new Date() });
         console.log(`[WebPush] Held by attention (${verdict.reason}): "${title}"`);
-        _record(title, data, 'suppressed', verdict.reason);
+        _record(title, body, data, 'suppressed', verdict.reason);
         return;
       }
       // ⚠ NOT marked notified yet. The governor below can still hold it, and a
@@ -438,7 +448,7 @@ async function sendToAll(title, body, data = {}) {
       attention.lifecycle.recordNotification(record.id, { allowed: false, reason: verdict.reason, now: new Date() });
     }
     console.log(`[WebPush] Suppressed (${verdict.reason}): "${title}"`);
-    _record(title, data, 'suppressed', verdict.reason);
+    _record(title, body, data, 'suppressed', verdict.reason);
     return;
   }
   if (attention) {
@@ -509,7 +519,7 @@ async function sendToAll(title, body, data = {}) {
       ? `withheld — the only ${audienceSkipped} subscription(s) are shared or desktop-only devices`
       : 'no subscriptions';
     console.warn(`[WebPush] ${why} — dropped: "${title}"`);
-    _record(title, data, 'undeliverable', why);
+    _record(title, body, data, 'undeliverable', why);
     return;
   }
 
@@ -525,10 +535,11 @@ async function sendToAll(title, body, data = {}) {
   // surface uses. A client working out its own destination is a second copy of
   // the routing, and a card and the notification for one thing landing on
   // different tabs is precisely the invariant that rule exists to protect.
+  const sentData = _enrichData(data, record);
   const payload = JSON.stringify({
     title,
     body,
-    data: _enrichData(data, record),
+    data: sentData,
     icon: '/favicon.svg',
     badge: '/favicon.svg'
   });
@@ -567,7 +578,7 @@ async function sendToAll(title, body, data = {}) {
       .map(r => String(r.reason?.statusCode || r.reason?.code || 'unknown'))
   )].join(', ');
   _record(
-    title, data,
+    title, body, sentData,
     sent > 0 ? 'sent' : 'failed',
     [reasons || null, owned.fellBack ? `no ${owned.owner} subscription — sent to the other app` : null]
       .filter(Boolean).join('; ') || null,
