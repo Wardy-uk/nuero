@@ -254,7 +254,7 @@ function attentionItem(card, priority) {
     title: card.title,
     summary: card.say || card.reason || null,
     urgency: card.urgency || null,
-    actionRef: { recordId: card.recordId || null, cardId: card.id || null, tab: card.tab || null, actions: card.actions || [] },
+    actionRef: { recordId: card.recordId || null, cardId: card.id || null, tab: card.tab || null, actions: card.actions || [], type: card.type || null },
   };
 }
 
