@@ -10,6 +10,7 @@ import Energy from '../components/Energy.jsx';
 import HouseBoard, { HouseHero, JobsMore, Week } from '../components/HouseBoard.jsx';
 import { Sheet, Photo, Sky, skyPhase, photoSlot } from './WallCinema.jsx';
 import { SheetBoundary } from './WallSheets.jsx';
+import { bundleIn } from './Wall.jsx';
 import './WallCinema.css';
 
 const KITCHEN_SLUG = 'kitchen';
@@ -38,6 +39,9 @@ export default function Home({ onSignedOut, onWall }) {
   const [boardErr, setBoardErr] = useState(null);
   const [sheet, setSheet] = useState(null);
   const [dirty, setDirty] = useState(false);
+  // The Refresh button's own state (see pressRefresh).
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(null);
   // The minute, for the date, the greeting and the time-of-day photograph.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60 * 1000); return () => clearInterval(t); }, []);
@@ -165,6 +169,29 @@ export default function Home({ onSignedOut, onWall }) {
   };
   const closeSheet = () => { setDirty(false); setSheet(null); };
 
+  // The Refresh button (1 Nov 2026: "refresh isn't working" — it re-read the
+  // data but nothing on screen said so). It now says Refreshing… then the time,
+  // and if a newer VESTA has been deployed it loads that instead, since a Home
+  // Screen app has no reload button of its own.
+  async function pressRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const el = document.querySelector('script[src*="/assets/index-"]');
+      const mine = el ? bundleIn(el.getAttribute('src')) : null;
+      if (mine) {
+        try {
+          const live = bundleIn(await (await fetch(`/?v=${Date.now()}`, { cache: 'no-store' })).text());
+          if (live && live !== mine) { window.location.reload(); return; }
+        } catch { /* offline: just re-read */ }
+      }
+      await refresh();
+      setUpdatedAt(new Date());
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   return (
     <div className="home home--cine">
       {backdrop}
@@ -226,7 +253,12 @@ export default function Home({ onSignedOut, onWall }) {
       <footer className="home__foot">
         <span className="home__acct">{data.label}</span>
         <button className="btn btn--quiet" onClick={onSignedOut}>Sign out</button>
-        <button className="btn btn--quiet" onClick={refresh}>Refresh</button>
+        <button className="btn btn--quiet" onClick={pressRefresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+        {updatedAt && !refreshing && (
+          <span className="home__updated" role="status">
+            {error ? 'Couldn’t refresh' : `Updated ${updatedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+          </span>
+        )}
         {onWall && <button className="btn btn--quiet" onClick={onWall}>Wall view</button>}
         <span className="home__build">{api.BUILD_LABEL}</span>
       </footer>

@@ -525,3 +525,6 @@ body:has(.home--cine) { background: #050608; }
   .home--cine .vh__hero, .home--cine .vh__tiles, .home--cine .vh__countdowns, .home--cine .vh__jobsmore, .home--cine > .section__gap { grid-column: 1 / -1; margin-bottom: 0; }
   .vh__tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+.home__updated { font-size: 13px; color: var(--ink-faint); }
+.home--cine .home__foot { flex-wrap: wrap; gap: 6px 10px; }
