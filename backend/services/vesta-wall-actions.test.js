@@ -168,7 +168,7 @@ test('the sheets render: a job with its full wording and a big tick, add, a pers
   const ember = renderToString(React.createElement(MemberSheet, { person: { name: 'Ember', state: 'home', role: 'companion' }, tasks, today: '2026-10-18', onOpenJob() {}, onAddFor() {} }));
   assert.ok(ember.includes('Add a job for Ember'));
   const wx = renderToString(React.createElement(WeatherSheet, { station: { known: true, tempC: 11.4, humidityPct: 82, pressureHpa: 1009, tendency: 'falling slowly', conditionLabel: 'Partly cloudy', verdict: 'Pressure falling slowly.' }, dew: 8.44 }));
-  assert.ok(wx.includes('Partly cloudy') && wx.includes('8.4°') && wx.includes('1009 hPa') && wx.includes('No forecast is held'));
+  assert.ok(wx.includes('Partly cloudy') && wx.includes('8.4°') && wx.includes('1009 hPa') && wx.includes('conditions from Home Assistant'));
   assert.ok(renderToString(React.createElement(WeatherSheet, { station: { known: false, why: 'the weather station could not be read' } })).includes('could not be read'));
   const none = renderToString(React.createElement(EnergySheet, { energy: { connected: true, fuels: { electricity: { days: [{ day: '2026-10-17', kwh: null }] } } } }));
   assert.ok(none.includes('No meter readings have arrived yet'), 'no data: an explanation, not an empty chart');
