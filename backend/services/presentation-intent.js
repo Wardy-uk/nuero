@@ -258,6 +258,19 @@ function attentionItem(card, priority) {
   };
 }
 
+/**
+ * Does a (non-critical) surfaced card belong in Needs you? PURE.
+ * High urgency, or SAiM pushed about it — and Nick has not answered it yet.
+ * A card he acknowledged or put off is his answer; it does not stay here.
+ */
+function actNow(card) {
+  if (!card || card.kind !== 'item') return false;
+  const u = String(card.urgency || '').toLowerCase();
+  if (u === 'critical') return false; // already a P0 above
+  if (card.state && card.state !== 'active') return false;
+  return u === 'high' || Boolean(card.notifiedAt);
+}
+
 function primaryPriority(card, p) {
   const u = String(card.urgency || '').toLowerCase();
   if (u === 'critical') return 'P0';
@@ -373,6 +386,19 @@ function composePresentation(p, { now = Date.now() } = {}) {
       p0Entries.push({ item: it, card: s });
     }
   }
+  // Everything else that needs him RIGHT NOW (Nick, 1 Nov 2026): a high-urgency
+  // card, or one SAiM pushed about, stays here until he answers it (done / not
+  // now / seen / dismiss) or it leaves the pool because it stopped being true.
+  // ⚠ P1, not P0 — the P0 digest and its notification policy are unchanged; this
+  //   only decides what stays on the home screen.
+  for (const s of p.secondary || []) {
+    if (!actNow(s)) continue;
+    needsYou.push({ ...attentionItem(s, 'P1'), pushed: !!s.notifiedAt });
+  }
+  const inNeedsYou = new Set(needsYou.map((n) => n.id));
+  // The headline and mode still follow P0 alone — the act-now rows above are a
+  // list to work through, not a reason to re-word the moment.
+  const needsYouP0 = needsYou.filter((n) => n.priority === 'P0');
 
   // ── Next (P2) ──
   const shown = new Set();
@@ -518,8 +544,10 @@ function composePresentation(p, { now = Date.now() } = {}) {
   for (const b of sections.blindness || []) {
     details.push({ id: b.id || `source:${b.sourceId}`, kind: 'source', priority: 'P4', label: `${b.label || b.sourceId}: ${b.verdictLabel || b.verdict || 'not seeing'}` });
   }
-  const tracked = (p.secondary || []).filter((s) => s && s.kind === 'item' && String(s.urgency || '').toLowerCase() !== 'critical')
+  const trackedAll = (p.secondary || []).filter((s) => s && s.kind === 'item' && String(s.urgency || '').toLowerCase() !== 'critical')
     .map((s) => attentionItem(s, 'P3'));
+  // Drawn once: an item in Needs you is not repeated in the tracked list.
+  const tracked = trackedAll.filter((t) => !inNeedsYou.has(t.id));
 
   // ── Mode ──
   const lifeDoing = doing || 'unknown';
@@ -530,7 +558,7 @@ function composePresentation(p, { now = Date.now() } = {}) {
   let mode;
   if (blind) mode = 'degraded';
   else if (ctx.activity === 'in-meeting') mode = 'in-meeting';
-  else if (needsYou.length || primaryP0) mode = 'needs-attention';
+  else if (needsYouP0.length || primaryP0) mode = 'needs-attention';
   else if (leading || soon || ctx.activity === 'pre-meeting') mode = 'upcoming';
   else if (ctx.activity === 'in-focus-session') mode = 'focus';
   else if (BEDTIME.has(lifeDoing)) mode = 'bedtime';
@@ -541,14 +569,14 @@ function composePresentation(p, { now = Date.now() } = {}) {
 
   // ── Situation (P1): bounded templates, no free text ──
   const partial = gaps.length > 0;
-  const nothing = !primary && !needsYou.length;
+  const nothing = !primary && !needsYouP0.length;
   // ⚠ NO UNEXPLAINED ALL-CLEAR (Brief 002, D-008). Two things used to sit under
   //   "Nothing needs you" / "Nothing pressing": an urgent item the gate kept
   //   but did not lead with (tracked, P3), and work the duty or life read held
   //   back. The first is named. The second is counted, with its reason, from
   //   canonical-read's `workHeld` (which already includes the gate's holds), or
   //   from the gate itself on a payload that never went through composeNow.
-  const urgentWaiting = tracked.find((t) => ['high', 'critical'].includes(String(t.urgency || '').toLowerCase())) || null;
+  const urgentWaiting = trackedAll.find((t) => ['high', 'critical'].includes(String(t.urgency || '').toLowerCase())) || null;
   const sw = p.situation && p.situation.workHeld;
   const heldW = sw && sw.count ? { count: sw.count, urgent: sw.urgent || 0, say: sw.say }
     : heldWork(p.dropped, { onDuty: !!(ctx.duty && ctx.duty.onDuty === true) });
@@ -579,10 +607,10 @@ function composePresentation(p, { now = Date.now() } = {}) {
       break;
     }
     case 'needs-attention': {
-      const n = needsYou.length + (primaryP0 ? 1 : 0);
+      const n = needsYouP0.length + (primaryP0 ? 1 : 0);
       headline = n === 1 ? 'Something needs you' : `${n} things need you`;
-      summary = (primaryP0 ? primary.title : needsYou[0].title) || null;
-      about = primaryP0 ? primary.id : needsYou[0].id;
+      summary = (primaryP0 ? primary.title : needsYouP0[0].title) || null;
+      about = primaryP0 ? primary.id : needsYouP0[0].id;
       tone = 'alert'; attentionLevel = 'high';
       break;
     }
@@ -692,6 +720,9 @@ function composePresentation(p, { now = Date.now() } = {}) {
     },
     primary,
     needsYou,
+    // How many Needs-you rows a surface draws before folding the rest (Settings;
+    // null = the surface's own budget).
+    needsYouCap: Number.isInteger(p.needsYouCap) ? p.needsYouCap : null,
     next: next.slice(0, MAX_NEXT),
     offers,
     context,
@@ -744,6 +775,7 @@ function composePresentation(p, { now = Date.now() } = {}) {
 }
 
 module.exports = {
+  actNow,
   counterpartLine,
   CONTRACT, MODES, UPCOMING_MINUTES, ROOM_PROMOTE_BELOW, ROOM_PROMOTE_ABOVE, RAIN_PROMOTE_MINUTES,
   composePresentation, freshnessOf, sameEvent, dedupeEvents, titleTokens, whenLabel, localParts, dayPart,

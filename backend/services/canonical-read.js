@@ -1580,6 +1580,7 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
     payload.work = { ...payload.work, deskOffer: { ...payload.work.deskOffer, relevant } };
   }
   try {
+    try { payload.needsYouCap = require('./attention-settings').read().needsYouCap; } catch { /* surface budget */ }
     payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });
     if (workOnly && payload.presentation) payload.presentation = workOnlyPresentation(payload.presentation);
   } catch (e) {

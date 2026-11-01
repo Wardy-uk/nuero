@@ -31,7 +31,14 @@ const DEFAULTS = {
   domains: { work: true, personal: true },
   displayNight: null,        // null = DISPLAY_NIGHT_DEFAULT
   workingHours: null,        // null = WORKING_HOURS_DEFAULT
+  needsYouCap: null,         // null = NEEDS_YOU_CAP_DEFAULT
 };
+
+// SAiM's home "Needs you" list: at most this many rows, the rest folded behind
+// "and N more" (Nick, 1 Nov 2026 — "must not turn into a busy dashboard", cap
+// configurable in Settings).
+const NEEDS_YOU_CAP_DEFAULT = 5;
+const isCap = (v) => Number.isInteger(v) && v >= 1 && v <= 20;
 
 // Nick, 2 Oct 2026: "working hours should be classed as 8am to 6pm". Read by
 // context-state's duty resolver; evidence of real work extends it.
@@ -83,6 +90,8 @@ function read() {
     displayNightSource: isQuietWindow(stored.displayNight) ? 'setting' : 'default',
     workingHours: isHoursWindow(stored.workingHours) ? stored.workingHours : WORKING_HOURS_DEFAULT,
     workingHoursSource: isHoursWindow(stored.workingHours) ? 'setting' : 'default',
+    needsYouCap: isCap(stored.needsYouCap) ? stored.needsYouCap : NEEDS_YOU_CAP_DEFAULT,
+    needsYouCapSource: isCap(stored.needsYouCap) ? 'setting' : 'default',
   };
 }
 
@@ -101,7 +110,20 @@ function update(patch = {}) {
     domains: { ...current.domains },
     displayNight: current.displayNightSource === 'setting' ? current.displayNight : null,
     workingHours: current.workingHoursSource === 'setting' ? current.workingHours : null,
+    needsYouCap: current.needsYouCapSource === 'setting' ? current.needsYouCap : null,
   };
+
+  if (patch.needsYouCap === null) next.needsYouCap = null;
+  else if (patch.needsYouCap !== undefined) {
+    const n = Number(patch.needsYouCap);
+    // Refused, never clamped — a typo must not quietly become a different cap.
+    if (!isCap(n)) {
+      const err = new Error('needsYouCap must be a whole number from 1 to 20');
+      err.status = 400;
+      throw err;
+    }
+    next.needsYouCap = n;
+  }
 
   if (patch.workingHours === null) next.workingHours = null;
   else if (isHoursWindow(patch.workingHours)) next.workingHours = patch.workingHours;
@@ -162,4 +184,4 @@ function inWindow(raw, now = new Date()) {
   return startMins > endMins ? (mins >= startMins || mins < endMins) : (mins >= startMins && mins < endMins);
 }
 
-module.exports = { read, update, isPaused, isQuietAt, inWindow, isQuietWindow, LEVELS, DEFAULTS, STATE_KEY, DISPLAY_NIGHT_DEFAULT, WORKING_HOURS_DEFAULT };
+module.exports = { read, update, isPaused, isQuietAt, inWindow, isQuietWindow, LEVELS, DEFAULTS, STATE_KEY, DISPLAY_NIGHT_DEFAULT, WORKING_HOURS_DEFAULT, NEEDS_YOU_CAP_DEFAULT };

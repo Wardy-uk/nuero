@@ -90,7 +90,9 @@ export function composeForSurface(presentation, profileId = 'phone') {
   // An ambient surface says the one thing that needs him in the situation line
   // itself, so the same item is not repeated as a block beneath it.
   const ambient = profile === 'watch';
-  const needs = take((pr.needsYou || []).filter((n) => !(ambient && about && n.id === about)), b.needsYou);
+  // Settings' cap (Nick, 1 Nov 2026) wins on the full surfaces; the watch keeps its one line.
+  const needsCap = profile !== 'watch' && Number.isInteger(pr.needsYouCap) && pr.needsYouCap > 0 ? pr.needsYouCap : b.needsYou;
+  const needs = take((pr.needsYou || []).filter((n) => !(ambient && about && n.id === about)), needsCap);
   if (needs.length) blocks.push({ type: 'needsYou', items: needs, overflow: Math.max(0, (pr.needsYou || []).length - needs.length) });
 
   const hasPrimary = Boolean(pr.primary && b.primary === 'card');

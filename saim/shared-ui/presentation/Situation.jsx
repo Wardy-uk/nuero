@@ -191,6 +191,9 @@ export default function Situation({
   // Draws the one current thing with the shell's own controls (done / not now /
   // start). Absent, the primary is drawn as a plain object with no buttons.
   renderPrimary = null,
+  // A Needs-you row's own controls (open it + one way to answer it). Absent,
+  // rows are drawn without buttons — the kiosk and watch pass nothing.
+  renderNeedsYouActs = null,
   onOpen = null,
   onOffer = null,
   onCorrect = null,
@@ -375,6 +378,7 @@ export default function Situation({
                       <span className="sit__object-tag">Needs you</span>
                       <p className="sit__object-title">{it.title}</p>
                       {it.summary && <p className="sit__object-sub">{it.summary}</p>}
+                      {plan.actions && renderNeedsYouActs ? renderNeedsYouActs(it) : null}
                       {plan.actions && renderItemExtra ? renderItemExtra(it) : null}
                     </article>
                   ))}

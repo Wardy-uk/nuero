@@ -15,9 +15,10 @@ router.get('/vapid-public-key', (req, res) => {
 // POST /api/push/subscribe
 // Optional `label` says what device this is (phone / desktop / kiosk / tv);
 // an unknown label is refused rather than stored, and an omitted one keeps
-// whatever the device said before.
+// whatever the device said before. Optional `app` (neuro | saim) says which
+// app subscribed — a push goes only to the app that owns it (push-owner.js).
 router.post('/subscribe', (req, res) => {
-  const { label, ...subscription } = req.body || {};
+  const { label, app, ...subscription } = req.body || {};
   if (!subscription || !subscription.endpoint || !subscription.keys) {
     return res.status(400).json({ error: 'Invalid subscription object' });
   }
@@ -28,10 +29,16 @@ router.post('/subscribe', (req, res) => {
     if (seen.confidence !== 'stated') return res.status(400).json({ error: `label must be one of phone, desktop, kiosk, tv` });
     meta = { label: seen.label, audience: seen.audience };
   }
+  if (app != null) {
+    const { normaliseApp } = require('../services/push-owner');
+    const a = normaliseApp(app);
+    if (!a) return res.status(400).json({ error: 'app must be neuro or saim' });
+    meta.app = a;
+  }
   try {
     db.savePushSubscription(subscription, meta);
-    console.log(`[Push] Subscription registered${meta.label ? ` (${meta.label})` : ''}`);
-    res.json({ ok: true, label: meta.label || null });
+    console.log(`[Push] Subscription registered${meta.label ? ` (${meta.label})` : ''}${meta.app ? ` [${meta.app}]` : ''}`);
+    res.json({ ok: true, label: meta.label || null, app: meta.app || null });
   } catch (e) {
     console.error('[Push] Subscribe error:', e);
     res.status(500).json({ error: e.message });

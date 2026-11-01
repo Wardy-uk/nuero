@@ -40,7 +40,7 @@ export default function usePushNotifications() {
         await fetch(apiUrl('/api/push/subscribe'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...existing.toJSON(), label: deviceLabel() })
+          body: JSON.stringify({ ...existing.toJSON(), label: deviceLabel(), app: 'neuro' })
         });
       }
     } catch (e) {
@@ -66,7 +66,7 @@ export default function usePushNotifications() {
       const subRes = await fetch(apiUrl('/api/push/subscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...subscription.toJSON(), label: deviceLabel() })
+        body: JSON.stringify({ ...subscription.toJSON(), label: deviceLabel(), app: 'neuro' })
       });
 
       if (subRes.ok) {

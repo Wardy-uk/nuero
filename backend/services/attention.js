@@ -1435,6 +1435,9 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
         // Build 12.3: how long it has needed him — the watch's Needs You list
         // shows an age, and it must be the record's, never a client's guess.
         firstSeenAt: presented.firstSeenAt || null,
+        // When SAiM last pushed about it — a pushed card stays in Needs you
+        // until Nick answers it or it stops being true (1 Nov 2026).
+        notifiedAt: presented.notifiedAt || null,
         evidence: presented.evidence,
         // ⚠ `start` is REMOVED rather than merely styled differently. A button
         // that would force-switch the very session it belongs to is worse than

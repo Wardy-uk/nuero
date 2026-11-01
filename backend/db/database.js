@@ -220,6 +220,12 @@ async function init() {
     if (!pushColumns.includes('audience')) {
       db.exec('ALTER TABLE push_subscriptions ADD COLUMN audience TEXT');
     }
+    // Which APP the subscription belongs to — 'neuro' | 'saim' (1 Nov 2026).
+    // Both PWAs subscribe on the same phone; a push goes only to its owner
+    // (services/push-owner.js). NULL = not said yet, which receives everything.
+    if (!pushColumns.includes('app')) {
+      db.exec('ALTER TABLE push_subscriptions ADD COLUMN app TEXT');
+    }
 
     // Migration (7 Oct 2026): the household roster on wm_presence (Build 13H).
     try {
@@ -1141,15 +1147,16 @@ function savePushSubscription(subscription, meta = {}) {
   // every client re-posts its subscription on launch, and a bare REPLACE wiped
   // the desktop label, so the desktop would start receiving everything.
   run(`
-    INSERT INTO push_subscriptions (endpoint, keys_p256dh, keys_auth, label, audience)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO push_subscriptions (endpoint, keys_p256dh, keys_auth, label, audience, app)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(endpoint) DO UPDATE SET
       keys_p256dh = excluded.keys_p256dh,
       keys_auth = excluded.keys_auth,
       label = COALESCE(excluded.label, push_subscriptions.label),
-      audience = COALESCE(excluded.audience, push_subscriptions.audience)
+      audience = COALESCE(excluded.audience, push_subscriptions.audience),
+      app = COALESCE(excluded.app, push_subscriptions.app)
   `, [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth,
-      meta.label || null, meta.audience || null]);
+      meta.label || null, meta.audience || null, meta.app || null]);
 }
 
 function getAllPushSubscriptions() {

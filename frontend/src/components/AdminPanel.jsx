@@ -13,6 +13,7 @@ import PersonalMailCard from './PersonalMailCard';
 import TaskContextActivation from './TaskContextActivation.jsx';
 import AiBudgetCard from './AiBudgetCard.jsx';
 import TaskAgentSettings from './TaskAgentSettings.jsx';
+import NeedsYouCapSetting from './NeedsYouCapSetting.jsx';
 import { signInOutcome, DeviceCodePanel } from './MicrosoftSignIn';
 
 
@@ -1187,6 +1188,10 @@ export default function AdminPanel({ pushState = {} }) {
 
       <CollapsibleSection title="AI & SAiM">
         <AiSettingsSection />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SAiM home — Needs you" defaultOpen>
+        <NeedsYouCapSetting />
       </CollapsibleSection>
 
       {/* The shared NEURO + VANTAGE AI budget gate — shadow profile, read-only. */}

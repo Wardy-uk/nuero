@@ -145,7 +145,7 @@ router.patch('/settings', (req, res) => {
   try {
     res.json({ ok: true, settings: settings.update(req.body || {}) });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(e.status || 500).json({ ok: false, error: e.message });
   }
 });
 

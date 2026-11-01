@@ -451,12 +451,26 @@ async function sendToAll(title, body, data = {}) {
   //   offer the phone gets — so a subscription labelled `desktop` receives a
   //   push only when the sender marks it `desk: true`.
   const forDesk = !!(data && data.desk === true);
-  const subscriptions = (ambient
+  const visible = (ambient
     ? classified
     : classified.filter(c => c.seen.audience !== 'shared'))
     .filter(c => forDesk || c.seen.label !== 'desktop')
     .map(c => c.sub);
-  const audienceSkipped = classified.length - subscriptions.length;
+  const audienceSkipped = classified.length - visible.length;
+  // ── Gate 0b: WHICH APP OWNS IT (1 Nov 2026) ────────────────────────────────
+  // Both the NEURO and SAiM PWAs subscribe on the phone, so every push used to
+  // arrive twice. Each push now goes only to the app that owns its type.
+  // ⚠ The desktop's own gate above stays first: a `desk: true` push still
+  // reaches the laptop whichever app owns it on the phone.
+  const owned = require('./push-owner').routeByOwner(visible, data?.type, {
+    probe: PROBE_TYPES.has(data?.type),
+  });
+  const subscriptions = forDesk
+    ? [...new Set([...owned.subscriptions, ...visible.filter(s => s.label === 'desktop')])]
+    : owned.subscriptions;
+  if (owned.fellBack) {
+    console.warn(`[WebPush] no ${owned.owner} subscription — sent to the other app instead: "${title}"`);
+  }
   // WARNING  Unknowns are SENT TO and COUNTED, never silently trusted. Refusing
   //   would silence the one subscription that predates labelling, which is
   //   every subscription there is.
@@ -532,7 +546,8 @@ async function sendToAll(title, body, data = {}) {
   _record(
     title, data,
     sent > 0 ? 'sent' : 'failed',
-    reasons || null,
+    [reasons || null, owned.fellBack ? `no ${owned.owner} subscription — sent to the other app` : null]
+      .filter(Boolean).join('; ') || null,
     sent, failed
   );
 }

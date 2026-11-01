@@ -194,3 +194,13 @@ test('every ALWAYS_DELIVER entry is actually sent by something', () => {
     `ALWAYS_DELIVER lists types nothing sends: ${orphans.join(', ')}`
   );
 });
+
+test('every type production sends has an owning app (NEURO or SAiM)', () => {
+  // Nick, 1 Nov 2026: both apps may notify, each only for what it owns. An
+  // unowned type falls back to SAiM silently — decide it here instead.
+  const { isClassified } = require('./push-owner');
+  const all = new Set([...sentTypes().map(f => f.type), ...SUPPRESSIBLE, ...ALWAYS_DELIVER]);
+  all.delete('test');
+  const unowned = [...all].filter(t => !isClassified(t));
+  assert.deepEqual(unowned, [], `Give these push types an owner in push-owner.js: ${unowned.join(', ')}`);
+});

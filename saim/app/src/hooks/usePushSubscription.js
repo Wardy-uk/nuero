@@ -107,7 +107,7 @@ export async function enableNotifications() {
 
     await apiFetch('/api/push/subscribe', {
       method: 'POST',
-      body: JSON.stringify(subscription.toJSON()),
+      body: JSON.stringify({ ...subscription.toJSON(), app: 'saim' }),
     });
     return { ok: true, state: 'granted', error: null };
   } catch (e) {
@@ -153,7 +153,7 @@ export function usePushSubscription(authed) {
 
         await apiFetch('/api/push/subscribe', {
           method: 'POST',
-          body: JSON.stringify(subscription.toJSON()),
+          body: JSON.stringify({ ...subscription.toJSON(), app: 'saim' }),
         });
       } catch (e) {
         // A failure here must never interrupt anyone, but it must not be

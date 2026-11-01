@@ -563,6 +563,35 @@ export default function AttentionSurface({
     // Opening a thing from Next goes where that thing lives. A transition keeps
     // its own destination; an event is meeting prep; a commitment or a task is
     // the task list. No new routing — the tabs are the ones that exist.
+    // A Needs-you row (1 Nov 2026): open it, and ONE way to answer it — "Done"
+    // where it is a task, "Seen it" otherwise. Answering is what takes it off
+    // the list (or it leaves on its own when it stops being true).
+    const cardFor = (it) => {
+      const id = it && it.actionRef && it.actionRef.recordId;
+      if (!id) return null;
+      return [primaryCard, ...secondary].find((c) => c && c.recordId === id) || null;
+    };
+    const renderNeedsYouActs = onAct ? (it) => {
+      const card = cardFor(it);
+      if (!card) return null;
+      const acts = card.actions || [];
+      const done = card.type === 'todo' && canComplete(card);
+      const answer = done ? 'complete' : acts.includes('acknowledge') ? 'acknowledge' : null;
+      return (
+        <div className="sit__object-acts">
+          {onOpen && (!canOpen || canOpen(card)) && (
+            <button type="button" className="sit__chip sit__chip--yes" onClick={() => onOpen(card)}>
+              {card.actionHint || 'Open it'}
+            </button>
+          )}
+          {answer && (
+            <button type="button" className="sit__chip" onClick={() => act(card, answer)}>
+              {done ? 'Done' : 'Seen it'}
+            </button>
+          )}
+        </div>
+      );
+    } : null;
     const openItem = (item) => {
       if (!item) return;
       if (item.kind === 'transition' && transition && transition.tab && onNavigate) { onNavigate(transition.tab); return; }
@@ -655,6 +684,7 @@ export default function AttentionSurface({
             />
           )}
           renderPrimary={renderPrimary}
+          renderNeedsYouActs={renderNeedsYouActs}
           step={stepEl}
           onOpen={openItem}
           onOffer={onRoomAct ? (it, yes) => onRoomAct(it.actionRef.offerKey, yes ? 'accept' : 'decline') : null}
