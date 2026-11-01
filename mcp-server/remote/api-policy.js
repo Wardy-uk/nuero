@@ -26,6 +26,9 @@ export const interactive = {
   // SAiM's question are open to desktop chats; asking to confirm and confirming stay his.
   post_prepared_moves_request: 'Asking to confirm a prepared move is Nick, in NEURO, looking at exactly what it would write. An agent cannot do it.',
   post_promises_by_key_prepare: 'Drafting an email about a promise is Nick’s press in NEURO; sending it still needs his approval code.',
+  // 1 Nov 2026: closing a task on evidence, or saying "not yet", is Nick's call in NEURO.
+  post_tasks_by_id_done_evidence_close: "Closing a task because NEURO thinks it looks done is Nick's decision, in NEURO → Tasks.",
+  post_tasks_by_id_done_evidence_not_yet: "Telling NEURO a task is not done yet is Nick's answer, in NEURO → Tasks.",
   post_prepared_moves_confirm: 'Confirming a prepared move writes to Nick\'s calendar and vault. Only Nick can confirm it, in NEURO.',
   // 22 Oct 2026: task context. Reading, searching and linking/unlinking one item are
   // open to chats (on Nick's explicit word); running the whole-vault scan is his.
