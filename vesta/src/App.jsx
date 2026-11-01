@@ -38,7 +38,7 @@ export default function App() {
   return (
     <div className="app">
       {session
-        ? <Home onSignedOut={signOut} onWall={() => toWall(true)} />
+        ? <Home onSignedOut={signOut} onWall={window.innerWidth >= 700 ? () => toWall(true) : null} />
         : <SignIn onSignedIn={setSession} />}
     </div>
   );

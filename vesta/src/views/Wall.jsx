@@ -868,11 +868,8 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
         <button className="wall__refresh" onClick={() => window.location.reload()} aria-label="Refresh">↻ Refresh</button>
         <span className="wall__version">{`v ${api.BUILD_LABEL}`}</span>
       </footer>}
-      {!screen && !awake && (
-        <button className="wall__awake" onClick={arm}>
-          Tap once to keep this screen on
-        </button>
-      )}
+      {/* No "tap once to keep this screen on" button (Nick, 1 Nov 2026): any
+          tap on the wall already arms the keep-awake (onClickCapture above). */}
     </div>
   );
 }

@@ -196,6 +196,10 @@ const WALL_KEY = 'vesta_wall';
 export function getWallMode() {
   try {
     if (/[?&]wall(=1|&|$)/.test(window.location.search)) return true;
+    // A phone is never a wall (1 Nov 2026): the wall is laid out for a landscape
+    // screen, and a remembered "Wall view" left Nick's phone stuck on it. Under
+    // 700px wide the phone shows Home; `?wall=1` still forces it.
+    if (window.innerWidth < 700) return false;
     return localStorage.getItem(WALL_KEY) === '1';
   } catch { return false; }
 }
