@@ -52,6 +52,11 @@ const PUSH_KEY = 'team_cover_pushed';
 // they might not be my team for much longer". Remove the entry to judge them again.
 const IGNORED_POOLS = Object.freeze(new Set(['digitaldesign']));
 
+// A report on long leave, as their People note's `status:` says, is away for the
+// whole window: not a gap, not a team member (Nick, 1 Nov 2026 — Adele is still
+// on maternity leave, so her absence from NOVA's roster is expected).
+const LONG_LEAVE = /\b(maternity|paternity|parental|adoption|shared parental|sabbatical|career break|long[- ]term (sick|leave))\b/i;
+
 const POOL_LABELS = Object.freeze({
   support: 'Tier 2',
   customercare: 'Customer Care',
@@ -181,7 +186,9 @@ function assess({ snap, reports = [], holidays = new Set(), now = new Date(), is
     out.gaps.push('People notes could not be read, so NEURO cannot tell which queues are yours — every NOVA queue is checked.');
     for (const r of roster) if (r.pool && !(me && r.rosterId === me.rosterId)) scoped.add(r.pool);
   }
+  out.away = [];
   for (const p of reports) {
+    if (LONG_LEAVE.test(String(p.status || ''))) { out.away.push({ name: p.name, status: p.status }); continue; }
     const row = byName.get(String(p.name || '').trim().toLowerCase());
     if (!row) { out.gaps.push(`${p.name} is not in NOVA's roster — their leave cannot be counted.`); continue; }
     if (!row.pool) { out.gaps.push(`${p.name} has no queue in NOVA — not counted in any team.`); continue; }
@@ -213,7 +220,9 @@ function assess({ snap, reports = [], holidays = new Set(), now = new Date(), is
     // Nick counts only in the pool NOVA puts him in — his own lead group. The
     // pool filter alone enforces that (a roster row has one pool); he is never
     // added to a team he is not in.
-    const members = roster.filter(r => r.pool === pool);
+    // Someone on long leave is not part of today's cover, roster or not.
+    const awayNames = new Set(out.away.map(x => String(x.name).trim().toLowerCase()));
+    const members = roster.filter(r => r.pool === pool && !awayNames.has(String(r.name || '').trim().toLowerCase()));
     const unsynced = members.filter(r => r.syncable === false).map(r => r.name);
     for (const n of unsynced) out.gaps.push(`${n} (${poolLabel(pool)}) has no People HR id — their leave never syncs, so ${poolLabel(pool)} may be thinner than shown.`);
     const team = {

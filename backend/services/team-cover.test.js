@@ -228,3 +228,16 @@ test('push: unknown leave pushes nothing and changes no memory', async () => {
   assert.equal(pushes.length, 0);
   assert.equal(db.getState('team_cover_pushed'), JSON.stringify({ baselined: true, seen: [] }));
 });
+
+test('a report on long leave (People note status) is away, not a gap and not counted in the team (Nick, 1 Nov 2026)', () => {
+  const reports = REPORTS.map(r => r.name === 'Adele Norman-Swift'
+    ? { ...r, status: 'Maternity leave — returning ~Oct 2026' }
+    : r.name === 'Maria Pappa' ? { ...r, status: 'Maternity leave' } : r);
+  const r = run([], { reports });
+  assert.ok(!r.gaps.some(g => /Adele/.test(g)), 'no "not in NOVA" gap for Adele');
+  assert.deepEqual(r.away.map(a => a.name).sort(), ['Adele Norman-Swift', 'Maria Pappa']);
+  const cc = (r.teams || []).find(t => t.pool === 'customercare');
+  if (cc) assert.ok(!cc.members.includes('Maria Pappa'), 'someone on long leave is not counted as cover');
+  const plain = run([]);
+  assert.ok(plain.gaps.some(g => /Adele/.test(g)), 'without the status, the missing report is still a named gap');
+});
