@@ -300,6 +300,7 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/google-calendar/finish', 'config.security'),
   R('*', '/api/google-calendar/disconnect', 'config.security'),
   R('*', '/api/google-calendar/target', 'config.security'),
+  R('*', '/api/google-calendar/calendars', 'config.security'),
   R('POST', '/api/google-calendar/sync', 'ingest'),
   // The wall's own writes to it (account session, never a machine).
   R('*', '/api/v/family-calendar/events', 'calendar.family'),

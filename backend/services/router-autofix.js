@@ -254,7 +254,7 @@ function verify(sample, now = new Date()) {
   try {
     const writes = require('./external-writes');
     const entry = writes.byKey(`router-restart:${changed.episode}:${changed.attempt}`);
-    if (entry) writes.settle(entry.id, { status: changed.outcome === 'verified' ? 'confirmed' : 'uncertain', readback: { outcome: changed.outcome } });
+    if (entry) writes.settle(entry.id, { status: changed.outcome === 'verified' ? 'confirmed' : 'uncertain', readback: changed.outcome === 'verified' ? 'uptime reset — it rebooted' : 'uptime did not reset within 15 minutes' });
   } catch (e) {
     console.warn('[RouterAutofix] ledger settle failed:', e.message);
   }

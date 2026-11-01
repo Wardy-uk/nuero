@@ -247,7 +247,7 @@ export const interactive = {
     // The family Google calendar (18 Oct 2026): the sign-in is a credential and
     // the wall's own writes are a person's tap, never an agent's.
     'post_google_calendar_client', 'post_google_calendar_connect', 'post_google_calendar_finish',
-    'post_google_calendar_disconnect', 'post_google_calendar_target',
+    'post_google_calendar_disconnect', 'post_google_calendar_target', 'post_google_calendar_calendars',
     'post_v_family_calendar_events', 'patch_v_family_calendar_events_by_id', 'delete_v_family_calendar_events_by_id',
     'post_energy_gas_calorific_value',
     'post_mail_accounts_by_key_credential', 'delete_mail_accounts_by_key_credential',
