@@ -22,8 +22,8 @@
 .twf__btn--primary { font-weight: 700; border-width: 2px; border-color: currentColor; }
 .twf__btn--quiet { background: none; }
 .twf__clock { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(127, 127, 127, 0.35); background: rgba(127, 127, 127, 0.08); }
-.twf__clock-dot { width: 9px; height: 9px; border-radius: 50%; background: #5fb784; animation: twf-pulse 1.6s ease-in-out infinite; }
-.twf__clock--paused .twf__clock-dot { background: #e0b860; animation: none; }
+.twf__clock-dot { width: 9px; height: 9px; border-radius: 50%; background: #5ad18f; animation: twf-pulse 1.6s ease-in-out infinite; }
+.twf__clock--paused .twf__clock-dot { background: #ffd08a; animation: none; }
 .twf__clock-time { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .twf__clock-state { opacity: 0.75; font-size: 13px; }
 .twf__clock-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
