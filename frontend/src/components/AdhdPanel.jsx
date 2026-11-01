@@ -5,6 +5,7 @@ import AttentionCard from './AttentionCard';
 import NowScene, { leadIsThePromise, hasScene } from './NowScene';
 import MeetingControls from './MeetingControls';
 import RoomOfferCard from './RoomOfferCard';
+import RouterRestartCard from './RouterRestart';
 import FrictionSection from './FrictionSection';
 import LeaveClashes from './LeaveClashes';
 import AmbientSection from './AmbientSection';
@@ -798,6 +799,9 @@ export default function AdhdPanel({ onNavigate }) {
       )}
       {attention.data && (
         <RoomOfferCard rooms={attention.data.rooms} onChanged={attention.refresh} />
+      )}
+      {attention.data && (
+        <RouterRestartCard routerRestart={attention.data.routerRestart} onChanged={attention.refresh} />
       )}
       {hasScene(attention.data) ? (
         <section className="adhd__now adhd__now--situation">

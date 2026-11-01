@@ -1641,6 +1641,10 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
   //
   // ⚠ Carried on the block, NOT pushed into `gaps` (the weeklyTarget rule):
   //   gaps counts holes in the decision pool and the widget prints its length.
+  // The router restart question (1 Nov 2026, router-autofix.js): outside the
+  // safe hours NEURO asks before restarting it. Null when nothing waits.
+  let routerRestart = null;
+  try { routerRestart = require('./router-autofix').surface(now); } catch { routerRestart = null; }
   let approvals = null;
   try {
     approvals = require('./prepared-actions').needsYou();
@@ -1716,6 +1720,7 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
     // What waits for Nick's approval in NEURO — see the note above. Additive
     // and nullable; a consumer that ignores it draws exactly what it did.
     approvals,
+    routerRestart,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SAiM is a manifestation, not a menu — "a series of

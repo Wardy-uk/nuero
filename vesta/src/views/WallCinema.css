@@ -444,3 +444,15 @@ button.cine__bit { cursor: pointer; }
   .cine__waday { grid-template-columns: 4.6em 1.8em minmax(0, 1fr) 4em 4.4em; font-size: 15px; gap: 8px; }
   .cine__wawind { display: none; }
 }
+
+/* The router restart question (1 Nov 2026) — under the clock, amber like a late walk. */
+.cine__router { margin-top: 10px; max-width: 34rem; padding: 12px 16px; border-radius: 16px;
+  background: rgba(240, 164, 58, 0.22); border: 1px solid var(--amber); color: #ffe2b8; }
+.cine__routersay { margin: 0; font-size: 1.05rem; line-height: 1.35; }
+.cine__routeracts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.cine__routerbtn { min-height: 44px; padding: 0 18px; border-radius: 999px; cursor: pointer; font: inherit;
+  background: rgba(0, 0, 0, 0.35); color: #fff; border: 1px solid rgba(255, 255, 255, 0.35); }
+.cine__routerbtn--yes { background: var(--amber); color: #1a1206; border-color: var(--amber); font-weight: 600; }
+.cine__routerbtn:disabled { opacity: 0.6; cursor: default; }
+.cine__routersaid { margin: 8px 0 0; font-size: 0.95rem; }
+.cine__routersaid--bad { color: #ffb4a8; }

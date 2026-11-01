@@ -45,6 +45,7 @@ const OWNERS = Object.freeze({
   hike_checkin: SAIM,
   ambient: SAIM,
   room_offer: SAIM,
+  router_restart: SAIM,
   uat_volunteers: SAIM,
   capture_failed: SAIM,
   needs_you: SAIM,

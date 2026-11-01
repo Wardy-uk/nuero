@@ -663,7 +663,7 @@ export function walkBanner(walk) {
 
 /** Whether anything will be drawn under the clock (the clock column tightens to make room). PURE. */
 export function hasBits(data, can) {
-  return Boolean(can('hike') && walkBanner(data.walk));
+  return Boolean((can('hike') && walkBanner(data.walk)) || (can('home-control') && data.router && (data.router.ask || data.router.note)));
 }
 
 /**
@@ -699,6 +699,43 @@ function DayBits({ data, can, onTea, onWalk, part }) {
       {walk && (walk.tone === 'walk' || walk.tone === 'late'
         ? <button className={`cine__walkbanner${walk.tone === 'late' ? ' cine__walkbanner--late' : ''}`} onClick={onWalk} role={walk.tone === 'late' ? 'alert' : undefined}>{walk.text}</button>
         : <span className={`cine__bit${walk.tone === 'gap' ? ' cine__bit--gap' : ''}`}>{walk.text}</span>)}
+    </div>
+  );
+}
+
+/* ── The router restart question (1 Nov 2026) ─────────────────────────────── */
+
+/**
+ * Outside Nick's safe hours NEURO asks before restarting the router — and the
+ * household can answer from the wall. `router` is `{ ask, note }` from
+ * router-autofix.surface(), absent without home-control, null when nothing.
+ * With no `onAnswer` the question shows with no buttons.
+ */
+export function RouterAsk({ router, onAnswer = null }) {
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState(null);
+  if (!router || (!router.ask && !router.note && !said)) return null;
+  const answer = async (decision) => {
+    setBusy(true); setSaid(null);
+    try {
+      const r = await onAnswer(router.ask.id, decision);
+      setSaid({ ok: true, text: (r && r.say) || 'Done.' });
+    } catch (e) {
+      setSaid({ ok: false, text: `Not done — ${e.message}` });
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="cine__router" role={router.ask ? 'alert' : 'status'}>
+      {router.ask && <p className="cine__routersay">{router.ask.say}</p>}
+      {router.ask && onAnswer && (
+        <div className="cine__routeracts">
+          <button className="cine__routerbtn cine__routerbtn--yes" disabled={busy} onClick={() => answer('approve')}>{busy ? 'Restarting…' : (router.ask.acceptLabel || 'Restart now')}</button>
+          <button className="cine__routerbtn" disabled={busy} onClick={() => answer('decline')}>{router.ask.declineLabel || 'Not now'}</button>
+        </div>
+      )}
+      {!router.ask && router.note && <p className="cine__routersay">{router.note}</p>}
+      {said && <p className={`cine__routersaid${said.ok ? '' : ' cine__routersaid--bad'}`}>{said.text}</p>}
     </div>
   );
 }
@@ -903,6 +940,7 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
               {data && can('house') && <h1 className="cine__headline">{presenceLine(data.who)}</h1>}
               {week && <p className="cine__subline">{nextLine(week[0], now)}</p>}
               {data && <DayBits part="walk" data={data} can={can} onWalk={() => setSheet({ kind: 'walk' })} />}
+              {data && can('home-control') && <RouterAsk router={data.router} onAnswer={act && act.router ? act.router : null} />}
               {data && can('house') && <Presence who={data.who} onPerson={(p) => setSheet({ kind: 'member', person: p })} />}
             </div>
             <div className="cine__right">

@@ -94,6 +94,16 @@ const WRITERS = Object.freeze({
     why: "Nick, 25 Oct 2026: the household switches the house from the wall; a tap is the approval, the entity allow-list is a code constant re-derived every request, and every change is undoable.",
     readback: 'the entity re-read until it matches (≤5 s); verified true/false in the answer',
   },
+  // 1 Nov 2026 — router-autofix.js. A kernel reboot of the home router (sysrq b
+  // over ssh). Unattended only inside Nick's safe hours; outside them a person
+  // says yes on a surface. Not idempotent: a second restart is a second outage,
+  // so an unknown outcome blocks rather than repeats.
+  'router.restart': {
+    target: 'the home router (RT-AC68U)', authority: 'A3', initiation: 'timer-or-human', ledger: true,
+    effect: 'force-restart the router — Wi-Fi and the internet drop for about 2 minutes',
+    why: "Nick, 1 Nov 2026: restart it when it starts to wedge — on its own inside the safe hours (Settings, default 02:00–08:00), on a person's yes outside them. One per wedge, 6 h apart.",
+    readback: "the router watcher's next samples: uptime resets within 15 minutes",
+  },
   'notion.sync': {
     target: 'Notion workspace', authority: 'A3', initiation: 'timer', ledger: false,
     effect: 'publish mapped vault notes; never deletes pages', why: 'standing toggle; per-note sync state and a lock.', readback: 'next reconcile pass',

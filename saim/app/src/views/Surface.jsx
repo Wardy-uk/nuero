@@ -384,6 +384,24 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     load();
   }
 
+  // The router restart question (1 Nov 2026). NEURO re-checks the router is
+  // still wedging before it restarts it, and answers in its own words.
+  const [routerNote, setRouterNote] = useState(null);
+  async function routerAct(id, decision) {
+    setRouterNote(null);
+    try {
+      const res = await apiFetch('/api/router/restart/answer', { method: 'POST', body: JSON.stringify({ id, decision }) });
+      setRouterNote({ ok: !!(res && res.ok), text: (res && (res.say || res.error)) || 'Done.' });
+    } catch (e) {
+      const m = String(e.message || '');
+      const j = m.indexOf('{');
+      let why = m;
+      try { if (j >= 0) why = JSON.parse(m.slice(j)).error || m; } catch { /* keep m */ }
+      setRouterNote({ ok: false, text: `Not done — ${why}` });
+    }
+    load();
+  }
+
   // "What are you up to?" answered — or "not now" (null). His word becomes the
   // strongest evidence the life read has; it lapses when he changes place.
   const [lifeBusy, setLifeBusy] = useState(false);
@@ -693,6 +711,7 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       onOpen={open}
       onAct={act}
       onRoomAct={roomAct}
+      onRouterAct={routerAct}
       onLifeAnswer={lifeAnswer}
       lifeBusy={lifeBusy}
       onDeskOpen={deskReachable === false ? null : deskOpen}
@@ -790,8 +809,12 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         </>
       ) : null}
       localPhase={localPhase}
-      footAside={(voiceErr || roomFailure) ? (
+      footAside={(voiceErr || roomFailure || routerNote) ? (
         <>
+          {routerNote && (
+            <button type="button" className={`surface__aside${routerNote.ok ? '' : ' surface__aside--warn'}`}
+              onClick={() => setRouterNote(null)} aria-label="Clear this note">{routerNote.text}</button>
+          )}
           {voiceErr && <p className="surface__aside surface__aside--warn">{voiceErr}</p>}
           {/* ⚠ STAYS UNTIL READ, and is tappable to clear — a note that fades on
               its own is one he may never see, which is `outcome`'s rule one

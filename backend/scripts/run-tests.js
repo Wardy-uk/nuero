@@ -18,7 +18,8 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const RUN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-testrun-'));
-const env = { ...process.env, TMPDIR: RUN_DIR, TEMP: RUN_DIR, TMP: RUN_DIR };
+// ROUTER_AUTOFIX_NO_SSH: a test must never restart the real router (pi5 holds its key).
+const env = { ...process.env, TMPDIR: RUN_DIR, TEMP: RUN_DIR, TMP: RUN_DIR, ROUTER_AUTOFIX_NO_SSH: '1' };
 
 let status = 1;
 try {

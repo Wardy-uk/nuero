@@ -412,7 +412,7 @@
     "route": "/api/v/family-calendar/events/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 671,
+    "line": 695,
     "description": "DELETE /api/v/family-calendar/events/:id.",
     "params": [
       "id"
@@ -5632,12 +5632,28 @@
     "stream": false
   },
   {
+    "id": "get_router_autofix",
+    "method": "GET",
+    "route": "/api/router/autofix",
+    "domain": "router",
+    "source": "routes/router.js",
+    "line": 152,
+    "description": "GET /api/router/autofix. the auto-restart settings, the open question and recent restarts.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_router_health",
     "method": "GET",
     "route": "/api/router/health",
     "domain": "router",
     "source": "routes/router.js",
-    "line": 120,
+    "line": 130,
     "description": "GET /api/router/health. the current read. Read-only; nothing notifies.",
     "params": [],
     "query": [],
@@ -6815,7 +6831,7 @@
     "route": "/api/v/hike",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 587,
+    "line": 611,
     "description": "GET /api/v/hike. Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.",
     "params": [],
     "query": [],
@@ -6847,7 +6863,7 @@
     "route": "/api/v/home-control",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 539,
+    "line": 551,
     "description": "GET /api/v/home-control. the house's lights, household sockets and radiators for the wall's Home sheet. Needs the home-control scope.",
     "params": [],
     "query": [],
@@ -6863,7 +6879,7 @@
     "route": "/api/v/photo/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 566,
+    "line": 590,
     "description": "GET /api/v/photo/:id.",
     "params": [
       "id"
@@ -7858,7 +7874,7 @@
     "route": "/api/v/family-calendar/events/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 661,
+    "line": 685,
     "description": "PATCH /api/v/family-calendar/events/:id.",
     "params": [
       "id"
@@ -7876,7 +7892,7 @@
     "route": "/api/v/tasks/:id",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 628,
+    "line": 652,
     "description": "PATCH /api/v/tasks/:id.",
     "params": [
       "id"
@@ -14453,12 +14469,51 @@
     "stream": false
   },
   {
+    "id": "post_router_autofix",
+    "method": "POST",
+    "route": "/api/router/autofix",
+    "domain": "router",
+    "source": "routes/router.js",
+    "line": 161,
+    "description": "POST /api/router/autofix. router auto-restart settings: { enabled, from, to } (HH:MM, London). Omitted = unchanged; bad = 400.",
+    "params": [],
+    "query": [],
+    "body": [
+      "enabled",
+      "from",
+      "to"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_router_restart_answer",
+    "method": "POST",
+    "route": "/api/router/restart/answer",
+    "domain": "router",
+    "source": "routes/router.js",
+    "line": 174,
+    "description": "POST /api/router/restart/answer. answer the router restart question: { id, decision: 'approve'|'decline' }. A person only.",
+    "params": [],
+    "query": [],
+    "body": [
+      "decision",
+      "id"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_router_sample",
     "method": "POST",
     "route": "/api/router/sample",
     "domain": "router",
     "source": "routes/router.js",
-    "line": 64,
+    "line": 65,
     "description": "POST /api/router/sample. one reading from the watcher.",
     "params": [],
     "query": [],
@@ -16682,7 +16737,7 @@
     "route": "/api/v/catalogue/:slug/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 709,
+    "line": 733,
     "description": "POST /api/v/catalogue/:slug/add.",
     "params": [
       "slug"
@@ -16703,7 +16758,7 @@
     "route": "/api/v/catalogue/:slug/scan",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 743,
+    "line": 767,
     "description": "POST /api/v/catalogue/:slug/scan.",
     "params": [
       "slug"
@@ -16724,7 +16779,7 @@
     "route": "/api/v/catalogue/:slug/used",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 719,
+    "line": 743,
     "description": "POST /api/v/catalogue/:slug/used.",
     "params": [
       "slug"
@@ -16745,7 +16800,7 @@
     "route": "/api/v/countdowns",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 518,
+    "line": 530,
     "description": "POST /api/v/countdowns. mark or unmark an event to count down to. Body: { key, title, date, on }",
     "params": [],
     "query": [],
@@ -16766,7 +16821,7 @@
     "route": "/api/v/family-calendar/events",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 651,
+    "line": 675,
     "description": "POST /api/v/family-calendar/events.",
     "params": [],
     "query": [],
@@ -16782,7 +16837,7 @@
     "route": "/api/v/home-control",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 549,
+    "line": 561,
     "description": "POST /api/v/home-control. switch a mapped light/socket, boost or un-boost a radiator, or turn every light off. Body: { entity, action }",
     "params": [],
     "query": [],
@@ -16820,7 +16875,7 @@
     "route": "/api/v/notes",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 506,
+    "line": 518,
     "description": "POST /api/v/notes. leave a note on the family wall (≤140 chars, cleared after 2 days). Body: { text }",
     "params": [],
     "query": [],
@@ -16838,7 +16893,7 @@
     "route": "/api/v/notes/:id/clear",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 513,
+    "line": 525,
     "description": "POST /api/v/notes/:id/clear. take a note off the wall.",
     "params": [
       "id"
@@ -16851,12 +16906,31 @@
     "stream": false
   },
   {
+    "id": "post_v_router_restart",
+    "method": "POST",
+    "route": "/api/v/router/restart",
+    "domain": "v",
+    "source": "routes/vesta.js",
+    "line": 574,
+    "description": "POST /api/v/router/restart. answer the router restart question from the wall: { id, decision: 'approve'|'decline' }. Needs home-control.",
+    "params": [],
+    "query": [],
+    "body": [
+      "decision",
+      "id"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_v_shopping_add",
     "method": "POST",
     "route": "/api/v/shopping/add",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 525,
+    "line": 537,
     "description": "POST /api/v/shopping/add. add to the shared shopping list (created, shared, if missing). Body: { name }",
     "params": [],
     "query": [],
@@ -16874,7 +16948,7 @@
     "route": "/api/v/shopping/bought",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 532,
+    "line": 544,
     "description": "POST /api/v/shopping/bought. tick an item bought, or undo it. Body: { name, undo }",
     "params": [],
     "query": [],
@@ -16893,7 +16967,7 @@
     "route": "/api/v/tasks",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 601,
+    "line": 625,
     "description": "POST /api/v/tasks. reuses the existing submission path, so the throttle, the",
     "params": [],
     "query": [],
@@ -16911,7 +16985,7 @@
     "route": "/api/v/tea",
     "domain": "v",
     "source": "routes/vesta.js",
-    "line": 499,
+    "line": 511,
     "description": "POST /api/v/tea. set or clear one day's tea (today..+6). Body: { date, text } — text null or '' clears.",
     "params": [],
     "query": [],

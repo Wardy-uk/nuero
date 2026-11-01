@@ -87,6 +87,7 @@ const CAPABILITIES = Object.freeze({
   'push.synthetic-p0': { authority: 'A2', effect: 'a synthetic P0 interrupt on the phone', machine: 'refuse', approval: 'click', registry: null, ledger: true, verification: 'attention_notifications', idempotent: true },
   'homeassistant.room': { authority: 'A2', effect: 'lights / radiator in the house, from an accepted room offer', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.room', ledger: false, verification: 'next house read', idempotent: true },
   'home.control': { authority: 'A2', effect: 'switch a mapped light / household socket, or boost a radiator 1 h to 21°C, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.control', ledger: false, verification: 'entity read back (≤5 s)', idempotent: true },
+  'router.restart': { authority: 'A3', effect: 'force-restart the home router (Wi-Fi drops ~2 min), on a person’s yes outside the safe hours', machine: 'refuse', approval: 'click', registry: 'external-writes:router.restart', ledger: true, verification: 'router uptime resets in a later watcher sample', idempotent: false },
   'calendar.family': { authority: 'A2', effect: 'add / edit / delete an event in the shared family Google calendar, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:google.calendar.family', ledger: true, verification: 'Google read-back', idempotent: 'event id chosen before the call' },
   'tally.categorise': { authority: 'A2', effect: "a transaction's category in Tally (and Tally's merchant rule on 'Always')", machine: 'refuse', approval: 'click', registry: 'external-writes:tally.transaction.categorise', ledger: true, verification: 'Tally read-back', idempotent: true },
 
@@ -313,6 +314,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/v/shopping/add', 'vault.write'),
   R('POST', '/api/v/shopping/bought', 'vault.write'),
   R('POST', '/api/v/home-control', 'home.control'),
+  R('POST', '/api/v/router/restart', 'router.restart'),
+  R('POST', '/api/router/restart/answer', 'router.restart'),
+  R('POST', '/api/router/autofix', 'config.preference', { machine: 'refuse' }),
   // Home energy: the Bright login is a credential; tariffs and the gas
   // calorific value decide what every cost says, so they are Nick's too.
   R('*', '/api/energy/credentials', 'config.security'),

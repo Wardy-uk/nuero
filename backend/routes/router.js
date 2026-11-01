@@ -4,8 +4,9 @@
  * /api/router — where the pi5 watcher posts the home router's vitals.
  *
  * The same shape as /api/desktop: an outbound-only agent samples a machine
- * NEURO cannot otherwise see, and posts what it found. Nothing here reaches
- * back to the router, and nothing here can change it.
+ * NEURO cannot otherwise see, and posts what it found. Since 1 Nov 2026 one
+ * thing reaches back: router-autofix may RESTART it when it starts to wedge —
+ * alone inside Nick's safe hours, on a person's yes outside them.
  *
  * ⚠ The sample carries NUMBERS and PROCESS NAMES only — load, task counts,
  * D-state count, free memory, nvram headroom. Never a client list, never a MAC,
@@ -109,7 +110,16 @@ router.post('/sample', (req, res) => {
       console.warn('[Router] could not raise alert:', e.message);
     }
 
+    // Auto-restart (1 Nov 2026): restart inside the safe hours, ask outside
+    // them. Runs AFTER the response so a slow ssh never holds the watcher, and
+    // never throws. Episode is re-read (episode() is idempotent for a sample).
+    let autofixEpisode = null;
+    try { autofixEpisode = routerHealth.episode(assessment.state); } catch { autofixEpisode = null; }
     res.json({ ok: true, sample: stored, state: assessment.state, announced });
+    require('../services/router-autofix')
+      .onSample({ sample: stored, assessment, episode: autofixEpisode })
+      .catch((e) => console.warn('[Router] autofix failed:', e.message));
+    return;
   } catch (e) {
     console.error('[Router] record failed:', e.message);
     res.status(500).json({ error: e.message });
@@ -136,6 +146,36 @@ router.get('/health', (req, res) => {
     console.error('[Router] health failed:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/router/autofix — the auto-restart settings, the open question and recent restarts.
+router.get('/autofix', (req, res) => {
+  try {
+    res.json(require('../services/router-autofix').status());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/router/autofix — router auto-restart settings: { enabled, from, to } (HH:MM, London). Omitted = unchanged; bad = 400.
+router.post('/autofix', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ error: 'a person changes these settings' });
+  const { enabled, from, to } = req.body || {};
+  const patch = {};
+  if (enabled !== undefined) patch.enabled = enabled;
+  if (from !== undefined) patch.from = from;
+  if (to !== undefined) patch.to = to;
+  const r = require('../services/router-autofix').saveSettings(patch);
+  if (!r.ok) return res.status(400).json(r);
+  res.json(r);
+});
+
+// POST /api/router/restart/answer — answer the router restart question: { id, decision: 'approve'|'decline' }. A person only.
+router.post('/restart/answer', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'a person must answer this' });
+  const { id, decision } = req.body || {};
+  const r = await require('../services/router-autofix').answer({ id, decision, by: req.attendedSurface ? 'the desk screen' : 'nick' });
+  res.status(r.ok ? 200 : (r.status || 400)).json(r);
 });
 
 module.exports = router;

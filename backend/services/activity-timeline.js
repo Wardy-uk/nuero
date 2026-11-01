@@ -594,6 +594,20 @@ function fromPersonalOps(rows) {
         summary: `Someone changed it after NEURO did (${d.why || 'changed since'}), so it was not put back.`, status: 'skipped' });
       case 'room-heat-restore-failed': return entry({ ...base, category: 'blocked', type: 'home.heating', severity: 'warning',
         headline: `Could not put the ${_room(d.area)} radiator back yet`, summary: `${d.reason || 'Home Assistant refused it'}. NEURO tries again every minute.`, status: 'failed' });
+      // 1 Nov 2026 — router auto-restart (router-autofix.js).
+      case 'router-restart-asked': return entry({ ...base, category: 'decided', type: 'home.router',
+        headline: 'Asked to restart the router', summary: `${d.issue || 'It is wedging'} — outside the safe hours, so it waits for a yes.`, status: 'open' });
+      case 'router-restart-approved': return entry({ ...base, category: 'decided', type: 'home.router', actor: r.actor,
+        headline: `${r.actor === 'nick' ? 'You' : r.actor} said yes to restarting the router`, status: 'approved' });
+      case 'router-restart-declined': return entry({ ...base, category: 'decided', type: 'home.router', actor: r.actor,
+        headline: `${r.actor === 'nick' ? 'You' : r.actor} said not now to restarting the router`, summary: 'It waits for the safe hours.', status: 'deferred' });
+      case 'router-restart-issued': return entry({ ...base, category: 'acted', type: 'home.router', actor: r.actor,
+        headline: d.by === 'auto' ? 'Restarted the router (inside the safe hours)' : 'Restarted the router', summary: 'Checking it comes back.', status: 'unverified' });
+      case 'router-restart-failed': return entry({ ...base, category: 'blocked', type: 'home.router', severity: 'warning',
+        headline: 'Could not get into the router to restart it', summary: d.why || null, status: 'failed' });
+      case 'router-restart-verified': return entry({ ...base, category: 'verified', type: 'home.router', headline: 'The router came back after its restart', status: 'verified' });
+      case 'router-restart-not-verified': return entry({ ...base, category: 'blocked', type: 'home.router', severity: 'warning',
+        headline: 'The router did not come back fresh after its restart', summary: 'Switch it off at the wall.', status: 'failed' });
       // 25 Oct 2026 — a press on the family wall's Home sheet.
       case 'wall-home-control': {
         const who = d.by ? `${d.by} (family wall)` : 'The family wall';

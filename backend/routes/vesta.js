@@ -409,6 +409,17 @@ router.get('/wall', requireAccount, (req, res) => {
     }
   }
 
+  // The router restart question (1 Nov 2026): outside Nick's safe hours NEURO
+  // asks before restarting the router, and the household can answer it from
+  // the wall. Behind home-control, the scope that already switches the house.
+  if (capture.hasScope(req.account, 'home-control')) {
+    try {
+      out.router = require('../services/router-autofix').surface();
+    } catch {
+      out.router = null;
+    }
+  }
+
   if (capture.hasScope(req.account, 'house')) {
     try {
       out.who = vesta.whoIsIn(require('../services/household').read());
@@ -556,6 +567,18 @@ router.post('/home-control', requireAccount, scopeGate('home-control'), async (r
   } catch (e) {
     console.error('[Vesta] Home control failed:', e.message);
     res.status(500).json({ ok: false, error: 'Something went wrong — check the house before trying again.' });
+  }
+});
+
+// POST /api/v/router/restart — answer the router restart question from the wall: { id, decision: 'approve'|'decline' }. Needs home-control.
+router.post('/router/restart', requireAccount, scopeGate('home-control'), async (req, res) => {
+  const { id, decision } = req.body || {};
+  try {
+    const r = await require('../services/router-autofix').answer({ id, decision, by: req.account.label || req.account.username });
+    res.status(r.ok ? 200 : (r.status || 400)).json(r);
+  } catch (e) {
+    console.error('[Vesta] Router restart failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong — the router was not restarted.' });
   }
 });
 

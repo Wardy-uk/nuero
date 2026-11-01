@@ -139,6 +139,9 @@ export default function AttentionSurface({
   // that cannot reach `/api/rooms`, in which case the offer is rendered as a
   // statement and no button is shown — never a control that fails when tapped.
   onRoomAct = null,
+  // (id, 'approve'|'decline') — answer the router restart question. No handler,
+  // no buttons: the question renders as a statement.
+  onRouterAct = null,
   // Ask for something to be opened on the laptop: `(appId) => {}`. Omitted on a
   // surface that cannot reach the route, in which case nothing is offered —
   // never a button that fails when tapped.
@@ -240,6 +243,9 @@ export default function AttentionSurface({
     // by `backend/services/rooms.js`, carried beside `ambient` on the payload,
     // and rendered below. Null renders nothing, which is the normal case.
     rooms = null,
+    // The router restart question (1 Nov 2026): outside the safe hours NEURO
+    // asks before restarting the home router. `{ ask, note }` or null.
+    routerRestart = null,
     // What he is working on, and whether he is at the laptop. Only the second
     // half is used here, and only to decide whether offering to open something
     // there is honest.
@@ -667,6 +673,26 @@ export default function AttentionSurface({
         {naErr && <p className="surface__recorded-err">{naErr}</p>}
       </div>
     ) : null;
+    // The router restart question (1 Nov 2026) leads: it is a yes/no about the
+    // whole house's internet, asked only outside Nick's safe hours.
+    const routerEl = (routerRestart && (routerRestart.ask || routerRestart.note)) ? (
+      <div className="surface__recorded surface__router" role="group" aria-label="Router">
+        {routerRestart.ask && <p className="surface__recorded-say">{routerRestart.ask.say}</p>}
+        {routerRestart.ask && onRouterAct && (
+          <span className="sit__step">
+            <button type="button" className="sit__chip sit__chip--yes" onClick={() => onRouterAct(routerRestart.ask.id, 'approve')}>{routerRestart.ask.acceptLabel || 'Restart now'}</button>
+            <button type="button" className="sit__chip sit__chip--quiet" onClick={() => onRouterAct(routerRestart.ask.id, 'decline')}>{routerRestart.ask.declineLabel || 'Not now'}</button>
+          </span>
+        )}
+        {routerRestart.note && <p className="surface__recorded-say">{routerRestart.note}</p>}
+      </div>
+    ) : null;
+    const otherLead = notAttendedEl || sayOverride || beforeSay || (outcome ? (
+      <button type="button" className={`surface__outcome surface__outcome--${outcome.tone}`} onClick={() => setOutcome(null)} aria-label="Clear this note">
+        <span className="surface__outcomelead">{outcome.lead}</span>
+        {outcome.sub && <span className="surface__outcomesub">{outcome.sub}</span>}
+      </button>
+    ) : null);
     return (
       <div className={`${rootClassName} surface--situation${scene ? ' surface--scene' : ''}`} style={{ '--approach-rgb': toneRgb, '--saim-rgb': toneRgb }}>
         <Situation
@@ -691,12 +717,7 @@ export default function AttentionSurface({
           onCorrect={onLifeAnswer ? (doing) => onLifeAnswer(doing) : null}
           onNotNow={onLifeAnswer ? () => onLifeAnswer(null) : null}
           correcting={lifeBusy}
-          lead={notAttendedEl || sayOverride || beforeSay || (outcome ? (
-            <button type="button" className={`surface__outcome surface__outcome--${outcome.tone}`} onClick={() => setOutcome(null)} aria-label="Clear this note">
-              <span className="surface__outcomelead">{outcome.lead}</span>
-              {outcome.sub && <span className="surface__outcomesub">{outcome.sub}</span>}
-            </button>
-          ) : null)}
+          lead={routerEl ? <>{routerEl}{otherLead}</> : otherLead}
           // ⚠ On a WALL the mic is opt-in by URL (`?mic=1`, the tablet's start
           // address): Chromium on the Pi exposes speech recognition with no
           // service behind it, so capability alone offers a control that fails.
@@ -1255,6 +1276,28 @@ export default function AttentionSurface({
               </li>
             ))}
           </ul>
+        )}
+        {/* ── The router restart question (1 Nov 2026) ─────────────────────
+            Outside Nick's safe hours NEURO asks before restarting the router,
+            on every surface that can answer. Restart re-checks the router is
+            still wedging before it acts. */}
+        {!hideSecondary && routerRestart?.ask && (
+          <ul className="surface__rooms">
+            <li className="surface__room">
+              <span className="surface__roomsay">{routerRestart.ask.say}</span>
+              {onRouterAct ? (
+                <span className="surface__roomacts">
+                  <button type="button" className="surface__roombtn surface__roombtn--yes"
+                    onClick={() => onRouterAct(routerRestart.ask.id, 'approve')}>{routerRestart.ask.acceptLabel || 'Restart now'}</button>
+                  <button type="button" className="surface__roombtn"
+                    onClick={() => onRouterAct(routerRestart.ask.id, 'decline')}>{routerRestart.ask.declineLabel || 'Not now'}</button>
+                </span>
+              ) : null}
+            </li>
+          </ul>
+        )}
+        {!hideSecondary && routerRestart?.note && (
+          <p className="surface__aside">{routerRestart.note}</p>
         )}
         {/* "I could not see the room" is not "the room is fine". */}
         {!hideSecondary && rooms && rooms.known === false && (

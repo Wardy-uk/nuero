@@ -131,6 +131,11 @@ const EXACT_DOORS = new Set([
   // the goal, annotation and classification WRITES into his life model, which
   // have no screen here and do not belong behind an unauthenticated touchscreen.
   '/canonical/now',
+  // The router restart question (1 Nov 2026): the desk and wall screens may
+  // answer it. EXACT, not the segment: `router` also holds the watcher's
+  // /sample ingest and the auto-restart settings, neither for a touchscreen.
+  // NEURO re-checks the router is wedging before it restarts anything.
+  '/router/restart/answer',
   // Drafts (22 Oct 2026): the wall may SHOW the list. EXACT, not the segment:
   // `prepared-moves` also holds prepare, answer, request and confirm — every one
   // of them an act, and the kiosk acts on none of them (Drafts renders read-only).

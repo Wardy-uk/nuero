@@ -830,6 +830,9 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
       add: async (name) => { lastTouch.current = Date.now(); const res = await api.shoppingAdd(api.getToken(), name); await refresh(); return res; },
       bought: async (name, undo) => { lastTouch.current = Date.now(); const res = await api.shoppingBought(api.getToken(), name, undo); await refresh(); return res; },
     },
+    // The router restart question (1 Nov 2026): NEURO re-checks the router is
+    // still wedging, restarts it, and the wall is re-read.
+    router: async (id, decision) => { lastTouch.current = Date.now(); const res = await api.routerRestart(api.getToken(), id, decision); await refresh(); return res; },
     // Home control is not in the wall payload: the Home sheet reads it itself.
     home: {
       get: async () => api.getHomeControl(api.getToken()),

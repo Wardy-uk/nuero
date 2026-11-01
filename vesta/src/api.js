@@ -285,6 +285,10 @@ export const getHomeControl = (token) => call('/home-control', { token, timeoutM
 export const homeControl = (token, entity, action) =>
   call('/home-control', { method: 'POST', body: entity ? { entity, action } : { action }, token, timeoutMs: 20000, answerOnRefusal: true });
 
+/** Answer the router restart question (scope `home-control`). Throws an ApiError carrying NEURO's reason when refused. */
+export const routerRestart = (token, id, decision) =>
+  call('/router/restart', { method: 'POST', body: { id, decision }, token, timeoutMs: 40000 });
+
 /** Tonight's tea (or a day up to six ahead). `text` null/'' clears that day. */
 export const setTea = (token, date, text) =>
   call('/tea', { method: 'POST', body: { date, text }, token, timeoutMs: 20000 });

@@ -36,6 +36,8 @@ const DOORS = [
   // Each is still gated on the household account's own scopes in NEURO.
   { method: 'GET', re: /^\/home-control$/ },
   { method: 'POST', re: /^\/home-control$/ },
+  // The router restart question (1 Nov 2026) — answerable from the room walls.
+  { method: 'POST', re: /^\/router\/restart$/ },
   { method: 'POST', re: /^\/tea$/ },
   { method: 'POST', re: /^\/notes$/ },
   { method: 'POST', re: /^\/notes\/[A-Za-z0-9_-]{1,80}\/clear$/ },
