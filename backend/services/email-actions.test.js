@@ -86,6 +86,16 @@ test('mail from Nick himself (NEURO\'s daily briefing) is never asked about', as
   assert.equal(res.asked, 0);
 });
 
+test('a UAT volunteer request is left to the UAT flow, never raised as a task', async () => {
+  // The live case, 2 Nov 2026: Dan's request became "Volunteer a team member…".
+  const res = await ea.extractFromTriage([
+    email({ id: 'uat', from: 'Dan Short', fromEmail: 'dan.short@nurtur.tech', lane: 'reply',
+      subject: "UAT Request - AFE 'Whatsapp' functionality - November 4th 2026 - Team Leads - Action Required" }),
+  ]);
+  assert.equal(res.considered, 0);
+  assert.equal(res.asked, 0);
+});
+
 // ---------------------------------------------------------------------------
 // Parsing — a non-answer is not "nothing owed"
 // ---------------------------------------------------------------------------

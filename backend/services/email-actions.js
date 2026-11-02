@@ -297,8 +297,17 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
   return _extract(entries, {
     limit, ledgerKey: LEDGER_KEY, scope: 'work', tag: 'EmailActions',
     eligible: (e) => LANES.has(e.lane) && !e.dismissed && !CALENDAR_NOTICE.test(String(e.subject || ''))
-      && !fromNickHimself(e),
+      && !fromNickHimself(e) && !uatOwned(e),
   });
+}
+
+/**
+ * A UAT volunteer request belongs to the UAT flow (uat-volunteers.js), which
+ * picks, invites and replies. Raising it here as well put "Volunteer a team
+ * member each week for UAT testing" in the review queue (2 Nov 2026).
+ */
+function uatOwned(email) {
+  try { return require('./uat-volunteers-model').quickMatch(email); } catch { return false; }
 }
 
 /**
