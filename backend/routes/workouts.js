@@ -73,4 +73,12 @@ router.post('/:id/photos', (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /api/workouts/:id/send-to-site — send this hike to Walking with Ember as a DRAFT page (one commit to the site's main; home trimmed 400 m; photos cleaned of metadata). A re-send updates track/photos/weather and never touches the page text.
+router.post('/:id/send-to-site', async (req, res) => {
+  try {
+    const r = await require('../services/wwe-send').send(req.params.id);
+    send(res, r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 module.exports = router;

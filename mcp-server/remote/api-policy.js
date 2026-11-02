@@ -114,6 +114,7 @@ export const interactive = {
   post_workouts_by_id_photos: 'Workout photos come from the NEURO iPhone app reading Nick’s photo library. An agent does not add them.',
   post_workouts_photos_by_photoId_remove: 'Removing a photo from a walk is Nick’s choice. He does it on the walk’s page in NEURO.',
   post_workouts_notes_sync: 'Hike notes are written by NEURO’s own background job. Nick can refresh them from NEURO.',
+  post_workouts_by_id_send_to_site: 'Sending a walk to the public Walking with Ember site is Nick’s press, on the walk’s page in NEURO.',
   // Hike safety: arming approves an unattended alert email; checking in silences it. Both Nick's, never an agent's.
   post_outdoor_safety_contacts: 'Who gets a hike safety alert is Nick\'s choice. He sets it in NEURO → Life → Outdoor → Hike safety.',
   post_outdoor_safety_trips: 'Arming a walk approves an alert email to the people on its card. Nick arms it in NEURO → Life → Outdoor.',

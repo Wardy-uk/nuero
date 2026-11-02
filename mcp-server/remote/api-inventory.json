@@ -19241,6 +19241,24 @@
     "stream": false
   },
   {
+    "id": "post_workouts_by_id_send_to_site",
+    "method": "POST",
+    "route": "/api/workouts/:id/send-to-site",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 77,
+    "description": "POST /api/workouts/:id/send-to-site. send this hike to Walking with Ember as a DRAFT page (one commit to the site's main; home trimmed 400 m; photos cleaned of metadata). A re-send updates track/photos/weather and never touches the page text.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_workouts_notes_sync",
     "method": "POST",
     "route": "/api/workouts/notes/sync",

@@ -102,3 +102,8 @@
   .wk-grid { grid-template-columns: 1fr; }
   .wk-thumbs--strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* Walking with Ember: the last send, said in one line under the headline. */
+.wk-site { font-size: 0.85rem; color: var(--text-secondary, #9aa); margin: 4px 0 8px; }
+.wk-site a { color: var(--accent, #6cf); }
+.wk-site--failed { color: var(--warning, #e0a040); }

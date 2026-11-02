@@ -119,6 +119,9 @@ const CAPABILITIES = Object.freeze({
   'jira.escalation.resolve': { authority: 'A3', effect: 'record what is on a ticket after an unknown escalation outcome', machine: 'refuse', approval: 'click', registry: 'external-writes:nova.escalate', ledger: true, verification: null, idempotent: true },
   'notion.publish': { authority: 'A3', effect: 'publish mapped vault notes to Notion (read by an external AI)', machine: 'refuse', approval: 'click', registry: 'external-writes:notion.sync', ledger: false, verification: 'next reconcile', idempotent: 'per-note state' },
   'nova.121': { authority: 'A3', effect: 'NOVA 1-2-1 sessions / cadence / transcript candidates', machine: 'refuse', approval: 'click', registry: 'external-writes:nova.121', ledger: false, verification: 'morning reconcile', idempotent: true },
+  // 2 Nov 2026: one hike to the public Walking with Ember site, as a DRAFT page
+  // (one commit to the site's main; home trimmed; photos stripped of metadata).
+  'site.walk-draft': { authority: 'A3', effect: 'commit one walk (trimmed track, route, cleaned photos, a draft page) to the public Walking with Ember repo', machine: 'refuse', approval: 'click', registry: null, ledger: false, verification: 'git push accepted; recorded in wwe_sends', idempotent: 'a re-send updates files and never the page text' },
   'vesta.share': { authority: 'A3', effect: 'share a catalogue on VESTA (public internet, read by the household)', machine: 'refuse', approval: 'click', registry: null, ledger: false, verification: null, idempotent: true },
 
   'email.send': { authority: 'A4', effect: 'email to another person as Nick', machine: 'prepare', approval: 'approval-code', registry: 'action-registry:chase_commitment,reply_email,compose_email,chase_agenda,send_weekly_risk_report,send_soap_report', ledger: true, verification: 'Sent Items match', idempotent: 'one attempt per approved version' },
@@ -493,6 +496,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/loops/hiking/denials/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   // Build 29: route plans and what Nick links to an activity (a route, Ember)
   // are his own statements. Machines read Outdoor; they never write it.
+  R('POST', '/api/workouts/:id/send-to-site', 'site.walk-draft'),
   R('POST', '/api/workouts/:id/photos', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/workouts/photos/:photoId/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/workouts/notes/sync', 'internal.state', { machine: 'refuse' }),

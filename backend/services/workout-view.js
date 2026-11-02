@@ -282,6 +282,14 @@ function _note(id) {
   } catch { return null; }
 }
 
+/** Walking with Ember: can this walk be sent, and what happened last time. */
+function _site(id, hike, tracked) {
+  const eligible = Boolean(hike && tracked);
+  let st = { last: null, lastOk: null };
+  try { st = require('./wwe-send').statusFor(id); } catch { /* not recorded */ }
+  return { eligible, why: eligible ? null : (!hike ? 'only hikes go to Walking with Ember' : 'no GPS track to send'), ...st };
+}
+
 function _nav(id) {
   const rows = _tracked();
   const i = rows.findIndex((r) => r.id === id);
@@ -361,6 +369,7 @@ function read(id, { now = Date.now() } = {}) {
     comparison: (() => { try { return _comparison(w, m); } catch (e) { gaps.push({ input: 'comparison', why: e.message }); return { others: [], why: 'could not compare' }; } })(),
     photos,
     note: _note(wid),
+    site: _site(wid, isHike(w.activity_type, w.duration_seconds), m.known),
     nav: _nav(wid),
     gaps,
     generatedAt: new Date(now).toISOString(),

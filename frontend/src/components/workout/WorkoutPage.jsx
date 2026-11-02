@@ -229,7 +229,32 @@ function Comparison({ c, onOpen }) {
 
 // ── the whole page ─────────────────────────────────────────────────────────
 
-export function WorkoutView({ data: v, onOpen = null, onIndex = null, onRemovePhoto = null, busy = false }) {
+/**
+ * Walking with Ember (2 Nov 2026): what happened the last time this walk was
+ * sent to the public site. The server records every attempt; this only says it.
+ */
+function siteDay(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' });
+}
+function SiteLine({ site }) {
+  if (!site) return null;
+  const { last, lastOk } = site;
+  const failedLast = last && last.status === 'failed';
+  return (
+    <>
+      {lastOk && (
+        <div className="wk-site" data-testid="wwe-status">
+          Sent to Walking with Ember as a draft · {siteDay(lastOk.at)}
+          {lastOk.previewUrl && <> · <a href={lastOk.previewUrl} target="_blank" rel="noreferrer">Open the preview</a></>}
+        </div>
+      )}
+      {failedLast && <div className="wk-site wk-site--failed" data-testid="wwe-failed">Not sent to Walking with Ember — {last.error || 'no reason recorded'}.</div>}
+    </>
+  );
+}
+
+export function WorkoutView({ data: v, onOpen = null, onIndex = null, onRemovePhoto = null, busy = false, onSendToSite = null, sending = false }) {
   const [cursorT, setCursorT] = useState(null);
   const [photoId, setPhotoId] = useState(null);
   const cursor = useMemo(() => pointAt(v.profile, cursorT), [cursorT, v.profile]);
@@ -248,9 +273,16 @@ export function WorkoutView({ data: v, onOpen = null, onIndex = null, onRemovePh
           {onOpen && v.nav.older && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => onOpen(v.nav.older)}>Older ›</button>}
           {onIndex && <button type="button" className="cn-btn cn-btn--tiny" onClick={onIndex}>All walks</button>}
           {v.note && <a className="cn-btn cn-btn--tiny" href={v.note.obsidianUrl}>Open note in Obsidian</a>}
+          {onSendToSite && v.site && v.site.eligible && (
+            <button type="button" className="cn-btn cn-btn--tiny" disabled={sending} onClick={onSendToSite}
+              title="Sends this walk to the public site as a DRAFT page: home trimmed 400 m, photos stripped of metadata. Nothing goes public until you publish it in the site's editor.">
+              {sending ? 'Sending…' : (v.site.lastOk ? 'Send to Walking with Ember again' : 'Send to Walking with Ember')}
+            </button>
+          )}
         </div>
       </header>
       <Headline tone={v.verdict.counts ? 'good' : 'neutral'} pill={v.workout.hike ? (v.verdict.counts ? 'Hike · counted' : 'Hike') : v.workout.type}>{head}</Headline>
+      <SiteLine site={v.site} />
       {v.gaps.length > 0 && <Gap>Couldn’t read: {v.gaps.map((g) => `${g.input} (${g.why})`).join('; ')}.</Gap>}
 
       <div className="wk-top">
@@ -334,16 +366,23 @@ function PageLoader({ id, onOpen, onIndex }) {
   const { data, error, reload } = useCanonical(`/api/workouts/${encodeURIComponent(id)}`);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [siteMsg, setSiteMsg] = useState(null);
   if (error && !data) return <div className="cn-error">Couldn’t read this workout — {error}.</div>;
   if (!data) return <div className="cn-muted">Reading the workout…</div>;
   const remove = async (photoId) => {
     setBusy(true); setMsg(null);
     try { await postCanonical(`/api/workouts/photos/${encodeURIComponent(photoId)}/remove`, {}); await reload(); return true; } catch (e) { setMsg(e.message); return false; } finally { setBusy(false); }
   };
+  const sendToSite = async () => {
+    setSending(true); setSiteMsg(null);
+    try { await postCanonical(`/api/workouts/${encodeURIComponent(id)}/send-to-site`, {}); } catch (e) { setSiteMsg(e.message); } finally { setSending(false); await reload(); }
+  };
   return (
     <>
-      <WorkoutView data={data} onOpen={onOpen} onIndex={onIndex} onRemovePhoto={remove} busy={busy} />
+      <WorkoutView data={data} onOpen={onOpen} onIndex={onIndex} onRemovePhoto={remove} busy={busy} onSendToSite={sendToSite} sending={sending} />
       {msg && <div className="cn-error">Not removed — {msg}</div>}
+      {siteMsg && <div className="cn-error">Not sent to Walking with Ember — {siteMsg}</div>}
     </>
   );
 }
