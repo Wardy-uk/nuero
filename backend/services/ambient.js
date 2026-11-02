@@ -323,7 +323,13 @@ function assess(input = {}, now = new Date()) {
     if (activeInBaseline >= EXERCISE_BASELINE_MIN_ACTIVE) {
       // Complete days only — today is half a day and cannot count as a gap.
       const recent = withExercise.slice(0, EXERCISE_QUIET_DAYS);
-      const quiet = recent.length === EXERCISE_QUIET_DAYS
+      // ⚠ Today cannot count AGAINST him (it is half a day), but exercise
+      // already done today DOES break the run. Reading complete days only, a
+      // two-hour hike at 10am was ignored until midnight and SAiM said "no
+      // real exercise for 3 days" with 134 minutes on the watch (2 Nov 2026).
+      const today = days.find(d => d && !d.complete && d.exerciseMinutes != null);
+      const doneToday = !!today && today.exerciseMinutes >= EXERCISE_DAY_MINUTES;
+      const quiet = !doneToday && recent.length === EXERCISE_QUIET_DAYS
         && recent.every(d => d.exerciseMinutes < EXERCISE_DAY_MINUTES);
       if (quiet) {
         observations.push({

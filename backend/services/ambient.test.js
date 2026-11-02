@@ -157,6 +157,17 @@ test('one quiet day is not a gap', () => {
   assert.equal(kinds(r).includes('no-exercise'), false);
 });
 
+test('exercise already done today breaks the run, even though today is not finished', () => {
+  // 2 Nov 2026: three quiet complete days, then a 134-minute hike that morning —
+  // SAiM still said "no real exercise for 3 days" because only complete days were read.
+  const days = [{ day: 'today', complete: false, exerciseMinutes: 134 }, ...exerciseDays([9, 6, 10, ...Array.from({ length: 25 }, () => 40)])];
+  const r = ambient.assess({ phone: livePhone({ activitySince: iso(5) }), days }, NOW);
+  assert.equal(kinds(r).includes('no-exercise'), false);
+  // A today with only a few minutes so far does not clear it.
+  const slow = [{ day: 'today', complete: false, exerciseMinutes: 4 }, ...days.slice(1)];
+  assert.equal(kinds(ambient.assess({ phone: livePhone({ activitySince: iso(5) }), days: slow }, NOW)).includes('no-exercise'), true);
+});
+
 test('an incomplete day cannot count towards a gap', () => {
   const days = [
     { day: dayKey(0), complete: false, exerciseMinutes: 0 },
