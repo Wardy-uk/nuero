@@ -110,6 +110,10 @@ export const interactive = {
   post_outdoor_activities_by_activityId_route_remove: 'Unlinking a route is Nick\'s choice. He does it in NEURO → Life → Outdoor.',
   post_outdoor_activities_by_activityId_companion: 'Whether Ember came along is Nick\'s statement, never inferred. He marks it in NEURO → Life → Outdoor.',
   post_outdoor_activities_by_activityId_companion_remove: 'Removing Ember from an activity is Nick\'s statement. He does it in NEURO → Life → Outdoor.',
+  // Workout pages (2 Nov 2026): photos come from Nick's phone; removing one is his.
+  post_workouts_by_id_photos: 'Workout photos come from the NEURO iPhone app reading Nick’s photo library. An agent does not add them.',
+  post_workouts_photos_by_photoId_remove: 'Removing a photo from a walk is Nick’s choice. He does it on the walk’s page in NEURO.',
+  post_workouts_notes_sync: 'Hike notes are written by NEURO’s own background job. Nick can refresh them from NEURO.',
   // Hike safety: arming approves an unattended alert email; checking in silences it. Both Nick's, never an agent's.
   post_outdoor_safety_contacts: 'Who gets a hike safety alert is Nick\'s choice. He sets it in NEURO → Life → Outdoor → Hike safety.',
   post_outdoor_safety_trips: 'Arming a walk approves an alert email to the people on its card. Nick arms it in NEURO → Life → Outdoor.',

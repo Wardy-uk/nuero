@@ -241,6 +241,7 @@ app.use('/api/vehicle', require('./routes/vehicle'));
 app.use('/api/transport', require('./routes/transport'));
 // Build 29: Life → Outdoor. Hikes stay the hiking loop's verdict.
 app.use('/api/outdoor', require('./routes/outdoor'));
+app.use('/api/workouts', require('./routes/workouts'));
 // Personal automations (1 Nov 2026): renewals to compare, tea → shopping, hike suggestions, GP packs.
 app.use('/api/personal-auto', require('./routes/personal-auto'));
 // Build 30: Life → Leisure. Explicit items + bounded listening aggregates.

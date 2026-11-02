@@ -3686,6 +3686,46 @@ CREATE TABLE IF NOT EXISTS workout_routes (
   received_at  TEXT NOT NULL
 );
 
+-- A workout looked at properly (2 Nov 2026). Photos taken during a tracked
+-- workout, sent by the NEURO iOS app as resized JPEGs (the files live in
+-- WORKOUT_PHOTO_DIR, never in this table). A removed photo keeps its row as a
+-- tombstone (`removed_at`) so the phone never sends it again.
+CREATE TABLE IF NOT EXISTS workout_photos (
+  photo_id     TEXT PRIMARY KEY,
+  workout_id   INTEGER NOT NULL,
+  asset_id     TEXT NOT NULL,
+  taken_at     TEXT,
+  lat          REAL,
+  lon          REAL,
+  width        INTEGER,
+  height       INTEGER,
+  bytes        INTEGER,
+  sha256       TEXT,
+  received_at  TEXT NOT NULL,
+  removed_at   TEXT,
+  UNIQUE(workout_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_workout_photos_workout ON workout_photos(workout_id);
+
+-- The weather where the workout was, from Open-Meteo, fetched once per workout
+-- by the workout-extras job (a read never reaches the internet).
+CREATE TABLE IF NOT EXISTS workout_weather (
+  workout_id   INTEGER PRIMARY KEY,
+  state        TEXT NOT NULL,
+  payload      TEXT,
+  why          TEXT,
+  fetched_at   TEXT NOT NULL
+);
+
+-- The vault note a hike was written to, and the hash of the block NEURO last
+-- wrote — so the note is only rewritten when something in it changed.
+CREATE TABLE IF NOT EXISTS workout_notes (
+  workout_id   INTEGER PRIMARY KEY,
+  path         TEXT NOT NULL,
+  block_hash   TEXT,
+  written_at   TEXT NOT NULL
+);
+
 -- ── Daily / weekly briefings (12 Oct 2026) ─────────────────────────────────
 -- One row per briefing per day: the composed payload exactly as Nick saw it,
 -- and what delivery did (push / email / skipped, with the reason). Rebuilding

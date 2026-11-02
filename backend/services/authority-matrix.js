@@ -493,6 +493,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/loops/hiking/denials/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   // Build 29: route plans and what Nick links to an activity (a route, Ember)
   // are his own statements. Machines read Outdoor; they never write it.
+  R('POST', '/api/workouts/:id/photos', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/workouts/photos/:photoId/remove', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/workouts/notes/sync', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/routes', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/routes/:routeId', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/activities/:activityId/route', 'internal.state', { machine: 'refuse' }),
@@ -577,7 +580,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   'weekly-risk': 'internal.state', soap: 'internal.state', 'report-fixes': 'internal.state', wins: 'internal.state', 'perf-evidence': 'internal.state', '1to1': 'internal.state', leave: 'internal.state', 'calendar-care': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state', uat: 'internal.state', u: 'internal.state', 'meeting-followups': 'internal.state', 'meeting-actions': 'internal.state', 'overtime-claims': 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
-  outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
+  outdoor: 'internal.state', workouts: 'internal.state', leisure: 'internal.state', people: 'vault.write', 'task-context': 'internal.state',
   'personal-auto': 'internal.state',
 });
 

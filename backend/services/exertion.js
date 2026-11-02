@@ -384,6 +384,7 @@ module.exports = {
   SCORE_K,
   // io
   sync,
+  maxHr: maxHrFromHistory,
   recent,
   summary,
 };

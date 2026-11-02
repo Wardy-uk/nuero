@@ -197,6 +197,16 @@ const FLAGS = [
     impact: 'drafts emails from your work mailbox for you to send; sends nothing',
   },
   {
+    key: 'hike_note_photos',
+    env: 'HIKE_NOTE_PHOTOS',
+    default: false,
+    label: 'Put hike photos in the vault notes',
+    description: 'Copies each hike’s photos into Personal/Hikes/<year>/media and embeds them in the hike’s note. '
+      + 'Every copy goes through Obsidian Sync (roughly 0.5–1 MB a photo), so check your Sync plan’s storage first. '
+      + 'Off, the notes still carry the stats and a link to the photos in NEURO.',
+    impact: 'adds photos to your vault and Obsidian Sync storage',
+  },
+  {
     // 1 Nov 2026 — email-muted-archive.js. Default ON (Nick's call): muting a
     // whole sender means he never wants their mail in his Inbox.
     key: 'email_muted_archive',

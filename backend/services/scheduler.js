@@ -1504,6 +1504,25 @@ function start() {
       why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
       run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
     });
+    // Workout pages (2 Nov 2026): the weather where each tracked workout was
+    // (Open-Meteo — the only network call) and the hike notes in the vault.
+    // Here, not registerDurableJobs, because it reaches the internet and writes the vault.
+    require('./runtime-jobs').defineJob({
+      name: 'workout-extras',
+      cron: '13,43 * * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 60 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 3 * 60 * 1000,
+      lookbackMs: 6 * 3600 * 1000,
+      why: 'Fetch the weather for tracked workouts that have none yet, and write or refresh each hike’s note in Personal/Hikes.',
+      run: async () => {
+        const wx = await require('./workout-view').refreshWeather();
+        const notes = require('./workout-notes').sync();
+        return { weather: wx, notes: { hikes: notes.hikes, rebuilt: notes.rebuilt, skipped: notes.skipped } };
+      },
+    });
     // Calendar care (1 Nov 2026): look for meetings Nick organises in the next
     // 24h whose invite has no agenda, and draft one. READS only (invite bodies
     // from Graph); adding it is his press. Hourly in the working day, from 07:05.

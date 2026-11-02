@@ -6359,7 +6359,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 306,
+    "line": 307,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -8009,6 +8009,94 @@
       "limit",
       "offset",
       "source"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_workouts",
+    "method": "GET",
+    "route": "/api/workouts",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 16,
+    "description": "GET /api/workouts. every workout with a watch GPS track (hikes, walks, runs, rides), newest first: distance, time, ascent, photo count, a thin line for a thumbnail map.",
+    "params": [],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_workouts_by_id",
+    "method": "GET",
+    "route": "/api/workouts/:id",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 59,
+    "description": "GET /api/workouts/:id. one workout's whole page: map track, watch and track figures, elevation profile, heart rate, splits, body, weather where he walked, the home station, the carried logger, Ember, route plan, hike verdict, same-route history, photos, vault note.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_workouts_last_hike",
+    "method": "GET",
+    "route": "/api/workouts/last-hike",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 21,
+    "description": "GET /api/workouts/last-hike. the newest hike's whole page (Life → Outdoor's lead card).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_workouts_photo_windows",
+    "method": "GET",
+    "route": "/api/workouts/photo-windows",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 26,
+    "description": "GET /api/workouts/photo-windows. for the iOS app: each tracked workout's start/end, which photos NEURO already holds and which Nick removed (never send those again).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_workouts_photos_by_photoId",
+    "method": "GET",
+    "route": "/api/workouts/photos/:photoId",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 31,
+    "description": "GET /api/workouts/photos/:photoId. one workout photo as a JPEG (?size=thumb for the small one).",
+    "params": [
+      "photoId"
+    ],
+    "query": [
+      "size"
     ],
     "body": [],
     "queryOpen": false,
@@ -19084,6 +19172,67 @@
       "since",
       "until"
     ],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_workouts_by_id_photos",
+    "method": "POST",
+    "route": "/api/workouts/:id/photos",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 64,
+    "description": "POST /api/workouts/:id/photos. the iOS app adds one photo taken during a workout (resized JPEG + thumbnail, base64). A re-send folds; a removed photo is refused.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "assetId",
+      "full",
+      "height",
+      "lat",
+      "lon",
+      "takenAt",
+      "thumb",
+      "width"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_workouts_notes_sync",
+    "method": "POST",
+    "route": "/api/workouts/notes/sync",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 54,
+    "description": "POST /api/workouts/notes/sync. write or refresh the hike notes in the vault (Personal/Hikes) now rather than at the next pass.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_workouts_photos_by_photoId_remove",
+    "method": "POST",
+    "route": "/api/workouts/photos/:photoId/remove",
+    "domain": "workouts",
+    "source": "routes/workouts.js",
+    "line": 39,
+    "description": "POST /api/workouts/photos/:photoId/remove. Nick removes a photo from a workout: the files are deleted and the phone never sends it again.",
+    "params": [
+      "photoId"
+    ],
+    "query": [],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": false,
     "multipart": false,
