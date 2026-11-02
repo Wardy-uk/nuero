@@ -3,13 +3,15 @@ import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions, Headli
 import HikingLoopCard from './HikingLoopCard';
 import { GoalNote } from './GoalsCard';
 import { HikeSuggestion } from '../PersonalAutoOffers';
+import { LastHikeCard } from '../workout/WorkoutPage';
 
 /**
  * Life → Outdoor (Build 29). One compact section: this week, the Hike weekly
  * goal, hikes it confirmed, walks, what it refused to call a hike, route plans,
  * the next outing and its weather, and where each source stands.
  *
- * NOT a workout dashboard: no map, no charts, no calories, no streak, no score.
+ * NOT a workout dashboard: no streak, no score. A walk's map, charts and photos
+ * live on its own page (workout/WorkoutPage.jsx); the newest hike leads here.
  * Every judgement is the server's (`outdoor-v1`); a hike is the hiking loop's
  * verdict and this card never re-derives it. Plans are drawn as plans, never as
  * activity; weather as context, never as evidence.
@@ -46,7 +48,7 @@ function Weather({ w }) {
 
 // One hike or walk as a tile: day and kind, its numbers, its chips and the
 // corrections. The evidence (or why it is not a hike) rides on hover.
-function ActivityTile({ a, routes, companions, act, busy }) {
+function ActivityTile({ a, routes, companions, act, busy, onOpen = null }) {
   const [routeId, setRouteId] = useState('');
   const ember = companions[0] || null;
   const hasEmber = ember && a.companions.some((c) => c.id === ember.id);
@@ -55,6 +57,7 @@ function ActivityTile({ a, routes, companions, act, busy }) {
   return (
     <Tile testid="outdoor-activity" why={why} title={`${dayLabel(a.day)} · ${KIND_WORDS[a.kind] || a.kind}`} sub={facts(a) || null}
       foot={<>
+        {onOpen && /^workout:\d+$/.test(a.activityId) && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => onOpen(a.activityId.slice(8))}>Open</button>}
         {a.kind === 'hike' && <span className="cn-chip">{STATE_WORDS[a.state] || a.state}</span>}
         {a.kind !== 'hike' && a.hike && <span className="cn-chip">not a hike</span>}
         {a.route && <span className="cn-chip" title="you linked it">route: {a.route.name || a.route.routeId}</span>}
@@ -110,7 +113,7 @@ function RouteForm({ act, busy }) {
   );
 }
 
-export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, goalNote = null }) {
+export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, goalNote = null, onOpen = null }) {
   const [planning, setPlanning] = useState(false);
   const s = data.summary;
   const g = data.goal;
@@ -168,7 +171,7 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, g
         {(data.hikeGaps || []).length > 0 && (
           <div className="cn-group-why">Hike workouts NEURO can’t confirm: {data.hikeGaps.map((a) => `${dayLabel(a.day)} (${a.hike.why})`).join('; ')}.</div>
         )}
-        {recent.length ? <TileGrid>{recent.map((a) => <ActivityTile key={a.activityId} a={a} routes={routes} companions={companions} act={act} busy={busy} />)}</TileGrid>
+        {recent.length ? <TileGrid>{recent.map((a) => <ActivityTile key={a.activityId} a={a} routes={routes} companions={companions} act={act} busy={busy} onOpen={onOpen} />)}</TileGrid>
           : <div className="cn-group-why">No hike or walk recorded in this window.</div>}
       </Fold>
 
@@ -207,13 +210,13 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, g
       </Fold>
 
       <HowItWorks>
-        {data.rule} {data.evidence && data.evidence.nickWins} Week: {data.week && data.week.convention}. Nothing here is a fitness score, nothing pushes except Hike safety’s check-in prompts, and NEURO keeps no record of where you went — only workouts Apple Health sent, your route plans, and what you link — except during a walk you arm in Life → Hike safety, whose trail is deleted 30 days after it ends.
+        {data.rule} {data.evidence && data.evidence.nickWins} Week: {data.week && data.week.convention}. Nothing here is a fitness score and nothing pushes except Hike safety’s check-in prompts. NEURO keeps the GPS track the watch records with a workout (since 12 Oct 2026), which is what each walk’s own page draws; Hike safety’s live trail is separate and is deleted 30 days after the walk ends.
       </HowItWorks>
     </section>
   );
 }
 
-export default function OutdoorCard() {
+export default function OutdoorCard({ onNavigate = null } = {}) {
   const { data, error, reload } = useCanonical('/api/outdoor');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -225,8 +228,11 @@ export default function OutdoorCard() {
   };
   return (
     <>
+      <LastHikeCard onNavigate={onNavigate} />
       <HikeSuggestion />
-      <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} goalNote={<GoalNote kinds="hikes" />} />
+      <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} goalNote={<GoalNote kinds="hikes" />}
+        onOpen={onNavigate ? (id) => onNavigate('workout', { workoutId: String(id) }) : null} />
+      {onNavigate && <div className="cn-actions"><button type="button" className="cn-btn" onClick={() => onNavigate('workout', null)}>All walks with a GPS track</button></div>}
       {msg && <div className="cn-error">Not saved — {msg}</div>}
     </>
   );

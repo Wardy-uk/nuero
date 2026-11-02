@@ -114,11 +114,11 @@ export function LifeFamilyPage({ onNavigate = null } = {}) {
   );
 }
 
-export function LifeOutdoorPage() {
+export function LifeOutdoorPage({ onNavigate } = {}) {
   return (
     <LifePage>
       {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}
-      <OutdoorCard />
+      <OutdoorCard onNavigate={onNavigate} />
     </LifePage>
   );
 }

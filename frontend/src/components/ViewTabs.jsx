@@ -23,6 +23,8 @@ export const VIEW_GROUPS = Object.freeze({
     { id: 'outdoor', label: 'Outdoor' },
     { id: 'hike-safety', label: 'Hike safety' },
     { id: 'weather', label: 'Weather' },
+    // A walk's own page (2 Nov 2026): part of Outdoor, so the entry stays lit, but not a tab.
+    { id: 'workout', label: 'Walks', hidden: true },
   ],
 });
 
@@ -39,7 +41,7 @@ export default function ViewTabs({ active, onNavigate }) {
   if (!group) return null;
   return (
     <div className="view-tabs" role="tablist">
-      {VIEW_GROUPS[group].map((t) => (
+      {VIEW_GROUPS[group].filter((t) => !t.hidden || t.id === active).map((t) => (
         <button key={t.id} type="button" role="tab" aria-selected={t.id === active}
           className={`view-tab${t.id === active ? ' view-tab--active' : ''}`}
           onClick={() => t.id !== active && onNavigate(t.id)}>

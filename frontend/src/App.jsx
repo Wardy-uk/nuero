@@ -60,6 +60,8 @@ const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
 const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
 const TaskWorkflowPage = lazyLoad(() => import('./components/TaskWorkflowPage'));
+// A workout, looked at properly (2 Nov 2026): ?view=workout&id=N, or the index without an id.
+const WorkoutPage = lazyLoad(() => import('./components/workout/WorkoutPage'));
 // The SAiM workspace (Brief 003): only mounted when its switch is on.
 const SaimWorkspace = lazyLoad(() => import('./components/SaimWorkspace'));
 const PeopleBoard = lazyLoad(() => import('./components/PeopleBoard'));
@@ -147,6 +149,7 @@ function readNueroLaunchIntent() {
   if (!view) return { view: 'today', context: null };
   // The Task workflow screen (31 Oct 2026): ?view=task&taskId=N&key=promise:N.
   if (view === 'task') return { view: 'task', context: { taskId: params.get('taskId') || null, key: params.get('key') || null } };
+  if (view === 'workout') return { view: 'workout', context: params.get('id') ? { workoutId: params.get('id') } : null };
   return {
     view: canonicalView(view),
     context: filter ? { filter } : null,
@@ -164,6 +167,8 @@ function syncNueroLaunchIntent(view, context = null) {
   else next.searchParams.delete('taskId');
   if (view === 'task' && context?.key) next.searchParams.set('key', context.key);
   else next.searchParams.delete('key');
+  if (view === 'workout' && context?.workoutId) next.searchParams.set('id', String(context.workoutId));
+  else next.searchParams.delete('id');
   window.history.replaceState({}, '', `${next.pathname}${next.search}${next.hash}`);
 }
 
@@ -482,7 +487,8 @@ function AuthenticatedApp() {
       case 'life': return <LifePanel />;
       case 'home': return <LifeHomePage />;
       case 'family': return <LifeFamilyPage onNavigate={handleNavigate} />;
-      case 'outdoor': return <LifeOutdoorPage />;
+      case 'outdoor': return <LifeOutdoorPage onNavigate={handleNavigate} />;
+      case 'workout': return <WorkoutPage key={navContext?.workoutId || 'index'} context={navContext} onNavigate={handleNavigate} />;
       case 'money': return <LifeMoneyPage />;
       case 'leisure': return <LifeLeisurePage />;
       case 'life-sources': return <LifeSourcesPage onNavigate={handleNavigate} />;
