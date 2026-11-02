@@ -7,6 +7,7 @@ import MeetingControls from './MeetingControls';
 import RoomOfferCard from './RoomOfferCard';
 import RouterRestartCard from './RouterRestart';
 import FrictionSection from './FrictionSection';
+import WeeklyTargetCard from './WeeklyTargetCard';
 import LeaveClashes from './LeaveClashes';
 import CalendarCare from './CalendarCare';
 import PersonalAutoOffers from './PersonalAutoOffers';
@@ -970,6 +971,9 @@ export default function AdhdPanel({ onNavigate }) {
             </button>
           </section>
         )}
+
+        {/* The week's task target (2 Nov 2026): set or change it here, not only on the phone. */}
+        <WeeklyTargetCard />
 
         {/* ── Momentum ── */}
         <section className="adhd__card">
