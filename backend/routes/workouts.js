@@ -12,6 +12,24 @@ const view = require('../services/workout-view');
 const router = express.Router();
 const send = (res, r) => res.status(r.ok ? 200 : r.status || 400).json(r);
 
+/**
+ * Rebuild a hike's vault note once, two minutes after the LAST photo for it
+ * arrives. Rebuilding per photo read the whole walk page (comparison, hike
+ * loop) dozens of times in a row during a backfill and held the event loop for
+ * seconds at a time — the walks list then took 10 s and the phone gave up.
+ */
+const NOTE_DEBOUNCE_MS = 2 * 60 * 1000;
+const noteTimers = new Map();
+function noteSoon(workoutId) {
+  clearTimeout(noteTimers.get(workoutId));
+  const t = setTimeout(() => {
+    noteTimers.delete(workoutId);
+    try { require('../services/workout-notes').syncOne(workoutId); } catch { /* the next workout-extras pass picks it up */ }
+  }, NOTE_DEBOUNCE_MS);
+  if (t.unref) t.unref();
+  noteTimers.set(workoutId, t);
+}
+
 // GET /api/workouts — every workout with a watch GPS track (hikes, walks, runs, rides), newest first: distance, time, ascent, photo count, a thin line for a thumbnail map.
 router.get('/', (req, res) => {
   try { res.json(view.list({ limit: req.query.limit ? Number(req.query.limit) : 200 })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -67,7 +85,7 @@ router.post('/:id/photos', (req, res) => {
     const r = view.storePhoto(req.params.id, { assetId, takenAt, lat, lon, width, height, full, thumb });
     if (r.ok && !r.already) {
       // The vault note picks the new photo up on the next pass; nothing is waited for here.
-      setImmediate(() => { try { require('../services/workout-notes').syncOne(Number(req.params.id)); } catch { /* next pass */ } });
+      noteSoon(Number(req.params.id));
     }
     send(res, r);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
