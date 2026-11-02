@@ -55,6 +55,7 @@ const CAPABILITIES = Object.freeze({
   'workout-route-summary': { since: 17, what: 'sends a GPS route SUMMARY with hiking/walking workouts (count and times, never coordinates)' },
   'calendar-window-60d': { since: 18, what: 'pushes 60 days of the phone diary ahead, not 14' },
   'calendar-types': { since: 18, what: 'reports each calendar\'s kind (local, subscribed, birthdays…)' },
+  'workout-photos': { since: 18, what: 'adds the photos taken during a tracked workout to its walk page' },
   'route-permission-report': { since: 18, what: 'reports whether workout-route access was ever asked for' },
   'food-names': { since: 18, what: 'sends each food item’s name (HKMetadataKeyFoodType) and item id with its nutrient samples' },
   'focus-block': { since: 18, what: 'renders and answers the focus block, with its Lock Screen and watch countdowns' },
