@@ -3,6 +3,7 @@ import { Face, Calendar, dayOfKey, time, DAYS, DAYS_LONG, MONTHS_LONG, dueLabel,
 import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nextSlot, decodeImage, FALLBACK_SRC, backgroundReport, logBackground, imageBySrc } from '../backgrounds';
 import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary, EventSheet, CareRows, HomeSheet, ShoppingSheet, NotesSheet, TeaSheet, WalkSheet } from './WallSheets';
 import WalkMap from '../components/WalkMap.jsx';
+import { LastWalkSheet, TrackSketch, walkSummary } from '../components/LastWalk.jsx';
 import './WallCinema.css';
 
 /**
@@ -760,6 +761,12 @@ export function dockItems(data, can) {
   if (can('tasks') && data.notes !== undefined) {
     out.push({ id: 'notes', label: 'Notes', badge: data.notes === null ? '!' : (data.notes.length || null) });
   }
+  // Nick's last walk (2 Nov 2026, scope `walks`): absent = no button; null = the
+  // button still opens and says there is none (or, with a gap, that it can't read it).
+  if (can('walks') && data.lastWalk !== undefined) {
+    const gap = data.lastWalk === null && (data.gaps || []).some((g) => g.block === 'lastWalk');
+    out.push({ id: 'lastWalk', label: 'Last walk', badge: gap ? '!' : null, line: data.lastWalk ? data.lastWalk.line : null, say: walkSummary(data.lastWalk) });
+  }
   return out;
 }
 
@@ -768,8 +775,9 @@ function Dock({ items, onOpen }) {
   return (
     <nav className="cine__dock" aria-label="House">
       {items.map((d) => (
-        <button key={d.id} className="cine__dockbtn" onClick={() => onOpen(d.id)} aria-label={d.badge != null ? `${d.label} (${d.badge})` : d.label}>
-          <span className="cine__dockicon" aria-hidden="true">{DOCK_ICONS[d.id]}</span>
+        <button key={d.id} className={`cine__dockbtn${d.id === 'lastWalk' ? ' cine__dockbtn--walk' : ''}`} onClick={() => onOpen(d.id)}
+                aria-label={d.badge != null ? `${d.label} (${d.badge})` : d.say ? `${d.label}: ${d.say}` : d.label}>
+          <span className="cine__dockicon" aria-hidden="true">{d.id === 'lastWalk' ? <TrackSketch line={d.line} /> : DOCK_ICONS[d.id]}</span>
           <span className="cine__docklabel">{d.label}</span>
           {d.badge != null && <span className={`cine__badge${d.badge === '!' ? ' cine__badge--gap' : ''}`}>{d.badge}</span>}
         </button>
@@ -851,6 +859,9 @@ export function Sheet({ sheet, data, onClose, onOpenWeek, act, setSheet, dirty, 
   } else if (sheet.kind === 'tea' && act && act.tea) {
     title = 'Tea'; top = true;
     body = <TeaSheet tea={data.tea} today={data.today} act={act} setDirty={setDirty} teaShopping={data.teaShopping} />;
+  } else if (sheet.kind === 'lastWalk') {
+    title = 'Nick’s last walk'; wide = true;
+    body = <LastWalkSheet walk={data.lastWalk} gap={((data.gaps || []).find((g) => g.block === 'lastWalk') || {}).why || null} />;
   } else if (sheet.kind === 'walk') {
     title = 'Nick’s walk'; wide = true;
     body = <WalkSheet walk={data.walk} MapView={WalkMap} />;
@@ -945,7 +956,8 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
             </div>
             <div className="cine__right">
               {data && can('house') && <Outside station={data.station} outlook={data.outlook} onOpen={() => setSheet({ kind: 'weather' })} onWeek={data.weekAhead !== undefined ? () => setSheet({ kind: 'forecast' }) : null} />}
-              {act && <Dock items={dockItems(data, can)} onOpen={(id) => setSheet({ kind: id })} />}
+              {/* Without `act` (a read-only wall) only the last walk opens — it changes nothing. */}
+              <Dock items={dockItems(data, can).filter((d) => act || d.id === 'lastWalk')} onOpen={(id) => setSheet({ kind: id })} />
               {data && <DayBits part="chips" data={data} can={can} onTea={() => setSheet({ kind: 'tea' })} />}
             </div>
           </header>

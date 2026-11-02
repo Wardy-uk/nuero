@@ -10,6 +10,8 @@
  *   POST /api/v/tasks    { text, for } → add a task
  *   POST /api/v/kitchen  { place, name } → something went in
  *   POST /api/v/kitchen/used { place, name } → something got eaten
+ *   GET  /api/v/walks/last  → Nick's last walk (scope `walks`)
+ *   GET  /api/v/walks/photo/:photoId?size=thumb|full → a photo of THAT walk only
  *
  * ⚠ THIS IS PUBLIC. pi5 runs Tailscale Funnel, so an auth exemption publishes
  * these routes to the internet, not merely to the tailnet. That is the point —
@@ -57,6 +59,31 @@ function requireAccount(req, res, next) {
   const fresh = capture.renewSession(token);
   if (fresh) res.set('X-Vesta-Session', fresh);
   next();
+}
+
+// ── Nick's last walk (2 Nov 2026, scope `walks`) ─────────────────────────────
+// The newest hike's page is a heavy read (track, heart rate, comparisons), and
+// the wall polls every minute from several screens, so the redacted shape is
+// kept for a minute. A failed read is never kept.
+const WALK_MEMO_MS = process.env.VESTA_WALK_MEMO_MS != null ? Number(process.env.VESTA_WALK_MEMO_MS) : 60 * 1000;
+let _walkMemo = null;
+/** { walk } — the redacted last walk, or null when none. Throws when it could not be read. */
+function lastWalk() {
+  if (_walkMemo && Date.now() - _walkMemo.at < WALK_MEMO_MS) return _walkMemo.value;
+  const page = require('../services/workout-view').lastHike();
+  if (!page || page.ok === false) throw new Error((page && page.error) || 'the last walk could not be read');
+  const value = vesta.householdWalk(page);
+  _walkMemo = { at: Date.now(), value };
+  return value;
+}
+/** Attach `lastWalk` to a payload — ABSENT without the scope, null + a gap when unreadable. */
+function attachLastWalk(req, out) {
+  if (!capture.hasScope(req.account, 'walks')) return;
+  try { out.lastWalk = lastWalk(); } catch (e) {
+    out.lastWalk = null;
+    out.gaps.push({ block: 'lastWalk', why: 'could not read the last walk' });
+    console.error('[Vesta] Last walk failed:', e.message);
+  }
 }
 
 router.post('/login', (req, res) => {
@@ -127,6 +154,10 @@ router.get('/home', requireAccount, async (req, res) => {
       console.error('[Vesta] Energy block failed:', e.message);
     }
   }
+
+  // ── Nick's last walk ─────────────────────────────────────────────────────
+  // ⚠ ABSENT without the `walks` scope (its own, never bundled with `hike`).
+  attachLastWalk(req, out);
 
   // ── Where Nick is in the house ───────────────────────────────────────────
   //
@@ -474,6 +505,7 @@ router.get('/wall', requireAccount, (req, res) => {
     out.week = board.stampWeek(out.week, marked);
   }
   block('walk', 'hike', 'could not read the walk', () => require('../services/hike-safety').householdView());
+  attachLastWalk(req, out);
   if (capture.hasScope(req.account, 'kitchen')) {
     try {
       const s = board.readShopping();
@@ -616,6 +648,43 @@ router.get('/photo/:id', requireAccount, (req, res) => {
     res.sendFile(f.path);
   } catch (e) {
     console.error('[Vesta] Photo failed:', e.message);
+    res.status(500).json({ ok: false, error: 'Something went wrong.' });
+  }
+});
+
+// GET /api/v/walks/last — Nick's last walk (map, distance, time, ascent, photos). Behind the `walks` scope.
+router.get('/walks/last', requireAccount, (req, res) => {
+  if (!capture.hasScope(req.account, 'walks')) {
+    return res.status(403).json({ ok: false, error: 'Not enabled for this account.' });
+  }
+  try {
+    res.json({ ok: true, walk: lastWalk() });
+  } catch (e) {
+    console.error('[Vesta] Last walk read failed:', e.message);
+    res.status(500).json({ ok: false, error: 'I could not read the last walk just now.' });
+  }
+});
+
+/**
+ * A photo from Nick's last walk. Behind `walks`, and ONLY a photo of the CURRENT
+ * last walk — the household sees the last walk, not the archive.
+ */
+router.get('/walks/photo/:photoId', requireAccount, (req, res) => {
+  if (!capture.hasScope(req.account, 'walks')) {
+    return res.status(403).json({ ok: false, error: 'Not enabled for this account.' });
+  }
+  const size = req.query && req.query.size === 'thumb' ? 'thumb' : 'full';
+  try {
+    const walk = lastWalk();
+    const id = String(req.params.photoId || '');
+    if (!walk || !walk.photos.some((p) => p.id === id)) return res.status(404).json({ ok: false, error: 'no photo' });
+    const f = require('../services/workout-view').photoFile(id, size);
+    if (!f) return res.status(404).json({ ok: false, error: 'no photo' });
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.type('jpeg');
+    res.sendFile(f);
+  } catch (e) {
+    console.error('[Vesta] Walk photo failed:', e.message);
     res.status(500).json({ ok: false, error: 'Something went wrong.' });
   }
 });

@@ -86,7 +86,12 @@ const STATE_KEY = 'capture_links';
 // household sockets and boost a radiator, from the family wall's Home sheet. A
 // write to the house from a public mount, so its own scope and not a default;
 // `house` (seeing who is in) never brings it.
-const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy', 'family-calendar', 'home-control'];
+// `walks` (2 Nov 2026) is Nick's LAST finished hike: its GPS track on a map,
+// distance, time, ascent, the weather and his photos from it — "Nick's last
+// walk". A record of where he walked, so its own scope and not a default; `hike`
+// (the live tracker during an armed walk) never brings it, and it never brings
+// `hike`. Heart rate beyond the average, body metrics and splits never leave.
+const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike', 'house', 'energy', 'family-calendar', 'home-control', 'walks'];
 const DEFAULT_SCOPES = ['tasks'];
 
 /** Normalise a requested scope list. Unknown scopes are DROPPED, never passed

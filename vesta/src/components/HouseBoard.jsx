@@ -2,6 +2,7 @@ import { dayOfKey, time, DAYS_LONG, MONTHS_LONG } from '../views/Wall.jsx';
 import { presenceLine, nextLine, outlookLines, weatherIcon, Presence as Faces, I, DOCK_ICONS } from '../views/WallCinema.jsx';
 import { CareRows } from '../views/WallSheets.jsx';
 import Section from './Section.jsx';
+import { LastWalkCard } from './LastWalk.jsx';
 
 /**
  * The family wall's features on the phone (1 Nov 2026), in the wall's own look
@@ -93,9 +94,14 @@ export default function HouseBoard({ board, boardErr, open }) {
     tiles.push(<Tile key="home" icon={DOCK_ICONS.home} label="Home" value="Lights & heating" onClick={() => open({ kind: 'home' })} />);
   }
   const countdowns = can('calendar') ? board.countdowns : undefined;
+  // Nick's last walk (scope `walks`): absent = not mounted at all.
+  const walkGap = ((board.gaps || []).find((g) => g.block === 'lastWalk') || {}).why || null;
   return (
     <>
       {tiles.length > 0 && <div className="vh__tiles">{tiles}</div>}
+      {can('walks') && board.lastWalk !== undefined && (
+        <LastWalkCard walk={board.lastWalk} gap={walkGap} onOpen={() => open({ kind: 'lastWalk' })} />
+      )}
       {countdowns === null && <p className="section__gap" role="status">I couldn’t read the countdowns.</p>}
       {Array.isArray(countdowns) && countdowns.length > 0 && (
         <ul className="vh__countdowns" aria-label="Countdowns">

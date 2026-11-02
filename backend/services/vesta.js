@@ -422,8 +422,88 @@ function suggestMeals(cat = {}, { limit = 4 } = {}) {
   };
 }
 
+
+// ── Nick's last walk (2 Nov 2026, scope `walks`) ─────────────────────────────
+
+const WALK_LINE_MAX = 600;
+const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/** Thin a [[lat, lon], …] line to at most `max` points, keeping both ends. PURE. */
+function thinLine(line, max = WALK_LINE_MAX) {
+  const pts = Array.isArray(line) ? line.filter((p) => Array.isArray(p) && isFiniteNum(p[0]) && isFiniteNum(p[1])) : [];
+  if (pts.length <= max) return pts.map((p) => [p[0], p[1]]);
+  const out = [];
+  const step = (pts.length - 1) / (max - 1);
+  for (let i = 0; i < max; i++) { const p = pts[Math.round(i * step)]; out.push([p[0], p[1]]); }
+  return out;
+}
+
+const _point = (p, name) => (p && isFiniteNum(p.lat) && isFiniteNum(p.lon) ? { lat: p.lat, lon: p.lon, name: name || null } : null);
+
+/**
+ * The newest hike's page (workout-view-v1) → what the household may see. PURE.
+ *
+ * ⚠ AN ALLOW-LIST, never a copy with things deleted: heart-rate series, body
+ *   metrics, splits, the vault note's path, nav to other walks, the home weather
+ *   station and the logger never leave NEURO by this route. A field added to the
+ *   page later stays private until it is named here.
+ * Returns null when there is no walk.
+ */
+function householdWalk(page) {
+  if (!page || !page.workout) return null;
+  const w = page.workout;
+  const watch = page.watch || {};
+  const track = page.track && page.track.known !== false ? page.track : {};
+  const map = page.map || {};
+  const places = page.places || {};
+  const highest = (track.highest && isFiniteNum(track.highest.eleM) ? track.highest.eleM : null)
+    ?? (map.highest && isFiniteNum(map.highest.eleM) ? map.highest.eleM : null);
+  const weather = page.weather && page.weather.state === 'ok' && page.weather.summary ? {
+    words: page.weather.summary.words ?? null,
+    tempMinC: page.weather.summary.tempMinC ?? null,
+    tempMaxC: page.weather.summary.tempMaxC ?? null,
+    rainMm: page.weather.summary.rainMm ?? null,
+    windMaxMph: page.weather.summary.windMaxMph ?? null,
+    gustMaxMph: page.weather.summary.gustMaxMph ?? null,
+  } : null;
+  // Where each photo sits on the map, from the map's own pins (placed by GPS or by time).
+  const pins = new Map((map.photos || []).map((p) => [p.id, p]));
+  const photos = (page.photos || []).map((p) => {
+    const pin = pins.get(p.id) || p;
+    return {
+      id: p.id,
+      lat: isFiniteNum(pin.lat) ? pin.lat : null,
+      lon: isFiniteNum(pin.lon) ? pin.lon : null,
+      takenLocal: p.takenLocal || null,
+      width: isFiniteNum(p.width) ? p.width : null,
+      height: isFiniteNum(p.height) ? p.height : null,
+    };
+  });
+  return {
+    id: w.id,
+    day: w.day || null,
+    title: w.title || 'Walk',
+    startLocal: w.startLocal || null,
+    endLocal: w.endLocal || null,
+    distanceM: isFiniteNum(watch.distanceM) ? watch.distanceM : (isFiniteNum(track.distanceM) ? track.distanceM : null),
+    durationSeconds: isFiniteNum(watch.durationSeconds) ? watch.durationSeconds : null,
+    ascentM: isFiniteNum(watch.ascentM) ? watch.ascentM : (isFiniteNum(track.ascentM) ? track.ascentM : null),
+    highestM: isFiniteNum(highest) ? Math.round(highest) : null,
+    line: thinLine(map.line),
+    start: _point(map.start, places.start && places.start.name),
+    end: _point(map.end, places.end && places.end.name),
+    photos,
+    weather,
+    companions: (page.companions || []).map((c) => c && c.name).filter(Boolean),
+    avgHr: isFiniteNum(watch.avgHr) ? watch.avgHr : null,
+  };
+}
+
 module.exports = {
   // pure
+  householdWalk,
+  thinLine,
+  WALK_LINE_MAX,
   redactEvent,
   redactDay,
   redactWeek,

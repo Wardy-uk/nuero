@@ -81,8 +81,12 @@ function busyData() {
   days[1].events.push({ id: 'd', title: 'Isaac swimming', start: '2026-10-26T17:00:00', end: '2026-10-26T18:00:00' });
   days[1].work = { allDay: false, start: '2026-10-26T09:00:00', end: '2026-10-26T17:30:00' };
   return {
-    scopes: ['tasks', 'calendar', 'house', 'kitchen', 'hike', 'home-control', 'energy'],
+    scopes: ['tasks', 'calendar', 'house', 'kitchen', 'hike', 'home-control', 'energy', 'walks'],
     today: '2026-10-25', from: '2026-10-25', days: 42, gaps: [], week: days,
+    // Nick's last walk (2 Nov 2026): a fourth dock button, which must still fit.
+    lastWalk: { id: 7, day: '2026-10-24', title: 'Hike from near Breedon', startLocal: '2026-10-24T09:42', endLocal: '2026-10-24T11:44',
+      distanceM: 9512, durationSeconds: 7320, ascentM: 208, highestM: 291, line: [[52.68, -1.30], [52.69, -1.31], [52.70, -1.30], [52.68, -1.30]],
+      start: { lat: 52.68, lon: -1.30, name: null }, end: null, photos: [], weather: null, companions: [], avgHr: null },
     tasks: { total: 6, tasks: [
       { id: 1, text: 'Clean the gutters', short: 'Clean gutters', dueDate: '2026-10-20', overdue: true, dueToday: false, who: ['Nick'] },
       { id: 2, text: 'Book the boiler service', short: 'Book boiler service', dueDate: null, overdue: false, dueToday: false, who: [] }] },
@@ -233,6 +237,7 @@ test('every new piece fits 1024×748 and 1180×820 with no scrolling — iPad an
     assert.ok(!overlap(m.left, m.right), `${at}: the clock column and the right column overlap`);
     assert.ok(m.strip.bottom <= m.vh + 1, `${at}: the strip is cut off`);
     for (const hgt of m.dockBtns) assert.ok(hgt >= 44, `${at}: a dock button is ${hgt}px tall (< 44)`);
+    if (!process.env.WALL_PLAIN) assert.equal(m.dockBtns.length, 4, `${at}: Home, Shopping, Notes and the last walk are all in the dock`);
   }
 });
 

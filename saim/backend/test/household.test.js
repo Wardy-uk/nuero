@@ -54,6 +54,13 @@ test('the doors are exactly the wall, photos, household jobs and the family cale
   }
 });
 
+test("Nick's last walk (2 Nov 2026): only its photos open, and only a real photo id", () => {
+  assert.ok(isDoor('GET', '/walks/photo/wp_0123456789abcdef'));
+  for (const [m, p] of [['GET', '/walks/last'], ['GET', '/walks/photo/../x'], ['GET', '/walks/photo/wp_xyz'], ['POST', '/walks/photo/wp_0123456789abcdef']]) {
+    assert.equal(isDoor(m, p), false, `${m} ${p} stays shut`);
+  }
+});
+
 test('the wall additions (25 Oct 2026) are open by name, and only by name', () => {
   for (const [m, p] of [['GET', '/home-control'], ['POST', '/home-control'], ['POST', '/tea'], ['POST', '/notes'],
     ['POST', '/notes/a1b2c3d4e5f6/clear'], ['POST', '/countdowns'], ['POST', '/shopping/add'], ['POST', '/shopping/bought']]) {

@@ -26,6 +26,9 @@ const neuroConfig = require('../integrations/neuroConfig');
 const DOORS = [
   { method: 'GET', re: /^\/wall$/ },
   { method: 'GET', re: /^\/photo\/[A-Za-z0-9_-]{1,80}$/ },
+  // Nick's last walk (2 Nov 2026): its photos. The walk itself rides on /wall;
+  // NEURO serves only photos of the CURRENT last walk, behind the `walks` scope.
+  { method: 'GET', re: /^\/walks\/photo\/wp_[0-9a-f]{16}$/ },
   { method: 'POST', re: /^\/tasks$/ },
   { method: 'PATCH', re: /^\/tasks\/[A-Za-z0-9_-]{1,80}$/ },
   { method: 'POST', re: /^\/family-calendar\/events$/ },
@@ -45,6 +48,8 @@ const DOORS = [
   { method: 'POST', re: /^\/shopping\/add$/ },
   { method: 'POST', re: /^\/shopping\/bought$/ },
 ];
+
+const isPhoto = (p) => String(p || '').startsWith('/photo/') || String(p || '').startsWith('/walks/photo/');
 
 function isDoor(method, path) {
   const p = String(path || '');
@@ -95,7 +100,7 @@ function createRouter(options = {}) {
     return fetchImpl(`${base}/api/v${req.url}`, {
       method: req.method,
       headers: {
-        accept: req.path.startsWith('/photo/') ? 'image/*' : 'application/json',
+        accept: isPhoto(req.path) ? 'image/*' : 'application/json',
         ...(hasBody ? { 'content-type': 'application/json' } : {}),
         // The browser's own Authorization (it has none) is never passed on.
         authorization: `Bearer ${tok}`,
@@ -130,7 +135,7 @@ function createRouter(options = {}) {
       res.status(upstream.status);
       res.type(upstream.headers.get('content-type') || 'application/json');
       // Photos are fetched once and kept by the browser.
-      if (req.path.startsWith('/photo/')) res.set('cache-control', 'private, max-age=86400');
+      if (isPhoto(req.path)) res.set('cache-control', 'private, max-age=86400');
       return res.send(body);
     } catch (e) {
       const aborted = e.name === 'AbortError' || e.name === 'TimeoutError';

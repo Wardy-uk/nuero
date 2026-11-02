@@ -162,9 +162,29 @@ async function photoUrlUncached(token, id, key) {
   } catch { return null; }
 }
 
+/**
+ * A photo from Nick's last walk (scope `walks`), as an object URL; null if it
+ * could not be read. A walk photo never changes once stored, so the bytes are
+ * kept in memory for the life of the page (id + size), never on disk.
+ */
+const walkPhotos = new Map();
+export async function walkPhotoUrl(token, id, size = 'thumb') {
+  const key = `${API_BASE}/api/v/walks/photo/${encodeURIComponent(id)}?size=${size === 'full' ? 'full' : 'thumb'}`;
+  const mem = walkPhotos.get(key);
+  if (mem) return URL.createObjectURL(mem);
+  try {
+    const res = await fetch(key, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    walkPhotos.set(key, blob);
+    return URL.createObjectURL(blob);
+  } catch { return null; }
+}
+
 /** Forget every cached photo (sign-out). */
 export async function clearPhotoCache() {
   memPhotos.clear();
+  walkPhotos.clear();
   try { if (typeof caches !== 'undefined') await caches.delete(PHOTO_CACHE); } catch { /* nothing kept */ }
 }
 

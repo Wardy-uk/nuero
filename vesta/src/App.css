@@ -528,3 +528,16 @@ body:has(.home--cine) { background: #050608; }
 
 .home__updated { font-size: 13px; color: var(--ink-faint); }
 .home--cine .home__foot { flex-wrap: wrap; gap: 6px 10px; }
+
+/* Nick's last walk on Home (2 Nov 2026, scope `walks`). The map is a picture here. */
+.lw--card { margin-bottom: var(--gap); padding: 14px; border-radius: 20px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+.lw--card .lw__open { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lw--card .lw__h { margin: 0; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 400; }
+.lw--card .lw__title { font-size: 17px; font-weight: 600; }
+.lw--card .lw__line { font-size: 15px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.lw--card .lw__quiet { margin: 6px 0 0; color: var(--ink-faint); }
+.lw__map--still { display: block; pointer-events: none; border-radius: 12px; overflow: hidden; }
+.lw__map--still .leaflet-control-zoom { display: none; }
+.lw--card .lw__thumbs { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; }
+.lw--card .lw__photo { flex: none; width: 64px; height: 64px; }
+.lw--card .lw__more { flex: none; align-self: center; color: var(--ink-faint); }
