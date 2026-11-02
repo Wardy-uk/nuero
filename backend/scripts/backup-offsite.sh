@@ -80,6 +80,18 @@ fail() { log "FAILED: $*"; write_status "failed" "$*"; exit 1; }
 
 log "=== offsite start ==="
 
+# Off-site push switched OFF on purpose (Nick, 23 Oct 2026). Checked FIRST, before
+# any rclone call, so a stray cron line or a manual run cannot reach Backblaze.
+# The status is `disabled`, never `ok`: a run that pushed nothing must not
+# report an off-site success. Re-enable: remove the flag file and restore the
+# root crontab line (see the Stage 1 deployment record in the vault).
+OFFSITE_DISABLED_FLAG=/etc/neuro/offsite-disabled
+if [ -e "$OFFSITE_DISABLED_FLAG" ]; then
+  log "off-site push disabled ($OFFSITE_DISABLED_FLAG) — no Backblaze request made"
+  write_status "disabled" "Local backups active; off-site Backblaze backup intentionally disabled by Nick on 23 Oct 2026."
+  exit 0
+fi
+
 # Setup-not-finished is NOT failure. Both of the checks below are states this
 # job legitimately sits in between being deployed and the B2 key existing, and
 # reporting them as failures would light a critical alert on day one — which is
@@ -100,19 +112,31 @@ fi
 [ -d "$SNAPSHOT" ] || fail "$SNAPSHOT does not exist — has backup-data.sh ever run?"
 
 # --- Stage the one DB copy we want ------------------------------------------
-# The snapshot holds 28 rotated copies; take the newest and give it a stable
-# name, so the off-site copy is "the database" rather than a dated pile that
-# would accumulate in the bucket forever.
-rm -rf "$STAGE"; mkdir -p "$STAGE"
-NEWEST_DB=$(ls -t "$SNAPSHOT"/backups/nuero-db/agent-*.db 2>/dev/null | head -1)
+# Take the newest integrity-checked copy backup-data.sh wrote and give it a
+# stable name, so the off-site copy is "the database" rather than a dated pile
+# that would accumulate in the bucket forever.
+#
+# 23 Oct 2026: read from where backup-data.sh WRITES the copies, not from the
+# snapshot. backup-data.sh has excluded /backups/ from snapshots since 18 Sep,
+# so "$SNAPSHOT/backups/nuero-db" no longer exists and every run from 19 Sep
+# went off-site WITHOUT the database while reporting "ok".
+DB_COPIES=/mnt/data/backups/nuero-db
+rm -rf "$STAGE"; mkdir -p "$STAGE"; chmod 700 "$STAGE"
+DB_STAGED=0
+NEWEST_DB=$(ls -t "$DB_COPIES"/agent-*.db 2>/dev/null | head -1)
 if [ -n "$NEWEST_DB" ] && [ -s "$NEWEST_DB" ]; then
-  cp "$NEWEST_DB" "$STAGE/agent.db"
-  echo "$(basename "$NEWEST_DB")" > "$STAGE/agent.db.source"
-  log "staged database: $(basename "$NEWEST_DB") ($(du -h "$STAGE/agent.db" | cut -f1))"
-else
-  # Not fatal — the vault is the irreplaceable part and must still go. But it
-  # is loud, because a missing DB copy means backup-data.sh's step 1 is broken.
-  log "WARNING: no usable agent-*.db in the snapshot — continuing WITHOUT the database"
+  if (umask 077; cp "$NEWEST_DB" "$STAGE/agent.db" && basename "$NEWEST_DB" > "$STAGE/agent.db.source"); then
+    chmod 600 "$STAGE/agent.db" "$STAGE/agent.db.source"
+    DB_STAGED=1
+    log "staged database: $(basename "$NEWEST_DB") ($(du -h "$STAGE/agent.db" | cut -f1))"
+  else
+    log "WARNING: copying $(basename "$NEWEST_DB") into the stage failed"
+  fi
+fi
+if [ "$DB_STAGED" -ne 1 ]; then
+  # The vault is the irreplaceable part and must still go, so carry on — but
+  # the run is reported FAILED at the end, never ok.
+  log "WARNING: no usable agent-*.db in $DB_COPIES — continuing WITHOUT the database"
 fi
 
 # --- Push --------------------------------------------------------------------
@@ -135,15 +159,32 @@ push() {
   return 0
 }
 
+# The database goes FIRST (23 Oct 2026): it is two files and costs a handful
+# of B2 transactions, while the vault walk costs thousands — and on 22 Oct the
+# daily transaction cap cut the run off part-way, after the vault, before the
+# database. The path that was missing must not be the one most likely to be
+# cut off.
+# Never sync an EMPTY stage: `sync --b2-hard-delete` would delete the last
+# good off-site database to match it.
+if [ "$DB_STAGED" -eq 1 ]; then
+  push "$STAGE"                "neuro-db"
+else
+  log "skip neuro-db — nothing staged, leaving the remote copy untouched"
+fi
 push "$SNAPSHOT/nuero-vault"   "nuero-vault"
 push "$SNAPSHOT/homeassistant" "homeassistant"
 push "$SNAPSHOT/syncthing"     "syncthing"
-push "$STAGE"                  "neuro-db"
+# Workout photos (2 Nov 2026): the resized copies the iPhone sends for each
+# tracked walk. Not regenerable once the phone's library is pruned.
+push "$SNAPSHOT/neuro-workout-photos" "neuro-workout-photos"
 
 rm -rf "$STAGE"
 
 if [ "$RC_TOTAL" -ne 0 ]; then
-  fail "$RC_TOTAL of 4 paths failed to sync"
+  fail "$RC_TOTAL of 5 paths failed to sync"
+fi
+if [ "$DB_STAGED" -ne 1 ]; then
+  fail "the other paths synced, but no database copy was staged — off-site holds no current agent.db"
 fi
 
 # --- Verify, rather than assume ----------------------------------------------
