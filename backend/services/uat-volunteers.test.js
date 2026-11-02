@@ -381,3 +381,66 @@ test('the answer page: GET shows buttons and records nothing; POST records; unkn
     assert.equal(bad.status, 404);
   } finally { server.close(); D.now = saved.now; D.getAction = saved.getAction; }
 });
+
+// ── Sending without a press (uat_auto_send, 2 Nov 2026) ─────────────────────
+
+test('auto-send is blocked by every uncertainty, and only then', () => {
+  const ok = { flagOn: true, wall: { time: '09:00' }, workingDay: true, feedDown: false, unfilled: 0 };
+  assert.equal(uat.autoBlockedBy(ok), null);
+  assert.equal(uat.autoBlockedBy({ ...ok, flagOn: false }), 'switch-off');
+  assert.equal(uat.autoBlockedBy({ ...ok, workingDay: false }), 'not-a-working-day');
+  assert.equal(uat.autoBlockedBy({ ...ok, wall: { time: '07:59' } }), 'outside-hours');
+  assert.equal(uat.autoBlockedBy({ ...ok, wall: { time: '18:00' } }), 'outside-hours');
+  assert.equal(uat.autoBlockedBy({ ...ok, feedDown: true }), 'leave-unreadable');
+  assert.equal(uat.autoBlockedBy({ ...ok, unfilled: 1 }), 'pool-unfilled');
+  // The reply to Dan needs no pick rules: the picks are settled by then.
+  assert.equal(uat.autoBlockedBy({ ...ok, feedDown: true, unfilled: 1, forInvites: false }), null);
+  // The switch approves this origin and no other.
+  assert.equal(require('./intent-grants').STANDING_SWITCH_ORIGINS['uat-volunteers'], 'uat_auto_send');
+});
+
+function autoWorld({ date, now, flagOn = true, feedDown = false }) {
+  const w = world({ extractText: EXTRACT_OK.replace('2026-10-28', date) });
+  w.now = Date.parse(now);
+  w.approved = [];
+  Object.assign(w.deps, {
+    autoOn: () => flagOn,
+    leaveSnapshot: () => (feedDown ? { known: false } : { known: true, rosterCount: PEOPLE.length }),
+    approve: (id, opts) => { w.approved.push({ id, sw: opts.standingSwitch }); return { ok: true }; },
+    execute: async (id) => { w.executed.add(id); return { ok: true }; },
+  });
+  return w;
+}
+
+test('under the switch: invites go, answers come in, the reply to Dan goes — no press', async () => {
+  const w = autoWorld({ date: '2027-01-13', now: '2027-01-11T10:00:00Z' }); // a Monday, 10:00 GMT
+  const { rounds: [id] } = await uat.scanTriage([DAN_ENTRY('mail-auto')], w.deps);
+  await uat.tick(w.deps, { roundId: id });
+  assert.deepEqual(sels(id).map((s) => s.status), ['sent', 'sent']);
+  assert.ok(w.approved.length === 2 && w.approved.every((a) => a.sw === 'uat_auto_send'));
+  assert.equal(w.pushes.filter((p) => /check the picks/i.test(p.body)).length, 0, 'no "go and send them" push');
+  assert.ok(w.pushes.some((p) => /invited/.test(p.title)));
+
+  for (const s of sels(id)) {
+    const token = tokenIn(pa.get(s.action_id).draft.body);
+    await uat.respond(token, 'confirm', w.deps);
+  }
+  assert.equal(round(id).status, 'done');
+  assert.equal(w.approved.length, 3, 'the reply to Dan was approved by the switch too');
+  assert.ok(w.pushes.some((p) => /told Dan/.test(p.title)));
+});
+
+test('outside hours, switch off, or leave unreadable: the invites wait for a press', async () => {
+  for (const [i, opts] of [
+    { now: '2027-01-18T19:00:00Z' },
+    { now: '2027-01-18T10:00:00Z', flagOn: false },
+    { now: '2027-01-18T10:00:00Z', feedDown: true },
+  ].entries()) {
+    const w = autoWorld({ date: `2027-01-2${i}`, ...opts });
+    const { rounds: [id] } = await uat.scanTriage([DAN_ENTRY(`mail-wait-${i}`)], w.deps);
+    await uat.tick(w.deps, { roundId: id });
+    assert.ok(sels(id).every((s) => s.status === 'invited'), JSON.stringify(opts));
+    assert.equal(w.approved.length, 0);
+    assert.ok(w.pushes.some((p) => /check the picks/i.test(p.body)), 'Nick is told to send them');
+  }
+});

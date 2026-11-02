@@ -130,6 +130,9 @@ const CAPABILITIES = Object.freeze({
   // (authority_proof standing_switch), never a machine. NOVA's request
   // (/api/1to1/booking-request, calendar.attendee.create, machine: prepare) can only
   // ASK; nothing a caller sends can approve. No route maps here: it runs in-process.
+  // 2 Nov 2026: UAT volunteer invites and the reply to Dan, sent without a press
+  // under the uat_auto_send switch (standing approval). In-process; no route.
+  'email.uat-auto-send': { authority: 'A4', effect: 'email UAT invites to team members and the names to the requester as Nick, without a press', machine: 'refuse', approval: 'the uat_auto_send switch (standing approval)', registry: null, ledger: true, verification: 'sent-items (the governed executor)', idempotent: 'one invite per pick; one reply per round; one attempt per approved version' },
   'calendar.1to1-auto-book': { authority: 'A4', effect: 'invite a direct report to their next 1-2-1 as Nick, without a press', machine: 'refuse', approval: 'the one_to_one_auto_book switch (standing approval)', registry: null, ledger: true, verification: 'read-back (the governed executor)', idempotent: 'one live booking per person; one attempt per approved version' },
   // 1 Nov 2026 (calendar care): an agenda added to the body of a meeting Nick
   // organises — attendees get Outlook's update. Prepared, confirmed with a press.

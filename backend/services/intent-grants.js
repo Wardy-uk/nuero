@@ -106,6 +106,8 @@ const ORIGIN_INITIATOR = Object.freeze({
 // and the switch is re-read at the moment of approval (prepared-actions.approve).
 const STANDING_SWITCH_ORIGINS = Object.freeze({
   '1to1-auto': 'one_to_one_auto_book',
+  // 2 Nov 2026: UAT invites and the reply to Dan, under uat_auto_send.
+  'uat-volunteers': 'uat_auto_send',
 });
 
 // The only proofs that may authorise an action from now on. `trusted_device`

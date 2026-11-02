@@ -15,7 +15,12 @@
  *   tick       every 5 min: invites that went → 'sent' (their window runs);
  *              a window that closed with no answer → 'accepted'; when every
  *              pool is confirmed/accepted → Dan's reply is prepared and Nick
- *              is pushed. Nothing is ever sent without his press.
+ *              is pushed.
+ *   auto       2 Nov 2026: under the uat_auto_send switch (default ON) the
+ *              invites and the reply go WITHOUT a press — the switch is the
+ *              approval (standing_switch) — but only when every pool has a pick,
+ *              People HR is readable, on a working day 08:00–18:00. Otherwise
+ *              they wait for his press exactly as before.
  *
  * ⚠ The rota is derived: someone's turn is the last time an invite to them was
  * SENT and they did not decline. A decline keeps their place.
@@ -31,6 +36,9 @@ const SEEN_KEY = 'uat_seen_emails';
 const SEEN_MAX = 300;
 const MAX_DETECT_PER_PASS = 3;
 const STALE_INVITE_MS = 60 * 60 * 1000; // a draft still unsent 1h before its stated deadline is redrafted
+// 2 Nov 2026: the switch that sends the invites and the reply without a press.
+const AUTO_FLAG = 'uat_auto_send';
+const AUTO_HOURS = { from: '08:00', to: '18:00' };
 
 const DEFAULT_DEPS = {
   people: () => require('./team-roster').readPeople(),
@@ -49,6 +57,9 @@ const DEFAULT_DEPS = {
   getAction: (id) => require('./prepared-actions').get(id),
   rejectAction: (id, opts) => require('./prepared-actions').reject(id, opts),
   push: (title, body, data) => require('./webpush').sendToAll(title, body, { type: 'uat_volunteers', ...(data || {}) }),
+  autoOn: () => { try { return require('./feature-flags').isEnabled(AUTO_FLAG); } catch { return false; } },
+  approve: (id, opts) => require('./prepared-actions').approve(id, opts),
+  execute: (id) => require('./action-executor').execute(id),
   now: () => Date.now(),
   publicBase: () => String(process.env.NEURO_PUBLIC_URL || 'https://pi5.tailecb90f.ts.net').replace(/\/+$/, ''),
 };
@@ -154,6 +165,8 @@ async function _picksFor(roundId, d) {
   _draftProposed(_round(roundId), d);
   const r = _round(roundId);
   const gaps = picks.filter((p) => !p.ok).map((p) => model.POOLS.find((x) => x.id === p.pool).label);
+  // The switch will send these on the tick that follows; that send says so.
+  if (!_autoBlock(r, d)) return picks;
   try {
     await d.push(
       `UAT ${model.dayWords(r.uat_date)}: ${names.length ? names.join(' and ') : 'nobody picked'}`,
@@ -401,7 +414,8 @@ async function respond(token, answer, injected) {
   const r = _round(s.round_id);
   if (status === 'declined') {
     const res = _pickInto(r.id, s.pool, d, nowMs);
-    try {
+    // Under the switch the tick below invites the next person and says so.
+    if (!res.ok || _autoBlock(r, d)) try {
       await d.push(
         `UAT: ${s.person} can't make it`,
         res.ok ? `${res.pick.name} is next — send their invite in NEURO → People.` : 'Nobody else in that team is free — pick someone in NEURO → People.',
@@ -411,6 +425,85 @@ async function respond(token, answer, injected) {
   }
   await tick(injected, { roundId: r.id });
   return { ..._answerView(db.get('SELECT * FROM uat_selections WHERE id = ?', [s.id]), d), recorded: status };
+}
+
+// ── sending without a press (uat_auto_send) ─────────────────────────────────
+
+/**
+ * PURE. Why NEURO may NOT send without Nick's press, or null when it may.
+ * `forInvites` adds the pick rules: every pool picked, People HR readable.
+ */
+function autoBlockedBy({ flagOn, wall, workingDay, feedDown, unfilled = 0, forInvites = true } = {}) {
+  if (!flagOn) return 'switch-off';
+  if (!workingDay) return 'not-a-working-day';
+  if (!wall || wall.time < AUTO_HOURS.from || wall.time >= AUTO_HOURS.to) return 'outside-hours';
+  if (forInvites && feedDown) return 'leave-unreadable';
+  if (forInvites && unfilled > 0) return 'pool-unfilled';
+  return null;
+}
+
+function _autoBlock(round, d, { forInvites = true } = {}) {
+  const nowMs = d.now();
+  const wall = require('./promise-score').londonWall(nowMs);
+  let workingDay = false;
+  try { workingDay = require('../../shared/working-days.cjs').isWorkingDay(new Date(`${wall.date}T12:00:00`), d.holidays()); } catch { workingDay = false; }
+  let feedDown = true;
+  try { const snap = d.leaveSnapshot(); feedDown = !snap || !snap.known || !snap.rosterCount; } catch { feedDown = true; }
+  const unfilled = forInvites ? model.roundState(_selections(round.id)).unfilled.length : 0;
+  return autoBlockedBy({ flagOn: !!d.autoOn(), wall, workingDay, feedDown, unfilled, forInvites });
+}
+
+/** Approve one prepared action under the switch and send it. Returns its status after. */
+async function _sendUnderSwitch(action, d) {
+  const ok = d.approve(action.actionId, {
+    payloadHash: action.payloadHash, standingSwitch: AUTO_FLAG,
+    approver: 'the uat_auto_send switch (Settings -> Switches)',
+  });
+  if (!ok || !ok.ok) {
+    console.warn(`[UAT] ${action.actionId} not approved by the switch: ${(ok && ok.error) || 'unknown'}`);
+    return null; // stays prepared: Nick's press still works
+  }
+  try { await d.execute(action.actionId); } catch (e) { console.warn(`[UAT] send ${action.actionId} failed:`, e.message); }
+  const after = d.getAction(action.actionId);
+  return after ? after.status : null;
+}
+
+async function _autoSendInvites(round, d) {
+  if (_autoBlock(round, d)) return [];
+  const sent = [];
+  for (const s of _selections(round.id).filter((x) => x.status === 'invited' && x.action_id)) {
+    const a = _latestAction(s.action_id, d);
+    if (!a || a.status !== 'prepared') continue;
+    const status = await _sendUnderSwitch(a, d);
+    if (['executed', 'verified', 'executing', 'execution_uncertain', 'approved'].includes(status)) sent.push(s.person);
+  }
+  if (sent.length) {
+    _sync(round.id, d);
+    try {
+      await d.push(`UAT ${model.dayWords(round.uat_date)}: invited ${sent.join(' and ')}`,
+        'Sent as you. They confirm or decline from the email; no reply by the deadline counts as yes.',
+        { url: '/?view=people', key: `uat:${round.id}:auto-invited:${sent.join(',')}` });
+    } catch { /* the invites went either way */ }
+  }
+  return sent;
+}
+
+async function _autoSendReply(round, action, d, people) {
+  if (!action || action.status !== 'prepared') return false;
+  if (_autoBlock(round, d, { forInvites: false })) return false;
+  const status = await _sendUnderSwitch(action, d);
+  const went = ['executed', 'verified'].includes(status);
+  if (went) {
+    db.run(`UPDATE uat_rounds SET status = 'done', closed_at = ?, updated_at = ? WHERE id = ?`, [iso(d.now()), iso(d.now()), round.id]);
+  }
+  if (status && status !== 'prepared') {
+    try {
+      await d.push(went ? `UAT ${model.dayWords(round.uat_date)}: told ${_who(round)}` : `UAT: reply to ${_who(round)} — ${status}`,
+        went ? `${(people || []).join(' and ') || 'The names'} — sent as you and found in Sent Items.` : 'NEURO is checking Sent Items and will not send it twice.',
+        { url: '/?view=people', key: `uat:${round.id}:auto-reply` });
+    } catch { /* the reply went either way */ }
+  }
+  return went;
 }
 
 // ── the clock ───────────────────────────────────────────────────────────────
@@ -446,9 +539,12 @@ async function _advance(r, d) {
   const nowMs = d.now();
   _sync(r.id, d);
   _draftProposed(_round(r.id), d);
+  await _autoSendInvites(_round(r.id), d);
   const st = model.roundState(_selections(r.id));
+  const names = () => model.POOLS.map((p) => st.byPool[p.id]).filter(Boolean).map((s) => s.person);
   if (r.reply_action_id) {
     const a = _latestAction(r.reply_action_id, d);
+    if (a && a.status === 'prepared' && await _autoSendReply(r, a, d, names())) return;
     if (a && (a.status === 'executed' || a.status === 'verified')) {
       db.run(`UPDATE uat_rounds SET status = 'done', closed_at = ?, updated_at = ? WHERE id = ?`, [iso(nowMs), iso(nowMs), r.id]);
     } else if (a && a.status === 'rejected') {
@@ -469,6 +565,7 @@ async function _advance(r, d) {
     return;
   }
   db.run(`UPDATE uat_rounds SET status = 'ready', reply_action_id = ?, unclear_why = NULL, updated_at = ? WHERE id = ?`, [res.action.actionId, iso(nowMs), r.id]);
+  if (await _autoSendReply(_round(r.id), res.action, d, people.map((p) => p.name))) return;
   try {
     await d.push(`UAT: ready to tell ${_who(r)}`, `${people.map((p) => p.name).join(' and ')} — send the reply in NEURO → People.`,
       { url: '/?view=people', key: `uat:${r.id}:ready` });
@@ -626,5 +723,6 @@ module.exports = {
   ownedEmailIds,
   draftRows,
   scanTriage, retry, prepareInvites, swap, dismiss, lookup, respond, tick, view, list, rota, nowCards, history,
+  autoBlockedBy, AUTO_FLAG,
   _internals: { hash, DEFAULT_DEPS, SEEN_KEY },
 };

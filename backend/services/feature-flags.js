@@ -226,6 +226,23 @@ const FLAGS = [
     impact: 'sends 1-2-1 invites to your direct reports as you',
   },
   {
+    // 2 Nov 2026 (Nick: "thought we'd fully automated these"). Default ON — the
+    // switch IS the approval of each invite and of the reply to Dan (the
+    // one_to_one_auto_book precedent). Only when every pool has a pick and
+    // People HR could be read, on a working day 08:00–18:00; otherwise the
+    // invites wait for a press, as before.
+    key: 'uat_auto_send',
+    env: 'UAT_AUTO_SEND',
+    default: true,
+    requires: 'governed_execution',
+    label: 'Send UAT volunteer emails automatically',
+    description: 'When Dan asks for UAT volunteers, NEURO picks the next person in each team, emails each one their '
+      + 'invite as you, and once everyone has confirmed (or not replied by the deadline) replies to Dan with the names. '
+      + 'Only when every team has a pick and leave could be checked, on a working day between 08:00 and 18:00. '
+      + 'Anything uncertain waits for your press on People.',
+    impact: 'sends UAT invites to your team and the reply to Dan as you',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,
