@@ -45,11 +45,21 @@ function hm(sec) { if (sec == null) return '—'; const m = Math.round(sec / 60)
 function pace(sec) { return sec == null ? '—' : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} /km`; }
 function km(m) { return m == null ? '—' : `${(m / 1000).toFixed(2)} km`; }
 
+/** PURE. "from home and back", "near Hathersage to Dennis Knoll car park". */
+function whereWords(places) {
+  const s = places && places.start; const e = places && places.end;
+  const word = (p) => (p.home ? 'home' : p.name);
+  if (!s || !s.name) return e && e.name ? `to ${word(e)}` : '';
+  const from = s.home ? 'from home' : `from ${s.name}`;
+  if (!e || !e.name) return from;
+  return word(e) === word(s) ? `${from} and back` : `${from} to ${word(e)}`;
+}
+
 /** PURE. The block NEURO owns, from a workout-view page. */
 function renderBlock(v, { photoEmbeds = [], linkBase = 'https://nuero.nickward.co.uk' } = {}) {
   const w = v.watch; const t = v.track || {};
   const L = [OPEN, ''];
-  const where = [v.places.start && v.places.start.name, v.places.end && v.places.end.name && v.places.end.name !== (v.places.start && v.places.start.name) ? `to ${v.places.end.name}` : null].filter(Boolean).join(' ');
+  const where = whereWords(v.places);
   L.push(`**${v.workout.startLocal.slice(11)}–${v.workout.endLocal.slice(11)}**${where ? ` · ${where}` : ''}${v.companions.length ? ` · with ${v.companions.map((c) => c.name).join(', ')}` : ''}`);
   L.push('');
   L.push('| | |', '|---|---|');
@@ -70,7 +80,7 @@ function renderBlock(v, { photoEmbeds = [], linkBase = 'https://nuero.nickward.c
   L.push('');
   if (v.splits && v.splits.length) {
     L.push('**Splits**', '', '| km | time | pace | up | down | HR |', '|---|---|---|---|---|---|');
-    for (const s of v.splits) L.push(`| ${s.km}${s.partial ? ` (${s.lengthM} m)` : ''} | ${hm(s.seconds).replace('0h ', '')} | ${pace(s.paceSecPerKm)} | ${s.ascentM} | ${s.descentM} | ${s.avgHr ?? '—'} |`);
+    for (const s of v.splits) L.push(`| ${s.km}${s.partial ? ` (${s.lengthM} m)` : ''} | ${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, '0')} | ${pace(s.paceSecPerKm)} | ${s.ascentM} | ${s.descentM} | ${s.avgHr ?? '—'} |`);
     L.push('');
   }
   if (v.comparison && v.comparison.others.length) {
@@ -186,4 +196,4 @@ function sync({ max = PER_PASS } = {}) {
   return { ok: true, hikes: hikes.length, rebuilt, results: out };
 }
 
-module.exports = { ROOT, OPEN, CLOSE, renderBlock, renderNew, replaceBlock, syncOne, sync, dropMedia };
+module.exports = { ROOT, OPEN, CLOSE, whereWords, renderBlock, renderNew, replaceBlock, syncOne, sync, dropMedia };

@@ -75,9 +75,30 @@ function _tracked() {
                      ORDER BY w.started_at DESC`);
 }
 
-function _title(type, startLabel) {
+function _title(type, start) {
   const kind = /hik/i.test(type) ? 'Hike' : /walk/i.test(type) ? 'Walk' : /run/i.test(type) ? 'Run' : /cycl/i.test(type) ? 'Ride' : type;
-  return startLabel ? `${kind} — ${startLabel}` : kind;
+  if (start && start.home) return `${kind} from home`;
+  return start && start.name ? `${kind} — ${start.name}` : kind;
+}
+
+/**
+ * A walk's start or finish, named for a walk. A car park, a visitor centre or
+ * a saved place is a real trailhead and keeps its name; any other business the
+ * journey namer picked (a factory 37 m from the path) is replaced by the nearest
+ * town, and Home is said as "home".
+ */
+const TRAILHEAD_RE = /car park|parking|visitor cent|trailhead|lay-?by|country park|reservoir|station|pub|inn|arms|caf[eé]|tea ?room/i;
+function _walkName(label, point) {
+  if (!label || !label.name) return label;
+  if ((label.source === 'saved' || label.source === 'zone') && /^home$/i.test(label.name)) return { ...label, name: 'Home', home: true };
+  if (label.source === 'business' && !TRAILHEAD_RE.test(label.name)) {
+    try {
+      const pn = require('./place-naming');
+      const loc = pn.nearestLocality(point, pn.localityIndex());
+      if (loc) return { name: `near ${loc.name}`, source: 'locality', distanceM: Math.round(loc.d) };
+    } catch { /* keep the business */ }
+  }
+  return label;
 }
 
 function _places(m, startMs, endMs) {
@@ -87,7 +108,7 @@ function _places(m, startMs, endMs) {
       startedAt: startMs, endedAt: endMs,
       start: { lat: m.stats.start.lat, lon: m.stats.start.lon }, end: { lat: m.stats.end.lat, lon: m.stats.end.lon },
     }]);
-    return { start: j.startLabel || null, end: j.endLabel || null };
+    return { start: _walkName(j.startLabel, m.stats.start), end: _walkName(j.endLabel, m.stats.end) };
   } catch { return { start: null, end: null }; }
 }
 
@@ -105,7 +126,7 @@ function _summary(w, { places = true } = {}) {
     day: Number.isFinite(startMs) ? _loop().localDay(startMs) : String(w.started_at).slice(0, 10),
     startLocal: Number.isFinite(startMs) ? _localMinute(startMs) : null,
     endLocal: Number.isFinite(endMs) ? _localMinute(endMs) : null,
-    title: _title(w.activity_type, pl.start && pl.start.name),
+    title: _title(w.activity_type, pl.start),
     distanceM: isNum(w.distance_m) ? Math.round(w.distance_m) : (m.known ? m.stats.distanceM : null),
     durationSeconds: w.duration_seconds ?? null,
     ascentM: isNum(w.elevation_m) ? Math.round(w.elevation_m) : (m.known ? m.stats.ascentM : null),
@@ -307,7 +328,7 @@ function read(id, { now = Date.now() } = {}) {
     workout: {
       id: wid, uuid: w.source_uuid, type: w.activity_type, hike: isHike(w.activity_type, w.duration_seconds),
       day: _loop().localDay(startMs), startLocal: _localMinute(startMs), endLocal: _localMinute(endMs),
-      title: _title(w.activity_type, places.start && places.start.name), source: w.source,
+      title: _title(w.activity_type, places.start), source: w.source,
     },
     places,
     watch: {
