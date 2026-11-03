@@ -80,7 +80,7 @@ async function read(emailId) {
   if (!loc.isInvite) return { ok: true, isInvite: false };
   if (!loc.googleId) return { ok: true, isInvite: true, event: null, note: loc.note };
   if (!gcal.status().connected) return { ok: true, isInvite: true, event: null, note: 'Google Calendar isn’t connected — answer it in Google Calendar.' };
-  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(loc.calendar)}/events/${encodeURIComponent(loc.googleId)}`);
+  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(loc.calendar)}/events/${encodeURIComponent(loc.googleId)}`, { query: { timeZone: 'Europe/London' } });
   if (r.status !== 200 || !r.json) return { ok: false, error: `Google didn’t give the event back (${r.status}).` };
   const card = _card(r.json);
   const self = (r.json.attendees || []).find((a) => a.self);
@@ -108,7 +108,7 @@ async function respond(emailId, response) {
   const next = attendees.map((a) => (a.self ? { ...a, responseStatus: status } : a));
   const r = await gcal._api('PATCH', path, { query: { sendUpdates: 'all' }, body: { attendees: next } });
   if (r.status !== 200) return { ok: false, status: 502, error: `Google refused it (${(r.json && r.json.error && r.json.error.message) || r.status}).` };
-  const back = await gcal._api('GET', path);
+  const back = await gcal._api('GET', path, { query: { timeZone: 'Europe/London' } });
   const now = back.json && (back.json.attendees || []).find((a) => a.self);
   if (!now || now.responseStatus !== status) return { ok: false, status: 502, error: 'Google took it but the event doesn’t show your answer yet — check Google Calendar.' };
   return { ok: true, response: TO_CARD[status], say: SAY[status], event: _card(back.json) };
