@@ -5370,6 +5370,24 @@
     "stream": false
   },
   {
+    "id": "get_personal_inbox_triage_by_id_invite",
+    "method": "GET",
+    "route": "/api/personal-inbox/triage/:id/invite",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 292,
+    "description": "GET /api/personal-inbox/triage/:id/invite. the Google Calendar event behind a Gmail invitation (accept, decline, tentative): times, organiser, Nick's current answer. Read live from Google.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_personal_inbox_triage_muted",
     "method": "GET",
     "route": "/api/personal-inbox/triage/muted",
@@ -14542,7 +14560,7 @@
     "route": "/api/personal-inbox/triage/:id/draft",
     "domain": "personal-inbox",
     "source": "routes/personal-inbox.js",
-    "line": 314,
+    "line": 328,
     "description": "POST /api/personal-inbox/triage/:id/draft. AI-drafted reply to a personal email (shown for Nick to edit; sends nothing). Nick only. Body: { instruction }",
     "params": [
       "id"
@@ -14557,12 +14575,30 @@
     "stream": false
   },
   {
+    "id": "post_personal_inbox_triage_by_id_invite",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/:id/invite",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 297,
+    "description": "POST /api/personal-inbox/triage/:id/invite. answer a Gmail (Google Calendar) invitation. Body: { response: accept|tentative|decline }. Tells the organiser, reads the answer back. Nick only — machines refused.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_personal_inbox_triage_by_id_reply",
     "method": "POST",
     "route": "/api/personal-inbox/triage/:id/reply",
     "domain": "personal-inbox",
     "source": "routes/personal-inbox.js",
-    "line": 337,
+    "line": 351,
     "description": "POST /api/personal-inbox/triage/:id/reply. prepare a reply from the SAME personal mailbox with the recipients chosen on the card (governed reply_email; nothing is sent here — it goes on Nick's click). Nick only. Body: { body, to, cc, attachments }",
     "params": [
       "id"
@@ -14580,8 +14616,8 @@
     "route": "/api/personal-inbox/triage/:id/summary",
     "domain": "personal-inbox",
     "source": "routes/personal-inbox.js",
-    "line": 291,
-    "description": "POST /api/personal-inbox/triage/:id/summary. AI summary of a personal email (falls back to its preview). Nick only.",
+    "line": 305,
+    "description": "POST /api/personal-inbox/triage/:id/summary.",
     "params": [
       "id"
     ],

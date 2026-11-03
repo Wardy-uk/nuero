@@ -288,6 +288,20 @@ router.get('/triage/:id', async (req, res) => {
 });
 
 // POST /api/personal-inbox/triage/:id/summary — AI summary of a personal email (falls back to its preview). Nick only.
+// GET /api/personal-inbox/triage/:id/invite — the Google Calendar event behind a Gmail invitation (accept, decline, tentative): times, organiser, Nick's current answer. Read live from Google.
+router.get('/triage/:id/invite', async (req, res) => {
+  try { res.json(await require('../services/gmail-invite').read(req.params.id)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/personal-inbox/triage/:id/invite — answer a Gmail (Google Calendar) invitation. Body: { response: accept|tentative|decline }. Tells the organiser, reads the answer back. Nick only — machines refused.
+router.post('/triage/:id/invite', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'Nick only' });
+  try {
+    const r = await require('../services/gmail-invite').respond(req.params.id, (req.body || {}).response);
+    res.status(r.ok ? 200 : (r.status || 500)).json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 router.post('/triage/:id/summary', async (req, res) => {
   try {
     const id = req.params.id;

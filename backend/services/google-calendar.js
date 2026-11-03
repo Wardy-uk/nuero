@@ -644,4 +644,6 @@ module.exports = {
   syncNow, rowsBetween, fresh,
   createEvent, updateEvent, deleteEvent,
   _setFetch, _ensureTable,
+  // Read/answer a Google invitation from its email (gmail-invite.js).
+  _api,
 };

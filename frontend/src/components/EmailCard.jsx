@@ -614,6 +614,8 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
 
       {/* Work Outlook only: a personal mailbox's invite has no Graph event. */}
       {email.isInvite && endpoint === workEndpoint && <InviteBar base={base} />}
+      {/* A Google Calendar invitation in Gmail (3 Nov 2026): answered through Google. */}
+      {endpoint !== workEndpoint && /^\s*(updated invitation|invitation)( with note)?:.+@.+\(.+@.+\)\s*$/i.test(email.subject || '') && <InviteBar base={base} />}
 
       {calOpen && <CalendarBar source={endpoint === workEndpoint ? 'work' : 'personal'} emailId={email.id} subject={email.subject} onClose={() => setCalOpen(false)} />}
 

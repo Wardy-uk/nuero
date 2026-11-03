@@ -240,6 +240,7 @@ export const interactive = {
   post_next_steps_undefer: 'Bringing a next step back is Nick’s choice, on NEURO → Next steps.',
   post_email_calendar_add: 'Adding an email’s event to a calendar is Nick’s press, on the email card in NEURO → Inbox / Personal inbox.',
   post_email_calendar_draft: 'Reading an email for its event is done from the email card in NEURO.',
+  post_personal_inbox_triage_by_id_invite: 'Answering a Gmail invitation tells the organiser as Nick. He answers it on the invite card in NEURO → Personal inbox.',
   post_email_triage_by_emailId_invite: 'Answering a meeting invite tells the organiser as Nick. He answers it on the invite card in NEURO → Inbox.',
   post_1to1_apply_window: 'Booking and moving 1-2-1s emails real people as Nick. He confirms them in NEURO → People → Schedule 1-2-1s.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',

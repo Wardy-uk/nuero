@@ -419,6 +419,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/personal-inbox/triage/clear-fyi', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/personal-inbox/triage/dismiss/:id', 'mail.read-state', { machine: 'refuse' }),
   R('POST', '/api/personal-inbox/triage/promote/:id', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/:id/invite', 'calendar.invite-respond', { machine: 'refuse' }),
   R('POST', '/api/personal-inbox/triage/:id/summary', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/personal-inbox/triage/:id/draft', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/personal-inbox/triage/:id/reply', 'email.send', { machine: 'refuse' }),
