@@ -222,6 +222,8 @@ export const interactive = {
   post_calendar_care_series_decline: 'Declining a recurring meeting tells the organiser as Nick. He decides it in NEURO → Now.',
   post_calendar_care_series_cancel: 'Cancelling a series tells every attendee as Nick. He decides it in NEURO → Now.',
   post_calendar_care_series_answer: 'Keeping a series or being reminded later is Nick’s answer, in NEURO → Now.',
+  post_next_steps_defer: 'Snoozing a next step is Nick’s choice, on NEURO → Next steps.',
+  post_next_steps_undefer: 'Bringing a next step back is Nick’s choice, on NEURO → Next steps.',
   post_email_calendar_add: 'Adding an email’s event to a calendar is Nick’s press, on the email card in NEURO → Inbox / Personal inbox.',
   post_email_calendar_draft: 'Reading an email for its event is done from the email card in NEURO.',
   post_email_triage_by_emailId_invite: 'Answering a meeting invite tells the organiser as Nick. He answers it on the invite card in NEURO → Inbox.',

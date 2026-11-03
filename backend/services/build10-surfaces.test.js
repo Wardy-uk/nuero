@@ -93,8 +93,8 @@ test('navigation does not make Work the root of the app', () => {
   const sidebar = read('frontend/src/components/Sidebar.jsx');
   const primary = sidebar.slice(sidebar.indexOf('const PRIMARY_ITEMS'), sidebar.indexOf('const GROUPS'));
   const ids = [...primary.matchAll(/id: '([a-z-]+)'/g)].map((m) => m[1]);
-  // Drafts (22 Oct 2026) sits beside Now: where Now's "make ready" lands. Still not Work-first.
-  assert.deepEqual(ids, ['today', 'drafts', 'todos', 'capture', 'chat', 'actions', 'commitments']);
+  // Drafts (22 Oct 2026) sits beside Now: where Now's "make ready" lands. Next steps (3 Nov 2026) is the whole pending list, after Now. Still not Work-first.
+  assert.deepEqual(ids, ['today', 'next-steps', 'drafts', 'todos', 'capture', 'chat', 'actions', 'commitments']);
   const groups = sidebar.slice(sidebar.indexOf('const GROUPS'), sidebar.indexOf('const GROUP_OF'));
   const groupIds = [...groups.matchAll(/\{ id: '([a-z]+)', label: '([A-Z &]+)'/g)].map((m) => m[2]);
   assert.equal(groupIds[0], 'LIFE', 'Life leads; Work is one section');

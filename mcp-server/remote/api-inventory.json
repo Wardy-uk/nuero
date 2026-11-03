@@ -4349,6 +4349,22 @@
     "stream": false
   },
   {
+    "id": "get_next_steps",
+    "method": "GET",
+    "route": "/api/next-steps",
+    "domain": "next-steps",
+    "source": "routes/next-steps.js",
+    "line": 14,
+    "description": "GET /api/next-steps. next steps: every pending thing (emails to answer, the Monday report, drafts waiting, tasks due or overdue, 1-2-1s owed), grouped now / today / this week, plus what is snoozed and any source that could not be read.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_notion_sync",
     "method": "GET",
     "route": "/api/notion-sync",
@@ -6359,7 +6375,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 307,
+    "line": 308,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -12918,6 +12934,45 @@
     "params": [],
     "query": [],
     "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_next_steps_defer",
+    "method": "POST",
+    "route": "/api/next-steps/defer",
+    "domain": "next-steps",
+    "source": "routes/next-steps.js",
+    "line": 23,
+    "description": "POST /api/next-steps/defer. snooze or \"not today\" a next step. Body: { id, minutes?, reason?, notToday? }. notToday = until tomorrow 08:00. Shares the attention record with Now and the Must Move lane. Nick only.",
+    "params": [],
+    "query": [],
+    "body": [
+      "id",
+      "minutes",
+      "notToday",
+      "reason"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_next_steps_undefer",
+    "method": "POST",
+    "route": "/api/next-steps/undefer",
+    "domain": "next-steps",
+    "source": "routes/next-steps.js",
+    "line": 37,
+    "description": "POST /api/next-steps/undefer. bring a snoozed next step back now. Body: { id }. Nick only.",
+    "params": [],
+    "query": [],
+    "body": [
+      "id"
+    ],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,

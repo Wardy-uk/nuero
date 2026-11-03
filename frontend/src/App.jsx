@@ -59,6 +59,7 @@ const lazyLoad = (load) => lazy(() => load().then((m) => {
 const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
 const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
+const NextStepsPage = lazyLoad(() => import('./components/NextStepsPage'));
 const TaskWorkflowPage = lazyLoad(() => import('./components/TaskWorkflowPage'));
 // A workout, looked at properly (2 Nov 2026): ?view=workout&id=N, or the index without an id.
 const WorkoutPage = lazyLoad(() => import('./components/workout/WorkoutPage'));
@@ -443,6 +444,7 @@ function AuthenticatedApp() {
       // Off (or unreadable), ?view=saim lands on Now: the fallback is the old home.
       case 'saim': return saimOn ? <SaimWorkspace onNavigate={handleNavigate} /> : <AdhdPanel onNavigate={handleNavigate} />;
       case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
+      case 'next-steps': return <NextStepsPage context={navContext} onNavigate={handleNavigate} />;
       // Not in the sidebar: opened by "Start this task" on the promise card (31 Oct 2026).
       case 'task': return <TaskWorkflowPage key={`${navContext?.taskId || ''}:${navContext?.key || ''}`} context={navContext} onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;

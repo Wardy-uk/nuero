@@ -15,6 +15,8 @@ const PRIMARY_ITEMS = [
   // collapsed group, or its badge is invisible) and Commitments (both
   // directions, from the world model).
   { id: 'today',       label: 'Now',         icon: '◐' },
+  // Next steps (3 Nov 2026): everything pending in one list — Start / Snooze / Not today.
+  { id: 'next-steps',  label: 'Next steps',  icon: '▸' },
   // Drafts (22 Oct 2026): every unfinished thing SAiM has prepared, in one place — where Now's "make ready" lands.
   { id: 'drafts',      label: 'Drafts',      icon: '✎' },
   // The list Nick works from every day — primary, beside the promises behind it (13 Oct 2026).
@@ -124,6 +126,7 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
   const [workOnly] = useWorkOnly();
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
+  const [nextCount, setNextCount] = useState(0);
   const [actionsTitle, setActionsTitle] = useState('');
   const [escCount, setEscCount] = useState(0);
   const [escTitle, setEscTitle] = useState('');
@@ -161,6 +164,11 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
       fetch(apiUrl('/api/escalation/counts'))
         .then(res => (res.ok ? res.json() : null))
         .then(data => { if (data && typeof data.unseen === 'number') { setEscCount(data.unseen); setEscTitle(`${data.escalations} escalation${data.escalations === 1 ? '' : 's'} waiting on you · ${data.rejections} rejection${data.rejections === 1 ? '' : 's'} not opened · ${data.sentiment ?? 0} angry customer${data.sentiment === 1 ? '' : 's'} not opened`); } })
+        .catch(() => {});
+
+      fetch(apiUrl('/api/next-steps'))
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data && typeof data.count === 'number') setNextCount(data.count); })
         .catch(() => {});
 
       fetch(apiUrl('/api/email/unseen-count'))
@@ -221,6 +229,9 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
         {item.label}
         {item.id === 'imports' && importsCount > 0 && (
           <span className="sidebar-badge">{importsCount}</span>
+        )}
+        {item.id === 'next-steps' && nextCount > 0 && (
+          <span className="sidebar-badge" title="Pending things in Next steps (snoozed ones not counted)">{nextCount > 99 ? '99+' : nextCount}</span>
         )}
         {item.id === 'actions' && actionsCount > 0 && (
           /* 930 does not fit a badge and 930 is the real number, so say "lots"

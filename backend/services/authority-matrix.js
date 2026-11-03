@@ -239,6 +239,8 @@ const ROUTE_RULES = Object.freeze([
   R('GET', '/api/email/triage/:emailId/invite', 'read'),
   R('POST', '/api/email/triage/:emailId/invite', 'calendar.invite-respond', { machine: 'refuse' }),
   R('POST', '/api/email/calendar/draft', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/next-steps/defer', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/next-steps/undefer', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/email/calendar/add', 'calendar.family', { machine: 'refuse' }),
   R('POST', '/api/waiting-on/:key/chase', 'email.send'),
   R('POST', '/api/weekly-risk/queue-send', 'email.send'),
