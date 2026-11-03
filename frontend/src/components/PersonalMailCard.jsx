@@ -131,7 +131,7 @@ function GmailCalendar({ address }) {
         {(!acct || acct.rejected) && <button className="admin-btn" disabled={busy} onClick={start}>Sign in with Google</button>}
         {acct && <button className="admin-btn" disabled={busy} onClick={() => remove(acct.email)}>Disconnect calendar</button>}
       </div>
-      {open && (
+      {(open || (st.pending && (!acct || acct.rejected))) && (
         <div className="admin-inline-form">
           <input value={pasted} placeholder="Google sends you to http://127.0.0.1… (it won’t load) — paste that whole address" autoComplete="off" onChange={(e) => setPasted(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && pasted && finish()} />
