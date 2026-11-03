@@ -47,6 +47,9 @@ const GROUPS = [
     // nick@ / contact@ newest first — separate from the work Inbox (12 Oct 2026).
     { id: 'personal-inbox', label: 'Personal inbox', icon: '✉' },
     { id: 'journal',    label: 'Journal',    icon: '>' },
+    // Life loops (3 Nov 2026): letters + decision look-back; logbook + Choose for me.
+    { id: 'future-me',  label: 'Future me',  icon: '✉' },
+    { id: 'choose',     label: 'Choose for me', icon: '◇' },
     { id: 'about-me',   label: 'About me',   icon: '◍' },
   ] },
   { id: 'people', label: 'PEOPLE & MEETINGS', items: [

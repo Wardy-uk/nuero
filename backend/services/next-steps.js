@@ -185,15 +185,160 @@ function _oneToOnes(gaps) {
   }
 }
 
+function _personalEmails(gaps) {
+  try {
+    const t = require('./personal-triage').byLane({ mailbox: 'all' });
+    if (!t) return [];
+    return [...(t.urgent || []).map((e) => ['now', e]), ...(t.reply || []).map((e) => ['today', e])].slice(0, MAX_EMAILS).map(([group, e]) => ({
+      id: `pmail:${e.id}`,
+      kind: 'email',
+      group,
+      sphere: 'life',
+      title: `Reply to ${e.from || e.fromEmail || 'this email'} — ${e.subject || '(no subject)'}`,
+      why: [group === 'now' ? 'Urgent' : 'Needs a reply', e.mailbox ? `in ${e.mailbox}` : null, e.reason || null].filter(Boolean).join(' · '),
+      minutes: 10,
+      start: { label: 'Open', view: 'personal-inbox', context: { emailId: e.id } },
+      card: { type: 'next_pmail', title: e.subject || e.id, dedupeKey: `next:pmail:${e.id}` },
+    }));
+  } catch (e) {
+    gaps.push(`personal email: ${e.message}`);
+    return [];
+  }
+}
+
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+
+/**
+ * PURE. The first future date an email's subject or preview names, as
+ * YYYY-MM-DD, or null. UK order only (8/11/2026, 8 Nov, Sunday 8th November).
+ * A date with no year is the next one on or after today. Only within 90 days.
+ */
+function detectEventDate(text, today) {
+  const s = String(text || '').toLowerCase();
+  const found = [];
+  for (const m of s.matchAll(/\b(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})\b/g)) {
+    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    found.push([y, Number(m[2]), Number(m[1])]);
+  }
+  for (const m of s.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?(?:,?\s+(\d{4}))?\b/g)) {
+    found.push([m[3] ? Number(m[3]) : null, MONTHS[m[2]], Number(m[1])]);
+  }
+  const [ty, tm, td] = today.split('-').map(Number);
+  const limit = new Date(Date.UTC(ty, tm - 1, td + 90)).toISOString().slice(0, 10);
+  for (const [y0, mo, d] of found) {
+    if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) continue;
+    for (const y of y0 ? [y0] : [ty, ty + 1]) {
+      const dt = new Date(Date.UTC(y, mo - 1, d));
+      if (dt.getUTCMonth() !== mo - 1) continue;
+      const iso = dt.toISOString().slice(0, 10);
+      if (iso >= today && iso <= limit) return iso;
+    }
+  }
+  return null;
+}
+
+function _datedEmails(gaps, now) {
+  const today = _todayStr(now);
+  const out = [];
+  let added = {};
+  try { added = JSON.parse(require('../db/database').getState('email_calendar_added') || '{}') || {}; } catch { added = {}; }
+  const consider = (source, e) => {
+    if (out.length >= 5 || !e || e.dismissed || e.isInvite || e.category === 'IGNORE') return;
+    if (added[`${source === 'work' ? 'outlook' : 'family'}:${e.id}`]) return;
+    const date = detectEventDate(`${e.subject || ''} ${e.preview || ''}`, today);
+    if (!date) return;
+    out.push({
+      id: `cal:${source}:${e.id}`,
+      kind: 'calendar',
+      group: date <= require('./life-loops').addDays(today, 7) ? 'today' : 'week',
+      sphere: source === 'work' ? 'work' : 'life',
+      title: `Add “${e.subject || 'this'}” to ${source === 'work' ? 'Outlook' : 'the family calendar'}?`,
+      why: `The email from ${e.from || e.fromEmail || 'someone'} mentions ${date}.`,
+      minutes: 2,
+      start: { label: 'Add', view: source === 'work' ? 'inbox' : 'personal-inbox', context: { emailId: e.id }, action: 'add-to-calendar' },
+      calendar: { source, emailId: e.id },
+      card: { type: 'next_cal', title: e.subject || e.id, dedupeKey: `next:cal:${e.id}` },
+    });
+  };
+  try {
+    const t = require('./email-triage').getStoredTriage();
+    for (const e of t.slice().sort((a, b) => String(b.received || '').localeCompare(String(a.received || '')))) consider('work', e);
+  } catch (e) { gaps.push(`dated work email: ${e.message}`); }
+  try {
+    const t = require('./personal-triage').byLane({ mailbox: 'all' });
+    if (t) for (const e of [...(t.urgent || []), ...(t.reply || []), ...(t.fyi || []), ...(t.unsorted || [])]) consider('personal', e);
+  } catch (e) { gaps.push(`dated personal email: ${e.message}`); }
+  return out;
+}
+
+function _lifeLoops(gaps, now) {
+  const L = require('./life-loops');
+  const out = [];
+  try {
+    for (const d of L.decisionsDue(now).slice(0, 5)) {
+      out.push({
+        id: `decision:${d.id}`, kind: 'decision', group: 'week', sphere: 'work',
+        title: `How did “${d.text.length > 90 ? `${d.text.slice(0, 90)}…` : d.text}” go?`,
+        why: `Decided ${d.madeOn || 'earlier'} · you chose to look back on ${d.lookBackOn}`,
+        minutes: 2,
+        start: { label: 'Look back', view: 'future-me', context: { decisionId: d.id } },
+        card: { type: 'next_decision', title: d.text, dedupeKey: `next:decision:${d.id}` },
+      });
+    }
+  } catch (e) { gaps.push(`decisions: ${e.message}`); }
+  try {
+    for (const p of L.listRhythm(now).filter((x) => x.due)) {
+      out.push({
+        id: `rhythm:${p.name}`, kind: 'family', group: p.daysOverdue >= Math.ceil(p.everyDays / 2) ? 'today' : 'week', sphere: 'life',
+        title: `See or message ${p.name}`,
+        why: [p.lastAt ? `last caught up ${p.lastAt}` : 'no catch-up recorded yet', `every ${p.everyDays} days`, p.askAbout ? `ask about: ${p.askAbout}` : null].filter(Boolean).join(' · '),
+        minutes: 15,
+        start: { label: 'Caught up', view: 'family', context: null, action: 'caught-up' },
+        card: { type: 'next_rhythm', title: p.name, dedupeKey: `next:rhythm:${p.name}` },
+      });
+    }
+  } catch (e) { gaps.push(`people rhythm: ${e.message}`); }
+  try {
+    for (const l of L.lettersArrived(now)) {
+      out.push({
+        id: `letter:${l.id}`, kind: 'letter', group: 'today', sphere: 'life',
+        title: 'A letter from past you has arrived',
+        why: `Written ${l.writtenOn}`,
+        minutes: 2,
+        start: { label: 'Read it', view: 'future-me', context: { letterId: l.id } },
+        card: { type: 'next_letter', title: l.id, dedupeKey: `next:letter:${l.id}` },
+      });
+    }
+  } catch (e) { gaps.push(`letters: ${e.message}`); }
+  try {
+    const g = L.garden({ now });
+    if (!g.ok) gaps.push(`garden: ${g.why}`);
+    for (const n of (g.picks || []).filter((x) => !x.done)) {
+      out.push({
+        id: `garden:${n.path}`, kind: 'garden', group: 'week', sphere: 'work',
+        title: `Revisit “${n.title}”`,
+        why: `From ${n.folder} · untouched for 90+ days — keep it, link it, or archive it`,
+        minutes: 5,
+        start: { label: 'Open', view: 'vault', context: { path: n.path }, secondary: 'done-for-now' },
+        card: { type: 'next_garden', title: n.path, dedupeKey: `next:garden:${g.week}:${n.path}` },
+      });
+    }
+  } catch (e) { gaps.push(`garden: ${e.message}`); }
+  return out;
+}
+
 /** Every item, before snoozes are applied. */
 function _collect(now) {
   const gaps = [];
   const items = [
     ..._weeklyReport(gaps),
     ..._emails(gaps),
+    ..._personalEmails(gaps),
+    ..._datedEmails(gaps, now),
     ..._drafts(gaps),
     ..._tasks(gaps, now),
     ..._oneToOnes(gaps),
+    ..._lifeLoops(gaps, now),
   ];
   return { items, gaps };
 }
@@ -268,6 +413,16 @@ function undefer(id, { now = Date.now() } = {}) {
   return { ok: true, id };
 }
 
+/** An in-place action a row offers: caught-up (rhythm) or done-for-now (garden). */
+function act(id, action, { now = Date.now() } = {}) {
+  const item = _find(id, now);
+  if (!item) return { ok: false, status: 404, error: 'That item is no longer pending.' };
+  const L = require('./life-loops');
+  if (action === 'caught-up' && item.kind === 'family') return L.caughtUp(id.slice('rhythm:'.length), { now });
+  if (action === 'done-for-now' && item.kind === 'garden') return L.gardenDone(id.slice('garden:'.length));
+  return { ok: false, status: 400, error: `“${action}” isn’t something this item does.` };
+}
+
 /** Tomorrow 08:00 London, in minutes from now — what "Not today" means. */
 function minutesUntilTomorrowMorning(now = Date.now()) {
   const d = new Date(now);
@@ -277,4 +432,4 @@ function minutesUntilTomorrowMorning(now = Date.now()) {
   return Math.max(60, (24 - h) * 60 - m + 8 * 60);
 }
 
-module.exports = { read, defer, undefer, arrange, minutesUntilTomorrowMorning, GROUP_ORDER };
+module.exports = { read, defer, undefer, act, detectEventDate, arrange, minutesUntilTomorrowMorning, GROUP_ORDER };

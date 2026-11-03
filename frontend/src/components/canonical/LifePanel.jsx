@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RhythmCard } from '../LifeLoops';
 import { apiFetch } from '../../api';
 import {
   useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, when, Fold, HowItWorks,
@@ -108,6 +109,8 @@ export function LifeFamilyPage({ onNavigate = null } = {}) {
     <LifePage title="Family & friends" life={life} sub="Who people are to you — only as you have said — their dates, and Ember.">
       {/* Build 31: who people are to Nick — only as he has said. */}
       <PeopleCard onNavigate={onNavigate} />
+      {/* Keeping in touch (3 Nov 2026): a rhythm per person; due ones reach Next steps. */}
+      <section className="cn-section"><RhythmCard /></section>
       <section className="cn-section"><PersonalDatesCard /></section>
       <Companions data={life.data} busy={life.busy} act={life.act} />
     </LifePage>

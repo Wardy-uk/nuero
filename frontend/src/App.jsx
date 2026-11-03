@@ -60,6 +60,8 @@ const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
 const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
 const NextStepsPage = lazyLoad(() => import('./components/NextStepsPage'));
+const FutureMePanel = lazyLoad(() => import('./components/LifeLoops').then((m) => ({ default: m.FutureMePanel })));
+const ChooseForMePanel = lazyLoad(() => import('./components/LifeLoops').then((m) => ({ default: m.ChooseForMePanel })));
 const TaskWorkflowPage = lazyLoad(() => import('./components/TaskWorkflowPage'));
 // A workout, looked at properly (2 Nov 2026): ?view=workout&id=N, or the index without an id.
 const WorkoutPage = lazyLoad(() => import('./components/workout/WorkoutPage'));
@@ -142,6 +144,8 @@ function readNueroLaunchIntent() {
   const filter = params.get('filter');
   // `?item=<kind>:<id>` (15 Oct 2026): an exact-item deep link (neuro:?item=…).
   // It opens THAT record or says why not — never a broad page standing in for it.
+  // Next steps (3 Nov 2026): ?view=next-steps&step=<item id> opens THAT row.
+  if (view === 'next-steps') return { view: 'next-steps', context: params.get('step') ? { item: params.get('step') } : null };
   const item = params.get('item');
   if (item) return { view: 'item', context: { item } };
   // `today` is the `Now` execution surface — the default landing view. A launch
@@ -164,6 +168,8 @@ function syncNueroLaunchIntent(view, context = null) {
   else next.searchParams.delete('filter');
   if (view === 'item' && context?.item) next.searchParams.set('item', context.item);
   else next.searchParams.delete('item');
+  if (view === 'next-steps' && context?.item) next.searchParams.set('step', context.item);
+  else next.searchParams.delete('step');
   if (view === 'task' && context?.taskId != null) next.searchParams.set('taskId', String(context.taskId));
   else next.searchParams.delete('taskId');
   if (view === 'task' && context?.key) next.searchParams.set('key', context.key);
@@ -445,6 +451,8 @@ function AuthenticatedApp() {
       case 'saim': return saimOn ? <SaimWorkspace onNavigate={handleNavigate} /> : <AdhdPanel onNavigate={handleNavigate} />;
       case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
       case 'next-steps': return <NextStepsPage context={navContext} onNavigate={handleNavigate} />;
+      case 'future-me': return <FutureMePanel context={navContext} />;
+      case 'choose': return <ChooseForMePanel />;
       // Not in the sidebar: opened by "Start this task" on the promise card (31 Oct 2026).
       case 'task': return <TaskWorkflowPage key={`${navContext?.taskId || ''}:${navContext?.key || ''}`} context={navContext} onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;

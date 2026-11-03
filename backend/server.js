@@ -214,6 +214,7 @@ app.use('/api/knowledge-gaps', require('./routes/knowledge-gaps'));
 app.use('/api/knowledge-memory', require('./routes/knowledge-memory'));
 app.use('/api/kb-article', require('./routes/kb-article'));
 app.use('/api/next-steps', require('./routes/next-steps'));
+app.use('/api/life-loops', require('./routes/life-loops'));
 app.use('/api/email', require('./routes/email-triage'));
 app.use('/api/pi-health', require('./routes/pi-health'));
 app.use('/api/state-of-play', require('./routes/state-of-play'));

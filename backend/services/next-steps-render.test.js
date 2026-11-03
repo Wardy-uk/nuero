@@ -24,7 +24,12 @@ async function load() {
         build.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
-        build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ loader: 'js', contents: 'export const apiUrl = (p) => p;' }));
+        build.onResolve({ filter: /\/EmailCard$/ }, () => ({ path: 'EmailCard', namespace: 'stub' }));
+        build.onResolve({ filter: /\/openVault$/ }, () => ({ path: 'openVault', namespace: 'stub' }));
+        build.onLoad({ filter: /.*/, namespace: 'stub' }, (a) => ({ loader: 'js', contents:
+          a.path === 'api' ? 'export const apiUrl = (p) => p;'
+            : a.path === 'EmailCard' ? 'export function CalendarBar() { return null; }'
+              : 'export function openInVault() {}' }));
       },
     }],
   });

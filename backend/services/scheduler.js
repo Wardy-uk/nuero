@@ -661,7 +661,7 @@ function start() {
         weeklyRisk.readyNotice(report),
         // `?view=` — App.jsx reads the query param, never the pathname, so a
         // bare '/weekly-risk' silently lands on Briefing.
-        { type: 'weekly_risk', url: '/?view=weekly-risk' },
+        { type: 'weekly_risk', url: '/?view=weekly-risk', nextStep: `report:${report.week || ''}` },
       ).catch(() => {});
       console.log(`[Scheduler] Weekly risk report built: ${report.escalateCount} escalations, ${report.proposals?.pending || 0} suggestions, ${report.blockers.length} blockers.`);
     } catch (e) {

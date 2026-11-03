@@ -46,4 +46,18 @@ router.post('/undefer', (req, res) => {
   }
 });
 
+
+// POST /api/next-steps/act — an in-place action on a next step: caught-up (a person's rhythm) or done-for-now (a garden note). Body: { id, action }. Nick only.
+router.post('/act', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'Nick only' });
+  try {
+    const { id, action } = req.body || {};
+    if (!id || !action) return res.status(400).json({ ok: false, error: 'id and action required' });
+    const r = nextSteps.act(String(id), String(action));
+    res.status(r.ok ? 200 : (r.status || 500)).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

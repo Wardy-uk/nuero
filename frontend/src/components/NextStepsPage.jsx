@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiUrl } from '../api';
+import { CalendarBar } from './EmailCard';
+import { openInVault } from '../openVault';
 import './NextStepsPage.css';
 
 /**
@@ -15,7 +17,7 @@ const GROUPS = [
   { key: 'week', label: 'THIS WEEK' },
 ];
 
-const KIND_LABEL = { email: 'EMAIL', report: 'REPORT', drafts: 'DRAFTS', task: 'TASK', people: 'PEOPLE' };
+const KIND_LABEL = { email: 'EMAIL', report: 'REPORT', drafts: 'DRAFTS', task: 'TASK', people: 'PEOPLE', calendar: 'CALENDAR', decision: 'DECISION', family: 'FAMILY', letter: 'LETTER', garden: 'GARDEN' };
 
 const SNOOZES = [
   { label: '1 hour', minutes: 60 },
@@ -52,7 +54,7 @@ function post(path, body) {
 }
 
 export function NextStepRow({ item, highlighted, onStart, onChanged, snoozed = false }) {
-  const [menu, setMenu] = useState(null); // null | 'snooze' | 'nottoday'
+  const [menu, setMenu] = useState(null); // null | 'snooze' | 'nottoday' | 'calendar'
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -61,6 +63,18 @@ export function NextStepRow({ item, highlighted, onStart, onChanged, snoozed = f
     const r = await post('/api/next-steps/defer', { id: item.id, ...body });
     setBusy(false); setMenu(null);
     if (r.ok) onChanged(); else setErr(r.error || 'Not snoozed.');
+  };
+  const act = async (action) => {
+    setBusy(true); setErr('');
+    const r = await post('/api/next-steps/act', { id: item.id, action });
+    setBusy(false);
+    if (r.ok) onChanged(); else setErr(r.error || 'Not done.');
+  };
+  const primary = () => {
+    const a = item.start && item.start.action;
+    if (a === 'add-to-calendar') setMenu(menu === 'calendar' ? null : 'calendar');
+    else if (a === 'caught-up' || a === 'done-for-now') act(a);
+    else onStart(item);
   };
   const undefer = async () => {
     setBusy(true); setErr('');
@@ -83,12 +97,18 @@ export function NextStepRow({ item, highlighted, onStart, onChanged, snoozed = f
           <button className="ns-btn ns-btn-secondary" disabled={busy} onClick={undefer}>{busy ? '…' : 'Bring it back'}</button>
         ) : (
           <>
-            <button className="ns-btn ns-btn-primary" onClick={() => onStart(item)}>{item.start.label}</button>
+            <button className="ns-btn ns-btn-primary" disabled={busy} onClick={primary}>{item.start.label}</button>
+            {item.start.secondary === 'done-for-now' && (
+              <button className="ns-btn ns-btn-secondary" disabled={busy} onClick={() => act('done-for-now')}>Done for now</button>
+            )}
             <button className="ns-btn ns-btn-secondary" aria-expanded={menu === 'snooze'} disabled={busy} onClick={() => setMenu(menu === 'snooze' ? null : 'snooze')}>Snooze ▾</button>
             <button className="ns-btn ns-btn-quiet" aria-expanded={menu === 'nottoday'} disabled={busy} onClick={() => setMenu(menu === 'nottoday' ? null : 'nottoday')}>Not today</button>
           </>
         )}
       </div>
+      {menu === 'calendar' && item.calendar && (
+        <CalendarBar source={item.calendar.source} emailId={item.calendar.emailId} subject={item.title} onClose={() => { setMenu(null); onChanged(); }} />
+      )}
       {menu === 'snooze' && (
         <div className="ns-menu" role="group" aria-label="Snooze for">
           {SNOOZES.map((s) => (
@@ -194,7 +214,10 @@ export default function NextStepsPage({ context, onNavigate }) {
     if (el) el.scrollIntoView({ block: 'center' });
   }, [highlight, data]);
 
-  const onStart = (item) => onNavigate && onNavigate(item.start.view, item.start.context || null);
+  const onStart = (item) => {
+    if (item.start.view === 'vault' && item.start.context && item.start.context.path) { openInVault(item.start.context.path); return; }
+    if (onNavigate) onNavigate(item.start.view, item.start.context || null);
+  };
 
   if (error && !data) return <div className="ns-page"><div className="ns-gap">{error}</div></div>;
   if (!data) return <div className="ns-page"><p className="ns-empty">Reading what’s pending…</p></div>;

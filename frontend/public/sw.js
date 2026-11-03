@@ -114,7 +114,9 @@ self.addEventListener('push', (event) => {
 // ── Notification click ────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || '/';
+  // A push about a Next steps item opens that row (3 Nov 2026).
+  const step = event.notification.data?.nextStep;
+  const url = step ? `/?view=next-steps&step=${encodeURIComponent(step)}` : (event.notification.data?.url || '/');
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       for (const client of windowClients) {

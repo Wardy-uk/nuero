@@ -581,7 +581,7 @@ function buildEmailMessage(items) {
  * this can update an existing banner in place — a second escalation landing
  * shouldn't be silent just because one is already showing.
  */
-function syncFactNudge(type, message, pushTitle, url) {
+function syncFactNudge(type, message, pushTitle, url, extra = {}) {
   const dateKey = todayKey();
   const existing = db.getActiveNudgeByTypeAndDate(type, dateKey);
 
@@ -606,7 +606,7 @@ function syncFactNudge(type, message, pushTitle, url) {
   const nagCount = existing ? (existing.nag_count || 0) : 0;
   console.log(`[Nudge] ${type} nudge ${existing ? 'updated' : 'created'}: ${message}`);
   broadcast({ type: 'nudge', nudge_type: type, message, nag_count: nagCount });
-  webpush.sendToAll(pushTitle, message, { type, url }).catch(() => {});
+  webpush.sendToAll(pushTitle, message, { type, url, ...extra }).catch(() => {});
 }
 
 function triggerEscalationNudge() {
@@ -614,7 +614,10 @@ function triggerEscalationNudge() {
 }
 
 function triggerUrgentEmailNudge() {
-  syncFactNudge('email', buildEmailMessage(getUrgentEmails()), 'SAiM — Urgent email', '/inbox');
+  const urgent = getUrgentEmails();
+  // The newest urgent email is the Next steps row the push opens (3 Nov 2026).
+  const newest = (urgent || []).slice().sort((x, y) => String(y.received || '').localeCompare(String(x.received || '')))[0];
+  syncFactNudge('email', buildEmailMessage(urgent), 'SAiM — Urgent email', '/inbox', newest ? { nextStep: `email:${newest.id}` } : {});
 }
 
 // Called every 15 min — escalates existing nudges
