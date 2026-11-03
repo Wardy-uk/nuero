@@ -38,17 +38,27 @@ function _emails(gaps) {
   const out = [];
   try {
     const t = require('./email-triage').getTriageByCategory();
-    const rows = [...(t.urgent || []).map((e) => ['now', e]), ...(t.reply || []).map((e) => ['today', e])]
-      .filter(([, e]) => !e.dismissed)
-      .slice(0, MAX_EMAILS);
-    for (const [group, e] of rows) {
+    // One row per THREAD: the newest message stands for it, and the row says
+    // how many in the thread are waiting. Urgent wins the group.
+    const threads = new Map();
+    for (const [group, e] of [...(t.urgent || []).map((e) => ['now', e]), ...(t.reply || []).map((e) => ['today', e])]) {
+      if (e.dismissed) continue;
+      const k = e.conversationId || e.id;
+      const held = threads.get(k);
+      if (!held) { threads.set(k, { group, e, n: 1 }); continue; }
+      held.n++;
+      if (group === 'now') held.group = 'now';
+      if (String(e.received || '') > String(held.e.received || '')) held.e = e;
+    }
+    const rows = [...threads.values()].slice(0, MAX_EMAILS);
+    for (const { group, e, n } of rows) {
       out.push({
         id: `email:${e.id}`,
         kind: 'email',
         group,
         sphere: 'work',
         title: `Reply to ${e.from || e.fromEmail || 'this email'} — ${e.subject || '(no subject)'}`,
-        why: e.reason ? `${group === 'now' ? 'Urgent' : 'Needs a reply'} · ${e.reason}` : (group === 'now' ? 'Urgent' : 'Needs a reply'),
+        why: [group === 'now' ? 'Urgent' : 'Needs a reply', n > 1 ? `${n} messages in this thread` : null, e.reason || null].filter(Boolean).join(' · '),
         minutes: 10,
         start: { label: 'Open', view: 'inbox', context: { emailId: e.id } },
         card: { type: 'next_email', title: e.subject || e.id, dedupeKey: `next:email:${e.id}` },
