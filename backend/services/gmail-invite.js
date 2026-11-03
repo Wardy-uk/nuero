@@ -115,8 +115,12 @@ async function respond(emailId, response) {
   const self = attendees.find((a) => a.self);
   if (!self) return { ok: false, status: 409, error: 'You aren’t a guest on this event.' };
   if (cur.json.organizer && cur.json.organizer.self) return { ok: false, status: 409, error: 'It’s your own event — there’s nothing to answer.' };
-  const next = attendees.map((a) => (a.self ? { ...a, responseStatus: status } : a));
-  const r = await gcal._api('PATCH', path, { query: { sendUpdates: 'all' }, body: { attendees: next } });
+  // ⚠ A guest may change only their OWN answer. Sending back the whole guest
+  // list (organiser included) with sendUpdates=all is an organiser's edit and
+  // Google answers 403 Forbidden (3 Nov 2026, Lizzy's "hiking?"). So send just
+  // Nick's entry, marked attendeesOmitted; Google records the answer and the
+  // organiser sees it on the event.
+  const r = await gcal._api('PATCH', path, { body: { attendeesOmitted: true, attendees: [{ email: self.email, responseStatus: status }] } });
   if (r.status !== 200) return { ok: false, status: 502, error: `Google refused it (${(r.json && r.json.error && r.json.error.message) || r.status}).` };
   const back = await gcal._api('GET', path, { query: { timeZone: 'Europe/London' } });
   const now = back.json && (back.json.attendees || []).find((a) => a.self);

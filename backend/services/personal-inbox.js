@@ -502,7 +502,11 @@ function overview() {
   const db = _db();
   let status = null;
   try { status = JSON.parse(db.getState(STATUS_KEY) || 'null'); } catch { status = null; }
-  const counts = (mb) => db.get('SELECT COUNT(*) n, SUM(CASE WHEN seen = 0 THEN 1 ELSE 0 END) unread FROM personal_inbox WHERE mailbox = ?', [mb]);
+  // The badge counts unread mail the tab still SHOWS (3 Nov 2026): a message
+  // dismissed without being marked read made "1" sit over an empty tab.
+  const counts = (mb) => db.get(`SELECT COUNT(*) n, SUM(CASE WHEN seen = 0
+      AND COALESCE(json_extract(triage_json, '$.dismissed'), 0) = 0 THEN 1 ELSE 0 END) unread
+    FROM personal_inbox WHERE mailbox = ?`, [mb]);
   return {
     mailboxes: [...INBOXES, ...WATCHED].map((key) => {
       const c = counts(key) || {};
