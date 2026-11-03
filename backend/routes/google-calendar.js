@@ -48,8 +48,11 @@ router.post('/finish', async (req, res) => {
   const { pasted } = req.body || {};
   try {
     const r = await gcal.finish(pasted);
+    // Never the pasted address (it carries the code) — only the outcome.
+    console.log(`[GoogleCalendar] finish: ${r.ok ? `ok${r.added ? ` (added ${r.added})` : ' (main sign-in)'}` : `refused — ${r.error}`}`);
     res.status(r.ok ? 200 : 400).json(r);
   } catch (e) {
+    console.warn(`[GoogleCalendar] finish failed: ${e.message}`);
     res.status(502).json({ ok: false, error: `Google did not answer: ${e.message}` });
   }
 });
