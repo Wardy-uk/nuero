@@ -56,6 +56,8 @@ const GROUPS = [
     { id: 'people',       label: 'People',       icon: '>' },
     { id: 'calendar',     label: 'Calendar',     icon: '>' },
     { id: 'meeting-prep', label: 'Meeting Prep', icon: '>' },
+    // The running list to raise with Chris (3 Nov 2026) — its own page; open items still print in the Monday report.
+    { id: 'chris',        label: 'To discuss with Chris', icon: '>' },
     { id: 'overtime',     label: 'Overtime',     icon: '>' },
   ] },
   { id: 'work', label: 'WORK', items: [

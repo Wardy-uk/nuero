@@ -60,6 +60,7 @@ const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
 const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
 const NextStepsPage = lazyLoad(() => import('./components/NextStepsPage'));
+const ChrisAgendaPage = lazyLoad(() => import('./components/ChrisAgendaPage'));
 const FutureMePanel = lazyLoad(() => import('./components/LifeLoops').then((m) => ({ default: m.FutureMePanel })));
 const ChooseForMePanel = lazyLoad(() => import('./components/LifeLoops').then((m) => ({ default: m.ChooseForMePanel })));
 const TaskWorkflowPage = lazyLoad(() => import('./components/TaskWorkflowPage'));
@@ -451,6 +452,7 @@ function AuthenticatedApp() {
       case 'saim': return saimOn ? <SaimWorkspace onNavigate={handleNavigate} /> : <AdhdPanel onNavigate={handleNavigate} />;
       case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
       case 'next-steps': return <NextStepsPage context={navContext} onNavigate={handleNavigate} />;
+      case 'chris': return <ChrisAgendaPage onNavigate={handleNavigate} />;
       case 'future-me': return <FutureMePanel context={navContext} />;
       case 'choose': return <ChooseForMePanel />;
       // Not in the sidebar: opened by "Start this task" on the promise card (31 Oct 2026).
