@@ -255,6 +255,7 @@ function Month() {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [openAgent, setOpenAgent] = useState(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -315,7 +316,40 @@ function Month() {
             <table className="ot__table">
               <thead><tr><th>Name</th><th>Claims</th><th>Paid hours</th></tr></thead>
               <tbody>
-                {exp.totals.map((t) => <tr key={t.agentEmail}><td>{t.agentName}</td><td>{t.claims}</td><td>{t.hours}</td></tr>)}
+                {exp.totals.map((t) => {
+                  const open = openAgent === t.agentEmail;
+                  const mine = open ? exp.rows.filter((r) => r.agentEmail === t.agentEmail) : [];
+                  return (
+                    <React.Fragment key={t.agentEmail}>
+                      <tr>
+                        <td>
+                          <button type="button" className="ot__name" aria-expanded={open}
+                            onClick={() => setOpenAgent(open ? null : t.agentEmail)}>
+                            {open ? '▾' : '▸'} {t.agentName}
+                          </button>
+                        </td>
+                        <td>{t.claims}</td><td>{t.hours}</td>
+                      </tr>
+                      {open && (
+                        <tr className="ot__agentrows">
+                          <td colSpan={3}>
+                            <table className="ot__table ot__table--inner">
+                              <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Reason</th></tr></thead>
+                              <tbody>
+                                {mine.map((r) => (
+                                  <tr key={r.claimId}>
+                                    <td>{dayLabel(r.date)}</td><td>{r.start}–{r.end}</td><td>{r.hours}h</td>
+                                    <td>{r.reason}{r.lateFromEarlierMonth ? ' (earlier month)' : ''}{r.enteredBy ? ` (added by ${r.enteredBy})` : ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
                 <tr className="ot__total"><td>Total</td><td>{exp.rows.length}</td><td>{exp.totalHours}</td></tr>
               </tbody>
             </table>

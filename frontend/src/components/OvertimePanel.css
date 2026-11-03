@@ -63,3 +63,9 @@
   .ot__grid { grid-template-columns: 1fr; }
   .ot__step { grid-template-columns: 1fr; }
 }
+
+.ot__name { background: none; border: 0; padding: 0; font: inherit; color: var(--accent, var(--text-primary)); cursor: pointer; text-align: left; }
+.ot__name:hover { text-decoration: underline; }
+.ot__agentrows > td { padding: 0 0 8px 18px; }
+.ot__table--inner { margin: 4px 0; }
+.ot__table--inner th, .ot__table--inner td { color: var(--text-secondary); }
