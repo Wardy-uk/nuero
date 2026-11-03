@@ -91,12 +91,12 @@ function _card(ev) {
  * own accessRole; unknown is treated as "can't".
  */
 async function _canWrite(calendar) {
-  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(calendar)}/events`, { query: { maxResults: '1' } });
+  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(calendar)}/events`, { query: { maxResults: '1' }, account: gcal.accountFor(calendar) });
   const role = r.status === 200 && r.json ? r.json.accessRole : null;
   return { ok: role === 'writer' || role === 'owner', role };
 }
 
-const READ_ONLY_NOTE = (cal) => `NEURO can only read ${cal}’s calendar, so it can’t answer this — answer it in Google Calendar. To answer from here, share ${cal}’s calendar with NEURO’s Google account with “Make changes to events”.`;
+const READ_ONLY_NOTE = (cal) => `NEURO can only read ${cal}’s calendar, so it can’t answer this — answer it in Google Calendar, or add ${cal} in Settings → Google Calendar → Add another Google account.`;
 
 /** The meeting behind an invitation email, read live. */
 async function read(emailId) {
@@ -105,7 +105,7 @@ async function read(emailId) {
   if (!loc.isInvite) return { ok: true, isInvite: false };
   if (!loc.googleId) return { ok: true, isInvite: true, event: null, note: loc.note };
   if (!gcal.status().connected) return { ok: true, isInvite: true, event: null, note: 'Google Calendar isn’t connected — answer it in Google Calendar.' };
-  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(loc.calendar)}/events/${encodeURIComponent(loc.googleId)}`, { query: { timeZone: 'Europe/London' } });
+  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(loc.calendar)}/events/${encodeURIComponent(loc.googleId)}`, { query: { timeZone: 'Europe/London' }, account: gcal.accountFor(loc.calendar) });
   if (r.status !== 200 || !r.json) return { ok: false, error: `Google didn’t give the event back (${r.status}).` };
   const card = _card(r.json);
   const self = (r.json.attendees || []).find((a) => a.self);
@@ -127,7 +127,8 @@ async function respond(emailId, response) {
   if (!loc.googleId) return { ok: false, status: 409, error: loc.note || 'This isn’t an invitation NEURO can answer.' };
   const path = `/calendars/${encodeURIComponent(loc.calendar)}/events/${encodeURIComponent(loc.googleId)}`;
   if (!(await _canWrite(loc.calendar)).ok) return { ok: false, status: 409, error: READ_ONLY_NOTE(loc.calendar) };
-  const cur = await gcal._api('GET', path);
+  const account = gcal.accountFor(loc.calendar);
+  const cur = await gcal._api('GET', path, { account });
   if (cur.status !== 200 || !cur.json) return { ok: false, status: 502, error: `Google didn’t give the event back (${cur.status}).` };
   const attendees = cur.json.attendees || [];
   const self = attendees.find((a) => a.self);
@@ -138,9 +139,9 @@ async function respond(emailId, response) {
   // Google answers 403 Forbidden (3 Nov 2026, Lizzy's "hiking?"). So send just
   // Nick's entry, marked attendeesOmitted; Google records the answer and the
   // organiser sees it on the event.
-  const r = await gcal._api('PATCH', path, { body: { attendeesOmitted: true, attendees: [{ email: self.email, responseStatus: status }] } });
+  const r = await gcal._api('PATCH', path, { query: { sendUpdates: 'all' }, body: { attendeesOmitted: true, attendees: [{ email: self.email, responseStatus: status }] }, account });
   if (r.status !== 200) return { ok: false, status: 502, error: `Google refused it (${(r.json && r.json.error && r.json.error.message) || r.status}).` };
-  const back = await gcal._api('GET', path, { query: { timeZone: 'Europe/London' } });
+  const back = await gcal._api('GET', path, { query: { timeZone: 'Europe/London' }, account });
   const now = back.json && (back.json.attendees || []).find((a) => a.self);
   if (!now || now.responseStatus !== status) return { ok: false, status: 502, error: 'Google took it but the event doesn’t show your answer yet — check Google Calendar.' };
   return { ok: true, response: TO_CARD[status], say: SAY[status], event: _card(back.json) };

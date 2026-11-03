@@ -39,7 +39,7 @@ router.post('/calendars', (req, res) => {
 
 // POST /api/google-calendar/connect — start Google sign-in: returns the address to open
 router.post('/connect', (req, res) => {
-  const r = gcal.authUrl();
+  const r = gcal.authUrl(Date.now(), { addAccount: !!(req.body && req.body.addAccount) });
   res.status(r.ok ? 200 : 400).json(r);
 });
 
@@ -52,6 +52,12 @@ router.post('/finish', async (req, res) => {
   } catch (e) {
     res.status(502).json({ ok: false, error: `Google did not answer: ${e.message}` });
   }
+});
+
+// POST /api/google-calendar/accounts/remove — forget an added Google account { email }; its calendars go back to read-through-the-main-sign-in
+router.post('/accounts/remove', (req, res) => {
+  const r = gcal.removeAccount((req.body || {}).email);
+  res.status(r.ok ? 200 : 400).json({ ...r, status: gcal.status() });
 });
 
 // POST /api/google-calendar/disconnect — forget the Google sign-in (stored events are kept until the next sign-in)

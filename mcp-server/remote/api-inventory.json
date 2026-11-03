@@ -11698,6 +11698,22 @@
     "stream": false
   },
   {
+    "id": "post_google_calendar_accounts_remove",
+    "method": "POST",
+    "route": "/api/google-calendar/accounts/remove",
+    "domain": "google-calendar",
+    "source": "routes/google-calendar.js",
+    "line": 58,
+    "description": "POST /api/google-calendar/accounts/remove. forget an added Google account { email }; its calendars go back to read-through-the-main-sign-in",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_google_calendar_calendars",
     "method": "POST",
     "route": "/api/google-calendar/calendars",
@@ -11744,9 +11760,11 @@
     "description": "POST /api/google-calendar/connect. start Google sign-in: returns the address to open",
     "params": [],
     "query": [],
-    "body": [],
+    "body": [
+      "addAccount"
+    ],
     "queryOpen": false,
-    "bodyOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -11756,7 +11774,7 @@
     "route": "/api/google-calendar/disconnect",
     "domain": "google-calendar",
     "source": "routes/google-calendar.js",
-    "line": 58,
+    "line": 64,
     "description": "POST /api/google-calendar/disconnect. forget the Google sign-in (stored events are kept until the next sign-in)",
     "params": [],
     "query": [],
@@ -11790,7 +11808,7 @@
     "route": "/api/google-calendar/sync",
     "domain": "google-calendar",
     "source": "routes/google-calendar.js",
-    "line": 63,
+    "line": 69,
     "description": "POST /api/google-calendar/sync. re-read the family Google calendar now",
     "params": [],
     "query": [],

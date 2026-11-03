@@ -21,6 +21,7 @@ export function GoogleCalendarCard() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [opened, setOpened] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     const d = await getJson('/api/google-calendar');
@@ -58,6 +59,28 @@ export function GoogleCalendarCard() {
     await load();
   });
   const disconnect = () => run(async () => { await post('/api/google-calendar/disconnect'); await load(); });
+  // More Google accounts (3 Nov 2026): each calendar is read and written
+  // through the account that owns it — e.g. answering an invite in your own
+  // Gmail calendar as yourself.
+  const addAccount = () => run(async () => {
+    const d = await post('/api/google-calendar/connect', { addAccount: true });
+    if (!d.ok) { setError(d.error); return; }
+    window.open(d.url, '_blank', 'noopener');
+    setAdding(true);
+  });
+  const finishAdd = () => run(async () => {
+    const d = await post('/api/google-calendar/finish', { pasted });
+    setPasted('');
+    if (!d.ok) { setError(d.error); return; }
+    setAdding(false);
+    setMsg(d.warning || `Added ${d.added}. Its own calendar is now read and written as that account.`);
+    await load();
+  });
+  const removeAccount = (email) => run(async () => {
+    const d = await post('/api/google-calendar/accounts/remove', { email });
+    if (!d.ok) setError(d.error);
+    await load();
+  });
 
   const sync = st && st.lastSync;
   return (
@@ -112,6 +135,25 @@ export function GoogleCalendarCard() {
               <button className="admin-btn" disabled={busy} onClick={syncNow}>Read it now</button>
               <button className="admin-btn" disabled={busy} onClick={disconnect}>Disconnect</button>
             </div>
+            <p className="admin-hint">
+              Main sign-in{st.primaryEmail ? `: ${st.primaryEmail}` : ''}. Other calendars ({(st.extra || []).join(', ') || 'none'}) are read through it unless their own account is added below — then they’re read and written as that account (needed to answer an invite in that calendar).
+            </p>
+            {(st.accounts || []).map((a) => (
+              <div key={a.email} className="admin-inline-form">
+                <span className="admin-hint">{a.email}{a.rejected ? ` — sign-in no longer accepted (${a.rejected}); add it again` : ` — added ${a.connectedAt ? new Date(a.connectedAt).toLocaleDateString('en-GB') : ''}`}</span>
+                <button className="admin-btn" disabled={busy} onClick={() => removeAccount(a.email)}>Remove</button>
+              </div>
+            ))}
+            <div className="admin-inline-form">
+              <button className="admin-btn" disabled={busy} onClick={addAccount}>Add another Google account</button>
+            </div>
+            {adding && (
+              <div className="admin-inline-form">
+                <input value={pasted} placeholder="Sign in as the other account, then paste the http://127.0.0.1… address" autoComplete="off" onChange={(e) => setPasted(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && pasted && finishAdd()} />
+                <button className="admin-btn" disabled={!pasted || busy} onClick={finishAdd}>{busy ? 'Checking with Google…' : 'Finish'}</button>
+              </div>
+            )}
           </>
         )}
         {st && st.clientConfigured && st.clientSource === 'stored' && !st.connected && (

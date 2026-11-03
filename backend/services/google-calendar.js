@@ -70,6 +70,11 @@ const K = {
   target: 'google_cal_target',
   extra: 'google_cal_extra',
   sync: 'google_cal_sync',
+  // More Google sign-ins (3 Nov 2026), keyed by the account's own address.
+  // A calendar a signed-in account owns is read and written through IT, so
+  // answering an invite in ward.nickj@'s calendar is Nick answering as himself
+  // rather than the family account borrowing read access (which Google 403s).
+  accounts: 'google_cal_accounts',
 };
 
 let _fetch = (...a) => global.fetch(...a);
@@ -176,7 +181,27 @@ function status() {
     target: target(),
     extra: extraCalendars(),
     lastSync: s,
+    primaryEmail: t && t.email ? t.email : null,
+    accounts: Object.entries(_accounts()).map(([email, a]) => ({ email, connectedAt: a.connectedAt || null, rejected: a.rejected || null })),
   };
+}
+
+function _accounts() { return _json(K.accounts) || {}; }
+
+/** Which sign-in reads and writes this calendar: an added account that owns it, else the main one. */
+function accountFor(calendar) {
+  const id = String(calendar || '').toLowerCase();
+  const accounts = _accounts();
+  return Object.prototype.hasOwnProperty.call(accounts, id) && accounts[id].refreshToken && !accounts[id].rejected ? id : null;
+}
+
+function removeAccount(email) {
+  const id = String(email || '').toLowerCase();
+  const all = _accounts();
+  if (!all[id]) return { ok: false, error: 'That account isn’t signed in.' };
+  delete all[id];
+  _put(K.accounts, all);
+  return { ok: true };
 }
 
 // ── Sign-in (PKCE, loopback, pasted back) ────────────────────────────────────
@@ -189,16 +214,16 @@ function _pendingLive(now = Date.now()) {
 }
 
 /** Start a sign-in: returns the Google address to open. */
-function authUrl(now = Date.now()) {
+function authUrl(now = Date.now(), { addAccount = false } = {}) {
   const c = client();
   if (!c) return { ok: false, error: 'Add the Google client ID and secret first.' };
   const verifier = _b64url(crypto.randomBytes(48));
   const challenge = _b64url(crypto.createHash('sha256').update(verifier).digest());
   const state = _b64url(crypto.randomBytes(18));
-  _put(K.pending, { verifier, state, at: new Date(now).toISOString() });
+  _put(K.pending, { verifier, state, at: new Date(now).toISOString(), addAccount: !!addAccount });
   const q = new URLSearchParams({
     client_id: c.clientId, redirect_uri: REDIRECT_URI, response_type: 'code', scope: SCOPE,
-    access_type: 'offline', prompt: 'consent', state, code_challenge: challenge, code_challenge_method: 'S256',
+    access_type: 'offline', prompt: addAccount ? 'consent select_account' : 'consent', state, code_challenge: challenge, code_challenge_method: 'S256',
   });
   return { ok: true, url: `${AUTH_URL}?${q}` };
 }
@@ -242,7 +267,24 @@ async function finish(pasted, now = Date.now()) {
     return { ok: false, error: `Google refused the sign-in (${r.json.error_description || r.json.error || r.status}).` };
   }
   if (!r.json.refresh_token) return { ok: false, error: 'Google gave no long-lived sign-in. Remove NEURO’s access in your Google account and try again.' };
+  const email = await _emailOf(r.json.access_token);
+  if (p.addAccount) {
+    if (!email) return { ok: false, error: 'Signed in, but Google wouldn’t say which account it was — try again.' };
+    const main = _json(K.token);
+    if (main && main.email && main.email === email) return { ok: false, error: `${email} is already NEURO’s main Google sign-in.` };
+    const all = _accounts();
+    all[email] = {
+      refreshToken: r.json.refresh_token, accessToken: r.json.access_token,
+      expiresAt: new Date(now + (Number(r.json.expires_in) || 3600) * 1000).toISOString(),
+      scope: r.json.scope || SCOPE, connectedAt: new Date(now).toISOString(),
+    };
+    _put(K.accounts, all);
+    _put(K.pending, null);
+    const sync = await syncNow().catch((e) => ({ ok: false, error: e.message }));
+    return { ok: true, added: email, events: sync.count, warning: sync.ok ? null : `Signed in as ${email}, but a calendar could not be read yet: ${sync.error}`, status: status() };
+  }
   _put(K.token, {
+    email,
     refreshToken: r.json.refresh_token, accessToken: r.json.access_token,
     expiresAt: new Date(now + (Number(r.json.expires_in) || 3600) * 1000).toISOString(),
     scope: r.json.scope || SCOPE, connectedAt: new Date(now).toISOString(),
@@ -253,9 +295,24 @@ async function finish(pasted, now = Date.now()) {
   return { ok: true, events: sync.count, status: status() };
 }
 
-async function _accessToken(now = Date.now()) {
+/** The signed-in account's own address: its primary calendar's id. */
+async function _emailOf(accessToken) {
+  try {
+    const res = await _fetch(`${API}/calendars/primary/events?maxResults=1`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const j = await res.json().catch(() => null);
+    return res.status === 200 && j && j.summary && /@/.test(j.summary) ? String(j.summary).toLowerCase() : null;
+  } catch { return null; }
+}
+
+function _readToken(account) { return account ? _accounts()[account] || null : _json(K.token); }
+function _writeToken(account, t) {
+  if (!account) { _put(K.token, t); return; }
+  const all = _accounts(); all[account] = t; _put(K.accounts, all);
+}
+
+async function _accessToken(now = Date.now(), account = null) {
   const c = client();
-  const t = _json(K.token);
+  const t = _readToken(account);
   if (!c) throw new Error('Google is not set up');
   if (!t || !t.refreshToken) throw new Error('not signed in to Google');
   if (t.rejected) throw new Error(`Google sign-in was refused (${t.rejected}) — sign in again in Settings`);
@@ -263,17 +320,17 @@ async function _accessToken(now = Date.now()) {
   const r = await _tokenCall({ grant_type: 'refresh_token', refresh_token: t.refreshToken, client_id: c.clientId, client_secret: c.clientSecret });
   if (r.status !== 200 || !r.json.access_token) {
     if (r.json && r.json.error === 'invalid_grant') {
-      _put(K.token, { ...t, accessToken: null, rejected: 'invalid_grant' });
-      throw new Error('Google sign-in has expired — sign in again in Settings');
+      _writeToken(account, { ...t, accessToken: null, rejected: 'invalid_grant' });
+      throw new Error(`Google sign-in${account ? ` for ${account}` : ''} has expired — sign in again in Settings`);
     }
     throw new Error(`Google token refresh failed (${r.json.error || r.status})`);
   }
-  _put(K.token, { ...t, accessToken: r.json.access_token, expiresAt: new Date(now + (Number(r.json.expires_in) || 3600) * 1000).toISOString() });
+  _writeToken(account, { ...t, accessToken: r.json.access_token, expiresAt: new Date(now + (Number(r.json.expires_in) || 3600) * 1000).toISOString() });
   return r.json.access_token;
 }
 
-async function _api(method, path, { query = null, body = null } = {}) {
-  const token = await _accessToken();
+async function _api(method, path, { query = null, body = null, account = null } = {}) {
+  const token = await _accessToken(Date.now(), account);
   const url = `${API}${path}${query ? `?${new URLSearchParams(query)}` : ''}`;
   const res = await _fetch(url, {
     // Google that never answers must not hold the wall's "Saving…" open.
@@ -458,7 +515,7 @@ async function _readCalendar(cal, from, to) {
         timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: 'true', orderBy: 'startTime',
         timeZone: TZ, maxResults: '250', ...(pageToken ? { pageToken } : {}),
       };
-      const r = await _api('GET', `${_calPath(cal)}/events`, { query });
+      const r = await _api('GET', `${_calPath(cal)}/events`, { query, account: accountFor(cal) });
       if (r.status === 404) throw new Error(`Google cannot find the calendar ${cal} for this account`);
       if (r.status === 403) throw new Error(`this Google account may not read ${cal}`);
       if (r.status !== 200 || !r.json) throw new Error(`Google answered ${r.status}`);
@@ -643,6 +700,7 @@ module.exports = {
   fromGoogle, validateDraft, toGoogle, newEventId,
   syncNow, rowsBetween, fresh,
   createEvent, updateEvent, deleteEvent,
+  accountFor, removeAccount,
   _setFetch, _ensureTable,
   // Read/answer a Google invitation from its email (gmail-invite.js).
   _api,

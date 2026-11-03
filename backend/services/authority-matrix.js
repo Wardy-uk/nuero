@@ -364,6 +364,7 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/google-calendar/connect', 'config.security'),
   R('*', '/api/google-calendar/finish', 'config.security'),
   R('*', '/api/google-calendar/disconnect', 'config.security'),
+  R('*', '/api/google-calendar/accounts/remove', 'config.security'),
   R('*', '/api/google-calendar/target', 'config.security'),
   R('*', '/api/google-calendar/calendars', 'config.security'),
   R('POST', '/api/google-calendar/sync', 'ingest'),
