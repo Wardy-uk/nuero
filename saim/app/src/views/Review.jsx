@@ -7,6 +7,7 @@ import Freshness from '../components/Freshness';
 import { makeCall } from '../preparedMove.mjs';
 import { loadDrafts, draftsLine } from '../drafts.mjs';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Review.css';
 
 // REVIEW — morning orientation, shutdown, and the weekly reset.
@@ -42,6 +43,18 @@ export function DraftsEntry({ drafts, onOpen }) {
     <button type="button" className="rev__drafts" onClick={onOpen} data-testid="review-drafts">
       <span className="rev__drafts-title">Drafts</span>
       <span className="rev__drafts-sub">{line}</span>
+    </button>
+  );
+}
+
+// Next steps (3 Nov 2026): everything pending in one list, beside Drafts. Not on
+// the kiosk, which has no door to /api/next-steps.
+export function NextStepsEntry({ onOpen }) {
+  if (!onOpen || platformNow() === 'kiosk') return null;
+  return (
+    <button type="button" className="rev__drafts" onClick={onOpen} data-testid="review-next-steps">
+      <span className="rev__drafts-title">Next steps</span>
+      <span className="rev__drafts-sub">Everything pending, most useful first</span>
     </button>
   );
 }
@@ -93,6 +106,7 @@ export default function Review({ onNavigate = null }) {
     <section className="rev">
       <h1 className="view__title">Review</h1>
       <DraftsEntry drafts={drafts} onOpen={onNavigate ? () => onNavigate('drafts') : null} />
+      <NextStepsEntry onOpen={onNavigate ? () => onNavigate('next-steps') : null} />
       <p className="view__lede">
         {s ? `Snapshot from ${stampFor(s.generatedAt) || '—'}` : 'Loading…'}
       </p>

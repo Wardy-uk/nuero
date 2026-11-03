@@ -39,6 +39,7 @@ import Controls from '../app/src/views/Controls';
 import Household from '../app/src/views/Household';
 import Authority from '../app/src/views/Authority';
 import Drafts from '../app/src/views/Drafts';
+import NextSteps from '../app/src/views/NextSteps';
 import TaskScreen from '../app/src/views/TaskScreen';
 
 export const PRIMARY = [
@@ -56,6 +57,10 @@ export const SECONDARY = [
   // canonically. Old links resolve through RETIRED_TABS in action-surfaces.
   // Drafts (22 Oct 2026): secondary, so the main bar stays three — reached first from Review.
   { id: 'drafts', label: 'Drafts', icon: '✎', Component: Drafts },
+  // Next steps (3 Nov 2026): everything pending, one list — the desktop page on the
+  // phone. Secondary, reached from More and Review; a push carrying `nextStep`
+  // opens its row. Not on the kiosk (left out of its menu; no proxy door).
+  { id: 'next-steps', label: 'Next steps', icon: '➜', Component: NextSteps },
   { id: 'tasks', label: 'Tasks', icon: '✓', Component: Tasks },
   { id: 'voice', label: 'Voice', icon: '🎙️', Component: Capture }, // jumps straight into recording
   { id: 'chat', label: 'Chat', icon: '💬', Component: Chat },

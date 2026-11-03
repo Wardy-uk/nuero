@@ -1,0 +1,45 @@
+/* Next steps (3 Nov 2026) — one row per pending thing, full width.
+   SAiM's vocabulary: still human (#e9b46a) = needs you now; GAP (#f0d6a6) =
+   could not read, not an all-clear; her light = the highlighted row. */
+.ns { padding: 16px; display: flex; flex-direction: column; gap: 12px; color: #e6edf3; }
+.ns-head { display: flex; flex-direction: column; gap: 4px; }
+.ns-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: #8b98a8; }
+.ns-h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.ns-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.ns-filter { font: inherit; font-size: 14px; color: #e6edf3; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.14); border-radius: 18px; padding: 8px 12px; min-height: 40px; cursor: pointer; }
+.ns-filter.is-on { background: #e9b46a; border-color: #e9b46a; color: #1a1206; font-weight: 600; }
+.ns-gap { margin: 0; color: #f0d6a6; font-size: 14px; border: 1px solid rgba(240,214,166,0.5); border-radius: 8px; padding: 10px 12px; background: rgba(240,214,166,0.08); }
+.ns-group { display: flex; flex-direction: column; gap: 8px; }
+.ns-h2 { margin: 14px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8b98a8; }
+.ns-h2.is-now { color: #e9b46a; }
+.ns-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ns-row { border: 1px solid rgba(255,255,255,0.12); border-left-width: 3px; border-radius: 8px; padding: 12px 14px; background: rgba(255,255,255,0.03); display: flex; flex-direction: column; gap: 6px; }
+.ns-row.is-now { border-left-color: #e9b46a; }
+.ns-row.is-highlighted { box-shadow: 0 0 0 2px rgb(var(--saim-rgb, 132, 166, 222)); }
+.ns-row-head { display: flex; gap: 8px; align-items: baseline; }
+.ns-kind { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #8b98a8; }
+.ns-kind-email, .ns-kind-report { color: #e9b46a; }
+.ns-kind-task, .ns-kind-drafts { color: rgb(var(--saim-rgb, 132, 166, 222)); }
+.ns-kind-people { color: #c9a4ff; }
+.ns-mins { font-size: 12px; color: #8b98a8; }
+.ns-title { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.ns-why { margin: 0; font-size: 13px; color: #8b98a8; overflow-wrap: anywhere; }
+.ns-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.ns-btn { font: inherit; font-size: 14px; border-radius: 8px; padding: 8px 14px; min-height: 44px; cursor: pointer; }
+.ns-btn-primary { background: #e9b46a; color: #1a1206; border: 0; font-weight: 600; }
+.ns-btn-secondary { background: transparent; color: #e6edf3; border: 1px solid rgba(255,255,255,0.2); }
+.ns-btn-quiet { background: transparent; color: #8b98a8; border: 0; }
+.ns-btn:disabled { opacity: 0.6; cursor: default; }
+.ns-menu { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ns-menu-label { font-size: 13px; color: #8b98a8; width: 100%; }
+.ns-chip { font: inherit; font-size: 13px; color: #e6edf3; background: transparent; border: 1px solid rgba(255,255,255,0.2); border-radius: 14px; padding: 6px 12px; min-height: 36px; cursor: pointer; }
+.ns-err { font-size: 13px; color: #ff7b72; }
+.ns-empty { color: #8b98a8; font-size: 15px; margin: 0; }
+.ns-cal { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; font-size: 14px; }
+.ns-cal--gap { color: #f0d6a6; }
+.ns-cal--done { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ns-cal__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ns-cal input { font: inherit; font-size: 15px; color: #e6edf3; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 8px; min-height: 40px; box-sizing: border-box; }
+.ns-cal__wide { width: 100%; }
+.ns-cal__allday { display: flex; align-items: center; gap: 4px; }
+.ns-cal__allday input { min-height: 0; }

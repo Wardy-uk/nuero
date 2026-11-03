@@ -73,7 +73,8 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification.data || {};
-  const tab = data.tab || null;
+  // A push naming a Next steps row opens that row (3 Nov 2026).
+  const tab = data.nextStep ? 'next-steps' : (data.tab || null);
   const notificationUrl = data.url || '/';
   const notificationType = data.type || null;
   const notificationTitle = event.notification.title || 'SAiM';
@@ -88,6 +89,7 @@ self.addEventListener('notificationclick', (event) => {
   });
   appUrl.searchParams.set('source', 'notification');
   if (tab) appUrl.searchParams.set('tab', tab);
+  if (data.nextStep) appUrl.searchParams.set('item', String(data.nextStep));
   if (notificationType) appUrl.searchParams.set('type', notificationType);
   if (notificationUrl) appUrl.searchParams.set('url', notificationUrl);
   if (notificationTitle) appUrl.searchParams.set('title', notificationTitle);

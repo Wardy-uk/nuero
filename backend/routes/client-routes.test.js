@@ -406,7 +406,10 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // Nick's presses; Drafts is read-only on the kiosk and passes no handler there.
 // calendar-care (1 Nov 2026): adding an agenda tells every attendee as Nick; the
 // prep sheet shows the drafted agenda read-only on the kiosk (no Add button).
-const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent', 'focus-blocks', 'meeting-followups', 'calendar-care']);
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent', 'focus-blocks', 'meeting-followups', 'calendar-care',
+  // Next steps (3 Nov 2026): every row acts, and the kiosk is read-only — the kiosk
+  // shell leaves the tab out of its menu and the view makes no request there.
+  'next-steps']);
 
 // EXACT paths a shared view calls only when it is NOT read-only — the kiosk renders
 // those views read-only (platformNow() === 'kiosk'), so the control that calls them
@@ -424,6 +427,10 @@ const KIOSK_NEVER_CALLS = new Map([
   // Prep → "Add agenda" (calendar care, 1 Nov 2026): the button is not drawn on the kiosk.
   ['/api/prepared-actions/${encodeURIComponent(a.actionId)}/intent-grant', 'saim/app/src/views/MeetingPrep.jsx'],
   ['/api/prepared-actions/${encodeURIComponent(a.actionId)}/execute-direct', 'saim/app/src/views/MeetingPrep.jsx'],
+  // Next steps → "Add to calendar" from an email row: the view renders nothing that
+  // acts on the kiosk (and is not in its menu).
+  ['/api/email/calendar/draft', 'saim/app/src/views/NextSteps.jsx'],
+  ['/api/email/calendar/add', 'saim/app/src/views/NextSteps.jsx'],
 ]);
 
 /**

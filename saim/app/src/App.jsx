@@ -14,6 +14,7 @@ import '../../shared-ui/Lit.css';
 import { PRIMARY, SECONDARY, TABS, VALID_TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
 import { speechRecognitionCtor } from './speechRecognition';
 import Whereabouts from '../../shared-ui/Whereabouts';
+import { NEXT_STEPS_TAB, nextStepFromLaunch } from './nextSteps.mjs';
 
 // Straight to NEURO with the PIN, like every other phone view. Module scope so
 // the header's poll is not re-armed on every render.
@@ -103,6 +104,7 @@ function readLaunchIntent() {
   const title = params.get('title');
   const body = params.get('body');
   const payload = params.get('payload');
+  const item = params.get('item');
 
   if (source !== 'notification' && !tab && !type && !url && !payload) return null;
 
@@ -113,6 +115,17 @@ function readLaunchIntent() {
     } catch {
       raw = {};
     }
+  }
+
+  // A push that names a Next steps row (data.nextStep), or ?tab=next-steps&item=,
+  // opens that row — highlighted and scrolled into view (3 Nov 2026).
+  const nextStep = nextStepFromLaunch({ tab, item, payload: raw });
+  if (nextStep) {
+    return {
+      source: source || 'notification', tab: NEXT_STEPS_TAB, nextStep: true,
+      context: { item: nextStep }, type: type || raw.type || null, url: null,
+      title: title || raw.title || null, body: body || raw.body || null, payload: raw,
+    };
   }
 
   return {
@@ -136,6 +149,8 @@ function clearLaunchIntentFromUrl() {
   next.searchParams.delete('url');
   next.searchParams.delete('title');
   next.searchParams.delete('payload');
+  next.searchParams.delete('body');
+  next.searchParams.delete('item');
   window.history.replaceState({}, '', `${next.pathname}${next.search}${next.hash}`);
 }
 
@@ -151,7 +166,7 @@ export default function App() {
   // the thing that pinged him, not on the home screen. This is only the default
   // when he opened the app himself.
   const [active, setActive] = useState(() => readLaunchIntent()?.tab || DEFAULT_TAB);
-  const [navContext, setNavContext] = useState(null);
+  const [navContext, setNavContext] = useState(() => readLaunchIntent()?.context || null);
   // The strip is revealed on request. On a WIDE screen it stays revealed while
   // Nick is off the Surface, as part of the one bar; on a PHONE a secondary
   // screen is a pushed view with its own Back, so the strip is only ever a
@@ -163,7 +178,10 @@ export default function App() {
   // notification lands somewhere that acknowledges WHY he is there. Without it
   // the push and the screen are two unconnected events.
   const [arrivedFrom, setArrivedFrom] = useState(null);
-  const [actionIntent, setActionIntent] = useState(() => readLaunchIntent());
+  const [actionIntent, setActionIntent] = useState(() => {
+    const i = readLaunchIntent();
+    return i && !i.nextStep ? i : null;
+  });
   // Which ritual a notification meant, when it routed straight to a tab. The
   // resolved TAB is the same for standup and EOD ('standup'), so without this
   // the kind is dropped and a 5pm EOD nudge opens the morning standup. Cleared
@@ -185,6 +203,11 @@ export default function App() {
   useEffect(() => {
     const intent = readLaunchIntent();
     if (!intent) return;
+    if (intent.nextStep) {
+      setActive(NEXT_STEPS_TAB); setNavContext(intent.context); setIntentKind(null); setActionIntent(null);
+      clearLaunchIntentFromUrl();
+      return;
+    }
     const plan = resolveSaimLitePlan(intent);
     setActive(intent.tab);
     setIntentKind(plan.presentation === 'tab' ? plan.kind : null);
@@ -199,6 +222,11 @@ export default function App() {
     function onMessage(event) {
       const data = event.data || {};
       if (data?.type !== 'saim-notification-open') return;
+      const nextStep = nextStepFromLaunch({ tab: data.tab, item: data.item, payload: data.notificationData });
+      if (nextStep) {
+        setActive(NEXT_STEPS_TAB); setNavContext({ item: nextStep }); setIntentKind(null); setActionIntent(null); setArrivedFrom(null);
+        return;
+      }
       const tab = VALID_TABS.has(data.tab) ? data.tab : resolveSaimLiteTab(data);
       const intent = {
         source: 'notification',
@@ -402,7 +430,7 @@ export default function App() {
             sitting on the Ritual tab re-opens it as EOD instead of being
             ignored by the view's mount-time default. */}
         <ActiveView
-          key={`${active}:${intentKind || ''}:${navContext ? (navContext.recordId || navContext.taskId || navContext.key || navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
+          key={`${active}:${intentKind || ''}:${navContext ? (navContext.recordId || navContext.taskId || navContext.item || navContext.key || navContext.eventId || (navContext.meeting && navContext.meeting.key) || 'meeting') : ''}`}
           autoRecord={active === 'voice'}
           context={navContext}
           intentKind={intentKind}
