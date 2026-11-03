@@ -332,6 +332,20 @@ function recordDismissal(id, reason = 'unspecified', { mute = null } = {}) {
 }
 
 /**
+ * A Gmail invitation Nick has answered (3 Nov 2026) leaves the panel, like an
+ * answered Outlook invite does. NEURO's own bookkeeping: not one of his
+ * verdicts, so never counted in the feedback score.
+ */
+function closeAnsweredInvite(id) {
+  const row = _row(id);
+  if (!row) return { ok: false };
+  const t = _parse(row.triage_json);
+  if (t.dismissed) return { ok: true, already: true };
+  _write(row.id, { ...t, dismissed: true, dismissedAt: new Date().toISOString(), dismissReason: 'invite-answered' });
+  return { ok: true };
+}
+
+/**
  * The card's Done / Read & dismiss / Subject not relevant / Mute sender.
  * `markRead` also sets \Seen on the server mailbox; the dismissal stands
  * whether or not that half worked, and a failure is reported in words.
@@ -381,7 +395,7 @@ module.exports = {
   INBOXES, MAX_PER_PASS,
   personalPrompt, laneOf, entryOf, muteVerdict,
   classifyPending, byLane, getFeedback,
-  recordDismissal, dismiss, promote, clearFyi,
+  recordDismissal, dismiss, promote, clearFyi, closeAnsweredInvite,
   muteSender, unmuteSender, muteSubject, unmuteSubject, listMuted,
   SENDER_RULES_KEY, SUBJECT_RULES_KEY, FEEDBACK_KEY,
 };

@@ -144,7 +144,12 @@ async function respond(emailId, response) {
   const back = await gcal._api('GET', path, { query: { timeZone: 'Europe/London' }, account });
   const now = back.json && (back.json.attendees || []).find((a) => a.self);
   if (!now || now.responseStatus !== status) return { ok: false, status: 502, error: 'Google took it but the event doesn’t show your answer yet — check Google Calendar.' };
-  return { ok: true, response: TO_CARD[status], say: SAY[status], event: _card(back.json) };
+  // Answered: the card leaves the panel and the email is marked read in Gmail,
+  // as an answered Outlook invite does. Neither may undo a confirmed answer.
+  let closed = false;
+  try { closed = require('./personal-triage').closeAnsweredInvite(emailId).ok; } catch { closed = false; }
+  require('./personal-inbox').markRead(emailId).catch(() => {});
+  return { ok: true, response: TO_CARD[status], say: SAY[status], event: _card(back.json), closed };
 }
 
 module.exports = { parseInviteSubject, read, respond, _london };
