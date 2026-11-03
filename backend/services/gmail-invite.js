@@ -96,7 +96,7 @@ async function _canWrite(calendar) {
   return { ok: role === 'writer' || role === 'owner', role };
 }
 
-const READ_ONLY_NOTE = (cal) => `NEURO can only read ${cal}’s calendar, so it can’t answer this — answer it in Google Calendar, or add ${cal} in Settings → Google Calendar → Add another Google account.`;
+const READ_ONLY_NOTE = (cal) => `NEURO can only read ${cal}’s calendar, so it can’t answer this — answer it in Google Calendar, or sign in for its calendar in Settings → Personal email → ${cal} → Calendar.`;
 
 /** The meeting behind an invitation email, read live. */
 async function read(emailId) {

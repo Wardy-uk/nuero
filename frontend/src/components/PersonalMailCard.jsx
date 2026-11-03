@@ -73,6 +73,77 @@ function GmailIntake({ s }) {
   );
 }
 
+/**
+ * The same Google account's CALENDAR (3 Nov 2026), on its mail card. Mail is an
+ * app password over IMAP/SMTP; the calendar needs a Google sign-in — two
+ * connections, one account, one place. Signing in lets NEURO write to this
+ * account's own calendar as it (answer invitations, add events).
+ */
+function GmailCalendar({ address }) {
+  const [st, setSt] = useState(null);
+  const [pasted, setPasted] = useState('');
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [error, setError] = useState(null);
+  const load = useCallback(async () => {
+    const d = await call('/api/google-calendar');
+    if (d && d.ok) setSt(d.status); else setError((d && d.error) || 'Could not read the Google calendar connection.');
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const run = async (fn) => { setBusy(true); setError(null); setMsg(null); try { await fn(); } finally { setBusy(false); } };
+  const start = () => run(async () => {
+    const d = await call('/api/google-calendar/connect', 'POST', { addAccount: true });
+    if (!d.ok) { setError(d.error); return; }
+    window.open(d.url, '_blank', 'noopener');
+    setOpen(true);
+  });
+  const finish = () => run(async () => {
+    const d = await call('/api/google-calendar/finish', 'POST', { pasted });
+    setPasted('');
+    if (!d.ok) { setError(d.error); return; }
+    setOpen(false);
+    setMsg(d.added && address && d.added !== String(address).toLowerCase()
+      ? `Signed in as ${d.added}, not ${address} — remove it below and sign in with ${address}.`
+      : (d.warning || 'Calendar connected — NEURO now reads and writes it as this account.'));
+    await load();
+  });
+  const remove = (email) => run(async () => { const d = await call('/api/google-calendar/accounts/remove', 'POST', { email }); if (!d.ok) setError(d.error); await load(); });
+
+  if (!st) return error ? <div className="admin-error">{error}</div> : null;
+  const me = String(address || '').toLowerCase();
+  const acct = (st.accounts || []).find((a) => a.email === me);
+  const readOnly = (st.extra || []).map((x) => x.toLowerCase()).includes(me) || st.target === me;
+  return (
+    <div className="pm-cal">
+      <div className="pm-head">
+        <span className="pm-addr">Calendar</span>
+        <span className={`pm-state ${acct && !acct.rejected ? 'pm-good' : 'pm-muted'}`}>
+          {acct ? (acct.rejected ? `sign-in no longer accepted (${acct.rejected})` : `signed in ${when(acct.connectedAt)}`) : (readOnly ? 'read only (through the family sign-in)' : 'not connected')}
+        </span>
+      </div>
+      <div className="pm-job">
+        {acct && !acct.rejected
+          ? 'NEURO reads and writes this calendar as this account — you can accept or decline invitations from the Personal inbox.'
+          : `${readOnly ? 'NEURO can see this calendar, but not change it, so invitations can’t be answered from the Personal inbox. ' : ''}Sign in with Google as ${address || 'this account'} to let NEURO answer invitations and add events here.`}
+      </div>
+      <div className="admin-inline-form">
+        {(!acct || acct.rejected) && <button className="admin-btn" disabled={busy} onClick={start}>Sign in with Google</button>}
+        {acct && <button className="admin-btn" disabled={busy} onClick={() => remove(acct.email)}>Disconnect calendar</button>}
+      </div>
+      {open && (
+        <div className="admin-inline-form">
+          <input value={pasted} placeholder="Google sends you to http://127.0.0.1… (it won’t load) — paste that whole address" autoComplete="off" onChange={(e) => setPasted(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && pasted && finish()} />
+          <button className="admin-btn" disabled={!pasted || busy} onClick={finish}>{busy ? 'Checking with Google…' : 'Finish'}</button>
+        </div>
+      )}
+      {msg && <div className="pm-job">{msg}</div>}
+      {error && <div className="admin-error">{error}</div>}
+    </div>
+  );
+}
+
 function Mailbox({ m, onChange, gmailIntake = null }) {
   const [password, setPassword] = useState('');
   const [address, setAddress] = useState('');
@@ -156,6 +227,7 @@ function Mailbox({ m, onChange, gmailIntake = null }) {
         </>
       )}
       {error && <div className="admin-error">{error}</div>}
+      {m.provider === 'gmail' && m.address && <GmailCalendar address={m.address} />}
     </div>
   );
 }

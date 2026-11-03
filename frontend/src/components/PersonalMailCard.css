@@ -20,3 +20,6 @@
 .pm-tests ul { margin: 0; padding-left: 18px; font-size: 13px; }
 .pm-tests li { margin-bottom: 6px; word-break: break-word; }
 .pm-test select { max-width: 100%; }
+
+/* The same Google account's calendar, on its mail card (3 Nov 2026). */
+.pm-cal { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
