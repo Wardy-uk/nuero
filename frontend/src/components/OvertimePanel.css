@@ -69,3 +69,4 @@
 .ot__agentrows > td { padding: 0 0 8px 18px; }
 .ot__table--inner { margin: 4px 0; }
 .ot__table--inner th, .ot__table--inner td { color: var(--text-secondary); }
+.ot__table--inner td:not(:last-child), .ot__table--inner th:not(:last-child) { white-space: nowrap; }
