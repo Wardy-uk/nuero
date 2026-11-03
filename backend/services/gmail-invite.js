@@ -59,10 +59,20 @@ function _locate(emailId) {
   return { ok: true, isInvite: true, calendar: p.calendar, googleId: hits[0].google_id };
 }
 
+/** A Google dateTime (any offset) as a London wall-clock string; an all-day date as is. */
+function _london(v) {
+  if (!v || !/T/.test(v)) return v || null;
+  const t = Date.parse(v);
+  if (!Number.isFinite(t)) return v;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date(t)).map((p) => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 function _card(ev) {
   const self = (ev.attendees || []).find((a) => a.self);
-  const start = ev.start && (ev.start.dateTime || ev.start.date) || null;
-  const end = ev.end && (ev.end.dateTime || ev.end.date) || null;
+  const start = _london(ev.start && (ev.start.dateTime || ev.start.date));
+  const end = _london(ev.end && (ev.end.dateTime || ev.end.date));
   return {
     subject: ev.summary || '',
     start, end,
@@ -114,4 +124,4 @@ async function respond(emailId, response) {
   return { ok: true, response: TO_CARD[status], say: SAY[status], event: _card(back.json) };
 }
 
-module.exports = { parseInviteSubject, read, respond };
+module.exports = { parseInviteSubject, read, respond, _london };

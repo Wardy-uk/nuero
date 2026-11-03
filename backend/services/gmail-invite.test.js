@@ -13,3 +13,10 @@ test('a Google invitation subject names its event, day and calendar', () => {
   assert.strictEqual(parseInviteSubject('Re: Invitation: hiking'), null);
   assert.strictEqual(parseInviteSubject('Driver Education Course Reminder'), null);
 });
+
+test('times are shown on the UK clock whatever offset Google sends', () => {
+  const { _london } = require('./gmail-invite');
+  assert.strictEqual(_london('2026-11-21T12:30:00Z'), '2026-11-21T12:30:00');
+  assert.strictEqual(_london('2026-07-04T12:30:00Z'), '2026-07-04T13:30:00');
+  assert.strictEqual(_london('2026-11-15'), '2026-11-15');
+});
