@@ -136,6 +136,82 @@ export function InviteBar({ base }) {
   );
 }
 
+// Add to calendar, from the email (3 Nov 2026). NEURO reads the email once for
+// the event it describes and shows an editable draft; nothing is created until
+// Add is pressed. Work mail goes in Outlook, everything else in the family
+// calendar — decided by which inbox the card is in, never guessed.
+export function CalendarBar({ source, emailId, subject, onClose }) {
+  const [state, setState] = useState({ loading: true });
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [err, setErr] = useState('');
+
+  React.useEffect(() => {
+    let live = true;
+    fetch(apiUrl('/api/email/calendar/draft'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, emailId }),
+    })
+      .then(r => r.json())
+      .then(j => {
+        if (!live) return;
+        setState({ loading: false, ...j });
+        if (j.already) setDone(j.already);
+        setD(j.draft || { title: subject || '', date: '', allDay: false, start: '', end: '', location: '', link: '' });
+      })
+      .catch(() => live && setState({ loading: false, ok: false, error: 'No answer from NEURO.' }));
+    return () => { live = false; };
+  }, [source, emailId, subject]);
+
+  const add = () => {
+    setBusy(true); setErr('');
+    fetch(apiUrl('/api/email/calendar/add'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, emailId, subject, draft: d }),
+    })
+      .then(r => r.json())
+      .then(j => { if (j.ok) setDone(j.event); else setErr(j.error || 'Not added.'); })
+      .catch(() => setErr('No answer from NEURO — check the calendar before pressing again.'))
+      .finally(() => setBusy(false));
+  };
+
+  if (state.loading) return <div className="inbox-invite">Reading the email for a date…</div>;
+  if (state.ok === false) return <div className="inbox-invite inbox-invite-gap">{state.error}</div>;
+  const where = state.targetLabel || (source === 'work' ? 'your Outlook work calendar' : 'the family calendar');
+  if (done) {
+    return (
+      <div className="inbox-invite inbox-invite-done">
+        Added to {where}: {done.title} — {done.date}{done.start ? ` ${done.start}–${done.end}` : ''}
+        <button className="inbox-action-btn inbox-action-ignore" onClick={onClose}>Close</button>
+      </div>
+    );
+  }
+  const set = (k) => (e) => setD({ ...d, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  return (
+    <div className="inbox-invite inbox-calendar">
+      {state.say && <div className="inbox-detail-error">{state.say}</div>}
+      <div className="inbox-calendar-row">
+        <input className="inbox-cal-title" value={d.title || ''} onChange={set('title')} placeholder="What it is" />
+        <input type="date" value={d.date || ''} onChange={set('date')} />
+        <label className="inbox-cal-allday"><input type="checkbox" checked={!!d.allDay} onChange={set('allDay')} /> All day</label>
+        {!d.allDay && <input type="time" value={d.start || ''} onChange={set('start')} />}
+        {!d.allDay && <input type="time" value={d.end || ''} onChange={set('end')} />}
+      </div>
+      <div className="inbox-calendar-row">
+        <input value={d.location || ''} onChange={set('location')} placeholder="Where (optional)" />
+        <input value={d.link || ''} onChange={set('link')} placeholder="Joining link (optional)" />
+      </div>
+      <div className="inbox-calendar-row">
+        <span className="inbox-invite-state">Goes in {where}</span>
+        <button className="inbox-action-btn inbox-action-done" disabled={busy} onClick={add}>{busy ? '...' : 'Add to calendar'}</button>
+        <button className="inbox-action-btn inbox-action-ignore" disabled={busy} onClick={onClose}>Cancel</button>
+      </div>
+      {err && <div className="inbox-detail-error">{err}</div>}
+    </div>
+  );
+}
+
 export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPromote, endpoint = workEndpoint, sourceChip = null, extraActions = null, selected, onSelect = null, readWhere = 'Outlook' }) {
   // mode: null | 'summary' | 'full' | 'reply'
   const [mode, setMode] = useState(null);
@@ -154,6 +230,7 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
   const [threadKnown, setThreadKnown] = useState(true);
   const [newTo, setNewTo] = useState('');
   const [newCc, setNewCc] = useState('');
+  const [calOpen, setCalOpen] = useState(false);
 
   const base = endpoint(email.id);
 
@@ -538,6 +615,8 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
       {/* Work Outlook only: a personal mailbox's invite has no Graph event. */}
       {email.isInvite && endpoint === workEndpoint && <InviteBar base={base} />}
 
+      {calOpen && <CalendarBar source={endpoint === workEndpoint ? 'work' : 'personal'} emailId={email.id} subject={email.subject} onClose={() => setCalOpen(false)} />}
+
       {/* Delegation prompts (1 Nov 2026): work mail only — a hand-over goes from the work address. */}
       {endpoint === workEndpoint && <HandOverHint kind="email" itemId={email.id} />}
 
@@ -607,6 +686,13 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
           onClick={openReply}
         >
           Reply
+        </button>
+        <button
+          className={`inbox-action-btn inbox-action-view${calOpen ? ' is-open' : ''}`}
+          onClick={() => setCalOpen(!calOpen)}
+          title={endpoint === workEndpoint ? 'Read this email for a date and add it to your Outlook work calendar' : 'Read this email for a date and add it to the family calendar'}
+        >
+          Add to calendar
         </button>
         {extraActions}
       </div>

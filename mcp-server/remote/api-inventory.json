@@ -8058,7 +8058,7 @@
     "route": "/api/workouts",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 16,
+    "line": 34,
     "description": "GET /api/workouts. every workout with a watch GPS track (hikes, walks, runs, rides), newest first: distance, time, ascent, photo count, a thin line for a thumbnail map.",
     "params": [],
     "query": [
@@ -8076,7 +8076,7 @@
     "route": "/api/workouts/:id",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 59,
+    "line": 77,
     "description": "GET /api/workouts/:id. one workout's whole page: map track, watch and track figures, elevation profile, heart rate, splits, body, weather where he walked, the home station, the carried logger, Ember, route plan, hike verdict, same-route history, photos, vault note.",
     "params": [
       "id"
@@ -8094,7 +8094,7 @@
     "route": "/api/workouts/last-hike",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 21,
+    "line": 39,
     "description": "GET /api/workouts/last-hike. the newest hike's whole page (Life → Outdoor's lead card).",
     "params": [],
     "query": [],
@@ -8110,7 +8110,7 @@
     "route": "/api/workouts/photo-windows",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 26,
+    "line": 44,
     "description": "GET /api/workouts/photo-windows. for the iOS app: each tracked workout's start/end, which photos NEURO already holds and which Nick removed (never send those again).",
     "params": [],
     "query": [],
@@ -8126,7 +8126,7 @@
     "route": "/api/workouts/photos/:photoId",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 31,
+    "line": 49,
     "description": "GET /api/workouts/photos/:photoId. one workout photo as a JPEG (?size=thumb for the small one).",
     "params": [
       "photoId"
@@ -10527,6 +10527,46 @@
       "source",
       "source_ref",
       "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_email_calendar_add",
+    "method": "POST",
+    "route": "/api/email/calendar/add",
+    "domain": "email",
+    "source": "routes/email-triage.js",
+    "line": 555,
+    "description": "POST /api/email/calendar/add. add to calendar: create the event Nick confirmed from an email. Body: { source: work|personal, emailId, subject?, draft: { title, date, allDay, start, end, location, link } }. Work → Outlook (solo, nobody invited); personal → the family Google calendar. One event per em",
+    "params": [],
+    "query": [],
+    "body": [
+      "draft",
+      "emailId",
+      "source",
+      "subject"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_email_calendar_draft",
+    "method": "POST",
+    "route": "/api/email/calendar/draft",
+    "domain": "email",
+    "source": "routes/email-triage.js",
+    "line": 543,
+    "description": "POST /api/email/calendar/draft. add to calendar from an email: read the email and propose the event it describes (date, start, end, location, joining link). Body: { source: work|personal, emailId }. Creates nothing. Work mail goes to Outlook, everything else to the family calendar.",
+    "params": [],
+    "query": [],
+    "body": [
+      "emailId",
+      "source"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -19219,7 +19259,7 @@
     "route": "/api/workouts/:id/photos",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 64,
+    "line": 82,
     "description": "POST /api/workouts/:id/photos. the iOS app adds one photo taken during a workout (resized JPEG + thumbnail, base64). A re-send folds; a removed photo is refused.",
     "params": [
       "id"
@@ -19246,7 +19286,7 @@
     "route": "/api/workouts/:id/send-to-site",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 77,
+    "line": 95,
     "description": "POST /api/workouts/:id/send-to-site. send this hike to Walking with Ember as a DRAFT page (one commit to the site's main; home trimmed 400 m; photos cleaned of metadata). A re-send updates track/photos/weather and never touches the page text.",
     "params": [
       "id"
@@ -19264,7 +19304,7 @@
     "route": "/api/workouts/notes/sync",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 54,
+    "line": 72,
     "description": "POST /api/workouts/notes/sync. write or refresh the hike notes in the vault (Personal/Hikes) now rather than at the next pass.",
     "params": [],
     "query": [],
@@ -19280,7 +19320,7 @@
     "route": "/api/workouts/photos/:photoId/remove",
     "domain": "workouts",
     "source": "routes/workouts.js",
-    "line": 39,
+    "line": 57,
     "description": "POST /api/workouts/photos/:photoId/remove. Nick removes a photo from a workout: the files are deleted and the phone never sends it again.",
     "params": [
       "photoId"

@@ -35,7 +35,7 @@ const REGISTRY = {
   briefing_synthesis: text(), focus_enhancement: text(), drilldown_framing: text(),
   import_classification: text(), transcript_processing: text(), journal_prompts: text(),
   knowledge_consolidation: text(), knowledge_enrichment: text(),
-  capability_suggestions: text(), event_parse: text(), drink_lookup: text(), task_short_title: text(),
+  capability_suggestions: text(), event_parse: text(), email_event_extract: text(), drink_lookup: text(), task_short_title: text(),
   watched_reply_judge: text(), ticket_reply_draft: text(), uat_request_extract: text(),
   // A follow-up email after a meeting, from its write-up (meeting-followups.js); once per occurrence.
   meeting_followup_draft: text({ local: false, maxOutputTokens: 2000 }),

@@ -527,7 +527,7 @@ function _matches(row, draft) {
 }
 
 /** Add an event to the shared calendar. `id` is the wall's own, so a retry cannot duplicate. */
-async function createEvent(input = {}, { by = 'wall' } = {}) {
+async function createEvent(input = {}, { by = 'wall', description = null } = {}) {
   const v = validateDraft(input);
   if (!v.ok) return { ok: false, status: 400, error: v.error };
   if (!status().connected) return { ok: false, status: 503, error: 'The family calendar isn’t connected yet.' };
@@ -542,7 +542,7 @@ async function createEvent(input = {}, { by = 'wall' } = {}) {
     return { ok: true, already: true, event: held ? rowsBetween(held.start_time, held.start_time).find((r) => r.google_id === id) : null };
   }
   if (!claim.ok && !claim.duplicate && claim.refused) return { ok: false, status: 500, error: claim.why };
-  const body = { id, ...toGoogle(v.draft), description: NOTE, extendedProperties: { private: { neuroWall: '1' } } };
+  const body = { id, ...toGoogle(v.draft), description: description ? String(description).slice(0, 2000) : NOTE, extendedProperties: { private: { neuroWall: '1' } } };
   let r;
   try {
     r = await _api('POST', `${_calPath()}/events`, { body });

@@ -97,7 +97,7 @@ const CAPABILITIES = Object.freeze({
   'homeassistant.room': { authority: 'A2', effect: 'lights / radiator in the house, from an accepted room offer', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.room', ledger: false, verification: 'next house read', idempotent: true },
   'home.control': { authority: 'A2', effect: 'switch a mapped light / household socket, or boost a radiator 1 h to 21°C, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.control', ledger: false, verification: 'entity read back (≤5 s)', idempotent: true },
   'router.restart': { authority: 'A3', effect: 'force-restart the home router (Wi-Fi drops ~2 min), on a person’s yes outside the safe hours', machine: 'refuse', approval: 'click', registry: 'external-writes:router.restart', ledger: true, verification: 'router uptime resets in a later watcher sample', idempotent: false },
-  'calendar.family': { authority: 'A2', effect: 'add / edit / delete an event in the shared family Google calendar, from the family wall', machine: 'refuse', approval: 'click', registry: 'external-writes:google.calendar.family', ledger: true, verification: 'Google read-back', idempotent: 'event id chosen before the call' },
+  'calendar.family': { authority: 'A2', effect: 'add / edit / delete an event in the shared family Google calendar, from the family wall; and add an event Nick confirmed from an email (work mail to his own Outlook, nobody invited)', machine: 'refuse', approval: 'click', registry: 'external-writes:google.calendar.family', ledger: true, verification: 'Google read-back', idempotent: 'event id chosen before the call' },
   'tally.categorise': { authority: 'A2', effect: "a transaction's category in Tally (and Tally's merchant rule on 'Always')", machine: 'refuse', approval: 'click', registry: 'external-writes:tally.transaction.categorise', ledger: true, verification: 'Tally read-back', idempotent: true },
 
   'microsoft.task.complete': {
@@ -238,6 +238,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/email/triage/dismiss/:emailId', 'mail.read-state'),
   R('GET', '/api/email/triage/:emailId/invite', 'read'),
   R('POST', '/api/email/triage/:emailId/invite', 'calendar.invite-respond', { machine: 'refuse' }),
+  R('POST', '/api/email/calendar/draft', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/email/calendar/add', 'calendar.family', { machine: 'refuse' }),
   R('POST', '/api/waiting-on/:key/chase', 'email.send'),
   R('POST', '/api/weekly-risk/queue-send', 'email.send'),
   R('POST', '/api/soap/:weekFrom/queue-send', 'email.send'),

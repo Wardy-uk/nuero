@@ -678,3 +678,11 @@
 .inbox-invite-actions { display: flex; gap: 6px; margin-left: auto; }
 .inbox-invite-gap { color: var(--warning); }
 .inbox-invite-done { color: var(--success, #3fb950); }
+
+/* Add to calendar from an email (3 Nov 2026) */
+.inbox-calendar { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.inbox-calendar-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inbox-calendar-row input { background: var(--bg-input, var(--bg)); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; }
+.inbox-calendar-row .inbox-cal-title { flex: 1 1 240px; }
+.inbox-calendar-row input:not([type]) { flex: 1 1 200px; }
+.inbox-cal-allday { display: inline-flex; gap: 4px; align-items: center; }

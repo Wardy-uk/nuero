@@ -539,4 +539,28 @@ router.post('/triage/clear', async (req, res) => {
   }
 });
 
+// POST /api/email/calendar/draft — add to calendar from an email: read the email and propose the event it describes (date, start, end, location, joining link). Body: { source: work|personal, emailId }. Creates nothing. Work mail goes to Outlook, everything else to the family calendar.
+router.post('/calendar/draft', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'Nick only' });
+  try {
+    const { source, emailId } = req.body || {};
+    const r = await require('../services/email-calendar').draft({ source, emailId });
+    res.status(r.ok ? 200 : (r.status || 500)).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/email/calendar/add — add to calendar: create the event Nick confirmed from an email. Body: { source: work|personal, emailId, subject?, draft: { title, date, allDay, start, end, location, link } }. Work → Outlook (solo, nobody invited); personal → the family Google calendar. One event per email; a repeat answers already. Nick only — machines refused.
+router.post('/calendar/add', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'Nick only' });
+  try {
+    const { source, emailId, subject, draft } = req.body || {};
+    const r = await require('../services/email-calendar').add({ source, emailId, subject, draft });
+    res.status(r.ok ? 200 : (r.status || 500)).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
