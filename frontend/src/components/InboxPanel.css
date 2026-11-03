@@ -686,3 +686,5 @@
 .inbox-calendar-row .inbox-cal-title { flex: 1 1 240px; }
 .inbox-calendar-row input:not([type]) { flex: 1 1 200px; }
 .inbox-cal-allday { display: inline-flex; gap: 4px; align-items: center; }
+
+.inbox-invite-note { flex-basis: 100%; font-size: 13px; color: var(--text-muted); }

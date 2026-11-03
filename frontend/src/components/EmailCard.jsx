@@ -131,6 +131,7 @@ export function InviteBar({ base }) {
           ))}
         </span>
       )}
+      {!info.canAnswer && info.note && <div className="inbox-invite-note">{info.note}</div>}
       {result && !result.ok && <div className="inbox-detail-error">{result.error}</div>}
     </div>
   );

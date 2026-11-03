@@ -83,6 +83,21 @@ function _card(ev) {
   };
 }
 
+/**
+ * Can NEURO's Google sign-in change events in this calendar? (3 Nov 2026: the
+ * sign-in is the family account, a READER of ward.nickj@ — `self` on an
+ * attendee marks whose calendar the copy is in, not who is signed in, so it
+ * proved nothing and every answer came back 403.) Read from the events list's
+ * own accessRole; unknown is treated as "can't".
+ */
+async function _canWrite(calendar) {
+  const r = await gcal._api('GET', `/calendars/${encodeURIComponent(calendar)}/events`, { query: { maxResults: '1' } });
+  const role = r.status === 200 && r.json ? r.json.accessRole : null;
+  return { ok: role === 'writer' || role === 'owner', role };
+}
+
+const READ_ONLY_NOTE = (cal) => `NEURO can only read ${cal}’s calendar, so it can’t answer this — answer it in Google Calendar. To answer from here, share ${cal}’s calendar with NEURO’s Google account with “Make changes to events”.`;
+
 /** The meeting behind an invitation email, read live. */
 async function read(emailId) {
   const loc = _locate(emailId);
@@ -94,10 +109,12 @@ async function read(emailId) {
   if (r.status !== 200 || !r.json) return { ok: false, error: `Google didn’t give the event back (${r.status}).` };
   const card = _card(r.json);
   const self = (r.json.attendees || []).find((a) => a.self);
+  const write = self && !card.isOrganizer && !card.isCancelled ? await _canWrite(loc.calendar) : { ok: true };
   return {
     ok: true, isInvite: true, event: card,
-    canAnswer: !!self && !card.isOrganizer && !card.isCancelled,
-    note: !self ? 'You aren’t listed as a guest on this event, so there’s nothing to answer.' : null,
+    canAnswer: !!self && !card.isOrganizer && !card.isCancelled && write.ok,
+    note: !self ? 'You aren’t listed as a guest on this event, so there’s nothing to answer.'
+      : !write.ok ? READ_ONLY_NOTE(loc.calendar) : null,
   };
 }
 
@@ -109,6 +126,7 @@ async function respond(emailId, response) {
   if (!loc.ok) return { ok: false, status: 404, error: loc.why };
   if (!loc.googleId) return { ok: false, status: 409, error: loc.note || 'This isn’t an invitation NEURO can answer.' };
   const path = `/calendars/${encodeURIComponent(loc.calendar)}/events/${encodeURIComponent(loc.googleId)}`;
+  if (!(await _canWrite(loc.calendar)).ok) return { ok: false, status: 409, error: READ_ONLY_NOTE(loc.calendar) };
   const cur = await gcal._api('GET', path);
   if (cur.status !== 200 || !cur.json) return { ok: false, status: 502, error: `Google didn’t give the event back (${cur.status}).` };
   const attendees = cur.json.attendees || [];
