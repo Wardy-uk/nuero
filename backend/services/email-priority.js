@@ -205,6 +205,11 @@ function isAutomated(fromName, fromEmail, subject, preview) {
   );
 }
 
+function isOwnAddress(fromEmail) {
+  const own = String(process.env.MS_OWN_ADDRESS || 'nickw@nurtur.tech').toLowerCase();
+  return String(fromEmail || '').trim().toLowerCase() === own;
+}
+
 function ageHours(email) {
   const received = email?.received || email?.created_at;
   if (!received) return null;
@@ -230,6 +235,18 @@ function judge(email) {
   const bodyText = words(`${subject} ${preview}`);
   const age = ageHours(email);
   const reasons = [];
+
+  // Mail that never asks Nick for a reply (3 Nov 2026): his own address (the
+  // briefings NEURO sends him, a copy to self), an out-of-office, and a meeting
+  // cancellation. Each went to the urgent/reply lanes and drove the banner —
+  // "3 urgent emails — including one from Nick Ward".
+  const noReplyNeeded = isOwnAddress(fromEmail) ? 'Sent by you'
+    : /^\s*(automatic reply|auto(?:matic)?[- ]?reply|out of (the )?office)/i.test(subject) ? 'Automatic reply'
+      : /^\s*(canceled|cancelled)\s*:/i.test(subject) ? 'Meeting cancelled'
+        : null;
+  if (noReplyNeeded) {
+    return { lane: 'fyi', category: 'FYI', urgency: 'low', forced: true, reasons: [noReplyNeeded] };
+  }
 
   const automated = isAutomated(fromName, fromEmail, subject, preview);
   if (automated) {
@@ -387,5 +404,5 @@ function evaluateEmail(email) {
 
 module.exports = {
   evaluateEmail,
-  _internals: { includesAny, isInternal },
+  _internals: { includesAny, isInternal, isOwnAddress },
 };

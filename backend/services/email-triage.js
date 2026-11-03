@@ -694,6 +694,7 @@ function isJudged(e) {
   // with verdicts nobody gave.
   return e.dismissed && e.dismissReason
     && e.dismissReason !== 'unspecified' && e.dismissReason !== 'left-inbox'
+    && e.dismissReason !== 'replied-elsewhere'
     // Nick judged the SENDER once. Every message auto-filed by that rule
     // afterwards is the same verdict being applied, not a new one being made -
     // counting them would let one mute press swamp the whole feedback score.
@@ -832,8 +833,22 @@ async function runTriage({ force = false } = {}) {
       // crossed the seven-day line sitting in the section until something else
       // landed — a rule that only fires when it happens to be convenient.
       const swept = ageOutInformational(stored.filter((e) => e.source !== 'gmail'));
-      if (swept.aged || swept.entries.length !== stored.length) {
-        storeTriage(swept.entries);
+      // Same mail, but Nick may have answered some of it from Outlook since —
+      // that changes Sent Items, not the Inbox, so it cannot wait for new mail.
+      const convById = new Map(emails.map(e => [e.id, e.conversationId || null]));
+      let entries = swept.entries.map(e => (e.conversationId || !convById.get(e.id)) ? e : { ...e, conversationId: convById.get(e.id) });
+      let repliedClosed = 0;
+      try {
+        const sent = await microsoft.fetchSentMail({ sinceIso: new Date(Date.now() - LOOKBACK_HOURS * 3600000).toISOString(), maxResults: 300 });
+        if (sent && Array.isArray(sent.messages)) {
+          const r = closeRepliedElsewhere(entries, sent.messages);
+          entries = r.entries; repliedClosed = r.closed;
+          if (r.closed) console.log(`[EmailTriage] ${r.closed} email(s) already answered from Outlook — closed as ${REPLIED_ELSEWHERE}`);
+        }
+      } catch (e) { console.warn('[EmailTriage] Sent Items check failed:', e.message); }
+      if (swept.aged || repliedClosed || swept.entries.length !== stored.length || entries.some((e, i) => e !== swept.entries[i])) {
+        storeTriage(entries);
+        if (repliedClosed) { try { require('./nudges').triggerUrgentEmailNudge(); } catch {} }
         console.log(`[EmailTriage] Aged out ${swept.aged} informational email(s) older than ${AGE_OUT_DAYS}d`);
       }
       // We DID look — the panel's "last triage" is a statement about when NEURO
@@ -935,6 +950,19 @@ async function runTriage({ force = false } = {}) {
     }
     if (departed) {
       console.log(`[EmailTriage] ${departed} entr${departed === 1 ? 'y' : 'ies'} no longer in the Inbox — closed as ${LEFT_INBOX}`);
+    }
+
+    // Answered from Outlook: closed off Sent Items. An unreadable Sent Items
+    // closes nothing (could not look is not "he replied").
+    try {
+      const sent = await microsoft.fetchSentMail({ sinceIso: new Date(windowStart).toISOString(), maxResults: 300 });
+      if (sent && Array.isArray(sent.messages)) {
+        const r = closeRepliedElsewhere(updated, sent.messages);
+        updated = r.entries;
+        if (r.closed) console.log(`[EmailTriage] ${r.closed} email(s) already answered from Outlook — closed as ${REPLIED_ELSEWHERE}`);
+      }
+    } catch (e) {
+      console.warn('[EmailTriage] Sent Items check failed:', e.message);
     }
 
     // LAST of the three sweeps, and after the merge, so it judges the category
@@ -1120,6 +1148,36 @@ function getFlaggedItems() {
 // email was verified in Sent Items (services/delegation.js). It IS his verdict.
 const DISMISS_REASONS = new Set(['done', 'not-relevant', 'replied', 'unspecified', 'delegated']);
 const LEFT_INBOX = 'left-inbox';
+// `replied-elsewhere` (3 Nov 2026): Sent Items holds a message from Nick in the
+// same conversation, sent after this one arrived — he answered it in Outlook
+// (or on his phone), so the card and its draft suggestion have nothing left to
+// ask. NEURO's own observation: absent from DISMISS_REASONS, excluded from isJudged.
+const REPLIED_ELSEWHERE = 'replied-elsewhere';
+
+/**
+ * PURE. Close every open reply/urgent entry Nick has already answered: a sent
+ * message in the same conversation, sent after the entry was received.
+ * Returns { entries, closed }.
+ */
+function closeRepliedElsewhere(entries, sent, now = new Date().toISOString()) {
+  const lastSent = new Map();
+  for (const m of sent || []) {
+    if (!m || !m.conversationId) continue;
+    const t = Date.parse(m.sentAt);
+    if (!Number.isFinite(t)) continue;
+    if (!lastSent.has(m.conversationId) || lastSent.get(m.conversationId) < t) lastSent.set(m.conversationId, t);
+  }
+  let closed = 0;
+  const out = entries.map((e) => {
+    if (e.dismissed || !e.conversationId || (e.lane !== 'reply' && e.lane !== 'urgent')) return e;
+    const t = lastSent.get(e.conversationId);
+    const got = Date.parse(e.received);
+    if (!Number.isFinite(t) || !Number.isFinite(got) || t <= got) return e;
+    closed++;
+    return { ...e, dismissed: true, dismissedAt: now, dismissReason: REPLIED_ELSEWHERE };
+  });
+  return { entries: out, closed };
+}
 
 // ── Invites answered (30 Oct 2026) ──────────────────────────────────────────
 //
@@ -1339,6 +1397,7 @@ function clearDismissed() {
 }
 
 module.exports = {
+  closeRepliedElsewhere,
   runTriage,
   getTriageByCategory,
   getUrgentEmails,

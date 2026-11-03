@@ -44,7 +44,8 @@ test('the weekly report to Chris surfaces when late and unsent, never once sent'
     pd.build = () => ({ weekly: { notBuilt: ['2026-09-28', '2026-10-05'], current: { week: '2026-10-05', built: false, sendRecorded: false, state: 'late' } } });
     const [item] = collectWeeklyReport();
     assert.equal(item.urgency, 'critical');
-    assert.match(item.reason, /^Not built yet\. 1 earlier week not built\.$/);
+    assert.match(item.reason, /^Not built yet/);
+    assert.doesNotMatch(item.reason, /earlier week/);
     pd.build = () => ({ weekly: { current: { week: '2026-10-05', built: true, sendRecorded: true, state: 'late' } } });
     assert.deepEqual(collectWeeklyReport(), []);
     pd.build = () => { throw new Error('unreadable'); };

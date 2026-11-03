@@ -608,7 +608,7 @@ async function fetchRecentEmailsDetailed(hoursBack = 24, maxResults = 500) {
     try {
       const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
       const filter = `receivedDateTime ge ${since}`;
-      const select = 'id,subject,from,receivedDateTime,isRead,importance,flag,bodyPreview,hasAttachments';
+      const select = 'id,subject,from,receivedDateTime,isRead,importance,flag,bodyPreview,hasAttachments,conversationId';
       const pageSize = Math.min(100, Math.max(1, maxResults));
       const maxPages = Math.max(1, Math.ceil(maxResults / pageSize));
       const data = await graphFetchAll(
@@ -633,6 +633,9 @@ async function fetchRecentEmailsDetailed(hoursBack = 24, maxResults = 500) {
           isFlagged: msg.flag?.flagStatus === 'flagged',
           preview: (msg.bodyPreview || '').substring(0, 300),
           hasAttachments: msg.hasAttachments,
+          // Lets triage see that Nick has already replied in this thread from
+          // Outlook (or anywhere else) — matched against Sent Items.
+          conversationId: msg.conversationId || null,
           // A meeting request is a derived message type; Graph names it in
           // @odata.type. The card offers Accept / Tentative / Decline on it.
           isInvite: /eventMessageRequest$/.test(String(msg['@odata.type'] || '')),

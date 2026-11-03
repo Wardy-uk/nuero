@@ -621,16 +621,14 @@ function collectWeeklyReport(now = new Date()) {
   if (!cur || cur.sendRecorded) return [];
   if (cur.state !== 'late' && cur.state !== 'due') return [];
   const late = cur.state === 'late';
-  const missed = Array.isArray(d.weekly.notBuilt) ? d.weekly.notBuilt.filter((w) => w !== cur.week).length : 0;
   return [{
     type: 'weekly_risk',
     id: `weekly-risk-${cur.week}`,
     dedupeKey: `weekly-risk:${cur.week}`,
     title: late ? 'Weekly Risk report for Chris is late' : 'Weekly Risk report for Chris is due by midday',
-    reason: [
-      cur.built ? 'Built, not sent yet.' : 'Not built yet.',
-      missed ? `${missed} earlier week${missed === 1 ? '' : 's'} not built.` : null,
-    ].filter(Boolean).join(' '),
+    // Earlier unbuilt weeks are no longer said (3 Nov 2026): they cannot be
+    // sent now, so the count was a line Nick could do nothing with.
+    reason: cur.built ? 'Built — it just needs sending.' : 'Not built yet — NEURO drafts it from the week’s data when you open it.',
     score: late ? 97 : 86,
     urgency: late ? 'critical' : 'high',
     source: 'neuro',

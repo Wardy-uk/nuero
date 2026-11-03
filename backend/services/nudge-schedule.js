@@ -64,13 +64,19 @@ function standupHour() {
 function ritualSchedule() {
   const hour = standupHour();
   const journal = journalTime();
+  // ⚠ 3 Nov 2026: `todo` (same minute as standup, said nothing), `plan-milestone`
+  // (the 90-day plan ended in July) and `121` (rang daily whether or not anyone
+  // was due) are gone — Nick: "very vague and meaningless". A 1-2-1 that is
+  // really due reaches him through the live nudge path, which knows who.
+  // The phone clears `sara.ritual.*` by prefix and re-adds, so dropping a key
+  // here removes the alarm on its next refresh.
   return [
     {
       key: 'standup',
       // His words for it, not the slug.
       title: 'Standup',
       // ⚠ NO STATE IN THE BODY. See the header.
-      body: 'SARA is ready when you are.',
+      body: 'Five minutes with SAiM to set today’s focus.',
       hour,
       minute: 0,
       weekdays: WEEKDAYS,
@@ -79,37 +85,10 @@ function ritualSchedule() {
     {
       key: 'eod',
       title: 'End of day',
-      body: 'Time to close the day off.',
+      body: 'Two minutes: what got done, what carries over.',
       hour: 20,
       minute: 0,
       weekdays: null, // every day
-      tab: 'surface',
-    },
-    {
-      key: 'todo',
-      title: 'Today',
-      body: 'Your list is ready.',
-      hour,
-      minute: 0,
-      weekdays: WEEKDAYS,
-      tab: 'surface',
-    },
-    {
-      key: 'plan-milestone',
-      title: 'The plan',
-      body: 'A milestone wants a look.',
-      hour: 9,
-      minute: 5,
-      weekdays: WEEKDAYS,
-      tab: 'surface',
-    },
-    {
-      key: '121',
-      title: 'One to ones',
-      body: 'Worth a check before the day fills.',
-      hour: 9,
-      minute: 10,
-      weekdays: WEEKDAYS,
       tab: 'surface',
     },
     {
