@@ -21,6 +21,7 @@ test('no date is no draft; unreadable is not "no event"; a bad end gets an hour,
   const all = parseAnswer('{"found":true,"date":"2026-11-08","start":null}');
   assert.strictEqual(all.draft.allDay, true);
   assert.strictEqual(parseAnswer('{"found":true,"date":"2026-11-08","link":"javascript:alert(1)"}').draft.link, null);
+  assert.strictEqual(parseAnswer('{"found":true,"date":"2026-11-08","location":"null"}').draft.location, null);
 });
 
 test('work mail goes to Outlook; everything else to the family calendar', () => {

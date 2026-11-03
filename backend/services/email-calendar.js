@@ -73,7 +73,7 @@ function parseAnswer(raw) {
     const mins = Math.min(h * 60 + mm + 60, 23 * 60 + 59);
     end = `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
   }
-  const clean = (v, n) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null);
+  const clean = (v, n) => (typeof v === 'string' && v.trim() && !/^(null|none|n\/a)$/i.test(v.trim()) ? v.trim().slice(0, n) : null);
   const link = clean(j.link, 500);
   return {
     draft: {
@@ -125,7 +125,7 @@ async function draft({ source, emailId, now = Date.now() } = {}) {
   if (!email) return { ok: false, status: 502, error: 'I couldn’t open that email to read it.' };
   let r;
   try {
-    r = await require('./ai-routing').runTask('email_event_extract', { prompt: _prompt(email, now), maxTokens: 300, forceCloud: true });
+    r = await require('./ai-routing').runTask('email_event_extract', { prompt: _prompt(email, now), maxTokens: 300 }, { forceCloud: true });
   } catch (e) {
     return { ok: false, status: 503, error: `I couldn’t read the email for a date just now (${e.message}).` };
   }
