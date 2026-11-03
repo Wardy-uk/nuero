@@ -237,6 +237,10 @@ function detectEventDate(text, today) {
   return null;
 }
 
+const NOT_AN_EVENT = /^\s*(invitation|updated invitation|accepted|declined|tentative|canceled|cancelled|automatic reply|auto[- ]?reply|out of office|re:|fw:|fwd:)\b|\bvote\b|\bsprint\b|\binvoice\b|\breceipt\b|\bstatement\b/i;
+const TIME_RE = /\b([01]?\d|2[0-3])[:.][0-5]\d\b|\b\d{1,2}\s?(am|pm)\b|\b(start|starts|time)[:\s]+\d{3,4}\b/i;
+const BOOKING_RE = /\b(appointment|booking|booked|reservation|course|reminder|confirmed|confirmation|tickets?)\b/i;
+
 function _datedEmails(gaps, now) {
   const today = _todayStr(now);
   const out = [];
@@ -245,15 +249,22 @@ function _datedEmails(gaps, now) {
   const consider = (source, e) => {
     if (out.length >= 5 || !e || e.dismissed || e.isInvite || e.category === 'IGNORE') return;
     if (added[`${source === 'work' ? 'outlook' : 'family'}:${e.id}`]) return;
-    const date = detectEventDate(`${e.subject || ''} ${e.preview || ''}`, today);
-    if (!date) return;
+    // Already a calendar thing, or not about an event Nick goes to.
+    if (NOT_AN_EVENT.test(String(e.subject || ''))) return;
+    const text = `${e.subject || ''} ${e.preview || ''}`;
+    let date = detectEventDate(text, today);
+    if (date && !TIME_RE.test(text)) date = null;
+    // A personal email that reads like a booking: NEURO reads the date on Add.
+    const booking = !date && source === 'personal' && BOOKING_RE.test(String(e.subject || ''));
+    if (!date && !booking) return;
     out.push({
       id: `cal:${source}:${e.id}`,
       kind: 'calendar',
-      group: date <= require('./life-loops').addDays(today, 7) ? 'today' : 'week',
+      group: date && date <= require('./life-loops').addDays(today, 7) ? 'today' : (booking ? 'today' : 'week'),
       sphere: source === 'work' ? 'work' : 'life',
       title: `Add “${e.subject || 'this'}” to ${source === 'work' ? 'Outlook' : 'the family calendar'}?`,
-      why: `The email from ${e.from || e.fromEmail || 'someone'} mentions ${date}.`,
+      why: date ? `The email from ${e.from || e.fromEmail || 'someone'} mentions ${date}.`
+        : `Looks like a booking from ${e.from || e.fromEmail || 'someone'} — NEURO reads the date when you press Add.`,
       minutes: 2,
       start: { label: 'Add', view: source === 'work' ? 'inbox' : 'personal-inbox', context: { emailId: e.id }, action: 'add-to-calendar' },
       calendar: { source, emailId: e.id },
