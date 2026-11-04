@@ -308,18 +308,23 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
   // addressee, or the reply needs something only he knows. The questions show
   // above the box; what he types there goes back WITH the questions, so the
   // next draft knows what was answered.
+  // 4 Nov 2026: answers have their OWN field — they used to go in the reply
+  // box, which is where Nick's own written reply was sitting. A long reply in
+  // the box is tidied as his draft (the server decides), never questioned.
   const [draftQuestions, setDraftQuestions] = useState(null);
+  const [draftAnswers, setDraftAnswers] = useState('');
+  const [beforeAI, setBeforeAI] = useState(null);
   const draftWithAI = () => {
     setDrafting(true);
     setError('');
     const typed = replyText.trim();
-    const instruction = draftQuestions && typed
-      ? `${draftQuestions.map(q => `Q: ${q}`).join(' ')} Nick's answer: ${typed}`
-      : typed;
+    const answers = draftQuestions && draftAnswers.trim()
+      ? `${draftQuestions.map(q => `Q: ${q}`).join(' ')} Nick's answer: ${draftAnswers.trim()}`
+      : '';
     fetch(apiUrl(`${base}/draft`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction: instruction || undefined }),
+      body: JSON.stringify({ instruction: typed || undefined, answers: answers || undefined }),
     })
       .then(r => r.json())
       .then(d => {
@@ -327,7 +332,11 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
           setDraftQuestions(d.questions);
         } else if (d.ok) {
           setDraftQuestions(null);
-          if (typeof d.draft === 'string' && d.draft) setReplyText(d.draft);
+          setDraftAnswers('');
+          if (typeof d.draft === 'string' && d.draft) {
+            if (d.draft !== replyText) setBeforeAI(replyText);
+            setReplyText(d.draft);
+          }
           else setError('No draft came back');
         } else setError(d.error || 'Could not draft a reply');
       })
@@ -561,21 +570,40 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
               {drafting ? 'Drafting...' : 'Draft with AI'}
             </button>
             <span className="inbox-reply-hint">
-              or just type below — anything you write is used as a steer if you then draft with AI
+              a short note below steers the draft; a reply you have written is tidied, keeping what you said
             </span>
+            {beforeAI !== null && !prepared && (
+              <button className="inbox-action-btn" onClick={() => { setReplyText(beforeAI); setBeforeAI(null); }} disabled={drafting}>
+                Undo AI changes
+              </button>
+            )}
           </div>
           {draftQuestions && (
             <div className="inbox-draft-questions">
               <div className="inbox-draft-questions-head">Before I draft this:</div>
               <ul>{draftQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>
-              <div className="inbox-draft-questions-hint">Answer in the box below, then press Draft with AI again.</div>
+              <textarea
+                className="inbox-reply-text"
+                value={draftAnswers}
+                onChange={e => setDraftAnswers(e.target.value)}
+                placeholder="Your answers…"
+                rows={3}
+              />
+              <div className="inbox-item-actions">
+                <button className="inbox-action-btn" onClick={draftWithAI} disabled={drafting || sending || !draftAnswers.trim()}>
+                  {drafting ? 'Drafting...' : 'Answer and draft'}
+                </button>
+                <button className="inbox-action-btn" onClick={() => { setDraftQuestions(null); setDraftAnswers(''); }} disabled={drafting}>
+                  Skip
+                </button>
+              </div>
             </div>
           )}
           <textarea
             className="inbox-reply-text"
             value={replyText}
             onChange={e => setReplyText(e.target.value)}
-            placeholder={draftQuestions ? 'Your answers…' : 'Write your reply...'}
+            placeholder="Write your reply..."
             rows={8}
             // Locked once prepared: the grant binds THESE words. Discard to edit.
             disabled={!!prepared && prepared.status === 'prepared'}

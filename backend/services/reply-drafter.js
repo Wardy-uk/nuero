@@ -19,6 +19,21 @@
 
 const MAX_QUESTIONS = 3;
 
+// 4 Nov 2026: Nick had typed his whole reply and pressed Draft with AI. The
+// route cut his text at 1000 chars (mid-sentence) and the model, reading it as
+// a "steer", asked whether he had finished — with nowhere to answer except the
+// box holding his reply. A box holding a written reply is his DRAFT: the model
+// tidies it and never asks. Short text is still a steer.
+const OWN_DRAFT_CHARS = 200;
+const MAX_OWN_DRAFT = 8000;
+
+/** Is this box text a written reply rather than a steer? PURE. */
+function looksLikeOwnDraft(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return t.length >= OWN_DRAFT_CHARS || t.split(/\n\s*\n/).length >= 2;
+}
+
 function _norm(list) {
   return (Array.isArray(list) ? list : [])
     .map((r) => (typeof r === 'string'
@@ -59,12 +74,13 @@ const POSITION_LINE = {
   unknown: 'The To/Cc lists could not be read, so who this email is addressed to is unknown.',
 };
 
-function buildPrompt({ message, position, steer, persona = 'work' }) {
+function buildPrompt({ message, position, steer, persona = 'work', ownDraft = '' }) {
   const to = _norm(message.recipients?.to || message.to).map(_label).join(', ') || '(unknown)';
   const cc = _norm(message.recipients?.cc || message.cc).map(_label).join(', ') || '(none)';
   const who = persona === 'personal'
     ? 'Nick Ward, writing from his own personal mail (not as Head of Technical Support). Friendly, plain, British English, short.'
     : 'Nick Ward, Head of Technical Support at Nurtur. Direct, warm and concise — British English, no corporate padding.';
+  if (ownDraft) return buildPolishPrompt({ message, who, to, cc, steer, ownDraft });
   const mustAsk = position !== 'to' && !steer;
   return `You prepare email replies for ${who}
 
@@ -78,6 +94,31 @@ ${mustAsk ? '- In this case Nick has given no steer and is not the addressee, so
 
 Nick's steer (his own words — follow it, and treat it as his answers to any questions): ${steer}` : ''}
 
+From: ${message.from || 'Unknown'}${message.fromEmail ? ` <${message.fromEmail}>` : ''}
+To: ${to}
+Cc: ${cc}
+Subject: ${message.subject || '(no subject)'}
+
+${String(message.body || message.preview || '').replace(/\s+\n/g, '\n').slice(0, 4000)}`;
+}
+
+/** Nick wrote the reply himself: tidy it, never ask. PURE. */
+function buildPolishPrompt({ message, who, to, cc, steer, ownDraft }) {
+  return `You tidy email replies for ${who}
+
+Nick has written his own reply below. Polish it so he can send it:
+- Fix spelling, grammar, punctuation and awkward phrasing; tighten where it rambles.
+- Keep every fact, ticket number, name, date and commitment exactly as he wrote it. Add nothing he did not say, remove nothing of substance, invent no promises or dates.
+- Keep his structure, his greeting and his sign-off; keep his voice.
+- If a sentence is unfinished, finish it only from what he says elsewhere in the draft; otherwise leave it as written.
+- Do NOT ask questions. Output only the reply body — no subject line, no commentary.${steer ? `
+
+Nick also said: ${steer}` : ''}
+
+Nick's draft:
+${ownDraft}
+
+--- The email he is replying to ---
 From: ${message.from || 'Unknown'}${message.fromEmail ? ` <${message.fromEmail}>` : ''}
 To: ${to}
 Cc: ${cc}
@@ -111,20 +152,35 @@ function fallbackQuestion(message, position) {
 }
 
 /**
+ * Split what the card sent into the drafter's inputs. PURE.
+ * `instruction` = the reply box; `answers` = his answers to the drafter's
+ * questions (their own field, so answering never overwrites his reply).
+ */
+function inputsFrom(body = {}) {
+  const box = String(body.instruction || '').trim();
+  const answers = String(body.answers || '').trim().slice(0, 2000);
+  if (looksLikeOwnDraft(box)) return { ownDraft: box.slice(0, MAX_OWN_DRAFT), steer: answers };
+  return { ownDraft: '', steer: [box, answers].filter(Boolean).join('\n').slice(0, 3000) };
+}
+
+/**
  * Draft, or ask. Returns { kind: 'draft', text, provider } |
  * { kind: 'questions', questions, provider, position } | null (AI unavailable
  * and Nick IS the addressee — the caller keeps its canned fallback).
  */
-async function draft({ message, steer = '', persona = 'work', selfAddresses = [], runTask }) {
+async function draft({ message, steer = '', ownDraft = '', persona = 'work', selfAddresses = [], runTask }) {
   const position = positionOf(message, { selfAddresses });
-  const prompt = buildPrompt({ message, position, steer, persona });
-  const mustAsk = position !== 'to' && position !== 'unknown' && !steer;
+  ownDraft = String(ownDraft || '').trim().slice(0, MAX_OWN_DRAFT);
+  const prompt = buildPrompt({ message, position, steer, persona, ownDraft });
+  const mustAsk = position !== 'to' && position !== 'unknown' && !steer && !ownDraft;
   let parsed = null;
   let provider = 'fallback';
   try {
     const run = runTask || require('./ai-routing').runTask;
-    const r = await run('email_draft', { prompt, maxTokens: 600 });
+    const r = await run('email_draft', { prompt, maxTokens: ownDraft ? 2000 : 600 });
     parsed = parseAnswer(r?.text);
+    // His own draft is never answered with questions — keep his words.
+    if (ownDraft && parsed?.kind === 'questions') parsed = null;
     if (parsed) provider = r.provider;
   } catch (e) {
     console.warn('[ReplyDrafter] model failed:', e.message);
@@ -132,8 +188,9 @@ async function draft({ message, steer = '', persona = 'work', selfAddresses = []
   // Not the addressee and no steer: a draft here is exactly the 30 Oct bug, so
   // it is never returned — ask instead, whatever the model did.
   if (mustAsk && parsed?.kind !== 'questions') parsed = fallbackQuestion(message, position);
+  if (!parsed && ownDraft) return { kind: 'draft', text: ownDraft, provider: 'unchanged', position };
   if (!parsed) return null;
   return { ...parsed, provider, position };
 }
 
-module.exports = { draft, positionOf, buildPrompt, parseAnswer, fallbackQuestion, MAX_QUESTIONS };
+module.exports = { draft, positionOf, buildPrompt, parseAnswer, fallbackQuestion, looksLikeOwnDraft, inputsFrom, MAX_QUESTIONS };

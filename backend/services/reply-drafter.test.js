@@ -72,3 +72,34 @@ test('parseAnswer: a QUESTIONS header with nothing under it is unreadable', () =
   assert.equal(rd.parseAnswer('QUESTIONS\n'), null);
   assert.equal(rd.parseAnswer('**QUESTIONS**\n- a\n- b\n- c\n- d').questions.length, rd.MAX_QUESTIONS);
 });
+
+// 4 Nov 2026: Nick typed his whole reply and pressed Draft with AI. The route
+// cut it at 1000 chars and the model asked whether he had finished, with the
+// only answer box being the one holding his reply.
+const ownReply = 'All,\n\nI was on annual leave Monday, so apologies for the delay. ' + 'There are 7 tickets open across the teams. '.repeat(30) + '\n\nNick';
+
+test('a written reply is his draft, whole, not a truncated steer', () => {
+  const inp = rd.inputsFrom({ instruction: ownReply, answers: '' });
+  assert.equal(inp.ownDraft, ownReply.trim());
+  assert.ok(ownReply.length > 1000);
+  assert.equal(inp.steer, '');
+  const short = rd.inputsFrom({ instruction: 'say I can call Monday', answers: 'yes' });
+  assert.equal(short.ownDraft, '');
+  assert.match(short.steer, /call Monday[\s\S]*yes/);
+});
+
+test('his own draft is tidied, never questioned — even on Cc', async () => {
+  let prompt = '';
+  const out = await rd.draft({ message: dezrez, selfAddresses: SELF, ownDraft: ownReply,
+    runTask: async (_t, p) => { prompt = p.prompt; return { text: 'QUESTIONS\n- Has Nick finished?', provider: 'stub' }; } });
+  assert.equal(out.kind, 'draft');
+  assert.equal(out.text, ownReply.trim());
+  assert.match(prompt, /Do NOT ask questions/);
+  assert.ok(prompt.includes(ownReply.trim()));
+});
+
+test('his own draft with the model down comes back unchanged', async () => {
+  const out = await rd.draft({ message: dezrez, selfAddresses: SELF, ownDraft: ownReply, runTask: async () => { throw new Error('down'); } });
+  assert.equal(out.kind, 'draft');
+  assert.equal(out.provider, 'unchanged');
+});

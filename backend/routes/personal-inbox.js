@@ -332,13 +332,13 @@ router.post('/triage/:id/draft', async (req, res) => {
     const loaded = await loadPersonal(id);
     if (!loaded) return res.status(404).json({ ok: false, error: 'that message is no longer in the mailbox' });
     const { merged } = loaded;
-    const steer = trimText(req.body && req.body.instruction, 1000);
+    const { steer, ownDraft } = require('../services/reply-drafter').inputsFrom(req.body || {});
     // Who the email is TO decides what a reply can say — and whether NEURO
     // should ask Nick first (reply-drafter, 30 Oct 2026).
     const pm = require('../services/personal-mail');
     const selfAddresses = ['nick', 'contact', 'gmail'].map((k) => pm.addressFor(k))
       .concat(require('../services/mail-identity').WORK_ADDRESS);
-    const out = await require('../services/reply-drafter').draft({ message: merged, steer, persona: 'personal', selfAddresses });
+    const out = await require('../services/reply-drafter').draft({ message: merged, steer, ownDraft, persona: 'personal', selfAddresses });
     if (out && out.kind === 'questions') {
       return res.json({ ok: true, draft: null, questions: out.questions, position: out.position, provider: out.provider });
     }

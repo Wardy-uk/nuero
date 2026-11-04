@@ -338,7 +338,7 @@ router.post('/triage/:emailId/draft', async (req, res) => {
     const loaded = await loadEmail(emailId);
     if (!loaded) return res.status(404).json({ ok: false, error: 'Email not found' });
     const { merged, triageItem } = loaded;
-    const steer = trimText(req.body?.instruction || '', 1000);
+    const { steer, ownDraft } = require('../services/reply-drafter').inputsFrom(req.body || {});
 
     // Who the email is TO decides what a reply can say — and whether NEURO
     // should ask Nick first (reply-drafter, 30 Oct 2026).
@@ -347,7 +347,7 @@ router.post('/triage/:emailId/draft', async (req, res) => {
       ? [require('../services/personal-mail').addressFor('gmail')]
       : [await microsoft.getSignedInAddress().catch(() => null), require('../services/mail-identity').WORK_ADDRESS];
     const out = await require('../services/reply-drafter').draft({
-      message: merged, steer, persona: isGmail ? 'personal' : 'work', selfAddresses,
+      message: merged, steer, ownDraft, persona: isGmail ? 'personal' : 'work', selfAddresses,
     });
     if (out?.kind === 'questions') {
       return res.json({ ok: true, draft: null, questions: out.questions, position: out.position, provider: out.provider });
