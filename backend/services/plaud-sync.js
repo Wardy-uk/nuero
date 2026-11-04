@@ -650,6 +650,109 @@ function shouldProcessRecording(recording, syncState, incremental) {
   return false;
 }
 
+// ── Revisit: edits made in PLAUD after the first pull (4 Nov 2026) ──────────
+// list_files carries no updated_at — only id, name, created_at, start_at, duration —
+// so `sourceFingerprint` is the START TIME and never changes. Naming the speakers,
+// renaming the recording or generating the Obsidian Meeting Template in PLAUD days
+// later therefore reached nothing: the 30 Oct Support Leadership Meeting sat in the
+// vault as "Speaker 1/2/3" under its old name, and the SOAP report could not find it.
+// So recent ledgered recordings are re-read on a slower clock and judged on what
+// PLAUD now HOLDS: the name, the notes, and who the speakers are.
+
+function revisitEnabled() {
+  return String(process.env.PLAUD_REVISIT_ENABLED || 'true').toLowerCase() !== 'false';
+}
+function revisitSettings() {
+  const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+  return {
+    days: num(process.env.PLAUD_REVISIT_DAYS, 14),
+    minutes: num(process.env.PLAUD_REVISIT_MINUTES, 60),
+    // A get_file is ~200KB, so the checks per run are bounded…
+    maxChecks: num(process.env.PLAUD_REVISIT_MAX_CHECKS, 15),
+    // …and so are re-pulls: each re-runs transcript processing, a paid model call, and
+    // the first pass after this ships may find many legacy changes at once.
+    maxRepulls: num(process.env.PLAUD_REVISIT_MAX_REPULLS, 2)
+  };
+}
+
+function _sha(text) {
+  return require('crypto').createHash('sha256').update(String(text == null ? '' : text)).digest('hex');
+}
+
+/** The transcript segments inside a get_file answer, or null when none can be read. PURE. */
+function segmentsFromDetails(details) {
+  const tx = (Array.isArray(details && details.source_list) ? details.source_list : [])
+    .find((s) => s && s.data_type === 'transaction');
+  if (!tx || typeof tx.data_content !== 'string') return null;
+  try {
+    const segs = JSON.parse(tx.data_content);
+    return Array.isArray(segs) ? segs : null;
+  } catch { return null; }
+}
+
+/**
+ * What PLAUD holds for a recording, as one hash. PURE. Built from get_file only:
+ * the name, each note's identity and CONTENT, and the label → name of each speaker.
+ * ⚠ Never the presigned links (`data_link`, `presigned_url`) — they expire and change
+ * on every read, which would make every recording look edited every hour.
+ */
+function contentFingerprint(details) {
+  if (!details || typeof details !== 'object') return null;
+  const notes = (Array.isArray(details.note_list) ? details.note_list : [])
+    .map((n) => [n.data_id || '', n.data_type || '', n.data_tab_name || '', n.data_title || '', _sha(n.data_content || '')].join('|'))
+    .sort();
+  const segs = segmentsFromDetails(details);
+  const speakers = segs
+    ? assessSpeakerNaming(segs).speakers.map((s) => `${s.label}=${s.named ? s.name : ''}`).sort()
+    : null;
+  return _sha(JSON.stringify({ name: details.name || '', notes, speakers }));
+}
+
+/** Whether a ledgered recording is due a look. PURE — `now` is passed in. */
+function revisitDue(existing, recording, now, { days, minutes }) {
+  if (!existing) return false;
+  const startMs = new Date(recording.start_at || existing.sourceStartAt || '').getTime();
+  if (!Number.isFinite(startMs) || now - startMs > days * 86400000) return false;
+  const last = new Date(existing.lastRevisitedAt || '').getTime();
+  return !Number.isFinite(last) || now - last >= minutes * 60000;
+}
+
+/**
+ * For a recording pulled before fingerprints existed: has PLAUD moved on from what the
+ * vault holds? PURE — the transcript note's text is passed in. Three observable facts,
+ * because there is no stored fingerprint to compare against and baselining blindly would
+ * swallow exactly the edits this exists to catch (they were made before it shipped).
+ */
+function legacyChange({ details, existing, transcriptText }) {
+  const rank = getSummaryPreferenceRank(choosePreferredSummary(details.note_list || []));
+  if (rank > (existing.summaryPreferenceRank || 0)) return 'a better summary appeared in PLAUD';
+  if (typeof transcriptText === 'string') {
+    const title = extractFrontmatterValue(transcriptText, 'title');
+    if (details.name && title && title !== details.name) return 'renamed in PLAUD';
+    const segs = segmentsFromDetails(details);
+    if (segs) {
+      for (const slot of assessSpeakerNaming(segs).speakers) {
+        if (slot.named && transcriptText.includes(`**${slot.label}**`) && !transcriptText.includes(`**${slot.name}**`)) {
+          return 'speakers named in PLAUD';
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Copy a note aside before a revisit rewrites it. Nick may have edited it by hand. */
+function backupBeforeRewrite(relativePath, stamp) {
+  if (!relativePath) return null;
+  const vaultPath = getVaultPath();
+  const full = path.join(vaultPath, relativePath);
+  if (!fs.existsSync(full)) return null;
+  const dest = path.join(vaultPath, 'Scripts', '.lint-backups', `plaud-update-${stamp}`, relativePath);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(full, dest);
+  return dest;
+}
+
 function htmlUnescape(value) {
   return String(value == null ? '' : value)
     .replace(/&lt;/g, '<')
@@ -1099,17 +1202,63 @@ async function syncPlaudRecordings({ incremental = true, clientFactory = createC
       let skipped = 0;
       let failed = 0;
       const failures = [];
+      const revisit = { checked: 0, revised: 0, deferred: 0 };
+      const revisitCfg = revisitSettings();
+      const backupStamp = new Date().toISOString().slice(0, 10);
 
       for (const recording of recordings) {
         // Canonical for OUR state; recording.id stays raw for every PLAUD call.
         const key = recordingKey(recording);
+        let prefetched = null;
+        let revisitReason = null;
         if (!shouldProcessRecording(recording, syncState, incremental)) {
-          skipped += 1;
-          continue;
+          const existing = syncState.syncedRecordings?.[key];
+          if (!incremental || !revisitEnabled() || revisit.checked >= revisitCfg.maxChecks
+            || !revisitDue(existing, recording, Date.now(), revisitCfg)) {
+            skipped += 1;
+            continue;
+          }
+          revisit.checked += 1;
+          try {
+            prefetched = assertUsableDetails(
+              await withRetry(`get_file ${recording.id}`, () => callTool(client, 'get_file', { file_id: recording.id })),
+              recording.id
+            );
+            const fp = contentFingerprint(prefetched);
+            if (existing.contentFingerprint) {
+              if (fp && fp !== existing.contentFingerprint) revisitReason = 'changed in PLAUD';
+            } else {
+              let transcriptText = null;
+              try {
+                transcriptText = fs.readFileSync(path.join(getVaultPath(), existing.transcriptRelativePath || ''), 'utf-8').replace(/\r\n/g, '\n');
+              } catch {}
+              revisitReason = legacyChange({ details: prefetched, existing, transcriptText });
+            }
+            if (!revisitReason) {
+              existing.lastRevisitedAt = new Date().toISOString();
+              if (fp) existing.contentFingerprint = fp;
+              writeSyncState(syncState);
+              skipped += 1;
+              continue;
+            }
+            if (revisit.revised >= revisitCfg.maxRepulls) {
+              // Not stamped, so the next run picks it up first.
+              revisit.deferred += 1;
+              skipped += 1;
+              continue;
+            }
+            revisit.revised += 1;
+            console.log(`[PlaudSync] ${recording.id} ${revisitReason} — re-pulling into its existing notes`);
+          } catch (error) {
+            // A failed LOOK is not a failed recording: the vault copy is still good.
+            console.warn(`[PlaudSync] revisit of ${recording.id} could not read PLAUD: ${error.message}`);
+            skipped += 1;
+            continue;
+          }
         }
 
         try {
-          const details = assertUsableDetails(
+          const details = prefetched || assertUsableDetails(
             await withRetry(`get_file ${recording.id}`, () =>
               callTool(client, 'get_file', { file_id: recording.id })
             ),
@@ -1172,7 +1321,9 @@ async function syncPlaudRecordings({ incremental = true, clientFactory = createC
             enabled: speakerWaitEnabled()
           });
 
-          if (speakerHold.hold) {
+          // A revisit re-pulls a recording already in the vault: holding it would only
+          // keep the OLDER copy longer, never get a better one.
+          if (speakerHold.hold && !revisitReason) {
             const held = noteSpeakerHold(syncState, key, new Date().toISOString(), speakerNaming);
             // Persisted PER RECORDING, never batched to the end of the run: a crash or a
             // deploy mid-pass would otherwise lose the stamp and restart the clock.
@@ -1204,6 +1355,10 @@ async function syncPlaudRecordings({ incremental = true, clientFactory = createC
           const transcriptRelativePath = targets.transcriptPath;
 
           const hadExistingSync = Boolean(syncState.syncedRecordings[key]);
+          if (revisitReason) {
+            backupBeforeRewrite(summaryRelativePath, backupStamp);
+            backupBeforeRewrite(transcriptRelativePath, backupStamp);
+          }
           const summaryWrite = writeFile(
             summaryRelativePath,
             renderSummaryNote(details, preferredSummary, summaryBody, transcriptRelativePath)
@@ -1246,7 +1401,10 @@ async function syncPlaudRecordings({ incremental = true, clientFactory = createC
             sourceStartAt: details.start_at || null,
             sourceFingerprint: details.updated_at || details.modified_at || details.created_at || details.start_at || null,
             summaryPreferenceRank: getSummaryPreferenceRank(preferredSummary),
-            summaryPreferenceLabel: describeSummaryChoice(preferredSummary)
+            summaryPreferenceLabel: describeSummaryChoice(preferredSummary),
+            contentFingerprint: contentFingerprint(details),
+            lastRevisitedAt: new Date().toISOString(),
+            ...(revisitReason ? { revisedAt: new Date().toISOString(), revisedBecause: revisitReason } : {})
           };
           existingNotesByPlaudId[key] = {
             summaries: [finalSummaryRelativePath],
@@ -1284,6 +1442,9 @@ async function syncPlaudRecordings({ incremental = true, clientFactory = createC
         }
       }
 
+      if (revisit.revised || revisit.deferred) {
+        console.log(`[PlaudSync] revisit: ${revisit.checked} checked, ${revisit.revised} re-pulled, ${revisit.deferred} left for the next run`);
+      }
       if (failed === 0) {
         syncState.lastSuccessfulSyncAt = startedAt.toISOString();
       }
@@ -1306,6 +1467,7 @@ async function syncPlaudRecordings({ incremental = true, clientFactory = createC
         skipped,
         failed,
         total: recordings.length,
+        revisit,
         lastSuccessfulSyncAt: syncState.lastSuccessfulSyncAt,
         failures
       };
@@ -2113,6 +2275,11 @@ module.exports = {
   htmlUnescape,
   // exported for tests / reuse
   _internal: {
+    // Revisit (2026-11-04) — pinned by plaud-revisit.test.js.
+    contentFingerprint,
+    revisitDue,
+    legacyChange,
+    revisitSettings,
     // Transcript paging + guard (2026-10-08) — pinned by plaud-transcript-paging.test.js.
     fetchTranscriptPages,
     fetchTranscriptSegments,
