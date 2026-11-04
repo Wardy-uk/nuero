@@ -70,3 +70,7 @@
 .ot__table--inner { margin: 4px 0; }
 .ot__table--inner th, .ot__table--inner td { color: var(--text-secondary); }
 .ot__table--inner td:not(:last-child), .ot__table--inner th:not(:last-child) { white-space: nowrap; }
+.ot__small { padding: 3px 9px; font-size: 12px; }
+.ot__danger { background: var(--danger, #c0392b); color: #fff; border: 0; border-radius: var(--radius-sm); cursor: pointer; }
+.ot__rowacts { white-space: nowrap; text-align: right; }
+.ot__rowacts button + button { margin-left: 6px; }

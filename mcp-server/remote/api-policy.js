@@ -286,6 +286,8 @@ export const interactive = {
   // Overtime claims (29 Oct 2026): deciding a claim, opt-outs and the payroll send are Nick's.
   post_overtime_claims_by_id_decide: 'Approving or rejecting overtime is Nick\'s decision, in NEURO → People → Overtime.',
   post_overtime_claims_manual: 'Adding an approved overtime line for an agent is Nick\'s, in NEURO → People → Overtime.',
+  post_overtime_claims_by_id_manual_edit: 'Correcting an overtime line Nick added is Nick’s, in NEURO → People → Overtime.',
+  post_overtime_claims_by_id_manual_delete: 'Deleting an overtime line Nick added is Nick’s, in NEURO → People → Overtime.',
   post_overtime_claims_optouts: 'Recording a Working Time opt-out is Nick\'s, in NEURO → People → Overtime.',
   post_overtime_claims_optouts_by_id_withdraw: 'Recording a Working Time opt-out withdrawal is Nick\'s, in NEURO → People → Overtime.',
   post_personal_auto_tea_shopping: "Whether a planned tea adds to the household shopping list is the household's switch, in NEURO or on the family wall.",
@@ -305,7 +307,7 @@ export const interactive = {
     // The family Google calendar (18 Oct 2026): the sign-in is a credential and
     // the wall's own writes are a person's tap, never an agent's.
     'post_google_calendar_client', 'post_google_calendar_connect', 'post_google_calendar_finish',
-    'post_google_calendar_disconnect', 'post_google_calendar_target', 'post_google_calendar_calendars',
+    'post_google_calendar_disconnect', 'post_google_calendar_target', 'post_google_calendar_calendars', 'post_google_calendar_accounts_remove',
     'post_v_family_calendar_events', 'patch_v_family_calendar_events_by_id', 'delete_v_family_calendar_events_by_id',
     'post_energy_gas_calorific_value',
     'post_mail_accounts_by_key_credential', 'delete_mail_accounts_by_key_credential',

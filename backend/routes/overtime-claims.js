@@ -67,6 +67,15 @@ router.post('/payroll/test-send', wrap(async (req, res) => {
   send(res, await ot.testPayroll(String(month || '')));
 }));
 
+// POST /api/overtime-claims/:id/manual-edit — correct an overtime line Nick added (agentEmail, date, start, end, reason, overrideReason); only before payroll has it; re-checked in NOVA.
+router.post('/:id/manual-edit', wrap(async (req, res) => {
+  const { agentEmail, date, start, end, reason, overrideReason } = req.body;
+  send(res, await ot.editManual(Number(req.params.id), { agentEmail, date, start, end, reason, overrideReason }));
+}));
+
+// POST /api/overtime-claims/:id/manual-delete — delete an overtime line Nick added, before payroll has it.
+router.post('/:id/manual-delete', wrap(async (req, res) => send(res, await ot.deleteManual(Number(req.params.id)))));
+
 // GET /api/overtime-claims/:id/check — live: the agent's Jira/NOVA activity in the window and the Working Time read.
 router.get('/:id/check', wrap(async (req, res) => send(res, await ot.check(Number(req.params.id)))));
 

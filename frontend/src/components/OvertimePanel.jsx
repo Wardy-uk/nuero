@@ -248,6 +248,84 @@ function ManualLine({ onAdded }) {
   );
 }
 
+// One claim in a person's list. A line Nick added (and payroll has not had — everything in this
+// list is unsent) can be corrected or deleted; an agent's own claim cannot.
+function ManualRow({ r, onChanged }) {
+  const [mode, setMode] = useState(null); // null | 'edit' | 'delete'
+  const [f, setF] = useState(null);
+  const [needOverride, setNeedOverride] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const mineToChange = !!r.enteredBy;
+
+  const startEdit = () => {
+    setF({ agentEmail: r.agentEmail, date: r.date, start: r.start, end: r.end, reason: r.reason || '', overrideReason: '' });
+    setNeedOverride(false); setMsg(null); setMode('edit');
+  };
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    const res = await postJson(`/api/overtime-claims/${r.claimId}/manual-edit`, { ...f, overrideReason: f.overrideReason || null });
+    setBusy(false);
+    if (!res.ok) {
+      if (/Working Time warnings/.test(res.error || '')) setNeedOverride(true);
+      setMsg(res.error || 'Not saved'); return;
+    }
+    setMode(null); onChanged();
+  };
+  const del = async () => {
+    setBusy(true); setMsg(null);
+    const res = await postJson(`/api/overtime-claims/${r.claimId}/manual-delete`, {});
+    setBusy(false);
+    if (!res.ok) { setMsg(res.error || 'Not deleted'); return; }
+    setMode(null); onChanged();
+  };
+
+  return (
+    <>
+      <tr>
+        <td>{dayLabel(r.date)}</td><td>{r.start}–{r.end}</td><td>{r.hours}h</td>
+        <td>{r.reason}{r.lateFromEarlierMonth ? ' (earlier month)' : ''}{r.enteredBy ? ` (added by ${r.enteredBy})` : ''}</td>
+        <td className="ot__rowacts">
+          {mineToChange && mode === null && (
+            <>
+              <button type="button" className="ot__quiet ot__small" onClick={startEdit}>Edit</button>
+              <button type="button" className="ot__quiet ot__small" onClick={() => { setMsg(null); setMode('delete'); }}>Delete</button>
+            </>
+          )}
+          {mode === 'delete' && (
+            <>
+              <span className="ot__muted">Delete this line? </span>
+              <button type="button" className="ot__danger ot__small" disabled={busy} onClick={del}>{busy ? 'Deleting…' : 'Delete'}</button>
+              <button type="button" className="ot__quiet ot__small" disabled={busy} onClick={() => setMode(null)}>Keep</button>
+            </>
+          )}
+        </td>
+      </tr>
+      {mode === 'edit' && f && (
+        <tr><td colSpan={5}>
+          <div className="ot__form">
+            <input type="date" value={f.date} max={ukToday()} onChange={(e) => setF({ ...f, date: e.target.value })} />
+            <input type="time" value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} aria-label="From" />
+            <input type="time" value={f.end} onChange={(e) => setF({ ...f, end: e.target.value })} aria-label="To" />
+            <input className="ot__grow" maxLength={1000} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="Reason (payroll sees this)" />
+          </div>
+          {needOverride && (
+            <div className="ot__form">
+              <input className="ot__grow" placeholder="Why approve past the Working Time warning (recorded)" maxLength={1000}
+                value={f.overrideReason} onChange={(e) => setF({ ...f, overrideReason: e.target.value })} />
+            </div>
+          )}
+          <div className="ot__actions">
+            <button type="button" className="ot__primary ot__small" disabled={busy || !f.date || !f.start || !f.end || !f.reason.trim() || (needOverride && !f.overrideReason.trim())} onClick={save}>{busy ? 'Checking and saving…' : 'Save'}</button>
+            <button type="button" className="ot__quiet ot__small" disabled={busy} onClick={() => setMode(null)}>Cancel</button>
+          </div>
+        </td></tr>
+      )}
+      {msg && <tr><td colSpan={5}><div className="ot__note ot__note--bad">{msg}</div></td></tr>}
+    </>
+  );
+}
+
 function Month() {
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState(null);
@@ -334,14 +412,9 @@ function Month() {
                         <tr className="ot__agentrows">
                           <td colSpan={3}>
                             <table className="ot__table ot__table--inner">
-                              <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Reason</th></tr></thead>
+                              <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Reason</th><th></th></tr></thead>
                               <tbody>
-                                {mine.map((r) => (
-                                  <tr key={r.claimId}>
-                                    <td>{dayLabel(r.date)}</td><td>{r.start}–{r.end}</td><td>{r.hours}h</td>
-                                    <td>{r.reason}{r.lateFromEarlierMonth ? ' (earlier month)' : ''}{r.enteredBy ? ` (added by ${r.enteredBy})` : ''}</td>
-                                  </tr>
-                                ))}
+                                {mine.map((r) => <ManualRow key={r.claimId} r={r} onChanged={load} />)}
                               </tbody>
                             </table>
                           </td>

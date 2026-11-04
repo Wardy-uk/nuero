@@ -4808,7 +4808,7 @@
     "route": "/api/overtime-claims/:id/check",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 71,
+    "line": 80,
     "description": "GET /api/overtime-claims/:id/check. live: the agent's Jira/NOVA activity in the window and the Working Time read.",
     "params": [
       "id"
@@ -11703,7 +11703,7 @@
     "route": "/api/google-calendar/accounts/remove",
     "domain": "google-calendar",
     "source": "routes/google-calendar.js",
-    "line": 58,
+    "line": 61,
     "description": "POST /api/google-calendar/accounts/remove. forget an added Google account { email }; its calendars go back to read-through-the-main-sign-in",
     "params": [],
     "query": [],
@@ -11774,7 +11774,7 @@
     "route": "/api/google-calendar/disconnect",
     "domain": "google-calendar",
     "source": "routes/google-calendar.js",
-    "line": 64,
+    "line": 67,
     "description": "POST /api/google-calendar/disconnect. forget the Google sign-in (stored events are kept until the next sign-in)",
     "params": [],
     "query": [],
@@ -11808,7 +11808,7 @@
     "route": "/api/google-calendar/sync",
     "domain": "google-calendar",
     "source": "routes/google-calendar.js",
-    "line": 69,
+    "line": 72,
     "description": "POST /api/google-calendar/sync. re-read the family Google calendar now",
     "params": [],
     "query": [],
@@ -13985,7 +13985,7 @@
     "route": "/api/overtime-claims/:id/decide",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 74,
+    "line": 83,
     "description": "POST /api/overtime-claims/:id/decide. approve or reject a claim (decision, note, overrideReason).",
     "params": [
       "id"
@@ -13995,6 +13995,49 @@
       "decision",
       "note",
       "overrideReason"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_by_id_manual_delete",
+    "method": "POST",
+    "route": "/api/overtime-claims/:id/manual-delete",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 77,
+    "description": "POST /api/overtime-claims/:id/manual-delete. delete an overtime line Nick added, before payroll has it.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_by_id_manual_edit",
+    "method": "POST",
+    "route": "/api/overtime-claims/:id/manual-edit",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 71,
+    "description": "POST /api/overtime-claims/:id/manual-edit. correct an overtime line Nick added (agentEmail, date, start, end, reason, overrideReason); only before payroll has it; re-checked in NOVA.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "agentEmail",
+      "date",
+      "end",
+      "overrideReason",
+      "reason",
+      "start"
     ],
     "queryOpen": false,
     "bodyOpen": true,

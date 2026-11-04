@@ -116,6 +116,53 @@ async function addManual({ agentEmail, date, start, end, reason, overrideReason 
   } catch (e) { return novaFail(e); }
 }
 
+// A line Nick added can be corrected or deleted until payroll has it. If a payroll email that
+// includes it is only PREPARED (not yet pressed), that draft is withdrawn so the next press
+// rebuilds the file; once the send is under way the line is held until it is confirmed.
+function _clearDraftHolding(id) {
+  for (const s of _db().all('SELECT * FROM overtime_payroll_sends WHERE marked_at IS NULL')) {
+    if (!JSON.parse(s.claim_ids).includes(id)) continue;
+    const status = _statusOf(s.action_id);
+    if (!LIVE.has(status)) continue;
+    if (status !== 'prepared') return bad(`the ${s.month} payroll email with this line is already being sent — wait for it to be confirmed`, 409);
+    _pa().reject(s.action_id, { note: 'overtime line changed — the payroll email is rebuilt on the next press', actor: 'nick' });
+    _db().run('DELETE FROM overtime_payroll_sends WHERE id = ?', [s.id]);
+  }
+  return null;
+}
+
+async function editManual(id, { agentEmail, date, start, end, reason, overrideReason } = {}) {
+  if (!Number.isInteger(id) || id <= 0) return bad('bad claim id');
+  if (!agentEmail || !String(agentEmail).includes('@')) return bad('choose the agent');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return bad('date must be YYYY-MM-DD');
+  if (!/^\d{2}:\d{2}$/.test(String(start || '')) || !/^\d{2}:\d{2}$/.test(String(end || ''))) return bad('from and to must be HH:MM');
+  if (!String(reason || '').trim()) return bad('a reason is required');
+  ensureTable();
+  const held = _clearDraftHolding(id);
+  if (held) return held;
+  try {
+    const claim = await nova.call(`/api/neuro-bridge/overtime/claims/${id}/manual-edit`, {
+      method: 'POST', timeoutMs: READ_TIMEOUT,
+      body: {
+        agentEmail: String(agentEmail).trim(), date, start, end, reason: String(reason).slice(0, 1000),
+        overrideReason: overrideReason ? String(overrideReason).slice(0, 1000) : null, decidedBy: DECIDER(),
+      },
+    });
+    return { ok: true, claim };
+  } catch (e) { return novaFail(e); }
+}
+
+async function deleteManual(id) {
+  if (!Number.isInteger(id) || id <= 0) return bad('bad claim id');
+  ensureTable();
+  const held = _clearDraftHolding(id);
+  if (held) return held;
+  try {
+    await nova.call(`/api/neuro-bridge/overtime/claims/${id}/manual-delete`, { method: 'POST', body: {} });
+    return { ok: true, deleted: id };
+  } catch (e) { return novaFail(e); }
+}
+
 // ── Opt-outs ──
 
 async function optOuts() {
@@ -279,6 +326,6 @@ async function payrollFile(month) {
 }
 
 module.exports = {
-  claims, check, decide, agents, addManual, optOuts, recordOptOut, withdrawOptOut,
+  claims, check, decide, agents, addManual, editManual, deleteManual, optOuts, recordOptOut, withdrawOptOut,
   payrollMonth, preparePayroll, testPayroll, reconcile, payrollFile, payrollEmail, monthLabel, ensureTable,
 };
