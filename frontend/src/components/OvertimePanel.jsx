@@ -170,15 +170,33 @@ function ApprovalCard({ claim, onDone }) {
 
 function Approvals() {
   const [claims, setClaims] = useState(null);
+  const [me, setMe] = useState(null);
   const [err, setErr] = useState(null);
   const load = useCallback(async () => {
-    try { setClaims((await getJson('/api/overtime-claims?status=submitted')).claims); setErr(null); } catch (e) { setErr(e.message); }
+    try {
+      const [c, s] = await Promise.all([getJson('/api/overtime-claims?status=submitted'), getJson('/api/overtime-claims/signoff').catch(() => null)]);
+      setClaims(c.claims); setMe(s && s.me ? String(s.me).toLowerCase() : null); setErr(null);
+    } catch (e) { setErr(e.message); }
   }, []);
   useEffect(() => { load(); }, [load]);
   if (err) return <div className="ot__bad">Could not read claims from NOVA: {err}</div>;
   if (!claims) return <div className="ot__muted">Loading…</div>;
-  if (!claims.length) return <div className="ot__muted">No overtime claims waiting for a decision.</div>;
-  return <div>{claims.map((c) => <ApprovalCard key={c.id} claim={c} onDone={load} />)}</div>;
+  // Nick's own claims are Chris's to approve (NOVA refuses a self-decision): they go in his sign-off email.
+  const own = me ? claims.filter((c) => String(c.agentEmail || '').toLowerCase() === me) : [];
+  const team = claims.filter((c) => !own.includes(c));
+  return (
+    <div>
+      {!team.length && <div className="ot__muted">No overtime claims waiting for a decision.</div>}
+      {team.map((c) => <ApprovalCard key={c.id} claim={c} onDone={load} />)}
+      {own.length > 0 && (
+        <div className="ot__card">
+          <div className="ot__label">Your own overtime — Chris approves these</div>
+          {own.map((c) => <div key={c.id} className="ot__muted">{dayLabel(c.date)} {c.start}–{c.end} · {hours(c.minutes)} · {c.reason}</div>)}
+          <div className="ot__muted">They go in Monday's sign-off email to Chris (see Chris sign-off).</div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -328,6 +346,10 @@ function ManualRow({ r, onChanged }) {
 
 function Month() {
   const [month, setMonth] = useState(thisMonth());
+  // The payroll month runs to the cut-off (usually the 16th): open on the period we are in.
+  useEffect(() => {
+    getJson('/api/overtime-claims/signoff').then((s) => { if (s.current && s.current.month) setMonth(s.current.month); }).catch(() => {});
+  }, []);
   const [data, setData] = useState(null);
   const [decided, setDecided] = useState(null);
   const [err, setErr] = useState(null);
@@ -382,6 +404,7 @@ function Month() {
     <div>
       <div className="ot__toolbar">
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        {data && data.period && <span className="ot__muted">Period {dayLabel(data.period.from)} to {dayLabel(data.period.to)} (cut-off){data.period.overridden ? ' — set by hand' : ''}</span>}
         {exp && <span className="ot__muted">{exp.rows.length} approved claims to send · {exp.totalHours} hours{exp.alreadySent ? ` · ${exp.alreadySent} already sent` : ''}</span>}
       </div>
       <ManualLine onAdded={load} />
@@ -437,10 +460,16 @@ function Month() {
               </tbody></table>
             </details>
           )}
+          {data.signoff && !data.signoff.complete && exp.rows.length > 0 && (
+            <div className="ot__warn">
+              Chris has not signed off {data.signoff.unsigned.length} claim{data.signoff.unsigned.length === 1 ? '' : 's'} in this file — payroll waits until he has:
+              {' '}{data.signoff.unsigned.slice(0, 8).map((u) => `${u.agentName} ${dayLabel(u.date)}`).join(', ')}{data.signoff.unsigned.length > 8 ? '…' : ''}
+            </div>
+          )}
           <div className="ot__actions">
             {data.inFlight
               ? <span className="ot__warn">The {month} email is {data.inFlight.status}; NOVA marks the claims sent once it is confirmed in Sent Items.</span>
-              : <button className="ot__primary" disabled={busy || !exp.rows.length} onClick={send}>{busy ? 'Sending…' : `Send to ${data.to}`}</button>}
+              : <button className="ot__primary" disabled={busy || !exp.rows.length || (data.signoff && !data.signoff.complete)} onClick={send}>{busy ? 'Sending…' : `Send to ${data.to}`}</button>}
             <button className="ot__quiet" disabled={busy || !exp.rows.length} onClick={testSend}>Send a test to me</button>
             <button className="ot__quiet" disabled={!data.hasFile || !exp.rows.length} onClick={download}>Download the file</button>
           </div>
@@ -463,6 +492,145 @@ function Month() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const KIND = { weekly: 'Weekly', reminder: 'Final reminder', cutoff: 'Cut-off' };
+const STATUS = {
+  nothing: 'Nothing to sign off — not sent',
+  preparing: 'Preparing',
+  prepared: 'Ready — waiting to send',
+  sent: 'Sent — waiting for Chris',
+  'needs-you': 'Chris replied — confirm what he signed off',
+  signed: 'Signed off',
+  partial: 'Partly signed off',
+  held: 'Held',
+  'not-sent': 'Not sent',
+  failed: 'Failed',
+};
+
+/** Chris's weekly sign-off (5 Nov 2026): the cut-off, the emails, and his replies to confirm. */
+function SignOff() {
+  const [v, setV] = useState(null);
+  const [err, setErr] = useState(null);
+  const [day, setDay] = useState('');
+  const [ovMonth, setOvMonth] = useState('');
+  const [ovDate, setOvDate] = useState('');
+  const [note, setNote] = useState(null);
+  const load = useCallback(async () => {
+    try { const r = await getJson('/api/overtime-claims/signoff'); setV(r); setDay(String(r.cutoff.day)); setErr(null); } catch (e) { setErr(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const saveCutoff = async (body) => {
+    setNote(null);
+    const r = await postJson('/api/overtime-claims/signoff/cutoff', body);
+    setNote(r.ok ? { tone: 'ok', text: 'Cut-off saved.' } : { tone: 'bad', text: r.error || 'Not saved' });
+    load();
+  };
+  if (err) return <div className="ot__bad">Could not read the sign-off: {err}</div>;
+  if (!v) return <div className="ot__muted">Loading…</div>;
+  const overrides = Object.entries(v.cutoff.overrides || {}).sort();
+  return (
+    <div>
+      <p className="ot__muted">
+        Every Monday at 09:00 Chris gets last week's approved team overtime, and any of your own claims, to sign off with the file attached.
+        The working day before the cut-off he gets a reminder if anything is still unsigned, and on the cut-off morning (08:00) the part-week since Monday.
+        A plain "signed off" reply is recorded automatically; anything else comes here for you to confirm. Payroll can't be sent until every claim in the file is signed off.
+      </p>
+      <div className="ot__card">
+        <div className="ot__label">Cut-off</div>
+        <div className="ot__muted">
+          This period: {dayLabel(v.current.from)} to {dayLabel(v.current.to)} ({v.current.month}). Next: {dayLabel(v.next.from)} to {dayLabel(v.next.to)}.
+          {' '}{v.chris.error ? <span className="ot__bad">Chris: {v.chris.error}</span> : `Emails go to ${v.chris.name} (${v.chris.email}).`}
+          {' '}{v.autoSend ? 'Sent automatically on working days.' : 'Auto-send is off — each email waits on Actions for your press.'}
+        </div>
+        <div className="ot__form">
+          <label>Cut-off day of the month <input type="number" min={1} max={28} value={day} onChange={(e) => setDay(e.target.value)} style={{ width: 70 }} /></label>
+          <button className="ot__quiet" onClick={() => saveCutoff({ day: Number(day) })}>Save day</button>
+          <span className="ot__muted">A weekend or bank holiday moves it to the working day before.</span>
+        </div>
+        <div className="ot__form">
+          <label>Override one month <input type="month" value={ovMonth} onChange={(e) => setOvMonth(e.target.value)} /></label>
+          <input type="date" value={ovDate} onChange={(e) => setOvDate(e.target.value)} />
+          <button className="ot__quiet" disabled={!ovMonth || !ovDate} onClick={() => saveCutoff({ overrides: { [ovMonth]: ovDate } })}>Set</button>
+        </div>
+        {overrides.map(([m, d]) => (
+          <div key={m} className="ot__muted">{m}: cut-off {dayLabel(d)} <button className="ot__quiet" onClick={() => saveCutoff({ overrides: { [m]: null } })}>Remove</button></div>
+        ))}
+        {note && <div className={`ot__note ot__note--${note.tone}`}>{note.text}</div>}
+      </div>
+      {!v.requests.length && <div className="ot__muted">No sign-off emails yet. The first goes on Monday if there is anything to sign off.</div>}
+      {v.requests.map((r) => <SignOffRequest key={r.id} r={r} onChanged={load} />)}
+    </div>
+  );
+}
+
+const CONFIRMABLE = new Set(['needs-you', 'partial', 'sent', 'held']);
+
+function SignOffRequest({ r, onChanged }) {
+  const [sign, setSign] = useState(() => new Set(r.team.filter((c) => !c.signed).map((c) => c.id)));
+  const [own, setOwn] = useState(() => Object.fromEntries(r.own.filter((c) => !c.signed).map((c) => [c.id, 'approve'])));
+  const [rejectNote, setRejectNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const confirmable = CONFIRMABLE.has(r.status) && (r.team.length > 0 || r.own.length > 0);
+  const toggle = (id) => setSign((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const submit = async (hold) => {
+    setBusy(true); setMsg(null);
+    const approveOwn = Object.entries(own).filter(([, d]) => d === 'approve').map(([id]) => Number(id));
+    const rejectOwn = Object.entries(own).filter(([, d]) => d === 'reject').map(([id]) => Number(id));
+    const body = hold ? { hold: true, note: 'Chris queried it — held' } : { sign: [...sign], approveOwn, rejectOwn, rejectNote };
+    const res = await postJson(`/api/overtime-claims/signoff/${r.id}/confirm`, body);
+    setBusy(false);
+    if (!res.ok) { setMsg({ tone: 'bad', text: res.error || 'Not recorded' }); return; }
+    const failed = res.failed && res.failed.length ? res.failed.map((f) => f.error).join('; ') : null;
+    setMsg(failed ? { tone: 'bad', text: `Recorded, but: ${failed}` } : { tone: 'ok', text: 'Recorded.' });
+    onChanged();
+  };
+  return (
+    <div className={`ot__card${r.status === 'needs-you' ? ' ot__card--alert' : ''}`}>
+      <div className="ot__label">{KIND[r.kind] || r.kind} · {dayLabel(r.runDate)} · ref OT-{r.id} · {STATUS[r.status] || r.status}</div>
+      {r.error && <div className="ot__warn">{r.error}</div>}
+      {r.reply && (
+        <div className="ot__box">
+          <div className="ot__label">Chris replied{r.reply.at ? ` ${new Date(r.reply.at).toLocaleString('en-GB', { timeZone: 'Europe/London' })}` : ''}</div>
+          <div className="ot__reason-text" style={{ whiteSpace: 'pre-wrap' }}>{r.reply.text || '(no text)'}</div>
+        </div>
+      )}
+      {r.team.length > 0 && (
+        <table className="ot__table ot__table--inner"><tbody>
+          {r.team.map((c) => (
+            <tr key={c.id}>
+              <td>{c.signed ? '✓' : confirmable ? <input type="checkbox" checked={sign.has(c.id)} onChange={() => toggle(c.id)} /> : ''}</td>
+              <td>{c.agentName}</td><td>{dayLabel(c.date)}</td><td>{c.start}–{c.end}</td><td>{hours(c.minutes)}</td><td>{c.reason}</td>
+            </tr>
+          ))}
+        </tbody></table>
+      )}
+      {r.own.length > 0 && (
+        <div>
+          <div className="ot__label">Your own</div>
+          {r.own.map((c) => (
+            <div key={c.id} className="ot__muted">
+              {dayLabel(c.date)} {c.start}–{c.end} · {hours(c.minutes)} · {c.reason}
+              {c.signed ? ' · approved' : confirmable ? (
+                <select value={own[c.id] || 'leave'} onChange={(e) => setOwn({ ...own, [c.id]: e.target.value })}>
+                  <option value="approve">Chris approved</option><option value="reject">Chris rejected</option><option value="leave">Not decided yet</option>
+                </select>
+              ) : null}
+            </div>
+          ))}
+          {Object.values(own).includes('reject') && <input placeholder="Why Chris rejected it (recorded in NOVA)" value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />}
+        </div>
+      )}
+      {confirmable && (
+        <div className="ot__actions">
+          <button className="ot__primary" disabled={busy} onClick={() => submit(false)}>Record what Chris signed off</button>
+          <button className="ot__quiet" disabled={busy} onClick={() => submit(true)}>Chris queried it — hold</button>
+        </div>
+      )}
+      {msg && <div className={`ot__note ot__note--${msg.tone}`}>{msg.text}</div>}
     </div>
   );
 }
@@ -505,7 +673,7 @@ function OptOuts() {
   );
 }
 
-const TABS = [['approvals', 'Waiting for you'], ['month', 'Month & payroll'], ['optouts', '48-hour opt-outs']];
+const TABS = [['approvals', 'Waiting for you'], ['signoff', 'Chris sign-off'], ['month', 'Month & payroll'], ['optouts', '48-hour opt-outs']];
 
 export default function OvertimePanel() {
   const [tab, setTab] = useState('approvals');
@@ -519,6 +687,7 @@ export default function OvertimePanel() {
         {TABS.map(([k, label]) => <button key={k} className={`ot__tab${tab === k ? ' ot__tab--on' : ''}`} onClick={() => setTab(k)}>{label}</button>)}
       </div>
       {tab === 'approvals' && <Approvals />}
+      {tab === 'signoff' && <SignOff />}
       {tab === 'month' && <Month />}
       {tab === 'optouts' && <OptOuts />}
     </div>

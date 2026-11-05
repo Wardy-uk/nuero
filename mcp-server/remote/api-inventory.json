@@ -4773,7 +4773,7 @@
     "route": "/api/overtime-claims",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 17,
+    "line": 18,
     "description": "GET /api/overtime-claims. ?status=&month= — overtime claims agents made in NOVA.",
     "params": [],
     "query": [
@@ -4792,7 +4792,7 @@
     "route": "/api/overtime-claims/agents",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 23,
+    "line": 24,
     "description": "GET /api/overtime-claims/agents. NOVA's active agents, to pick who a manual overtime line is for.",
     "params": [],
     "query": [],
@@ -4808,7 +4808,7 @@
     "route": "/api/overtime-claims/:id/check",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 80,
+    "line": 107,
     "description": "GET /api/overtime-claims/:id/check. live: the agent's Jira/NOVA activity in the window and the Working Time read.",
     "params": [
       "id"
@@ -4826,7 +4826,7 @@
     "route": "/api/overtime-claims/optouts",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 32,
+    "line": 33,
     "description": "GET /api/overtime-claims/optouts. recorded 48-hour Working Time opt-outs.",
     "params": [],
     "query": [],
@@ -4842,7 +4842,7 @@
     "route": "/api/overtime-claims/payroll",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 47,
+    "line": 48,
     "description": "GET /api/overtime-claims/payroll. ?month=YYYY-MM — the month's approved, unsent claims and past sends.",
     "params": [],
     "query": [
@@ -4860,12 +4860,28 @@
     "route": "/api/overtime-claims/payroll/file",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 50,
+    "line": 51,
     "description": "GET /api/overtime-claims/payroll/file. ?month=YYYY-MM — download the payroll spreadsheet.",
     "params": [],
     "query": [
       "month"
     ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_overtime_claims_signoff",
+    "method": "GET",
+    "route": "/api/overtime-claims/signoff",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 74,
+    "description": "GET /api/overtime-claims/signoff. overtime sign-off by Chris: the cut-off, the current payroll period, and the sign-off emails with his replies.",
+    "params": [],
+    "query": [],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -10719,11 +10735,9 @@
       "emailId"
     ],
     "query": [],
-    "body": [
-      "instruction"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -13985,7 +13999,7 @@
     "route": "/api/overtime-claims/:id/decide",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 83,
+    "line": 110,
     "description": "POST /api/overtime-claims/:id/decide. approve or reject a claim (decision, note, overrideReason).",
     "params": [
       "id"
@@ -14007,7 +14021,7 @@
     "route": "/api/overtime-claims/:id/manual-delete",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 77,
+    "line": 104,
     "description": "POST /api/overtime-claims/:id/manual-delete. delete an overtime line Nick added, before payroll has it.",
     "params": [
       "id"
@@ -14025,7 +14039,7 @@
     "route": "/api/overtime-claims/:id/manual-edit",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 71,
+    "line": 98,
     "description": "POST /api/overtime-claims/:id/manual-edit. correct an overtime line Nick added (agentEmail, date, start, end, reason, overrideReason); only before payroll has it; re-checked in NOVA.",
     "params": [
       "id"
@@ -14050,7 +14064,7 @@
     "route": "/api/overtime-claims/manual",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 26,
+    "line": 27,
     "description": "POST /api/overtime-claims/manual. add a missed overtime line for an agent (agentEmail, date, start, end, reason, overrideReason); created approved in NOVA, goes in the next payroll file.",
     "params": [],
     "query": [],
@@ -14073,7 +14087,7 @@
     "route": "/api/overtime-claims/optouts",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 35,
+    "line": 36,
     "description": "POST /api/overtime-claims/optouts. record a signed 48-hour opt-out (agentEmail, agentName, optedOutOn, documentRef).",
     "params": [],
     "query": [],
@@ -14094,7 +14108,7 @@
     "route": "/api/overtime-claims/optouts/:id/withdraw",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 41,
+    "line": 42,
     "description": "POST /api/overtime-claims/optouts/:id/withdraw. the agent withdrew their opt-out (withdrawnOn).",
     "params": [
       "id"
@@ -14114,7 +14128,7 @@
     "route": "/api/overtime-claims/payroll/prepare",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 59,
+    "line": 60,
     "description": "POST /api/overtime-claims/payroll/prepare. prepare the email to payroll with the month's file (month); the screen sends it with one press.",
     "params": [],
     "query": [],
@@ -14132,12 +14146,75 @@
     "route": "/api/overtime-claims/payroll/test-send",
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
-    "line": 65,
+    "line": 66,
     "description": "POST /api/overtime-claims/payroll/test-send. email Nick (and only Nick) a [TEST] copy of the month's payroll email with the file (month); payroll gets nothing and no claim is marked.",
     "params": [],
     "query": [],
     "body": [
       "month"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_signoff_by_id_confirm",
+    "method": "POST",
+    "route": "/api/overtime-claims/signoff/:id/confirm",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 89,
+    "description": "POST /api/overtime-claims/signoff/:id/confirm. confirm what Chris's reply signed off (sign: claim ids, approveOwn, rejectOwn, rejectNote, hold, note).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "approveOwn",
+      "hold",
+      "note",
+      "rejectNote",
+      "rejectOwn",
+      "sign"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_signoff_cutoff",
+    "method": "POST",
+    "route": "/api/overtime-claims/signoff/cutoff",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 77,
+    "description": "POST /api/overtime-claims/signoff/cutoff. set the overtime cut-off day (day 1-28) and per-month overrides ({ 'YYYY-MM': 'YYYY-MM-DD' or null to clear }).",
+    "params": [],
+    "query": [],
+    "body": [
+      "day",
+      "overrides"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_overtime_claims_signoff_record",
+    "method": "POST",
+    "route": "/api/overtime-claims/signoff/record",
+    "domain": "overtime-claims",
+    "source": "routes/overtime-claims.js",
+    "line": 83,
+    "description": "POST /api/overtime-claims/signoff/record. record that Chris signed off these claims outside email (claimIds, note: how he did it).",
+    "params": [],
+    "query": [],
+    "body": [
+      "claimIds",
+      "note"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -14627,9 +14704,7 @@
       "id"
     ],
     "query": [],
-    "body": [
-      "instruction"
-    ],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,

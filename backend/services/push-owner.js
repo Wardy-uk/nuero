@@ -73,6 +73,8 @@ const OWNERS = Object.freeze({
   plaud: NEURO,
   sweep_complete: NEURO,
   journeys: NEURO,
+  // Chris's weekly overtime sign-off (5 Nov 2026): reports, read on the desk.
+  overtime_signoff: NEURO,
   leave_declined: NEURO,
   leave_clashes: NEURO,
   energy_unusual: NEURO,

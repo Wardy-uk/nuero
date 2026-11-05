@@ -73,6 +73,9 @@ const SUPPRESSIBLE = new Set([
   // UAT volunteers (26 Oct 2026): picks to send, a decline, names ready for
   // Dan — all wait for Nick's press, none is worth 03:00.
   'uat_volunteers',
+  // Chris's overtime sign-off (5 Nov 2026): sent / ready / his reply to confirm —
+  // a working-hours matter, never worth 03:00.
+  'overtime_signoff',
   // A meeting follow-up NEURO drafted after a team meeting (1 Nov 2026) — waits
   // for Nick's press; quiet hours and the cap apply.
   'meeting_followup',

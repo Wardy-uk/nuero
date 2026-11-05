@@ -98,6 +98,8 @@ const ORIGIN_INITIATOR = Object.freeze({
   // 1-2-1 auto-booking (1 Nov 2026): NOVA asked, NEURO chose the slot and booked
   // it under the one_to_one_auto_book switch. Nick did not press anything.
   '1to1-auto': 'neuro_autonomous',
+  // Chris's overtime sign-off emails (5 Nov 2026), under overtime_signoff_auto_send.
+  'overtime-signoff': 'neuro_autonomous',
 });
 
 // Origins a Settings SWITCH may approve without a press (1 Nov 2026). Turning the
@@ -108,6 +110,8 @@ const STANDING_SWITCH_ORIGINS = Object.freeze({
   '1to1-auto': 'one_to_one_auto_book',
   // 2 Nov 2026: UAT invites and the reply to Dan, under uat_auto_send.
   'uat-volunteers': 'uat_auto_send',
+  // 5 Nov 2026: the weekly/reminder/cut-off overtime sign-off emails to Chris.
+  'overtime-signoff': 'overtime_signoff_auto_send',
 });
 
 // The only proofs that may authorise an action from now on. `trusted_device`

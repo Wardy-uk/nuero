@@ -19,14 +19,14 @@ const TIMEOUT_MS = 20000;
 
 const _addr = (r) => (r && r.emailAddress && r.emailAddress.address ? String(r.emailAddress.address).toLowerCase() : null);
 
-async function _get(urlPath) {
+async function _get(urlPath, extraHeaders = {}) {
   let token = null;
   try { token = await require('./microsoft').getAccessToken(); } catch { token = null; }
   if (!token) return { status: null, category: 'auth' };
   try {
     const res = await fetch(`${GRAPH}${urlPath}`, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const text = await res.text().catch(() => '');
@@ -66,4 +66,26 @@ async function signedInAddress() {
   try { return await require('./microsoft').getSignedInAddress(); } catch { return null; }
 }
 
-module.exports = { readMessage, signedInAddress };
+/**
+ * Replies in the Inbox from one address whose subject contains a marker, newest first, with
+ * the NEW part of each (uniqueBody, as text). For reading Chris's overtime sign-off (5 Nov 2026).
+ * { ok:true, messages:[{ id, subject, receivedAt, text }] } | { ok:false, category }.
+ */
+async function findReplies({ fromAddress, subjectHas, sinceIso } = {}) {
+  const from = String(fromAddress || '').toLowerCase();
+  if (!from || !subjectHas) return { ok: true, messages: [] };
+  const since = sinceIso && !Number.isNaN(Date.parse(sinceIso)) ? new Date(sinceIso).toISOString() : new Date(Date.now() - 30 * 86400000).toISOString();
+  const filter = encodeURIComponent(`receivedDateTime ge ${since}`);
+  const r = await _get(`/me/mailFolders/Inbox/messages?$filter=${filter}&$orderby=receivedDateTime desc&$top=100&$select=id,subject,from,receivedDateTime,uniqueBody`,
+    { Prefer: 'outlook.body-content-type="text"' });
+  if (r.status !== 200 || !r.data) return { ok: false, category: r.category || 'unavailable', status: r.status };
+  const marker = String(subjectHas).toLowerCase();
+  const messages = (r.data.value || [])
+    .filter((m) => _addr(m.from) === from && String(m.subject || '').toLowerCase().includes(marker))
+    .map((m) => ({ id: m.id, subject: m.subject || '', receivedAt: m.receivedDateTime || null, text: String((m.uniqueBody && m.uniqueBody.content) || '').trim() }));
+  return { ok: true, messages };
+}
+
+module.exports = { readMessage, signedInAddress, findReplies };
+
+

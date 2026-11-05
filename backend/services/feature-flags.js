@@ -253,6 +253,19 @@ const FLAGS = [
     impact: 'sends UAT invites to your team and the reply to Dan as you',
   },
   {
+    // 5 Nov 2026 (Nick): Chris signs off overtime a week at a time. Default ON — the
+    // switch IS the approval of each sign-off email (the uat_auto_send precedent).
+    key: 'overtime_signoff_auto_send',
+    env: 'OVERTIME_SIGNOFF_AUTO_SEND',
+    default: true,
+    requires: 'governed_execution',
+    label: 'Send overtime sign-off emails to Chris automatically',
+    description: 'Every Monday NEURO emails Chris last week’s approved team overtime and your own claims to sign off, '
+      + 'a reminder the working day before the cut-off if anything is still unsigned, and the cut-off morning email. '
+      + 'Sent as you on a working day between 08:00 and 18:00. Off: each email waits on Actions for your press.',
+    impact: 'sends overtime sign-off emails to Chris as you',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

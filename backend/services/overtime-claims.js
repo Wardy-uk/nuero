@@ -31,6 +31,14 @@ const DECIDER = () => ({
 });
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const READ_TIMEOUT = 60000; // the activity check asks Jira about every ticket in the window
+// 5 Nov 2026: a payroll month is a PERIOD — the day after one cut-off to the next (usually the
+// 17th to the 16th) — decided in overtime-signoff.js and passed to NOVA. Chris signs off every
+// claim week by week; the payroll email waits until every claim in the file is signed off.
+const signoff = () => require('./overtime-signoff');
+function exportUrl(month) {
+  const p = signoff().periodForMonth(month);
+  return `/api/neuro-bridge/overtime/export?month=${month}&from=${p.from}&to=${p.to}`;
+}
 
 let ensured = false;
 function ensureTable() {
@@ -65,7 +73,7 @@ async function claims({ status, month } = {}) {
   if (month && !MONTH_RE.test(month)) return bad('month must be YYYY-MM');
   const q = new URLSearchParams();
   if (status) q.set('status', status);
-  if (month) q.set('month', month);
+  if (month) { const p = signoff().periodForMonth(month); q.set('from', p.from); q.set('to', p.to); }
   try { return { ok: true, claims: await nova.call(`/api/neuro-bridge/overtime/claims?${q}`) }; } catch (e) { return novaFail(e); }
 }
 
@@ -193,7 +201,7 @@ function monthLabel(month) {
 
 /** The email Nick sends. PURE. */
 function payrollEmail(exp, { additional = false } = {}) {
-  const label = monthLabel(exp.month);
+  const label = `${monthLabel(exp.month)}${exp.from && exp.to ? ` (${exp.from} to ${exp.to})` : ''}`;
   const lines = exp.totals.map((t) => `- ${t.agentName}: ${t.hours} hours (${t.claims} claim${t.claims === 1 ? '' : 's'})`);
   const late = exp.rows.filter((r) => r.lateFromEarlierMonth).length;
   const body = [
@@ -211,7 +219,7 @@ function payrollEmail(exp, { additional = false } = {}) {
     'Thanks,',
     'Nick',
   ].join('\n');
-  return { subject: `Overtime – ${label}${additional ? ' (additional)' : ''}`, body };
+  return { subject: `Overtime – ${monthLabel(exp.month)}${additional ? ' (additional)' : ''}`, body };
 }
 
 function _sendsFor(month) {
@@ -230,14 +238,27 @@ async function payrollMonth(month) {
   if (!MONTH_RE.test(month)) return bad('month must be YYYY-MM');
   await reconcile().catch(() => {});
   let exp;
-  try { exp = await nova.call(`/api/neuro-bridge/overtime/export?month=${month}`, { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
+  try { exp = await nova.call(exportUrl(month), { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
   const sends = _sendsFor(month).map((s) => ({
     id: s.id, actionId: s.action_id, claims: JSON.parse(s.claim_ids).length, totalHours: s.total_hours,
     preparedAt: s.prepared_at, markedAt: s.marked_at, markError: s.mark_error, status: _statusOf(s.action_id),
   }));
   const inFlight = sends.find((s) => !s.markedAt && LIVE.has(s.status)) || null;
   const { xlsxBase64, ...rest } = exp;
-  return { ok: true, export: rest, hasFile: !!xlsxBase64, sends, inFlight, to: PAYROLL_EMAIL() };
+  return {
+    ok: true, export: rest, hasFile: !!xlsxBase64, sends, inFlight, to: PAYROLL_EMAIL(),
+    period: signoff().periodForMonth(month), signoff: signoffGate(exp),
+  };
+}
+
+/** Which claims in a payroll file Chris has not signed off. Payroll waits for them. PURE over the store. */
+function signoffGate(exp) {
+  const ids = signoff().unsigned(exp.claimIds || []);
+  const set = new Set(ids);
+  return {
+    complete: ids.length === 0,
+    unsigned: (exp.rows || []).filter((r) => set.has(r.claimId)).map((r) => ({ claimId: r.claimId, agentName: r.agentName, date: r.date, hours: r.hours })),
+  };
 }
 
 /**
@@ -256,8 +277,12 @@ async function preparePayroll(month) {
     return bad('the payroll email for this month is already being sent — wait for it to be confirmed', 409);
   }
   let exp;
-  try { exp = await nova.call(`/api/neuro-bridge/overtime/export?month=${month}`, { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
+  try { exp = await nova.call(exportUrl(month), { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
   if (!exp.rows.length) return bad('there are no approved, unsent claims for this month', 409);
+  const gate = signoffGate(exp);
+  if (!gate.complete) {
+    return { ...bad(`Chris has not signed off ${gate.unsigned.length} claim${gate.unsigned.length === 1 ? '' : 's'} in this file yet — payroll waits until he has`, 409), unsigned: gate.unsigned };
+  }
   const additional = _sendsFor(month).some((s) => s.marked_at);
   const mail = payrollEmail(exp, { additional });
   const r = _pa().prepareCompose({
@@ -301,7 +326,7 @@ async function reconcile() {
 async function testPayroll(month) {
   if (!MONTH_RE.test(month)) return bad('month must be YYYY-MM');
   let exp;
-  try { exp = await nova.call(`/api/neuro-bridge/overtime/export?month=${month}`, { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
+  try { exp = await nova.call(exportUrl(month), { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
   if (!exp.rows.length) return bad('there are no approved, unsent claims for this month', 409);
   const additional = _sendsFor(month).some((s) => s.marked_at);
   const mail = payrollEmail(exp, { additional });
@@ -320,7 +345,7 @@ async function testPayroll(month) {
 async function payrollFile(month) {
   if (!MONTH_RE.test(month)) return bad('month must be YYYY-MM');
   try {
-    const exp = await nova.call(`/api/neuro-bridge/overtime/export?month=${month}`, { timeoutMs: READ_TIMEOUT });
+    const exp = await nova.call(exportUrl(month), { timeoutMs: READ_TIMEOUT });
     return { ok: true, filename: exp.filename, buf: Buffer.from(exp.xlsxBase64, 'base64') };
   } catch (e) { return novaFail(e); }
 }

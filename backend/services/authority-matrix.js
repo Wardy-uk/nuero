@@ -135,6 +135,9 @@ const CAPABILITIES = Object.freeze({
   // ASK; nothing a caller sends can approve. No route maps here: it runs in-process.
   // 2 Nov 2026: UAT volunteer invites and the reply to Dan, sent without a press
   // under the uat_auto_send switch (standing approval). In-process; no route.
+  // 5 Nov 2026: Chris's weekly overtime sign-off emails, sent under the
+  // overtime_signoff_auto_send switch (standing approval). In-process; no route.
+  'email.overtime-signoff-auto-send': { authority: 'A4', effect: 'email Chris the team overtime and Nick’s own for sign-off, as Nick, without a press', machine: 'refuse', approval: 'the overtime_signoff_auto_send switch (standing approval)', registry: null, ledger: true, verification: 'sent-items (the governed executor)', idempotent: 'one email per kind per day; one attempt per approved version' },
   'email.uat-auto-send': { authority: 'A4', effect: 'email UAT invites to team members and the names to the requester as Nick, without a press', machine: 'refuse', approval: 'the uat_auto_send switch (standing approval)', registry: null, ledger: true, verification: 'sent-items (the governed executor)', idempotent: 'one invite per pick; one reply per round; one attempt per approved version' },
   'calendar.1to1-auto-book': { authority: 'A4', effect: 'invite a direct report to their next 1-2-1 as Nick, without a press', machine: 'refuse', approval: 'the one_to_one_auto_book switch (standing approval)', registry: null, ledger: true, verification: 'read-back (the governed executor)', idempotent: 'one live booking per person; one attempt per approved version' },
   // 1 Nov 2026 (calendar care): an agenda added to the body of a meeting Nick
@@ -577,6 +580,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/overtime-claims/optouts/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/payroll/prepare', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/overtime-claims/payroll/test-send', 'email.self'),
+  R('POST', '/api/overtime-claims/signoff/cutoff', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/overtime-claims/signoff/record', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/overtime-claims/signoff/:id/confirm', 'internal.state', { machine: 'refuse' }),
   // Personal automations (1 Nov 2026): the household switch and "not this weekend" are Nick's.
   R('POST', '/api/personal-auto/tea-shopping', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/personal-auto/hike-suggestion/dismiss', 'internal.state', { machine: 'refuse' }),

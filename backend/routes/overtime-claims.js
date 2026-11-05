@@ -6,6 +6,7 @@
 
 const express = require('express');
 const ot = require('../services/overtime-claims');
+const signoff = require('../services/overtime-signoff');
 
 const router = express.Router();
 const send = (res, r, body) => (r.ok ? res.json(body || r) : res.status(r.code || 400).json(r));
@@ -65,6 +66,32 @@ router.post('/payroll/prepare', wrap(async (req, res) => {
 router.post('/payroll/test-send', wrap(async (req, res) => {
   const { month } = req.body;
   send(res, await ot.testPayroll(String(month || '')));
+}));
+
+// ── Chris's weekly sign-off and the cut-off (5 Nov 2026) — services/overtime-signoff.js ──
+
+// GET /api/overtime-claims/signoff — overtime sign-off by Chris: the cut-off, the current payroll period, and the sign-off emails with his replies.
+router.get('/signoff', wrap(async (req, res) => send(res, signoff.view())));
+
+// POST /api/overtime-claims/signoff/cutoff — set the overtime cut-off day (day 1-28) and per-month overrides ({ 'YYYY-MM': 'YYYY-MM-DD' or null to clear }).
+router.post('/signoff/cutoff', wrap(async (req, res) => {
+  const { day, overrides } = req.body;
+  send(res, signoff.setCutoff({ day, overrides }));
+}));
+
+// POST /api/overtime-claims/signoff/record — record that Chris signed off these claims outside email (claimIds, note: how he did it).
+router.post('/signoff/record', wrap(async (req, res) => {
+  const { claimIds, note } = req.body;
+  send(res, signoff.recordByHand(claimIds, note));
+}));
+
+// POST /api/overtime-claims/signoff/:id/confirm — confirm what Chris's reply signed off (sign: claim ids, approveOwn, rejectOwn, rejectNote, hold, note).
+router.post('/signoff/:id/confirm', wrap(async (req, res) => {
+  const { sign, approveOwn, rejectOwn, rejectNote, hold, note } = req.body;
+  const ids = (a) => (Array.isArray(a) ? a.map(Number) : []);
+  send(res, await signoff.applyAnswer(Number(req.params.id), {
+    sign: ids(sign), approveOwn: ids(approveOwn), rejectOwn: ids(rejectOwn), rejectNote, hold: hold === true, note, by: 'nick',
+  }));
 }));
 
 // POST /api/overtime-claims/:id/manual-edit — correct an overtime line Nick added (agentEmail, date, start, end, reason, overrideReason); only before payroll has it; re-checked in NOVA.

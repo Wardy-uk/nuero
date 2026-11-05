@@ -703,7 +703,7 @@ test('33. no send path exists outside the governed executor', () => {
   // executor, ledger and read-back; a decision, not a drift. + uat-volunteers
   // (2 Nov 2026): UAT invites and the reply to Dan under the uat_auto_send switch.
   const callers = files.filter((f) => f !== 'services/action-executor.js' && /executor\(\)\.execute\(|action-executor'\)\.execute\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
-  assert.deepEqual(callers.sort(), ['routes/prepared-actions.js', 'services/one-to-one-requests.js', 'services/uat-volunteers.js']);
+  assert.deepEqual(callers.sort(), ['routes/prepared-actions.js', 'services/one-to-one-requests.js', 'services/overtime-signoff.js', 'services/uat-volunteers.js']);
 });
 
 test('34. the event log carries ids and mechanisms — never a body, subject, address or code', () => {

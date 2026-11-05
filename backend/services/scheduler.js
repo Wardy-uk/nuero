@@ -229,6 +229,12 @@ function start() {
     require('./uat-volunteers').tick().catch((e) => console.warn('[Scheduler] UAT volunteers failed:', e.message));
   });
 
+  // Every 15 min, 07:00–18:59: Chris's overtime sign-off — the Monday, reminder and cut-off
+  // emails when due (once per kind per day), sent under the switch, and his replies read.
+  cron.schedule('7-59/15 7-18 * * *', () => {
+    require('./overtime-signoff').tick().catch((e) => console.warn('[Scheduler] overtime sign-off failed:', e.message));
+  });
+
   // Every 10 min: overtime sent to payroll — once the email is VERIFIED in Sent Items, tell
   // NOVA to mark those claims sent. Idempotent; a pass with nothing unmarked asks NOVA nothing.
   cron.schedule('4-59/10 * * * *', () => {
