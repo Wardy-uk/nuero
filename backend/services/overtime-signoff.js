@@ -445,6 +445,7 @@ async function _sendPrepared(row, d, today, wall) {
     return;
   }
   if (status !== 'prepared') return;
+  if (row.kind === 'override') return; // the payroll email: Nick presses it himself, never the switch
   const blocked = autoBlockedBy({ flagOn: !!d.autoOn(), wall, workingDay: isWorking(today, d.holidays()) });
   if (blocked) {
     if (blocked === 'switch-off' && !parse(row.reply_json, null) && !row.error) {
@@ -603,6 +604,35 @@ function view(injected) {
   };
 }
 
+// ── the cut-off override (5 Nov 2026) ───────────────────────────────────────
+// Payroll goes with Chris copied; the unsigned claims ride as a sign-off request on that same
+// email, so his reply ("approved") is read and recorded exactly like a weekly one.
+
+/** Open the request for an override send. `rows` are NOVA export rows (claimId, hours…). */
+function openOverride(month, rows, injected) {
+  const d = deps(injected);
+  ensureTables();
+  const chris = d.chris();
+  if (!chris.ok) return { ok: false, code: 409, error: `Chris can't be copied in: ${chris.error}` };
+  const team = rows.map((r) => ({
+    id: r.claimId, agentName: r.agentName, agentEmail: r.agentEmail, date: r.date, start: r.start, end: r.end,
+    minutes: Math.round(Number(r.hours) * 60), reason: r.reason, enteredBy: r.enteredBy || null, overrideReason: null, wtr: null,
+  }));
+  const now = new Date(d.now()).toISOString();
+  const info = db.run(`INSERT INTO overtime_signoff_requests (kind, run_date, period_month, cover_to, team_ids, own_ids, claims_json, status, chris_email, created_at)
+          VALUES ('override', ?, ?, ?, ?, '[]', ?, 'preparing', ?, ?)`,
+  [now, month, periodForMonth(month, d).to, JSON.stringify(team.map((c) => c.id)), JSON.stringify({ team, own: [] }), chris.email, now]);
+  return { ok: true, id: Number(info.lastInsertRowid), chrisEmail: chris.email, chrisFirst: String(chris.name).split(/\s+/)[0] };
+}
+
+function attachOverrideAction(id, actionId) {
+  db.run(`UPDATE overtime_signoff_requests SET action_id = ?, status = 'prepared' WHERE id = ? AND kind = 'override'`, [actionId, id]);
+}
+
+function dropOverride(id) {
+  db.run(`DELETE FROM overtime_signoff_requests WHERE id = ? AND kind = 'override' AND action_id IS NULL`, [id]);
+}
+
 /** For the payroll gate: which of these claims are NOT signed off. */
 function unsigned(claimIds) {
   const s = signedSet();
@@ -618,6 +648,6 @@ module.exports = {
   // pure
   validateCutoff, cutoffDate, periodFor, periodMonthOf, dueKinds, composeEmail, replyText, quickVerdict, parseVerdict, autoBlockedBy, monthLabel,
   // store / flow
-  readCutoff, setCutoff, tick, prepareRequest, applyAnswer, recordByHand, view, unsigned, periodForMonth, recordSignoffs, ensureTables,
+  readCutoff, setCutoff, tick, openOverride, attachOverrideAction, dropOverride, prepareRequest, applyAnswer, recordByHand, view, unsigned, periodForMonth, recordSignoffs, ensureTables,
   AUTO_FLAG, ORIGIN,
 };

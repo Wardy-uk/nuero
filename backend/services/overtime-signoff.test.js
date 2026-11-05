@@ -194,3 +194,32 @@ test('before 09:00 nothing goes; nothing outstanding on a Monday sends nothing; 
   assert.strictEqual(so.recordByHand([11], 'in our 1-2-1').ok, true);
   assert.deepStrictEqual(so.unsigned([11]), []);
 });
+
+test('cut-off override: payroll goes with Chris copied, the unsigned claims named; his "approved" on that thread signs them off', async () => {
+  reset();
+  const ot = require('./overtime-claims');
+  const exp = { month: '2026-11', from: '2026-10-17', to: '2026-11-16', totals: [{ agentName: 'Abdi Mohamed', claims: 1, hours: 2 }], totalHours: 2, rows: [] };
+  const mail = ot.payrollEmail(exp, { unsigned: [{ claimId: 21, agentName: 'Abdi Mohamed', date: '2026-11-12', hours: 2 }], ref: 5, chrisFirst: 'Chris' });
+  assert.match(mail.subject, /\(ref OT-5\)$/);
+  assert.match(mail.body, /Chris — you're copied in because this claim hasn’t been signed off yet/);
+  assert.match(mail.body, /- Abdi Mohamed: 2026-11-12, 2 hours/);
+  assert.match(mail.body, /Please reply "approved"[\s\S]*Thanks,\nNick$/);
+  assert.doesNotMatch(mail.subject + mail.body, /\[|\]/);
+  assert.doesNotMatch(ot.payrollEmail(exp).subject, /ref OT/, 'an ordinary payroll email is unchanged');
+
+  const h = harness({ replies: [{ id: 'm9', subject: 'RE: Overtime – November 2026 (ref OT-1)', receivedAt: '2026-11-16T11:00:00Z', text: 'Approved' }] });
+  h.setNow('2026-11-16T10:30:00Z');
+  const o = so.openOverride('2026-11', [{ claimId: 21, agentName: 'Abdi Mohamed', agentEmail: 'abdi@nurtur.tech', date: '2026-11-12', start: '18:00', end: '20:00', hours: 2, reason: 'x' }], h.d);
+  assert.strictEqual(o.ok, true);
+  const r = pa.prepareCompose({ from: 'work', to: ['payroll@nurtur.tech'], cc: [o.chrisEmail], subject: 'Overtime – November 2026 (ref OT-1)', body: 'b', origin: 'overtime-payroll' });
+  so.attachOverrideAction(o.id, r.action.actionId);
+  // Not pressed yet: the switch never sends a payroll email.
+  await so.tick(h.d);
+  assert.ok(!h.sent.has(r.action.actionId), 'the payroll email is never sent by the switch');
+  assert.deepStrictEqual(so.unsigned([21]), [21]);
+  // Nick presses it; the next tick sees it sent and reads Chris's reply.
+  h.sent.add(r.action.actionId);
+  await so.tick(h.d);
+  assert.deepStrictEqual(so.unsigned([21]), []);
+  assert.strictEqual(db.get('SELECT status FROM overtime_signoff_requests WHERE id = ?', [o.id]).status, 'signed');
+});

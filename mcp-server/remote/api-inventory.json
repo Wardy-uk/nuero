@@ -14129,11 +14129,12 @@
     "domain": "overtime-claims",
     "source": "routes/overtime-claims.js",
     "line": 60,
-    "description": "POST /api/overtime-claims/payroll/prepare. prepare the email to payroll with the month's file (month); the screen sends it with one press.",
+    "description": "POST /api/overtime-claims/payroll/prepare. prepare the email to payroll with the month's file (month); the screen sends it with one press. override: true (from the cut-off day only) sends it with Chris copied in to approve claims his weekly sign-off has not reached.",
     "params": [],
     "query": [],
     "body": [
-      "month"
+      "month",
+      "override"
     ],
     "queryOpen": false,
     "bodyOpen": true,

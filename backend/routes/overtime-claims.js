@@ -56,10 +56,10 @@ router.get('/payroll/file', wrap(async (req, res) => {
   res.end(r.buf);
 }));
 
-// POST /api/overtime-claims/payroll/prepare — prepare the email to payroll with the month's file (month); the screen sends it with one press.
+// POST /api/overtime-claims/payroll/prepare — prepare the email to payroll with the month's file (month); the screen sends it with one press. override: true (from the cut-off day only) sends it with Chris copied in to approve claims his weekly sign-off has not reached.
 router.post('/payroll/prepare', wrap(async (req, res) => {
-  const { month } = req.body;
-  send(res, await ot.preparePayroll(String(month || '')));
+  const { month, override } = req.body;
+  send(res, await ot.preparePayroll(String(month || ''), { override: override === true }));
 }));
 
 // POST /api/overtime-claims/payroll/test-send — email Nick (and only Nick) a [TEST] copy of the month's payroll email with the file (month); payroll gets nothing and no claim is marked.

@@ -378,10 +378,11 @@ function Month() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
-  const send = async () => {
-    setBusy(true); setNote(null);
+  const [confirmOverride, setConfirmOverride] = useState(false);
+  const send = async (override = false) => {
+    setBusy(true); setNote(null); setConfirmOverride(false);
     try {
-      const prep = await postJson('/api/overtime-claims/payroll/prepare', { month });
+      const prep = await postJson('/api/overtime-claims/payroll/prepare', override ? { month, override: true } : { month });
       if (!prep.ok) { setNote({ tone: 'bad', text: prep.error || 'Could not prepare the email.' }); return; }
       setNote(directOutcome(await executeDirect(prep.action)));
     } finally { setBusy(false); await load(); }
@@ -464,12 +465,25 @@ function Month() {
             <div className="ot__warn">
               Chris has not signed off {data.signoff.unsigned.length} claim{data.signoff.unsigned.length === 1 ? '' : 's'} in this file — payroll waits until he has:
               {' '}{data.signoff.unsigned.slice(0, 8).map((u) => `${u.agentName} ${dayLabel(u.date)}`).join(', ')}{data.signoff.unsigned.length > 8 ? '…' : ''}
+              {data.signoff.canOverride && !data.inFlight && (
+                <div className="ot__actions">
+                  {confirmOverride ? (
+                    <>
+                      <span>Send to {data.to} with Chris copied in, asking him to approve the {data.signoff.unsigned.length} unsigned claim{data.signoff.unsigned.length === 1 ? '' : 's'} by reply? His reply is recorded on Chris sign-off.</span>
+                      <button className="ot__primary" disabled={busy} onClick={() => send(true)}>{busy ? 'Sending…' : 'Yes, send it'}</button>
+                      <button className="ot__quiet" disabled={busy} onClick={() => setConfirmOverride(false)}>Cancel</button>
+                    </>
+                  ) : (
+                    <button className="ot__quiet" disabled={busy} onClick={() => setConfirmOverride(true)}>Cut-off: send anyway and copy Chris in to approve</button>
+                  )}
+                </div>
+              )}
             </div>
           )}
           <div className="ot__actions">
             {data.inFlight
               ? <span className="ot__warn">The {month} email is {data.inFlight.status}; NOVA marks the claims sent once it is confirmed in Sent Items.</span>
-              : <button className="ot__primary" disabled={busy || !exp.rows.length || (data.signoff && !data.signoff.complete)} onClick={send}>{busy ? 'Sending…' : `Send to ${data.to}`}</button>}
+              : <button className="ot__primary" disabled={busy || !exp.rows.length || (data.signoff && !data.signoff.complete)} onClick={() => send(false)}>{busy ? 'Sending…' : `Send to ${data.to}`}</button>}
             <button className="ot__quiet" disabled={busy || !exp.rows.length} onClick={testSend}>Send a test to me</button>
             <button className="ot__quiet" disabled={!data.hasFile || !exp.rows.length} onClick={download}>Download the file</button>
           </div>
@@ -496,7 +510,7 @@ function Month() {
   );
 }
 
-const KIND = { weekly: 'Weekly', reminder: 'Final reminder', cutoff: 'Cut-off' };
+const KIND = { weekly: 'Weekly', reminder: 'Final reminder', cutoff: 'Cut-off', override: 'Sent to payroll, Chris copied to approve' };
 const STATUS = {
   nothing: 'Nothing to sign off — not sent',
   preparing: 'Preparing',

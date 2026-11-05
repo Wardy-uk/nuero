@@ -200,7 +200,23 @@ function monthLabel(month) {
 }
 
 /** The email Nick sends. PURE. */
-function payrollEmail(exp, { additional = false } = {}) {
+function payrollEmail(exp, { additional = false, unsigned = null, ref = null, chrisFirst = 'Chris' } = {}) {
+  const base = _payrollEmail(exp, { additional });
+  if (!unsigned || !unsigned.length) return base;
+  // The override: Chris is copied in to approve what his weekly sign-off has not reached yet.
+  const clean = (s) => String(s || '').replace(/\[/g, '(').replace(/\]/g, ')');
+  const lines = unsigned.map((u) => `- ${clean(u.agentName)}: ${u.date}, ${u.hours} hour${u.hours === 1 ? '' : 's'}`);
+  const note = [
+    `${chrisFirst} — you're copied in because ${unsigned.length === 1 ? 'this claim hasn’t' : `these ${unsigned.length} claims haven’t`} been signed off yet and today is the cut-off:`,
+    ...lines,
+    'Please reply "approved" to approve them, or tell me which to take out and I’ll let payroll know.',
+    '',
+  ];
+  const body = base.body.replace('Thanks,\nNick', [...note, 'Thanks,', 'Nick'].join('\n'));
+  return { subject: `${base.subject}${ref ? ` (ref OT-${ref})` : ''}`, body };
+}
+
+function _payrollEmail(exp, { additional = false } = {}) {
   const label = `${monthLabel(exp.month)}${exp.from && exp.to ? ` (${exp.from} to ${exp.to})` : ''}`;
   const lines = exp.totals.map((t) => `- ${t.agentName}: ${t.hours} hours (${t.claims} claim${t.claims === 1 ? '' : 's'})`);
   const late = exp.rows.filter((r) => r.lateFromEarlierMonth).length;
@@ -247,8 +263,14 @@ async function payrollMonth(month) {
   const { xlsxBase64, ...rest } = exp;
   return {
     ok: true, export: rest, hasFile: !!xlsxBase64, sends, inFlight, to: PAYROLL_EMAIL(),
-    period: signoff().periodForMonth(month), signoff: signoffGate(exp),
+    period: signoff().periodForMonth(month), signoff: { ...signoffGate(exp), canOverride: overrideOpen(month) },
   };
+}
+
+/** From the period's cut-off day onwards the gate may be overridden. */
+function overrideOpen(month) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+  return today >= signoff().periodForMonth(month).to;
 }
 
 /** Which claims in a payroll file Chris has not signed off. Payroll waits for them. PURE over the store. */
@@ -266,7 +288,7 @@ function signoffGate(exp) {
  * a second press while one is in flight hands back that one. Nothing is sent here — the
  * screen spends a one-use grant on the returned action.
  */
-async function preparePayroll(month) {
+async function preparePayroll(month, { override = false } = {}) {
   if (!MONTH_RE.test(month)) return bad('month must be YYYY-MM');
   ensureTable();
   await reconcile().catch(() => {});
@@ -280,18 +302,30 @@ async function preparePayroll(month) {
   try { exp = await nova.call(exportUrl(month), { timeoutMs: READ_TIMEOUT }); } catch (e) { return novaFail(e); }
   if (!exp.rows.length) return bad('there are no approved, unsent claims for this month', 409);
   const gate = signoffGate(exp);
+  const canOverride = overrideOpen(month);
+  if (!gate.complete && !override) {
+    return { ...bad(`Chris has not signed off ${gate.unsigned.length} claim${gate.unsigned.length === 1 ? '' : 's'} in this file yet — payroll waits until he has`, 409), unsigned: gate.unsigned, canOverride };
+  }
+  // 5 Nov 2026 (Nick): on cut-off day, if Chris's weekly sign-offs are still outstanding, send
+  // anyway — to payroll with Chris copied, the unsigned claims named for him to approve by
+  // reply. Only from the cut-off day: before it there is still time for the weekly route.
+  let signoffReq = null;
   if (!gate.complete) {
-    return { ...bad(`Chris has not signed off ${gate.unsigned.length} claim${gate.unsigned.length === 1 ? '' : 's'} in this file yet — payroll waits until he has`, 409), unsigned: gate.unsigned };
+    if (!canOverride) return bad('sending before Chris has signed off is only possible from the cut-off day', 409);
+    const rows = exp.rows.filter((x) => gate.unsigned.some((u) => u.claimId === x.claimId));
+    signoffReq = signoff().openOverride(month, rows);
+    if (!signoffReq.ok) return signoffReq;
   }
   const additional = _sendsFor(month).some((s) => s.marked_at);
-  const mail = payrollEmail(exp, { additional });
+  const mail = payrollEmail(exp, { additional, unsigned: gate.complete ? null : gate.unsigned, ref: signoffReq && signoffReq.id, chrisFirst: signoffReq && signoffReq.chrisFirst });
   const r = _pa().prepareCompose({
-    from: 'work', to: [PAYROLL_EMAIL()], subject: mail.subject, body: mail.body,
+    from: 'work', to: [PAYROLL_EMAIL()], cc: signoffReq ? [signoffReq.chrisEmail] : [], subject: mail.subject, body: mail.body,
     attachments: [{ name: exp.filename, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dataBase64: exp.xlsxBase64 }],
     origin: 'overtime-payroll', generatedBy: 'template (overtime.payrollEmail, no model call) + NOVA export',
-    evidence: { overtimeMonth: month, claimIds: exp.claimIds },
+    evidence: { overtimeMonth: month, claimIds: exp.claimIds, ...(signoffReq ? { overtimeSignoffOverride: signoffReq.id, unsignedClaimIds: gate.unsigned.map((u) => u.claimId) } : {}) },
   });
-  if (!r.ok) return r;
+  if (!r.ok) { if (signoffReq) signoff().dropOverride(signoffReq.id); return r; }
+  if (signoffReq) signoff().attachOverrideAction(signoffReq.id, r.action.actionId);
   _db().run(`INSERT INTO overtime_payroll_sends (month, action_id, claim_ids, total_hours, prepared_at) VALUES (?, ?, ?, ?, ?)`,
     [month, r.action.actionId, JSON.stringify(exp.claimIds), exp.totalHours, new Date().toISOString()]);
   return { ok: true, action: r.action };
