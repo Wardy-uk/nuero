@@ -39,7 +39,7 @@
 .brand-mark { flex-shrink: 0; display: block; }
 .brand-mark--neuro { color: var(--accent); filter: drop-shadow(0 0 3px rgba(90, 163, 249, 0.45)); }
 .brand-mark--saim { color: var(--text-primary); }
-.brand-mark__core { fill: var(--accent); }
+.brand-mark__core { fill: #2f8fff; }
 
 /* Top bar: compact. */
 .brand-lockup--neuro .brand-word { font-size: 15px; }

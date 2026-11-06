@@ -32,9 +32,10 @@ export function SaimMark({ width = 40 }) {
   const height = Math.round(width * 0.56);
   return (
     <svg className="brand-mark brand-mark--saim" width={width} height={height} viewBox="0 0 50 28" aria-hidden="true" focusable="false">
-      <ellipse cx="25" cy="14" rx="22" ry="9.5" transform="rotate(-14 25 14)" fill="none" stroke="currentColor" strokeWidth="2.2" />
-      <circle cx="18" cy="15.5" r="5" className="brand-mark__core" />
-      <circle cx="35.5" cy="5.6" r="2.4" fill="currentColor" />
+      {/* A long, tilted orbit; her light at its centre; a point riding the ring near its upper-right end. */}
+      <ellipse cx="25" cy="14" rx="22" ry="7" transform="rotate(-20 25 14)" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="25" cy="14" r="4.6" className="brand-mark__core" />
+      <circle cx="42.7" cy="4.4" r="2.3" fill="currentColor" />
     </svg>
   );
 }
