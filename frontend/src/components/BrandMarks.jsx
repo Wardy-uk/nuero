@@ -63,7 +63,7 @@ export function NeuroLockup() {
 export function SaimLockup() {
   return (
     <span className="brand-lockup brand-lockup--saim">
-      <SaimMark />
+      <SaimMark width={34} />
       <span className="brand-lockup__text">
         <SaimWord />
         <span className="brand-sub">Situational Awareness &amp; Intelligence Module</span>
