@@ -3,7 +3,7 @@ import { apiUrl } from '../api';
 import './Sidebar.css';
 import { VIEW_GROUPS, groupOfView } from './ViewTabs';
 import { useWorkOnly, WORK_ONLY_HIDDEN_GROUPS, WORK_ONLY_HIDDEN_ITEMS } from '../workOnly';
-import { SaimMark, SaimWord } from './BrandMarks';
+import { SaimMark } from './BrandMarks';
 
 const PRIMARY_ITEMS = [
   // ── Build 10P: Nick-first navigation ───────────────────────────────────────
@@ -125,8 +125,10 @@ const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.flatMap((i) => [
 // The SAiM entry wears her mark and wordmark (6 Nov 2026, Nick's mockup).
 const SAIM_ITEM = {
   id: 'saim',
-  label: <SaimWord />,
-  icon: <SaimMark width={16} />,
+  // Same font, size and colour as every other menu item (Nick, 6 Nov 2026) —
+  // only her i is blue. The brand lettering lives on the SAiM page header.
+  label: <span aria-label="SAiM">SA<span className="brand-word__i">i</span>M</span>,
+  icon: <SaimMark width={14} />,
 };
 
 function readOpenGroups() {
