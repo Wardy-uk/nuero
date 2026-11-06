@@ -42,14 +42,15 @@ function fiveSteps(check) {
   const a = check.activity;
   const w = check.wtr;
   const over48 = w.weeklyAverageHours > 48;
-  const restWarn = w.warnings.filter((x) => x.code === 'rest-11');
+  // WTR briefing §5: daily rest, weekly rest and the 20-minute in-work break (and §6 night work).
+  const restWarn = w.warnings.filter((x) => ['rest-11', 'rest-weekly', 'break-20', 'night'].includes(x.code));
   return [
     { label: 'Verified against Jira/NOVA activity', state: a ? (a.assessment.flag === 'ok' ? 'ok' : 'warn') : 'warn',
       text: a ? FLAG[a.assessment.flag].label : (check.activityError || 'Not checked') },
     { label: '48-hour average over 17 weeks', state: over48 && !w.optedOut ? 'bad' : 'ok', text: `${w.weeklyAverageHours}h a week with this claim` },
     { label: 'Signed opt-out where the average is over 48h', state: over48 ? (w.optedOut ? 'ok' : 'bad') : 'ok',
       text: over48 ? (w.optedOut ? 'Opt-out on file' : 'Needed, none recorded') : 'Not needed' },
-    { label: 'Rest entitlements', state: restWarn.length ? 'bad' : 'ok',
+    { label: 'Rest: daily, weekly, 20-minute break', state: restWarn.length ? 'bad' : 'ok',
       text: restWarn.length ? restWarn.map((x) => x.message).join(' ') : `${w.restBeforeHours ?? '—'}h before · ${w.restAfterHours ?? '—'}h after` },
     { label: 'Check recorded', state: 'ok', text: 'Frozen onto the claim when you decide' },
   ];
@@ -123,6 +124,8 @@ function ApprovalCard({ claim, onDone }) {
   };
 
   const warned = !!check && check.wtr.warnings.length > 0;
+  // §8.3: over 48 hours with no signed opt-out is never approved — NOVA refuses it; HR decides.
+  const blocked = !!check && check.wtr.warnings.some((x) => x.code === 'avg-48');
   return (
     <div className="ot__card">
       <ClaimHead c={claim} />
@@ -153,11 +156,12 @@ function ApprovalCard({ claim, onDone }) {
       <div className="ot__decide">
         <label>Note to the agent (needed to reject)
           <input value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} /></label>
-        {warned && (
+        {blocked && <div className="ot__bad">Over the 48-hour average with no signed opt-out on file — this can't be approved. Escalate it to HR, or record the opt-out first if one was signed before the work.</div>}
+        {warned && !blocked && (
           <label className="ot__override">Why approve past the Working Time warning (recorded)
             <input value={override} maxLength={1000} onChange={(e) => setOverride(e.target.value)} /></label>
         )}
-        <button className="ot__primary" disabled={busy || !check || (warned && !override.trim())} onClick={() => decide('approve')}>
+        <button className="ot__primary" disabled={busy || !check || blocked || (warned && !override.trim())} onClick={() => decide('approve')}>
           {warned ? 'Approve with warnings' : 'Approve'}
         </button>
         <button className="ot__quiet" disabled={busy || !note.trim()} onClick={() => decide('reject')}>Reject</button>
