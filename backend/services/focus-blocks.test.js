@@ -23,6 +23,7 @@
  */
 
 const test = require('node:test');
+const { mock } = test;
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
@@ -141,8 +142,13 @@ test('one block, walked by the clock: ready → start → choose → 2 min → w
   assert.ok(focusHold.activeAt(focusHold.read(), at(10, 32)), 'the hold is explicit state, set by the choice');
 
   // An ordinary push during the block is HELD; an escalation is not.
-  await webpush.sendToAll('Todo nag', 'Do the thing', { type: 'todo', key: 'todo:nag-1' });
-  await webpush.sendToAll('New escalation', 'NT-1 broke', { type: 'escalation_alert', key: 'esc:NT-1' });
+  // ⚠ sendToAll reads the WALL clock, so pin it to the block's time — unpinned,
+  // this test broke on 2 Nov 2026, the day its fixture block ended.
+  mock.timers.enable({ apis: ['Date'], now: at(10, 32) });
+  try {
+    await webpush.sendToAll('Todo nag', 'Do the thing', { type: 'todo', key: 'todo:nag-1' });
+    await webpush.sendToAll('New escalation', 'NT-1 broke', { type: 'escalation_alert', key: 'esc:NT-1' });
+  } finally { mock.timers.reset(); }
   const log = db.getPushLog(10);
   assert.equal(log.find((l) => l.title === 'Todo nag').outcome, 'held');
   assert.notEqual(log.find((l) => l.title === 'New escalation').outcome, 'held');
