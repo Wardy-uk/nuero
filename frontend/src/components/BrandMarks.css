@@ -62,7 +62,7 @@
   align-items: center;
   gap: 8px;
 }
-.brand-side .brand-word { font-size: 12px; -webkit-text-stroke-width: 0.04em; }
+.brand-side .brand-word { font-size: 10px; letter-spacing: 0.04em; -webkit-text-stroke-width: 0.02em; }
 
 @media (max-width: 900px) {
   .brand-lockup--neuro .brand-sub { display: none; }
