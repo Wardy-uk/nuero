@@ -595,6 +595,15 @@ function fromPersonalOps(rows) {
         summary: `Someone changed it after NEURO did (${d.why || 'changed since'}), so it was not put back.`, status: 'skipped' });
       case 'room-heat-restore-failed': return entry({ ...base, category: 'blocked', type: 'home.heating', severity: 'warning',
         headline: `Could not put the ${_room(d.area)} radiator back yet`, summary: `${d.reason || 'Home Assistant refused it'}. NEURO tries again every minute.`, status: 'failed' });
+      // 6 Nov 2026 — Tuya push watchdog (tuya-watchdog.js).
+      case 'tuya-push-reloaded': return entry({ ...base, category: 'acted', type: 'home.tuya',
+        headline: 'Reloaded the Tuya integration in Home Assistant', summary: `${d.why || 'Tuya devices had stopped reporting'}. Checking they come back.`, status: 'unverified' });
+      case 'tuya-push-reload-failed': return entry({ ...base, category: 'blocked', type: 'home.tuya', severity: 'warning',
+        headline: 'Could not reload the Tuya integration', summary: d.error || null, status: 'failed' });
+      case 'tuya-push-still-dead': return entry({ ...base, category: 'blocked', type: 'home.tuya', severity: 'warning',
+        headline: 'Tuya devices are still silent after a reload', summary: 'Check the Tuya integration in Home Assistant.', status: 'failed' });
+      case 'tuya-push-recovered': return entry({ ...base, category: 'verified', type: 'home.tuya',
+        headline: 'Tuya devices are reporting again', status: 'verified' });
       // 1 Nov 2026 — router auto-restart (router-autofix.js).
       case 'router-restart-asked': return entry({ ...base, category: 'decided', type: 'home.router',
         headline: 'Asked to restart the router', summary: `${d.issue || 'It is wedging'} — outside the safe hours, so it waits for a yes.`, status: 'open' });

@@ -1468,6 +1468,14 @@ function start() {
     console.warn('[PreparedMoveScan] could not start (backend unaffected):', e.message);
   }
 
+  // Tuya push watchdog (6 Nov 2026): every Tuya canary silent for 3h = HA's Tuya
+  // push thread has died (1 Nov) — reload the integration, alert if that fails.
+  try {
+    require('./tuya-watchdog').register();
+  } catch (e) {
+    console.warn('[TuyaWatchdog] could not start (backend unaffected):', e.message);
+  }
+
   // The durable runtime (Build 3A). Never allowed to stop startup.
   try {
     registerDurableJobs();
