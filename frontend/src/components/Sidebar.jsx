@@ -125,9 +125,9 @@ const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.flatMap((i) => [
 // The SAiM entry wears her mark and wordmark (6 Nov 2026, Nick's mockup).
 const SAIM_ITEM = {
   id: 'saim',
-  // Same font, size and colour as every other menu item (Nick, 6 Nov 2026) —
-  // only her i is blue. The brand lettering lives on the SAiM page header.
-  label: <span aria-label="SAiM">SA<span className="brand-word__i">i</span>M</span>,
+  // The menu's own font and size (Nick, 6 Nov 2026); her colours: white letters,
+  // blue i — selected or not. The brand lettering lives on the SAiM page header.
+  label: <span className="sidebar-saim" aria-label="SAiM">SA<span className="brand-word__i">i</span>M</span>,
   icon: <SaimMark width={14} />,
 };
 

@@ -66,8 +66,11 @@
    so size it there. Michroma's caps are tall: 11.5px matches the 10px caps of the
    14px menu font (measured at 1x). */
 .brand-side .brand-word { font-size: 11.5px; letter-spacing: 0.04em; -webkit-text-stroke-width: 0.02em; }
-/* In the menu the i is the only brand detail: the menu's own font, size and colour otherwise. */
-.sidebar-label .brand-word__i { -webkit-text-stroke: 0; }
+/* Menu: the menu's own font and size, SAiM's colours — white letters, blue i,
+   whether or not the item is selected (selected items otherwise turn blue). */
+.sidebar-label .sidebar-saim,
+.sidebar-item.active .sidebar-label .sidebar-saim { color: #ffffff; }
+.sidebar-label .sidebar-saim .brand-word__i { color: #1e8bff; -webkit-text-stroke: 0; }
 
 @media (max-width: 900px) {
   .brand-lockup--neuro .brand-sub { display: none; }
