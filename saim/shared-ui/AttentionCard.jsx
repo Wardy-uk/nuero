@@ -94,6 +94,11 @@ export function taskDestination(card) {
     if (meta.owner.msId != null) ctx.msId = meta.owner.msId;
     return { view: 'todos', context: ctx, label: 'Open task' };
   }
+  // A capacity card about ONE task opens that task's workflow screen — its wording, source,
+  // context and "Do this" — not State of Play, which is another list (6 Nov 2026).
+  if (card.type === 'capacity' && meta.taskId != null) {
+    return { view: 'task', context: { taskId: meta.taskId }, label: 'Open task' };
+  }
   if (card.type === 'meeting' && Array.isArray(meta.blockTaskIds) && meta.blockTaskIds.length) {
     return { view: 'todos', context: { taskId: meta.blockTaskIds[0] }, label: 'Open task' };
   }
@@ -332,6 +337,18 @@ export default function AttentionCard({
       <h3 className="att-card__title">{card.title}</h3>
       {/* `say` is SAiM's sentence, composed server-side; `reason` the fallback. */}
       <p className="att-card__say">{card.say || card.reason}</p>
+
+      {/* What the task IS, why, and where it came from — composed server-side (6 Nov 2026). */}
+      {Array.isArray(card.meta && card.meta.detail) && card.meta.detail.length > 0 && (
+        <details className="att-card__detail">
+          <summary>What this is</summary>
+          <dl>
+            {card.meta.detail.map((d) => (
+              <div key={d.label} className="att-card__detail-row"><dt>{d.label}</dt><dd>{d.text}</dd></div>
+            ))}
+          </dl>
+        </details>
+      )}
 
       {showEvidence && Array.isArray(card.evidence) && card.evidence.length > 0 && (
         <ul className="att-card__evidence">

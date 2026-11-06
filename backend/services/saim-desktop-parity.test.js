@@ -165,3 +165,12 @@ test('the card offers "Move due date" where it can write — not on the kiosk, n
 test('dueLabel slices the key, never shifting a day', () => {
   assert.match(Card.dueLabel('2026-11-09'), /9 Nov/);
 });
+
+test('the card shows what its task is, folded, when the server composed it', () => {
+  const card = { ...capacityCard, meta: { ...capacityCard.meta, detail: [{ label: 'What it unlocks', text: 'NOVA can route tickets smarter' }, { label: 'Where it came from', text: 'Accepted from NEURO’s suggestions. Added 15 Oct 2026.' }] } };
+  const html = renderToString(React.createElement(Card.default, { card, onOpen: () => true, onAct: async () => ({ ok: true }) }));
+  assert.match(html, /What this is/);
+  assert.match(html, /NOVA can route tickets smarter/);
+  assert.match(html, /Accepted from NEURO/);
+  assert.doesNotMatch(render({}), /What this is/, 'nothing composed → no empty fold');
+});

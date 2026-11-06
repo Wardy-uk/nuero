@@ -494,6 +494,11 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       if (key || taskId != null) { onNavigate?.('task', { context: { taskId, key } }); return; }
       return;
     }
+    // A capacity card about ONE task opens that task (6 Nov 2026), as on the desktop.
+    if (card && card.type === 'capacity' && card.meta && card.meta.taskId != null) {
+      onNavigate?.('task', { context: { taskId: card.meta.taskId } });
+      return;
+    }
     const tab = tabFor(card);
     // A thing with no tab of its own (an escalation) resolves to 'surface' —
     // the screen it was pressed on — so Open did nothing at all (5 Oct 2026).
@@ -511,6 +516,7 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   /** Would `open(card)` do anything? A button that does nothing is not drawn (25 Oct 2026). */
   function canOpen(card) {
     if (card && card.open && card.open.kind === 'promise') return true;
+    if (card && card.type === 'capacity' && card.meta && card.meta.taskId != null) return true;
     const tab = tabFor(card);
     if (tab && tab !== 'surface') return true;
     const url = card && card.meta && card.meta.url;

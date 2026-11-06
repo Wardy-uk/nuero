@@ -640,6 +640,56 @@ function collectWeeklyReport(now = new Date()) {
 // More work due than free time, and big tasks that must start now
 // (5 Oct 2026). From task-capacity (sizes against the diary); never re-derived
 // here, and an unreadable read adds nothing rather than an all-clear.
+/**
+ * What a capacity card can say about the ONE task it names (6 Nov 2026). The
+ * card read "\"<400 characters of task text>\" is overdue — 8h of work / Sized
+ * at 8h." and nothing else: no source, no why, and Open went to a list. All of
+ * it was already recorded — the row's provenance, and for an accepted NEURO
+ * suggestion the suggestion itself (title, what it unlocks, what changes).
+ * Never allowed to fail the card: a failed read returns null.
+ */
+function capacityTaskDetail(taskId, now = new Date()) {
+  if (taskId == null) return null;
+  let row = null;
+  try { row = require('../db/database').getTaskRow(Number(taskId)); } catch { return null; }
+  if (!row) return null;
+  const detail = [];
+  let short = null;
+  // An accepted suggestion carries its own title and reasoning.
+  if (row.source === 'capability-suggestion') {
+    try {
+      const store = JSON.parse(require('../db/database').getState('capability_suggestions') || '{}');
+      const s = (store.items || []).find((x) => x && x.filed && Number(x.filed.taskId) === Number(row.id));
+      if (s) {
+        short = s.title || null;
+        if (s.unlocks) detail.push({ label: 'What it unlocks', text: s.unlocks });
+        if (s.changes) detail.push({ label: 'Why it helps you', text: s.changes });
+        if (s.need && s.need.how) detail.push({ label: 'How', text: s.need.how });
+      }
+    } catch { /* the row's own text still says what it is */ }
+  }
+  if (!short) short = shortTaskTitle(row.text);
+  if (short !== row.text) detail.unshift({ label: 'The task', text: row.text });
+  let prov = null;
+  try { prov = require('../../shared/task-provenance.cjs').describeTaskProvenance(row, { now }); } catch { prov = null; }
+  if (prov) {
+    const from = prov.from && prov.from.label ? ` — ${prov.from.label}` : '';
+    detail.push({ label: 'Where it came from', text: `${prov.how}${from}. ${prov.added}.` });
+  }
+  const kind = [row.moscow ? row.moscow.toUpperCase() : null,
+    row.origin === 'commitment' ? 'a commitment to someone' : row.origin === 'improvement' ? 'continual improvement (your own)' : null].filter(Boolean);
+  if (kind.length) detail.push({ label: 'Rated', text: kind.join(' · ') });
+  return { id: row.id, short, text: row.text, moscow: row.moscow || null, origin: row.origin || null, detail };
+}
+
+/** First clause of a long task, at a word boundary — the rest goes in the card's detail. PURE. */
+function shortTaskTitle(text) {
+  const s = String(text || '').trim();
+  const cut = s.split(/ — |\. (?=[A-Z])/)[0].replace(/\.$/, '');
+  if (cut.length <= 90) return cut;
+  return `${cut.slice(0, 88).replace(/\s+\S*$/, '')}…`;
+}
+
 function collectCapacity() {
   let c;
   try { c = require('./task-capacity').read(); } catch { return []; }
@@ -655,17 +705,20 @@ function collectCapacity() {
   const items = [];
   const big = (c.startBy || [])[0];
   if (big) {
+    const task = capacityTaskDetail(big.id, now);
+    const name = task ? task.short : shortTaskTitle(big.text);
     const title = big.status === 'start-today'
-      ? `Start "${big.text}" by ${big.latestStart.time} to finish ${by(big.due)}`
+      ? `Start "${name}" by ${big.latestStart.time} to finish ${by(big.due)}`
       : big.status === 'overdue'
-        ? `"${big.text}" is overdue — ${hrs(big.minutes)} of work`
-        : `"${big.text}" can't be finished ${by(big.due)} on free time`;
+        ? `"${name}" is overdue — ${hrs(big.minutes)} of work`
+        : `"${name}" can't be finished ${by(big.due)} on free time`;
+    const dueSay = big.due ? `Due ${new Date(`${big.due}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}` : null;
     items.push({
       type: 'capacity', id: `capacity-start-${big.id}-${big.due}`, dedupeKey: `capacity:start:${big.id}:${big.due}`,
       title,
-      reason: big.status === 'cannot-finish' ? `${hrs(big.shortMinutes)} short even starting now — re-date it, shrink it or hand some of it on.` : `Sized at ${hrs(big.minutes)}.`,
-      score: 84, urgency: 'high', source: 'neuro', actionHint: 'Open State of Play',
-      meta: { taskId: big.id, status: big.status, due: big.due },
+      reason: [dueSay, big.status === 'cannot-finish' ? `${hrs(big.shortMinutes)} short even starting now — re-date it, shrink it or hand some of it on.` : `Sized at ${hrs(big.minutes)}.`].filter(Boolean).join(' · '),
+      score: 84, urgency: 'high', source: 'neuro', actionHint: 'Open task',
+      meta: { taskId: big.id, status: big.status, due: big.due, detail: task ? task.detail : [] },
     });
   }
   if (c.overload) {
@@ -1252,6 +1305,8 @@ module.exports = {
   // Which system can close a task is the fact the whole completion path turns
   // on, so it is worth defending on its own.
   ownerOf,
+  shortTaskTitle,
+  capacityTaskDetail,
   // Exported for the test that a finished task block is not rebuilt as a card.
   collectMeetings,
   // Exported for the test that shadow mode adds nothing to the pool.

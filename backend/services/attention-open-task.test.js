@@ -66,3 +66,14 @@ test('a task-block meeting opens its first open task; a real meeting does not', 
   assert.equal(d.context.taskId, 357);
   assert.equal(taskDestination({ type: 'meeting', title: 'Sprint planning', meta: { blockTaskIds: null } }), null);
 });
+
+// 6 Nov 2026: "Open context" on a capacity card went to State of Play — another
+// list, with nothing more about the task. It opens THAT task's workflow screen.
+test('a capacity card about one task opens that task, not State of Play', () => {
+  const d = taskDestination({ type: 'capacity', title: '"Work context for NOVA" is overdue — 8h of work', meta: { taskId: 431, status: 'overdue' } });
+  assert.equal(d.view, 'task');
+  assert.equal(d.context.taskId, 431);
+  assert.equal(d.label, 'Open task');
+  // The overload card names no task and keeps its own destination.
+  assert.equal(taskDestination({ type: 'capacity', title: 'More work due', meta: { by: '2026-11-06' } }), null);
+});

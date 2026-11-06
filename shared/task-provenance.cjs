@@ -183,6 +183,8 @@ const SOURCE_HOW = {
   unattributed: 'Not recorded — whatever created this did not say who it was',
 
   'master-todo-import': 'Imported from your old Master Todo list',
+  // Accepted on NEURO Health → "What I could do for you" (capability-gaps.decide).
+  'capability-suggestion': 'Accepted from NEURO’s “What I could do for you” suggestions',
   'meeting-promotion': 'Promoted from a meeting note',
   'email-promotion': 'Promoted from an email that asked you for something',
   'sent-email-promotion': 'Promoted from an email you sent, where you said you would',
