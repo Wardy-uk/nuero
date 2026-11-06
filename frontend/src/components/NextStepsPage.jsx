@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiUrl } from '../api';
 import { CalendarBar } from './EmailCard';
 import { openInVault } from '../openVault';
+import { useWorkOnly } from '../workOnly';
 import './NextStepsPage.css';
 
 /**
@@ -33,13 +34,20 @@ const NOT_TODAY_REASONS = [
   { reason: 'no-context', label: 'Missing something' },
 ];
 
-const FILTERS = [
-  { key: 'all', label: 'All' },
+// Work or Life (6 Nov 2026, Nick): the page opens on Work every time; Life is
+// a toggle, never mixed in. The filters below cut WITHIN the side shown.
+const SPHERES = [
   { key: 'work', label: 'Work' },
   { key: 'life', label: 'Life' },
+];
+
+const FILTERS = [
+  { key: 'all', label: 'All' },
   { key: 'quick', label: 'Under 15 min' },
   { key: 'snoozed', label: 'Snoozed' },
 ];
+
+const sphereOf = (x) => (x.sphere === 'life' ? 'life' : 'work');
 
 function untilLabel(iso) {
   const t = Date.parse(iso);
@@ -129,17 +137,17 @@ export function NextStepRow({ item, highlighted, onStart, onChanged, snoozed = f
   );
 }
 
-export function NextStepsView({ data, filter, setFilter, highlight, onStart, onChanged }) {
-  const items = data.items || [];
-  const snoozed = data.snoozed || [];
+export function NextStepsView({ data, sphere = 'work', setSphere = null, filter, setFilter, highlight, onStart, onChanged }) {
+  const allItems = data.items || [];
+  const allSnoozed = data.snoozed || [];
+  const items = allItems.filter((x) => sphereOf(x) === sphere);
+  const snoozed = allSnoozed.filter((x) => sphereOf(x) === sphere);
   const shown = filter === 'snoozed' ? snoozed
-    : items.filter((x) => (filter === 'work' ? x.sphere === 'work'
-      : filter === 'life' ? x.sphere === 'life'
-        : filter === 'quick' ? (x.minutes != null && x.minutes <= 15) : true));
+    : items.filter((x) => (filter === 'quick' ? (x.minutes != null && x.minutes <= 15) : true));
   const count = (key) => (key === 'snoozed' ? snoozed.length
     : key === 'all' ? items.length
-      : key === 'quick' ? items.filter((x) => x.minutes != null && x.minutes <= 15).length
-        : items.filter((x) => x.sphere === key).length);
+      : items.filter((x) => x.minutes != null && x.minutes <= 15).length);
+  const sphereCount = (key) => allItems.filter((x) => sphereOf(x) === key).length;
 
   return (
     <div className="ns-page">
@@ -148,6 +156,15 @@ export function NextStepsView({ data, filter, setFilter, highlight, onStart, onC
           <span className="ns-eyebrow">EVERYTHING PENDING, MOST USEFUL FIRST</span>
           <h1 className="ns-h1">Next steps</h1>
         </div>
+        {setSphere && (
+          <div className="ns-sphere" role="group" aria-label="Work or Life">
+            {SPHERES.map((sp) => (
+              <button key={sp.key} className={`ns-sphere-btn${sphere === sp.key ? ' is-on' : ''}`} aria-pressed={sphere === sp.key} onClick={() => setSphere(sp.key)}>
+                {sp.label} {sphereCount(sp.key)}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="ns-filters" role="group" aria-label="Filter">
           {FILTERS.map((f) => (
             <button key={f.key} className={`ns-filter${filter === f.key ? ' is-on' : ''}`} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
@@ -169,7 +186,7 @@ export function NextStepsView({ data, filter, setFilter, highlight, onStart, onC
       ) : (
         <>
           {shown.length === 0 && (
-            <p className="ns-empty">{data.complete ? 'Nothing pending here.' : 'Nothing found in what NEURO could read.'}</p>
+            <p className="ns-empty">{data.complete ? `Nothing ${sphere === 'life' ? 'in Life' : 'at work'} pending here.` : 'Nothing found in what NEURO could read.'}</p>
           )}
           {GROUPS.map((g) => {
             const rows = shown.filter((x) => x.group === g.key);
@@ -193,6 +210,8 @@ export default function NextStepsPage({ context, onNavigate }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
+  const [sphere, setSphere] = useState('work');
+  const [workOnly] = useWorkOnly();
   const highlight = context && context.item ? String(context.item) : null;
 
   const load = useCallback(() => {
@@ -208,11 +227,19 @@ export default function NextStepsPage({ context, onNavigate }) {
     return () => clearInterval(t);
   }, [load]);
 
+  // A link to one row (a push, ?step=) opens the side that row is on — a deep
+  // link must never land on a hidden row.
+  useEffect(() => {
+    if (!highlight || !data) return;
+    const hit = [...(data.items || []), ...(data.snoozed || [])].find((x) => x.id === highlight);
+    if (hit && sphereOf(hit) !== sphere) setSphere(sphereOf(hit));
+  }, [highlight, data]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!highlight || !data) return;
     const el = document.getElementById(`ns-${highlight}`);
     if (el) el.scrollIntoView({ block: 'center' });
-  }, [highlight, data]);
+  }, [highlight, data, sphere]);
 
   const onStart = (item) => {
     if (item.start.view === 'vault' && item.start.context && item.start.context.path) { openInVault(item.start.context.path); return; }
@@ -221,5 +248,7 @@ export default function NextStepsPage({ context, onNavigate }) {
 
   if (error && !data) return <div className="ns-page"><div className="ns-gap">{error}</div></div>;
   if (!data) return <div className="ns-page"><p className="ns-empty">Reading what’s pending…</p></div>;
-  return <NextStepsView data={data} filter={filter} setFilter={setFilter} highlight={highlight} onStart={onStart} onChanged={load} />;
+  // Work only on this device: Life is hidden, so is the toggle.
+  const shownSphere = workOnly ? 'work' : sphere;
+  return <NextStepsView data={data} sphere={shownSphere} setSphere={workOnly ? null : setSphere} filter={filter} setFilter={setFilter} highlight={highlight} onStart={onStart} onChanged={load} />;
 }

@@ -4,6 +4,10 @@
 .ns-head-text { flex: 1 1 260px; display: flex; flex-direction: column; gap: 6px; }
 .ns-eyebrow { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 12px; letter-spacing: 2px; color: var(--text-muted); }
 .ns-h1 { margin: 0; font-family: 'Source Serif 4', Georgia, serif; font-weight: 400; font-size: 36px; color: var(--text); }
+.ns-sphere { display: inline-flex; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+.ns-sphere-btn { font: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: var(--bg-card, var(--bg-secondary)); border: 0; padding: 8px 18px; min-height: 40px; cursor: pointer; }
+.ns-sphere-btn + .ns-sphere-btn { border-left: 1px solid var(--border); }
+.ns-sphere-btn.is-on { background: var(--text); color: var(--bg-primary, #111); }
 .ns-filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .ns-filter { font: inherit; font-size: 14px; color: var(--text); background: var(--bg-card, var(--bg-secondary)); border: 1px solid var(--border); border-radius: 18px; padding: 8px 14px; min-height: 40px; cursor: pointer; }
 .ns-filter.is-on { background: var(--warning, #f0a040); border-color: var(--warning, #f0a040); color: #1a1206; font-weight: 600; }

@@ -43,6 +43,7 @@ const data = {
   ok: true, complete: false, gaps: ['1-2-1s: unreadable'],
   items: [
     { id: 'report:2026-11-02', kind: 'report', group: 'now', sphere: 'work', title: 'Send the Monday report to Chris', why: 'Past the midday deadline.', minutes: 5, start: { label: 'Start', view: 'weekly-risk' } },
+    { id: 'task:9', kind: 'task', group: 'today', sphere: 'work', title: 'Chase the Sandford reply', why: 'Due today', minutes: 10, start: { label: 'Start', view: 'todos' } },
     { id: 'task:7', kind: 'task', group: 'today', sphere: 'life', title: 'Book the MOT', why: 'Due today', minutes: 30, start: { label: 'Start', view: 'todos' } },
   ],
   snoozed: [{ id: 'email:x', kind: 'email', group: 'today', sphere: 'work', title: 'Reply to Lucy', why: '', snoozedUntil: '2026-11-04T08:00:00Z', snoozeReason: 'too-big', start: { label: 'Open', view: 'inbox' } }],
@@ -50,10 +51,10 @@ const data = {
 
 test('grouped rows with the three choices; an unread source is said, never an all-clear', async () => {
   const { NextStepsView } = await load();
-  const html = renderToString(React.createElement(NextStepsView, { data, filter: 'all', setFilter() {}, highlight: 'task:7', onStart() {}, onChanged() {} })).replace(/<!-- -->/g, '');
+  const html = renderToString(React.createElement(NextStepsView, { data, filter: 'all', setFilter() {}, highlight: 'task:9', onStart() {}, onChanged() {} })).replace(/<!-- -->/g, '');
   assert.match(html, /NEEDS YOU NOW · 1/);
   assert.match(html, /TODAY · 1/);
-  assert.ok(html.indexOf('Monday report') < html.indexOf('Book the MOT'), 'now before today');
+  assert.ok(html.indexOf('Monday report') < html.indexOf('Chase the Sandford'), 'now before today');
   assert.match(html, /Snooze ▾/);
   assert.match(html, /Not today/);
   assert.match(html, /Couldn’t read: 1-2-1s: unreadable/);
@@ -61,11 +62,23 @@ test('grouped rows with the three choices; an unread source is said, never an al
   assert.match(html, /is-highlighted/);
 });
 
-test('filters cut, never re-rank; snoozed shows the way back', async () => {
+test('Work by default; Life is a toggle, never mixed in', async () => {
   const { NextStepsView } = await load();
-  const life = renderToString(React.createElement(NextStepsView, { data, filter: 'life', setFilter() {}, onStart() {}, onChanged() {} })).replace(/<!-- -->/g, '');
+  const r = (props) => renderToString(React.createElement(NextStepsView, { data, filter: 'all', setFilter() {}, onStart() {}, onChanged() {}, ...props })).replace(/<!-- -->/g, '');
+  const def = r({});
+  assert.match(def, /Monday report/);
+  assert.doesNotMatch(def, /Book the MOT/, 'default is Work only');
+  const life = r({ sphere: 'life', setSphere() {} });
   assert.match(life, /Book the MOT/);
   assert.doesNotMatch(life, /Monday report/);
+  assert.match(life, /aria-label="Work or Life"/);
+  assert.match(life, /Work 2/);
+  assert.match(life, /Life 1/);
+  assert.doesNotMatch(def, /aria-label="Work or Life"/, 'no toggle when the shell gives none (Work only)');
+});
+
+test('filters cut, never re-rank; snoozed shows the way back', async () => {
+  const { NextStepsView } = await load();
   const sn = renderToString(React.createElement(NextStepsView, { data, filter: 'snoozed', setFilter() {}, onStart() {}, onChanged() {} })).replace(/<!-- -->/g, '');
   assert.match(sn, /Reply to Lucy/);
   assert.match(sn, /Bring it back/);

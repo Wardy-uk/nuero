@@ -386,6 +386,11 @@ function read({ now = Date.now() } = {}) {
     ok: true,
     contract: 'next-steps-v1',
     count: live.length,
+    // The page opens on Work (6 Nov 2026); the sidebar badge counts that side.
+    counts: {
+      work: live.filter((x) => x.sphere !== 'life').length,
+      life: live.filter((x) => x.sphere === 'life').length,
+    },
     items: live.map(_public),
     snoozed: snoozed.map(_public),
     gaps,

@@ -173,7 +173,11 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
 
       fetch(apiUrl('/api/next-steps'))
         .then(res => (res.ok ? res.json() : null))
-        .then(data => { if (data && typeof data.count === 'number') setNextCount(data.count); })
+        .then(data => {
+          if (!data) return;
+          if (data.counts && typeof data.counts.work === 'number') setNextCount(data.counts.work);
+          else if (typeof data.count === 'number') setNextCount(data.count);
+        })
         .catch(() => {});
 
       fetch(apiUrl('/api/email/unseen-count'))
@@ -236,7 +240,7 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
           <span className="sidebar-badge">{importsCount}</span>
         )}
         {item.id === 'next-steps' && nextCount > 0 && (
-          <span className="sidebar-badge" title="Pending things in Next steps (snoozed ones not counted)">{nextCount > 99 ? '99+' : nextCount}</span>
+          <span className="sidebar-badge" title="Work things pending in Next steps (Life and snoozed ones not counted)">{nextCount > 99 ? '99+' : nextCount}</span>
         )}
         {item.id === 'actions' && actionsCount > 0 && (
           /* 930 does not fit a badge and 930 is the real number, so say "lots"
