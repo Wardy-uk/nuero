@@ -22,6 +22,8 @@ import MakeReady from '../components/MakeReady';
 import { loadEligible } from '../makeReady.mjs';
 import { startTaskSession } from '../../../shared-ui/startTask.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
+import { desktopUrlFor } from '../nextSteps.mjs';
+import { VALID_TABS } from '../../../shared-ui/tabs.jsx';
 import './Surface.css';
 import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
 
@@ -765,6 +767,13 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       deskStates={deskStates}
       onSay={onSay}
       onNavigate={(tab) => onNavigate?.(tab)}
+      // A Needs-you row's destination (6 Nov 2026): a SAiM tab when there is one,
+      // else that page in NEURO (Actions lives there) — opened, never guessed at.
+      onGo={platformNow() === 'kiosk' ? null : (view) => {
+        // VALID_TABS read at press time: tabs.jsx imports this file, so never at load.
+        if (VALID_TABS.has(view)) { onNavigate?.(view); return; }
+        try { window.open(desktopUrlFor(view), '_blank', 'noopener'); } catch { /* blocked */ }
+      }}
       hideSecondary={Boolean(exchange)}
       // SAiM's one prepared decision. It renders nothing unless NEURO says a
       // trustworthy move exists, and writes nothing without Nick's press.

@@ -283,7 +283,22 @@ function needsYou() {
     // Build 12.3: the newest waiting row, so a P0 notification can be keyed on
     // "a new draft arrived" rather than re-firing on every poll.
     const newestAt = rows.reduce((m, r) => (r.created_at && (!m || r.created_at > m) ? r.created_at : m), null);
-    return { ...out, calendarEnabled, newestAt };
+    // WHICH drafts (6 Nov 2026, Nick: a count told him something waited and not
+    // what). Subject + who it goes to, newest first, three at most — never the body.
+    let waiting = [];
+    try {
+      waiting = db.all(
+        `SELECT action_id, action_type, status, created_at, draft_json FROM prepared_actions
+          WHERE status IN ('prepared','execution_uncertain') OR (status = 'failed' AND retry_safe = 1)
+          ORDER BY created_at DESC LIMIT 3`,
+      ).map((r) => {
+        const d = parse(r.draft_json) || {};
+        const to = (Array.isArray(d.to) ? d.to : []).map((x) => (x && (x.name || x.email)) || (typeof x === 'string' ? x : null)).filter(Boolean);
+        return { actionId: r.action_id, type: r.action_type, status: r.status, createdAt: r.created_at,
+          subject: d.subject ? String(d.subject).slice(0, 140) : null, to: to.slice(0, 3), toMore: Math.max(0, to.length - 3) };
+      });
+    } catch { waiting = []; }
+    return { ...out, calendarEnabled, newestAt, waiting };
   } catch (e) {
     return summary.unknown(e.message);
   }

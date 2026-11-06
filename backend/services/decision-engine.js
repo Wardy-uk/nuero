@@ -363,6 +363,26 @@ function ownerOf(task) {
   return { kind: 'file', source: task.source || null };
 }
 
+/**
+ * The "What this is" rows for a task card's ONE task (6 Nov 2026, Nick: "still
+ * lacking much context"). A NEURO task gets the same rows as the capacity card
+ * (minus "The task" — a todo card's title IS the full wording); a Microsoft or
+ * file task says where it lives. Never allowed to fail the card.
+ */
+function todoDetail(task) {
+  if (!task) return [];
+  try {
+    if (task.task_id) {
+      const d = capacityTaskDetail(task.task_id);
+      if (d) return d.detail.filter((r) => r.label !== 'The task');
+    }
+    const rows = [];
+    if (task.source) rows.push({ label: 'Where it lives', text: String(task.source) });
+    if (task.msPlan || task.ms_plan) rows.push({ label: 'Board', text: String(task.msPlan || task.ms_plan) });
+    return rows;
+  } catch { return []; }
+}
+
 function collectOverdueTodos(ctx) {
   const items = [];
   if (!ctx.todos || !ctx.todos.active) return items;
@@ -420,6 +440,7 @@ function collectOverdueTodos(ctx) {
       // the pool regenerated the card on the very next poll. Four resolved
       // records for one task in three days, found 7 Sep 2026.
       owner: ownerOf(top),
+      detail: todoDetail(top),
     };
   };
 
@@ -445,7 +466,7 @@ function collectOverdueTodos(ctx) {
       // the briefing puts Nick's private life into Nurtur's mail system. It is
       // not filtered HERE on purpose — the Surface and Focus should show
       // personal work; only the outbound paths ask.
-      meta: { dueDate: topOverdue.dueStr, overdueCount, domain: topOverdue.domain || null, owner: topOverdue.owner },
+      meta: { dueDate: topOverdue.dueStr, overdueCount, domain: topOverdue.domain || null, owner: topOverdue.owner, detail: topOverdue.detail },
     });
   }
 
@@ -461,7 +482,7 @@ function collectOverdueTodos(ctx) {
       urgency: topDueToday.isPlanTask ? 'medium' : 'low',
       source: topDueToday.source || 'vault',
       actionHint: dueTodayCount === 1 ? 'Do today' : 'Start here, then review the rest',
-      meta: { dueDate: topDueToday.dueStr, dueTodayCount, domain: topDueToday.domain || null, owner: topDueToday.owner },
+      meta: { dueDate: topDueToday.dueStr, dueTodayCount, domain: topDueToday.domain || null, owner: topDueToday.owner, detail: topDueToday.detail },
     });
   }
 

@@ -93,6 +93,41 @@ const FOCAL_EYEBROW = { event: 'Next', transition: 'Next', commitment: 'Due', ta
 
 // The one thing the eye lands on after the headline (12.1D): stronger than the
 // context, weaker than anything that needs him.
+/**
+ * The context behind a Needs-you row (6 Nov 2026, Nick: "hidden on load, with a
+ * click to show more"): what the task is, where it came from, why it is here,
+ * and the evidence — composed server-side, rendered verbatim, folded. Nothing
+ * when the item carries none. Read-only, so it shows on every profile.
+ */
+export function MoreAbout({ item }) {
+  const rows = Array.isArray(item && item.detail) ? item.detail : [];
+  const ev = Array.isArray(item && item.evidence) ? item.evidence : [];
+  if (!rows.length && !ev.length) return null;
+  return (
+    <details className="sit__about">
+      <summary>More about this</summary>
+      {rows.length > 0 && (
+        <dl className="sit__about-list">
+          {rows.map((d, i) => (
+            <div key={`${d.label}-${i}`} className="sit__about-row"><dt>{d.label}</dt><dd>{d.text}</dd></div>
+          ))}
+        </dl>
+      )}
+      {ev.length > 0 && (
+        <ul className="sit__about-ev">
+          {ev.map((e, i) => (
+            <li key={i}>
+              {e.source && <span className="sit__about-src">{e.source}</span>}
+              {e.ref && <span>{e.ref}</span>}
+              {e.detail && <span className="sit__about-evd">{e.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
+
 function Focal({ item, onOpen, actions }) {
   const eyebrow = (item.kind === 'commitment' || item.kind === 'task') && !item.when ? 'Next' : (FOCAL_EYEBROW[item.kind] || 'Next');
   const inner = (
@@ -194,6 +229,9 @@ export default function Situation({
   // A Needs-you row's own controls (open it + one way to answer it). Absent,
   // rows are drawn without buttons — the kiosk and watch pass nothing.
   renderNeedsYouActs = null,
+  // Where a Needs-you row's `go` view lives on this shell (6 Nov 2026, Nick: "get
+  // me to where I need to be"). Absent — the kiosk and watch — no button.
+  onGo = null,
   onOpen = null,
   onOffer = null,
   onCorrect = null,
@@ -382,6 +420,12 @@ export default function Situation({
                       <span className="sit__object-tag">Needs you</span>
                       <p className="sit__object-title">{it.title}</p>
                       {it.summary && <p className="sit__object-sub">{it.summary}</p>}
+                      <MoreAbout item={it} />
+                      {plan.actions && plan.profile !== 'kiosk' && onGo && it.go && it.go.view && (
+                        <div className="sit__object-acts">
+                          <button type="button" className="sit__chip sit__chip--yes" onClick={() => onGo(it.go.view, it)}>{it.go.label || 'Open it'}</button>
+                        </div>
+                      )}
                       {plan.actions && renderNeedsYouActs ? renderNeedsYouActs(it) : null}
                       {plan.actions && renderItemExtra ? renderItemExtra(it) : null}
                     </article>

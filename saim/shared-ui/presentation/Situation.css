@@ -133,6 +133,23 @@ button.sit__focal:hover { border-color: rgba(255, 255, 255, 0.16); }
 .sit__focal-when { color: rgb(var(--saim-rgb, 114, 150, 211)); font-variant-numeric: tabular-nums; }
 .sit__object-sub { color: var(--sit-soft); font-size: 0.95rem; margin: 0.3rem 0 0; }
 
+/* "More about this" — the row's context, folded until asked for (6 Nov 2026). */
+.sit__about { margin-top: 0.5rem; }
+.sit__about > summary { cursor: pointer; color: var(--sit-quiet); font-size: 0.85rem; list-style: none; width: fit-content; }
+.sit__about > summary::-webkit-details-marker { display: none; }
+.sit__about > summary::before { content: '▸ '; }
+.sit__about[open] > summary::before { content: '▾ '; }
+.sit__about > summary:hover { color: var(--sit-soft); }
+.sit__about-list { margin: 0.5rem 0 0; display: grid; gap: 0.35rem; }
+.sit__about-row { display: grid; grid-template-columns: minmax(7rem, 11rem) 1fr; gap: 0.75rem; font-size: 0.9rem; }
+.sit__about-row dt { color: var(--sit-quiet); margin: 0; }
+.sit__about-row dd { color: var(--sit-soft); margin: 0; overflow-wrap: anywhere; }
+.sit__about-ev { margin: 0.5rem 0 0; padding: 0; list-style: none; font-size: 0.88rem; color: var(--sit-soft); display: grid; gap: 0.25rem; }
+.sit__about-ev li { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sit__about-src { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; color: var(--sit-quiet); }
+.sit__about-evd { color: var(--sit-quiet); }
+@media (max-width: 560px) { .sit__about-row { grid-template-columns: 1fr; gap: 0.1rem; } }
+
 .sit__object-acts { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
 .sit__lead { margin-top: 1rem; }
 .sit__desk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.4rem 0 1rem; }

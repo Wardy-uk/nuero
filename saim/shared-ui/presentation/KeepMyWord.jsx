@@ -650,11 +650,42 @@ export function KmwThreadOne({ thread, actions = false, onStartTask = null, asWh
       </p>
       {why && <p className="kmw__why-line">{why}</p>}
       {thread.held && <p className="kmw__why-line kmw__held-line">{thread.held.say}</p>}
+      <KmwMoreAbout thread={thread} shownWhy={why} />
       {more}
       {canStart && (
         <StartTaskControl onStart={({ force }) => onStartTask({ taskId: thread.taskId, key: thread.key, title: thread.title, force })} />
       )}
     </section>
+  );
+}
+
+/**
+ * The rest of what NEURO knows about a promise (6 Nov 2026, Nick: "still lacking
+ * much context … hidden on load, with a click to show more"): every reason it is
+ * held, not just the one shown; and the evidence — where it was said, the due
+ * date's basis, progress, bookings, the next meeting with the person. Verbatim
+ * from the server, folded.
+ */
+export function KmwMoreAbout({ thread, shownWhy = null }) {
+  if (!thread) return null;
+  const because = (thread.because || []).filter((b) => b && b !== shownWhy);
+  const evidence = (thread.evidence || []).filter((e) => e && e.fact);
+  if (!because.length && !evidence.length && thread.taskId == null) return null;
+  return (
+    <details className="kmw__about">
+      <summary>More about this</summary>
+      {because.length > 0 && (
+        <ul className="kmw__about-list">
+          {because.map((b, i) => <li key={i}>{`${b.charAt(0).toUpperCase()}${b.slice(1)}.`}</li>)}
+        </ul>
+      )}
+      {evidence.length > 0 && (
+        <ul className="kmw__about-list kmw__about-ev">
+          {evidence.map((e, i) => <li key={i}>{e.fact}</li>)}
+        </ul>
+      )}
+      {thread.taskId != null && <p className="kmw__about-id">{`Task #${thread.taskId}${thread.owedTo ? ` · owed to ${thread.owedTo}` : ''}`}</p>}
+    </details>
   );
 }
 

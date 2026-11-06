@@ -75,6 +75,8 @@ export default function NowScene({ attention, onNavigate, onStarted, blockTasks 
         const card = id ? (attention.cards || []).find((c) => c && c.recordId === id) : null;
         return card ? <DesktopNeedsYouActs card={card} onNavigate={onNavigate} onAct={attention.act} onChanged={() => attention.refresh()} /> : null;
       }}
+      // A Needs-you row's destination (6 Nov 2026) — e.g. the approvals row → Actions.
+      onGo={onNavigate ? (view) => onNavigate(view) : null}
       onOpen={(it) => {
         if (!onNavigate || !it) return;
         if (it.kind === 'event') onNavigate('calendar');

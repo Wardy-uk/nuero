@@ -84,9 +84,11 @@ function summarise(rows, { sendingEnabled = null } = {}) {
     const nouns = [];
     for (const [t, n] of Object.entries(byType)) {
       const noun = TYPE_NOUN[t] || 'email';
-      nouns.push(n === 1 ? `a ${noun}` : `${n} ${noun}${noun.endsWith('s') ? '' : 's'}`);
+      nouns.push(n === 1 ? `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}` : `${n} ${noun}${noun.endsWith('s') ? '' : 's'}`);
     }
-    const kinds = nouns.length <= 3 ? ` (${_list(nouns)})` : '';
+    // "1 drafted email … (an email)" says nothing twice; the kinds only help when they differ from "email".
+    const onlyEmail = Object.keys(byType).every((t) => !TYPE_NOUN[t]);
+    const kinds = !onlyEmail && nouns.length <= 3 ? ` (${_list(nouns)})` : '';
     parts.push(`${needsApproval} drafted email${needsApproval === 1 ? '' : 's'} wait${needsApproval === 1 ? 's' : ''} for your approval${kinds} — ${WHERE}.`);
     // ⚠ While the switch is off, approval is REFUSED before the code is asked
     // for (Build 7). Saying so here saves a walk to the desk to find that out.

@@ -256,6 +256,16 @@
 /* The lean promise card (31 Oct 2026): the task, one why, one control. */
 .kmw__why-line { margin: 10px 0 0; font: 14px/1.5 Georgia, serif; color: var(--kmw-dim); }
 .kmw__held-line { color: #d5d1c7; }
+/* "More about this" — every reason and the evidence, folded (6 Nov 2026). */
+.kmw__about { margin: 12px 0 0; font: 13px/1.5 Georgia, serif; color: var(--kmw-dim); }
+.kmw__about > summary { cursor: pointer; list-style: none; width: fit-content; }
+.kmw__about > summary::-webkit-details-marker { display: none; }
+.kmw__about > summary::before { content: '▸ '; }
+.kmw__about[open] > summary::before { content: '▾ '; }
+.kmw__about > summary:hover { color: var(--kmw-ink); }
+.kmw__about-list { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.kmw__about-ev { color: #d5d1c7; }
+.kmw__about-id { margin: 8px 0 0; font-size: 12px; }
 .kmw__actions--start { flex-wrap: wrap; gap: 12px; }
 .kmw__start { font-size: 13px; padding: 12px 18px; }
 .kmw__switch { margin-top: 16px; }

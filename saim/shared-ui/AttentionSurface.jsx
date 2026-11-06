@@ -149,6 +149,9 @@ export default function AttentionSurface({
   // surface that cannot reach the route, in which case nothing is offered —
   // never a button that fails when tapped.
   onDeskOpen = null,
+  // Open the place a Needs-you row's `go` view lives on this shell (e.g. the
+  // approvals row → Actions). Omitted where nothing can be opened — no button.
+  onGo = null,
   // Answer "what are you up to?": `(doing | null) => {}`, null meaning "not
   // now". Omitted where the shell cannot reach NEURO — then nothing is asked.
   onLifeAnswer = null,
@@ -695,6 +698,7 @@ export default function AttentionSurface({
           )}
           renderPrimary={renderPrimary}
           renderNeedsYouActs={renderNeedsYouActs}
+          onGo={prof === 'kiosk' || prof === 'watch' ? null : onGo}
           step={stepEl}
           onOpen={openItem}
           onOffer={onRoomAct ? (it, yes) => onRoomAct(it.actionRef.offerKey, yes ? 'accept' : 'decline') : null}

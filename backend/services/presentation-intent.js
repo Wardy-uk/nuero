@@ -254,8 +254,43 @@ function attentionItem(card, priority) {
     title: card.title,
     summary: card.say || card.reason || null,
     urgency: card.urgency || null,
+    // The context behind the row (6 Nov 2026, Nick: "still lacking much
+    // context … hidden on load, with a click to show more"): what the task IS,
+    // where it came from, and the evidence the card carries. Rendered verbatim,
+    // folded; absent when the card holds none.
+    ...detailOf(card),
     actionRef: { recordId: card.recordId || null, cardId: card.id || null, tab: card.tab || null, actions: card.actions || [], type: card.type || null },
   };
+}
+
+/** PURE. The fold's rows: the card's own detail, its evidence, and why it is here. */
+function detailOf(card) {
+  const out = {};
+  const rows = Array.isArray(card.meta && card.meta.detail)
+    ? card.meta.detail.filter((d) => d && d.label && d.text).slice(0, 8).map((d) => ({ label: String(d.label), text: String(d.text) }))
+    : [];
+  // A capacity card's line already says its due date; a todo card's says "due 2026-11-04".
+  const due = card.meta && card.meta.dueDate;
+  if (due && /^\d{4}-\d{2}-\d{2}$/.test(String(due)) && !rows.some((r) => /^due/i.test(r.label))) {
+    const [y, m, d] = String(due).split('-').map(Number);
+    rows.push({ label: 'Due', text: new Date(y, m - 1, d, 12).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London' }) });
+  }
+  const more = Number(card.meta && (card.meta.overdueCount || card.meta.dueTodayCount));
+  if (more > 1) rows.push({ label: 'Also waiting', text: `${more - 1} other task${more - 1 === 1 ? '' : 's'} ${card.meta.overdueCount ? 'overdue' : 'due today'} — this one is first in your order.` });
+  if (card.actionHint && !/^open\b/i.test(card.actionHint)) rows.push({ label: 'Suggested move', text: String(card.actionHint) });
+  const pushedAt = card.notifiedAt ? new Date(card.notifiedAt) : null;
+  if (pushedAt && Number.isFinite(pushedAt.getTime())) {
+    rows.push({ label: 'Why it’s here', text: `SAiM sent you a notification about it at ${pushedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' })}, and you haven’t answered it yet.` });
+  } else if (String(card.urgency || '').toLowerCase() === 'high' || String(card.urgency || '').toLowerCase() === 'critical') {
+    rows.push({ label: 'Why it’s here', text: `Rated ${String(card.urgency).toLowerCase()} urgency, and you haven’t answered it yet.` });
+  }
+  if (rows.length) out.detail = rows;
+  const ev = Array.isArray(card.evidence)
+    // A todo's evidence `ref` is its own title — said once, above, never again here.
+    ? card.evidence.filter((e) => e && (e.ref || e.detail) && e.ref !== card.title).slice(0, 3).map((e) => ({ source: e.source || null, ref: e.ref || null, detail: e.detail || null }))
+    : [];
+  if (ev.length) out.evidence = ev;
+  return out;
 }
 
 /**
@@ -357,15 +392,31 @@ function composePresentation(p, { now = Date.now() } = {}) {
   const ap = p.approvals;
   if (ap && ap.known !== false && ((ap.needsApproval || 0) + (ap.needsReview || 0)) > 0) {
     const n = (ap.needsApproval || 0) + (ap.needsReview || 0);
+    const a = ap.needsApproval || 0;
+    // The summary's sentence names WHERE inline ("… — Actions — one press sends
+    // each."); the row says where with its button, so that clause is dropped here.
+    const title = ap.say && ap.where ? String(ap.say).split(` — ${ap.where}.`).join('.').replace(/\.\.$/, '.') : ap.say;
+    // WHICH email (6 Nov 2026): subject and who it goes to, not just a count.
+    const waiting = Array.isArray(ap.waiting) ? ap.waiting : [];
+    const line = (w) => {
+      const who = w.to && w.to.length ? ` to ${w.to.join(', ')}${w.toMore ? ` and ${w.toMore} more` : ''}` : '';
+      const what = w.subject ? `“${w.subject}”` : 'A draft with no subject';
+      return `${what}${who}${w.status === 'prepared' ? '' : ' — NEURO couldn’t confirm it went'}`;
+    };
+    const detail = waiting.map((w, i) => ({ label: i === 0 ? 'Waiting' : '', text: line(w) }));
+    if (n > waiting.length && waiting.length) detail.push({ label: '', text: `and ${n - waiting.length} more` });
+    if (ap.sendingEnabled === false) detail.push({ label: 'Note', text: 'Sending approved emails is switched off, so approving will not send until it is on.' });
     needsYou.push({
       id: 'approvals',
       kind: 'approval',
       priority: 'P0',
-      title: ap.say || `${n} draft${n === 1 ? '' : 's'} waiting for your approval`,
-      summary: ap.where ? `Review in ${ap.where}.` : null,
-      // ⚠ A HAND-OFF, never a button. Approval needs the code and the desktop;
-      //   no surface below this approves anything (Build 9).
+      title: title || `${n} draft${n === 1 ? '' : 's'} waiting for your approval`,
+      summary: waiting.length === 1 ? line(waiting[0]) : waiting.length > 1 ? `${line(waiting[0])}, and ${n - 1} more.` : (ap.where ? `Review in ${ap.where}.` : null),
+      ...(detail.length > 1 || (detail.length === 1 && waiting.length !== 1) ? { detail } : {}),
       handOff: ap.where || null,
+      // Where to go to act on it (6 Nov 2026, Nick: "get me to where I need to
+      // be"). Each shell maps the view to its own route; one press there sends.
+      go: { view: 'actions', label: a ? 'Review and send' : 'Check it' },
       count: n,
     });
   }
