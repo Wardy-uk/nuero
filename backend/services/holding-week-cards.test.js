@@ -210,7 +210,7 @@ test.before(async () => {
   for (const state of Object.keys(STATES)) {
     for (const [shell, s] of Object.entries(SHELLS)) {
       current = { state, shell };
-      fs.writeFileSync(env.HW_JOB, JSON.stringify({ name: `${state}-${shell}`, url: base + s.page, w: s.w, h: s.h, shots: SHOTS, workspace: s.page.startsWith('desktop') }));
+      fs.writeFileSync(env.HW_JOB, JSON.stringify({ name: `${state}-${shell}`, url: base + s.page, w: s.w, h: s.h, shots: SHOTS, workspace: true }));
       try { fs.rmSync(env.HW_OUT); } catch { /* none yet */ }
       // eslint-disable-next-line no-await-in-loop
       await new Promise((resolve) => {
@@ -252,7 +252,9 @@ app.whenReady().then(async () => {
     // The card's primary (workspace) or the locked entry (phone, kiosk).
     const sel = job.workspace ? '.kmw__card[data-card="' + id + '"] > .kmw__card-go' : '.kmw__entry-open[data-card="' + id + '"]';
     const before = await js('(window.__navs || []).length');
-    const pressed = await js('(() => { const b = document.querySelector(' + JSON.stringify(sel) + '); if (!b) return null; const t = b.dataset.target || "detail"; b.click(); return t; })()');
+    // A primary this shell cannot perform is drawn as text ("— in NEURO on the desktop"); the card's own record link opens it instead.
+    const fallback = '.kmw__card[data-card="' + id + '"] > button';
+    const pressed = await js('(() => { const b = document.querySelector(' + JSON.stringify(sel) + ') || document.querySelector(' + JSON.stringify(fallback) + '); if (!b) return null; const t = b.dataset.target || "detail"; b.click(); return t; })()');
     await sleep(500);
     const sheet = await js('(() => { const s = document.querySelector(".kmw__sheet[data-card=\'' + id + '\']"); if (!s) return null; return { text: s.textContent, targets: [...s.querySelectorAll("button[data-target]")].map((b) => ({ target: b.dataset.target, label: b.textContent.trim() })), review: s.querySelector(".kmw__review") ? s.querySelector(".kmw__review").textContent : null, box: (() => { const r = s.querySelector(".kmw__sheet-body").getBoundingClientRect(); return { x: Math.round(r.x), w: Math.round(r.width), right: Math.round(r.right) }; })() }; })()');
     out.presses[id] = { pressed, sheet: Boolean(sheet), navs: (await js('window.__navs || []')).slice(before) };
@@ -280,7 +282,8 @@ app.whenReady().then(async () => {
 
 const R = (name) => { const r = results[name]; assert.ok(r && !r.error, `${name}: ${r && r.error}`); return r; };
 const posts = (state, shell) => requests.filter((q) => q.state === state && q.shell === shell && q.method !== 'GET');
-const WORKSPACE = ['desktop', 'now-390'];
+// 6 Nov 2026: every shell draws the desktop's four cards (Nick: the desktop is the reference).
+const WORKSPACE = Object.keys(SHELLS);
 
 test('every shell, every state: the week renders, nothing runs off the screen, every card is reachable', (t) => {
   if (skipWhy) return t.skip(skipWhy);
@@ -295,7 +298,9 @@ test('every shell, every state: the week renders, nothing runs off the screen, e
       if (WORKSPACE.includes(shell)) {
         assert.deepEqual(r.cards.map((c) => c.id), ['kept', 'monday', 'next', 'judgement'], `${state}-${shell}: the four cards`);
         for (const c of r.cards) {
-          assert.equal(c.primaries, 1, `${state}-${shell} ${c.id}: exactly ONE primary affordance`);
+          // A shell that cannot perform the primary (the phone: a NEURO view; the kiosk: anything) says where instead.
+          if (shell === 'desktop' || shell === 'now-390') assert.equal(c.primaries, 1, `${state}-${shell} ${c.id}: exactly ONE primary affordance`);
+          else assert.ok(c.primaries <= 1, `${state}-${shell} ${c.id}: at most ONE primary affordance`);
           assert.ok(c.secondaries <= 1, `${state}-${shell} ${c.id}: at most one quiet secondary`);
         }
       } else {
@@ -381,7 +386,8 @@ test('Next: the exact block, draft and task; "Start this block" only when a sess
     assert.equal(b.minutes, 25, `prepared-${shell}: for the block's remaining minutes`);
     if (WORKSPACE.includes(shell)) assert.equal(r.cards.find((c) => c.id === 'next').buttons[0].label, 'Start this block →');
   }
-  assert.match(R('prepared-phone').sheets.next['after-session-start'] || '', /Focus session started — 25 minutes/);
+  // The phone now presses the card's own Start (6 Nov 2026), so the result shows on the card, not a sheet; the POST above is the proof.
+  if (R('prepared-phone').sheets.next) assert.match(R('prepared-phone').sheets.next['after-session-start'] || '', /Focus session started — 25 minutes/);
   // Verified: the protected time from today's verified receipt, with its draft — and no task to start.
   const v = R('verified-desktop').sheets.next;
   assert.match(v.text, /Wednesday 21 October, 14:00–14:30/);

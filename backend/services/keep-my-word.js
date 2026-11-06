@@ -334,12 +334,12 @@ function oneThread(it, items, authority, delivery, moves) {
  *   session       focus-session.current() — whether "Start this block" is possible
  *   presentation  the presentation it rides on (for the lead rule)
  */
-function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, moves = null, presentation = null, work = null, session = null, now = Date.now() } = {}) {
+function compose({ score: sc = null, workbench = null, receipt = null, authority = null, delivery = null, moves = null, presentation = null, work = null, session = null, focusBlock = null, now = Date.now() } = {}) {
   const lead = leadFrom(presentation);
   const thread = threadFrom(workbench, authority, delivery, moves);
   const readout = readoutFrom({ score: sc, workbench, receipt, now });
   // Holding the week's four cards (22 Oct 2026): one target each, and the exact record behind it. Additive.
-  try { readout.cards = require('./keep-my-word-cards').cardsFrom({ score: sc, workbench, delivery, work, receipt, session, now }); } catch { readout.cards = null; }
+  try { readout.cards = require('./keep-my-word-cards').cardsFrom({ score: sc, workbench, delivery, work, receipt, session, focusBlock, now }); } catch { readout.cards = null; }
   const hasMain = Boolean(receipt || thread);
   let state;
   if (lead.lead && hasMain) state = 'folded';

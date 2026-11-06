@@ -458,6 +458,9 @@ function resolveContext(inputs = {}, now = new Date()) {
   const breaching = known(src.queue) ? Number(src.queue.breaching) || 0 : 0;
   const escalations = known(src.queue) ? Number(src.queue.unseenEscalations) || 0 : 0;
   const session = known(src.focusSession) && isObject(src.focusSession.active) ? src.focusSession.active : null;
+  // A focus block in its window counts as being heads-down even before a session starts (6 Nov 2026).
+  const block = known(src.focusSession) && isObject(src.focusSession.block) ? src.focusSession.block : null;
+  let focusBlock = null;
   const { away, byPresence, byLocation } = readAway(src.presence, src.location);
   const isWorkingDay = known(src.workingDay) ? src.workingDay.isWorkingDay !== false : true;
   const hour = at.getHours();
@@ -524,12 +527,21 @@ function resolveContext(inputs = {}, now = new Date()) {
     summary = `The queue needs you — ${parts.join(', ')}.`;
     reasons.push(`Queue is live: ${parts.join(', ')}.`);
     derivedFrom.push('queue');
-  } else if (session) {
+  } else if (session || block) {
     activity = ACTIVITY.IN_FOCUS_SESSION;
-    label = 'In a focus session';
-    summary = _quotedSubject(session.taskTitle, "You're working on", "You're in a focus session.");
-    reasons.push(`A focus session is running${session.taskTitle ? `: "${session.taskTitle}"` : ''}.`);
+    label = block ? 'In your focus block' : 'In a focus session';
+    const until = block && block.endTime ? ` until ${block.endTime}` : '';
+    if (session) {
+      summary = _quotedSubject(session.taskTitle, "You're working on", "You're in a focus session.");
+      if (until) summary = `${summary.replace(/\.$/, '')} — focus block${until}.`;
+    } else {
+      summary = block.task ? `Your focus block${until}: "${String(block.task).trim()}".` : `Your focus block${until}.`;
+    }
+    reasons.push(session
+      ? `A focus session is running${session.taskTitle ? `: "${session.taskTitle}"` : ''}.`
+      : `Your focus block is running${until}.`);
     derivedFrom.push('focusSession');
+    if (block) focusBlock = { startTime: block.startTime || null, endTime: block.endTime || null };
   } else if (isWorkingDay && known(src.rituals) && src.rituals.standupOutstanding && hour < MORNING_ENDS_HOUR) {
     activity = ACTIVITY.RITUAL;
     label = 'Standup outstanding';
@@ -587,6 +599,8 @@ function resolveContext(inputs = {}, now = new Date()) {
     label,
     ritual,
     summary,
+    // The running focus block, when that is what he is doing (6 Nov 2026) — the gate holds more for it.
+    focusBlock,
     place,
     quiet,
     duty: resolveDuty(src.workingDay, at, {

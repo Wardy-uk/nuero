@@ -345,7 +345,12 @@ function gate(context, items, now = new Date()) {
 
     case ACTIVITY.IN_FOCUS_SESSION:
       // Protect the session: only a tier-1 interruption earns the screen.
-      drop((i) => i.tier === 1, 'a focus session is running — held until it ends', 'focus');
+      // ⚠ A FOCUS BLOCK is stricter (6 Nov 2026): he booked the time, so only
+      // what cannot wait — an escalation, a meeting about to start — gets
+      // through. A capacity card is ranked tier 1 by score and is still not a
+      // reason to break protected time; it comes back when the block ends.
+      if (ctx.focusBlock) drop((i) => i._unsuppressable === true, `your focus block is running — held until ${ctx.focusBlock.endTime || 'it ends'}`, 'focus');
+      else drop((i) => i.tier === 1, 'a focus session is running — held until it ends', 'focus');
       primary = kept.length ? itemCard(kept.shift(), now) : contextCard('context-focus-session', ctx.label, ctx.summary);
       rationale = 'A focus session is running, so only a tier-1 interruption gets through.';
       break;
@@ -770,6 +775,9 @@ function _dayEnd(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T23:59`;
 }
 
+// A focus block in its window — not "ready" (before it) nor "end" (asking to end it).
+const FOCUS_BLOCK_LIVE = new Set(['start', 'two-minute', 'running', 'wind-down']);
+
 async function gather(now = new Date()) {
   const gaps = [];
   const inputs = {};
@@ -812,6 +820,25 @@ async function gather(now = new Date()) {
   } catch (e) {
     gaps.push({ input: 'focusSession', why: e.message });
     inputs.focusSession = { known: false };
+  }
+  // ⚠ THE FOCUS BLOCK IS PART OF "WHAT IS HE DOING" (6 Nov 2026). It was read
+  // only AFTER the context was resolved, so with a block running and no session
+  // started yet SAiM said "Working" and let the whole pool through — a capacity
+  // card, a promise's "Start this task" and the block itself all asking for him
+  // at once. Nick: "there's only one of me". In its window it is protected time.
+  try {
+    const fb = require('./focus-blocks').view({ now });
+    inputs.focusBlock = fb;
+    if (inputs.focusSession && inputs.focusSession.known && fb && FOCUS_BLOCK_LIVE.has(fb.phase)) {
+      inputs.focusSession.block = {
+        startTime: fb.startTime || null,
+        endTime: fb.endTime || null,
+        task: (fb.chosen && fb.chosen.text) || (Array.isArray(fb.candidates) && fb.candidates.length === 1 ? fb.candidates[0].text : null),
+      };
+    }
+  } catch (e) {
+    inputs.focusBlock = null;
+    console.warn('[Attention] focus block unavailable:', e.message);
   }
 
   let ctx = null;
@@ -1705,7 +1732,7 @@ async function build({ now = new Date(), view = null, ask = null, readOnly = fal
   // Null most of the day; never allowed to fail the feed.
   let focusBlock = null;
   try {
-    focusBlock = require('./focus-blocks').view({ now });
+    focusBlock = inputs.focusBlock !== undefined ? inputs.focusBlock : require('./focus-blocks').view({ now });
   } catch (e) {
     console.warn('[Attention] focus block unavailable:', e.message);
     focusBlock = null;

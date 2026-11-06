@@ -183,9 +183,21 @@ function mondayCard({ m }) {
 
 // ── Next protected time ──────────────────────────────────────────────────────
 
-function nextCard({ work, bench, receipt, session, now }) {
+// A focus block that is still ahead or running (6 Nov 2026). Its own card owns starting it.
+const FOCUS_NEXT_PHASES = new Set(['ready', 'start', 'two-minute', 'running', 'wind-down']);
+
+function nextCard({ work, bench, receipt, session, focusBlock = null, now }) {
   const nowMs = typeof now === 'number' ? now : Date.parse(now);
   const blocks = [];
+  // ⚠ The block running NOW is protected time. Without it the card said "No
+  // protected time is booked ahead" beside a focus block with 57 minutes left
+  // (6 Nov 2026) — two answers to one question on one screen.
+  if (focusBlock && FOCUS_NEXT_PHASES.has(focusBlock.phase) && focusBlock.dateKey && focusBlock.startTime) {
+    const task = focusBlock.chosen && focusBlock.chosen.id != null ? { id: focusBlock.chosen.id, text: focusBlock.chosen.text || null, status: null } : null;
+    blocks.push({ source: 'focus', date: focusBlock.dateKey, start: focusBlock.startTime, end: focusBlock.endTime || null,
+      title: task && task.text ? `Focus block — ${task.text}` : 'Focus block', draft: null, task, outlookUrl: null,
+      running: focusBlock.phase !== 'ready' });
+  }
   for (const w of work || []) {
     if (!w.block || !w.block.date) continue;
     const endMs = score.londonInstant(w.block.date, w.block.end || w.block.start);
@@ -223,6 +235,10 @@ function nextCard({ work, bench, receipt, session, now }) {
   const endMs = b.end ? score.londonInstant(b.date, b.end) : startMs;
   const sameTask = session && b.task && Number(session.taskId) === Number(b.task.id);
   let possible = false; let why;
+  if (b.source === 'focus') {
+    // The focus block's own card asks what to work on and starts it — never a second Start here.
+    why = b.running ? `Running now, until ${b.end || 'its end'}.` : `Your focus block starts at ${b.start}.`;
+  } else
   // focus-session.current(): a live session (active, paused, stepped away, needs-smaller) unless stale.
   if (session && !session.stale) {
     why = sameTask ? 'A focus session on this task is already running.' : `A focus session on “${session.text || 'another task'}” is running — finish or pause it first.`;
@@ -236,7 +252,7 @@ function nextCard({ work, bench, receipt, session, now }) {
   }
   const minutes = Math.max(5, Math.round((endMs - Math.max(nowMs, startMs)) / 60000));
   const detail = {
-    title: 'Next', state: possible ? 'startable' : 'booked',
+    title: 'Next', state: possible ? 'startable' : b.running ? 'running' : 'booked',
     block: { date: b.date, start: b.start, end: b.end, when: whenFull(b.date, b.start, b.end), title: b.title, outlookUrl: b.outlookUrl || null },
     draft: b.draft, task: b.task,
     session: { possible, why },
@@ -301,13 +317,13 @@ function judgementCard({ sc, bench, delivery }) {
  *   receipt   keep-my-word.receiptView() or null
  *   session   focus-session.current() or null
  */
-function cardsFrom({ score: sc = null, workbench = null, delivery = null, work = null, receipt = null, session = null, now = Date.now() } = {}) {
+function cardsFrom({ score: sc = null, workbench = null, delivery = null, work = null, receipt = null, session = null, focusBlock = null, now = Date.now() } = {}) {
   const bench = new Map(((workbench && workbench.items) || []).map((it) => [it.key, it]));
   return {
     contract: CONTRACT,
     kept: keptCard({ sc, bench, delivery }),
     monday: mondayCard({ m: sc ? sc.mondayReport : null }),
-    next: nextCard({ work, bench, receipt, session, now }),
+    next: nextCard({ work, bench, receipt, session, focusBlock, now }),
     judgement: judgementCard({ sc, bench, delivery }),
   };
 }

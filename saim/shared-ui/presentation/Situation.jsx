@@ -318,7 +318,11 @@ export default function Situation({
   const kmw = plan.profile !== 'watch' && presentation.keepMyWord ? presentation.keepMyWord : null;
   const kmwLeads = Boolean(kmw && kmw.leads && !momentLeads);
   // Never a Start button on the wall (31 Oct 2026): the kiosk performs nothing.
-  const kmwStart = plan.profile === 'kiosk' ? null : onStartTask;
+  // ⚠ Nor while he is heads-down (6 Nov 2026): a focus session or block is the
+  // ONE thing he is doing, and a promise offering "Start this task" beside it is
+  // a second "do this now" for a person who can only do one. The promise still
+  // shows; it simply waits until the block ends.
+  const kmwStart = plan.profile === 'kiosk' || plan.mode === 'focus' ? null : onStartTask;
   const kmwFolded = kmw && !kmwLeads && kmwJoinsLead && kmw.thread && !kmw.receipt
     ? <KmwWhy key="kmw-why" kmw={kmw} onOpen={onOpen} actions={plan.actions} onStartTask={kmwStart} />
     : kmw && !kmwLeads && (kmw.receipt || kmw.thread)

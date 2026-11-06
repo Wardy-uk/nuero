@@ -1515,7 +1515,9 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false,
   // today's verified receipt — READ-ONLY, memoised per minute, never allowed to
   // fail Now. Composed into `presentation.keepMyWord` below.
   try {
-    payload.keepMyWord = keepWordBlock(nowMs);
+    // The running focus block rides beside the memo (never into it — it moves by the minute's phase),
+    // so Holding the week's Next card can say "now" over protected time that is running (6 Nov 2026).
+    payload.keepMyWord = { ...keepWordBlock(nowMs), focusBlock: payload.focusBlock || null };
   } catch (e) { payload.keepMyWord = null; gaps.push({ input: 'promises', why: e.message }); }
   // A capacity card about a promise's task opens THAT promise's draft or
   // question, never a NEURO-only screen the phone cannot show (25 Oct 2026).
