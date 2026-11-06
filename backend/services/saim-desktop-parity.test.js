@@ -167,6 +167,10 @@ test('a Needs-you row naming one task offers "Move due date" too — and both sh
   const row = (props) => renderToString(React.createElement(Card.NeedsYouActs, { card: capacityCard, onOpen: () => true, onAct: async () => ({ ok: true }), ...props }));
   assert.match(row({ call }), /Move due date/);
   assert.match(row({ call }), /Seen it/);
+  assert.match(row({ call }), />Done</, 'a row about one task can be ticked off where it is shown');
+  assert.match(row({ call: null }), />Done</, 'Done needs only the lifecycle — the kiosk-less shells still get it');
+  assert.doesNotMatch(row({ call, onAct: null }), />Done</, 'no lifecycle → no Done');
+  assert.doesNotMatch(row({ call, card: { ...capacityCard, meta: { by: '2026-11-06' } } }), />Done</, 'a summary card names no task to close');
   assert.doesNotMatch(row({ call: null }), /Move due date/, 'the kiosk passes no call');
   assert.doesNotMatch(row({ call, card: { ...capacityCard, meta: { by: '2026-11-06' } } }), /Move due date/, 'a summary card names no task');
   assert.match(read('frontend/src/components/AttentionCard.jsx'), /<NeedsYouActs[^>]*call=\{desktopCall\}/);

@@ -123,6 +123,13 @@ test('a meeting still has nothing to close', () => {
   assert.equal(lifecycle.completionTargetFor({ type: 'meeting', title: '1-2-1 with Hope' }), null);
 });
 
+test('a capacity card about ONE task resolves to that task by id; the overload summary to nothing', () => {
+  assert.deepEqual(
+    lifecycle.completionTargetFor({ type: 'capacity', title: '"X" is overdue — 8h of work', meta: { taskId: 42 } }),
+    { kind: 'task', by: 'id', taskId: 42, text: '"X" is overdue — 8h of work' });
+  assert.equal(lifecycle.completionTargetFor({ type: 'capacity', title: 'Too much this week', meta: {} }), null);
+});
+
 // ── Acting ───────────────────────────────────────────────────────────────────
 
 test('completing a NEURO-owned card closes that exact row, by id', () => {
@@ -133,6 +140,15 @@ test('completing a NEURO-owned card closes that exact row, by id', () => {
   assert.equal(result.taskCompleted, true);
   assert.equal(db.getTaskRow(taskId).status, 'done');
   assert.equal(result.pendingMicrosoft, null);
+});
+
+test('Done on a capacity card about one task closes THAT task (6 Nov 2026)', () => {
+  const { id: taskId } = taskStore.createTask({ text: 'Hiking prep: weather window picker', source: 'test' });
+  const c = { kind: 'item', id: `capacity-start-${taskId}`, type: 'capacity', title: '"Hiking prep: weather window picker" is overdue — 8h of work',
+    urgency: 'high', tier: 1, source: 'capacity', meta: { taskId } };
+  const result = lifecycle.act(seed(c).id, 'complete');
+  assert.equal(result.taskCompleted, true);
+  assert.equal(db.getTaskRow(taskId).status, 'done');
 });
 
 test('⚠ a Microsoft-owned card hands the push BACK rather than claiming a completion', () => {

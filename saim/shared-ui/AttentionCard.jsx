@@ -135,8 +135,8 @@ export function dueTargetOf(card) {
 }
 
 /**
- * The Needs-you row's own answers — open it, and ONE way to answer it ("Done"
- * where it is a task, "Seen it" otherwise). The same on every surface.
+ * The Needs-you row's own answers — open it, "Done" where the row is about ONE
+ * task, "Seen it" where it is not a plain todo. The same on every surface.
  * With `call`, a row naming ONE task also offers "Move due date" (6 Nov 2026,
  * Nick: an overdue task on Needs you could not be re-dated where it was shown).
  */
@@ -146,18 +146,26 @@ export function NeedsYouActs({ card, onOpen = null, onAct = null, call = null, o
   const [dueOpen, setDueOpen] = useState(false);
   if (!card) return null;
   const acts = card.actions || [];
-  const done = card.type === 'todo' && acts.includes('complete');
-  const answer = !onAct ? null : done ? 'complete' : acts.includes('acknowledge') && card.state !== 'acknowledged' ? 'acknowledge' : null;
+  // "Done" wherever the row is about ONE task: a todo card, or a capacity card
+  // naming its task (6 Nov 2026 — Nick had to go elsewhere to tick it off). A
+  // capacity card keeps "Seen it" beside it: acknowledging the warning and
+  // finishing the work are different answers.
+  const doneOk = !!onAct && acts.includes('complete')
+    && (card.type === 'todo' || (card.type === 'capacity' && card.meta && card.meta.taskId != null));
+  const seenOk = !!onAct && card.type !== 'todo' && acts.includes('acknowledge') && card.state !== 'acknowledged';
   const destination = cardDestination(card);
   const dueTarget = call ? dueTargetOf(card) : null;
-  if (!onOpen && !answer && !dueTarget) return null;
-  const press = async () => {
+  if (!onOpen && !doneOk && !seenOk && !dueTarget) return null;
+  const press = async (action) => {
     if (busy) return;
-    setBusy(true);
+    setBusy(action);
     try {
-      const r = await onAct(card, answer);
+      const r = await onAct(card, action);
       if (r && r.ok === false) setNote({ error: true, text: r.why || r.error || 'That did not go through.' });
-      else setNote(null);
+      else if (action === 'complete' && r && r.taskCompleted === false && r.handled !== true && r.taskWhy) {
+        // Say when the tick did not close the work, so it is not pressed again.
+        setNote({ error: true, text: `Nothing was closed — ${r.taskWhy}.` });
+      } else setNote(null);
     } catch (e) { setNote({ error: true, text: e.message }); }
     setBusy(false);
   };
@@ -183,9 +191,14 @@ export function NeedsYouActs({ card, onOpen = null, onAct = null, call = null, o
             {openLabelFor(destination)}
           </button>
         )}
-        {answer && (
-          <button type="button" className={`att-card__btn${done ? ' att-card__btn--do' : ''}`} disabled={busy} onClick={press}>
-            {busy ? '…' : done ? LABELS.complete : LABELS.acknowledge}
+        {doneOk && (
+          <button type="button" className="att-card__btn att-card__btn--do" disabled={!!busy} onClick={() => press('complete')}>
+            {busy === 'complete' ? '…' : LABELS.complete}
+          </button>
+        )}
+        {seenOk && (
+          <button type="button" className="att-card__btn" disabled={!!busy} onClick={() => press('acknowledge')}>
+            {busy === 'acknowledge' ? '…' : LABELS.acknowledge}
           </button>
         )}
         {dueTarget && (
@@ -194,7 +207,7 @@ export function NeedsYouActs({ card, onOpen = null, onAct = null, call = null, o
           </button>
         )}
       </div>
-      {dueTarget && dueOpen && <DuePicker disabled={busy} onPick={redate} />}
+      {dueTarget && dueOpen && <DuePicker disabled={!!busy} onPick={redate} />}
       {note && <p className={`att-needs__note${note.error ? ' att-needs__note--error' : ''}`}>{note.text}</p>}
     </>
   );

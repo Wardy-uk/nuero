@@ -334,6 +334,14 @@ function isStartable(card) {
  * for one of those would put work in the ledger nobody did.
  */
 function completionTargetFor(card) {
+  // A capacity warning about ONE task ("X is overdue — 8h of work") names it by
+  // id in `meta.taskId`; Done there closes THAT task (Nick, 6 Nov 2026: "daft
+  // to have to navigate elsewhere to tick it off"). A capacity card with no
+  // task id (the overload summary) closes nothing.
+  if (card && card.type === 'capacity') {
+    const id = card.meta && typeof card.meta === 'object' ? Number(card.meta.taskId) : NaN;
+    return Number.isInteger(id) && id > 0 ? { kind: 'task', by: 'id', taskId: id, text: String(card.title || '') } : null;
+  }
   if (!card || card.type !== 'todo' || !card.title) return null;
   const owner = card.meta && typeof card.meta === 'object' ? card.meta.owner : null;
 
