@@ -419,6 +419,13 @@ function parseVaultTodos(options = {}) {
         }
       })()
     : new Map();
+  // A Microsoft task Nick DELEGATED (6 Nov 2026, services/task-delegation) is
+  // not his to do: it lives in Commitments → Delegated, so the mirror line is
+  // skipped here like a linked one. Same dbTasks gate — the importer reads the
+  // vault alone. Taking it back clears the marker and the line returns.
+  const delegatedMs = includeDbTasks
+    ? (() => { try { return require('./ms-task-local').delegatedMap(); } catch { return new Map(); } })()
+    : new Map();
   // taskId -> what Microsoft still says about it.
   const msCounterparts = new Map();
   const msPath = path.join(vaultPath, 'Tasks', 'Microsoft Tasks.md');
@@ -462,6 +469,7 @@ function parseVaultTodos(options = {}) {
           });
           continue;
         }
+        if (task.ms_id && delegatedMs.has(task.ms_id)) continue;
         task.source = msSection;
         task.msPlan = msPlan;
         task.priority = mergePriority(task.priority, 'normal');

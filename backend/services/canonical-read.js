@@ -283,6 +283,7 @@ function summariseCommitments(items) {
     if (i.counterpart.status === 'unresolved') out.unresolved += 1;
     if (i.counterpart.status === 'not-named') out.notNamed = (out.notNamed || 0) + 1;
     if (i.meeting && i.meeting.linked) out.meetingLinked += 1;
+    if (i.delegation) out.delegated = (out.delegated || 0) + 1;
     if (!i.domains.domains.length) out.domainUnknown += 1;
     for (const d of i.domains.domains) out.byDomain[d.domain] = (out.byDomain[d.domain] || 0) + 1;
   }
@@ -939,7 +940,26 @@ function tasks({ status = 'open', system = null, domain = null, now = Date.now()
 }
 
 /** GET commitments, canonical. `direction` = i-owe | owed-to-me | null. */
-function commitments({ direction = null, status = 'open', now = Date.now(), domain = null } = {}) {
+/**
+ * The delegation behind a waiting-on commitment, or null (6 Nov 2026,
+ * task-delegation.byWaitingKey). Read-time only — the ledger of hand-overs is
+ * the authority, never a copy on the commitment.
+ */
+function _delegationFor(row, map) {
+  const ref = row && row.source && row.source.ref;
+  const m = /^waiting-on:(.+)$/.exec(String(ref || ''));
+  return m && map ? map.get(m[1]) || null : null;
+}
+
+function _delegationMap() {
+  try {
+    const td = require('./task-delegation');
+    try { td.reconcile(); } catch (e) { console.warn(`[Canonical] delegation reconcile failed: ${e.message}`); }
+    return td.byWaitingKey();
+  } catch (e) { console.warn(`[Canonical] delegations not read: ${e.message}`); return null; }
+}
+
+function commitments({ direction = null, status = 'open', now = Date.now(), domain = null, delegated = false } = {}) {
   const wo = require('./world-obligations');
   const dir = direction === 'i-owe' ? 'by-nick' : direction === 'owed-to-me' ? 'to-nick' : null;
   const rows = wo.listCommitments({ status, direction: dir, limit: 2000 });
@@ -955,6 +975,9 @@ function commitments({ direction = null, status = 'open', now = Date.now(), doma
     importance: importanceFor(c.commitmentId, { annotation: ann.get(c.commitmentId) || null, goals }),
     goalIds: goals.filter((g) => (g.links || []).some((l) => l.entityId === c.commitmentId)).map((g) => g.id),
   }));
+  const delMap = _delegationMap();
+  items.forEach((it, i) => { it.delegation = _delegationFor(rows[i], delMap); });
+  if (delegated) items = items.filter((i) => i.delegation);
   if (domain === 'unknown') items = items.filter((i) => !i.domains.domains.length);
   else if (domain) items = items.filter((i) => i.domains.domains.some((d) => d.domain === domain));
   return {
@@ -962,7 +985,9 @@ function commitments({ direction = null, status = 'open', now = Date.now(), doma
     asOf: new Date(now).toISOString(),
     freshness: _projection('world-model'),
     progressCoverage: prog.coverage,
-    filter: { direction, status, domain },
+    filter: { direction, status, domain, delegated: !!delegated },
+    // A null map is "could not read the hand-overs" — said, never an empty tab.
+    delegationsKnown: !!delMap,
     counts: summariseCommitments(items),
     items,
   };
@@ -979,6 +1004,7 @@ function commitmentDetail(id, { now = Date.now() } = {}) {
   try { progress = require('./progress-evidence').progressFor(id); } catch { progress = null; }
   const item = shapeCommitment(c, { today: localDate(now), people, annotation: getAnnotations([id]).get(id) || null,
     task: tasks.get(c.relatedTaskId) || null, progress });
+  item.delegation = _delegationFor(c, _delegationMap());
   const task = c.relatedTaskId ? wo.getTask(c.relatedTaskId) : null;
   return {
     contract: CONTRACT,

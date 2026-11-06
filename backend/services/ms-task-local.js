@@ -132,14 +132,22 @@ function set(msId, fields = {}) {
     });
     if (!entry.none.length) delete entry.none;
   }
-  for (const k of ['estimateMinutes', 'origin']) if (entry[k] == null) delete entry[k];
+  // Delegated (6 Nov 2026): Nick handed this to someone (services/task-delegation).
+  // Not a state — he may still have been "working on" it — and private like the
+  // rest: the board is not told. While set, the mirror line is hidden from his
+  // task list (obsidian.parseVaultTodos) and the work lives in Commitments.
+  if ('delegated' in fields) {
+    const d = fields.delegated;
+    entry.delegated = d && d.to ? { to: String(d.to), at: d.at || new Date().toISOString(), id: d.id || null } : null;
+  }
+  for (const k of ['estimateMinutes', 'origin', 'delegated']) if (entry[k] == null) delete entry[k];
 
   if ((entry.moscow || null) !== moscowBefore) {
     try { require('./task-order').forget(`ms:${id}`); } catch {}
   }
 
   const empty = !entry.state && !entry.moscow && !entry.priority
-    && entry.estimateMinutes == null && !entry.origin && !(entry.none && entry.none.length);
+    && entry.estimateMinutes == null && !entry.origin && !(entry.none && entry.none.length) && !entry.delegated;
   if (empty) {
     delete map[id];
   } else {
@@ -192,9 +200,17 @@ function annotate(rows) {
       // vocabulary — it needs to know that this due date is no longer Nick's,
       // not where the thought came from.
       myPartDone: entry.state === 'mine-done',
+      delegatedTo: entry.delegated ? entry.delegated.to : null,
       msLocal: true,
     };
   });
 }
 
-module.exports = { get, set, annotate, normState, VALID_STATE, _KEY: KEY };
+/** ms_id → { to, at, id } for every Microsoft task Nick has delegated. */
+function delegatedMap() {
+  const out = new Map();
+  for (const [id, entry] of Object.entries(readAll())) if (entry && entry.delegated) out.set(id, entry.delegated);
+  return out;
+}
+
+module.exports = { get, set, annotate, normState, delegatedMap, VALID_STATE, _KEY: KEY };

@@ -262,6 +262,13 @@ function start() {
     del.scan().catch((e) => console.warn('[Scheduler] delegation pass failed:', e.message));
   });
 
+  // Every 5 min: hand-over emails Nick sent by hand (task-delegation) — once a
+  // send is read back as verified the tasks move to Commitments → Delegated.
+  // Only reads prepared rows, so an idle tick is one small query.
+  cron.schedule('2-59/5 * * * *', () => {
+    try { require('./task-delegation').reconcile(); } catch (e) { console.warn('[Scheduler] task delegation reconcile failed:', e.message); }
+  });
+
   // Every 30 min in working hours: "Looks done" — evidence an open task is already
   // done (task-done-evidence.js). It only OFFERS; nothing is closed. Idempotent.
   cron.schedule('9,39 8-18 * * 1-5', () => {

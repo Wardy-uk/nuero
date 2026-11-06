@@ -31,6 +31,10 @@ export const interactive = {
   post_delegation_by_id_hand_over: "Handing a task or email to one of Nick's people emails them as Nick. He does it in NEURO → Now or on the task/email card.",
   post_delegation_by_id_dismiss: "Saying a hand-over suggestion is not right is Nick's answer, in NEURO.",
   post_delegation_scan: 'The delegation pass runs on its own (it spends model calls); Nick can run it in NEURO.',
+  // 6 Nov 2026: delegating tasks by hand — who gets what is Nick's call.
+  post_delegation_tasks: "Delegating tasks to one of Nick's people (and emailing them) is his call. He does it on the task card in NEURO.",
+  post_delegation_tasks_draft: "Drafting a delegation is part of Nick handing work over, on the task card in NEURO.",
+  post_delegation_take_back: "Taking delegated work back is Nick's call, in NEURO → Commitments → Delegated.",
   post_tasks_by_id_done_evidence_close: "Closing a task because NEURO thinks it looks done is Nick's decision, in NEURO → Tasks.",
   post_tasks_by_id_done_evidence_not_yet: "Telling NEURO a task is not done yet is Nick's answer, in NEURO → Tasks.",
   // 1 Nov 2026: answering a focus block (pick a task, two minutes in, not now,

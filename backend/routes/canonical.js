@@ -105,14 +105,15 @@ router.get('/domains', (req, res) => {
     importance: domains.IMPORTANCE.map((i) => ({ id: i, label: domains.IMPORTANCE_LABELS[i] })) });
 });
 
-// GET /api/canonical/commitments — commitments from the world model (what I owe / what is owed to me), with counterpart, due context, meeting/task links, progress state and life domains. Query: direction=i-owe|owed-to-me, status, domain.
+// GET /api/canonical/commitments — commitments from the world model (what I owe / what is owed to me), with counterpart, due context, meeting/task links, progress state and life domains. Query: direction=i-owe|owed-to-me, status, domain, delegated=1 (only work Nick delegated, each with the task ids handed over).
 router.get('/commitments', (req, res) => {
   try {
     const direction = ['i-owe', 'owed-to-me'].includes(req.query.direction) ? req.query.direction : null;
     const status = ['open', 'completed', 'cancelled', 'superseded', 'unknown', 'all'].includes(req.query.status) ? req.query.status : 'open';
     const domain = typeof req.query.domain === 'string' && (req.query.domain === 'unknown' || domains.normaliseDomain(req.query.domain))
       ? (req.query.domain === 'unknown' ? 'unknown' : domains.normaliseDomain(req.query.domain)) : null;
-    res.json({ ok: true, ...canonical.commitments({ direction, status, domain }) });
+    const delegated = req.query.delegated === '1' || req.query.delegated === 'true';
+    res.json({ ok: true, ...canonical.commitments({ direction, status, domain, delegated }) });
   } catch (e) { fail(res, e); }
 });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { HandOverHint } from './HandOver';
+import DelegateTasks, { setDelegatePool } from './DelegateTasks';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import { duePresets } from '../../../shared/due-dates.cjs';
@@ -1357,6 +1358,8 @@ function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
         <TaskControls todo={todo} busy={busy} onPatch={onPatch} onRefresh={onRefresh} />
         {/* Delegation prompts (1 Nov 2026): "Could go to Naomi — …" when NEURO suggests a hand-over. */}
         {!todo.done && <HandOverHint kind="task" itemId={todo.task_id} />}
+        {/* Delegate (6 Nov 2026): hand this — and any others — to one of the team; it moves to Commitments → Delegated. */}
+        {!todo.done && <DelegateTasks todo={todo} onDone={onRefresh} />}
         {/* ⚠ stopPropagation: a click inside would otherwise bubble to the row and collapse the card. */}
         <div className="todo-context" onClick={(e) => e.stopPropagation()}>
           <TaskContext taskId={todo.task_id} call={desktopCall} onOpen={openInVault} editable />
@@ -1386,6 +1389,8 @@ function TaskEditPanel({ todo, busy, onPatch, onRefresh }) {
             Graph half below refuses to render when Microsoft cannot be read,
             and triage must not disappear with it. */}
         <MsLocalControls todo={todo} onSaved={onRefresh} />
+        {/* Delegate — Microsoft is not told; NEURO hides it from Tasks and tracks it in Commitments → Delegated. */}
+        {!todo.done && <DelegateTasks todo={todo} onDone={onRefresh} />}
         <MicrosoftTaskControls todo={todo} onSaved={onRefresh} />
       </>
     );
@@ -2791,6 +2796,8 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
   // real signal.
   const loading = fullData == null;
   const activeTodos = (todos || []).filter(t => !t.done);
+  // The pool a Delegate panel offers "add another task" from (DelegateTasks).
+  setDelegatePool(activeTodos);
   const doneTodos = (todos || []).filter(t => t.done);
   const overdueTodos = activeTodos.filter(isMineOverdue);
   const mustDoTodos = activeTodos.filter(t => t.mustdo);

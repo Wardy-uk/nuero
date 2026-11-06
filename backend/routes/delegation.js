@@ -27,6 +27,48 @@ router.get('/', (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── Delegating by hand (6 Nov 2026, services/task-delegation.js) ──────────────
+// Registered before the /:id routes for readability; none of these shapes can
+// match /:id/hand-over or /:id/dismiss.
+const td = require('../services/task-delegation');
+
+// GET /api/delegation/people — delegate tasks: Nick's direct reports he can hand work to, with email and any leave in the next 7 days.
+router.get('/people', (req, res) => {
+  try { res.json({ ok: true, people: td.people() }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// GET /api/delegation/tasks/pending — delegate tasks: hand-over emails prepared but not yet read back from Sent Items.
+router.get('/tasks/pending', (req, res) => {
+  try { td.reconcile(); res.json({ ok: true, pending: td.pending() }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/delegation/tasks/draft — delegate tasks: the hand-over email for one or several tasks, nothing sent or recorded. Body: person, items [{kind: task|ms, id}].
+router.post('/tasks/draft', (req, res) => {
+  if (refuseMachine(req, res)) return;
+  const { person, items } = req.body || {};
+  const r = td.draft({ person, items });
+  if (!r.ok) return res.status(r.code || 400).json(r);
+  res.json(r);
+});
+
+// POST /api/delegation/tasks — delegate one or several tasks (NEURO or Microsoft) to a direct report as ONE delegation; they leave Tasks for Commitments → Delegated. Body: person, items [{kind: task|ms, id}], via (email|told), subject?, body?.
+router.post('/tasks', (req, res) => {
+  if (refuseMachine(req, res)) return;
+  const { person, items, via, subject, body } = req.body || {};
+  const r = td.delegate({ person, items, via, subject, body });
+  if (!r.ok) return res.status(r.code || 400).json(r);
+  res.json(r);
+});
+
+// POST /api/delegation/take-back — take delegated work back: reopens the tasks and drops the commitment. Body: key (the waiting-on key behind the commitment).
+router.post('/take-back', (req, res) => {
+  if (refuseMachine(req, res)) return;
+  const { key } = req.body || {};
+  const r = td.takeBack(key);
+  if (!r.ok) return res.status(r.code || 400).json(r);
+  res.json(r);
+});
+
 // POST /api/delegation/scan — delegation prompts: judge new emails and tasks for a hand-over now.
 router.post('/scan', async (req, res) => {
   if (refuseMachine(req, res)) return;

@@ -419,6 +419,24 @@ function reopen(key, { now = Date.now() } = {}) {
   return { ok: true, item };
 }
 
+/**
+ * Open a row again whatever it was (6 Nov 2026) — only for a DELEGATION, which
+ * is Nick's own act: handing the same task to the same person after taking it
+ * back is a new hand-over, and record() alone leaves a done/dropped row closed
+ * (it reopens only on a sighting in a different note).
+ */
+function openForDelegation(key) {
+  const item = _get(key);
+  if (!item) return null;
+  if (item.status === 'open') return item;
+  item.status = 'open';
+  item.reopenedAt = new Date().toISOString();
+  item.resolvedAt = null;
+  item.snoozedUntil = null;
+  _upsert(item);
+  return item;
+}
+
 // ── "Looks done" — Build 5 progress evidence, shown, never applied ──────────
 
 function _notYet() {
@@ -573,6 +591,6 @@ module.exports = {
   setPersonFull,
   record, list, byPerson, resolve, snooze, markChased,
   backfill, migrateFromState, STALE_DAYS, _key,
-  LAPSE_DAYS, lapseVerdict, lapseStale, reopen,
+  LAPSE_DAYS, lapseVerdict, lapseStale, reopen, openForDelegation,
   looksDoneWords, attachLooksDone, notYet,
 };

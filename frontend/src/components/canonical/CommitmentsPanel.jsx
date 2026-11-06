@@ -38,6 +38,21 @@ function Due({ due }) {
   return <span className={`cn-due cn-due--${due.kind}${urgent ? ' cn-due--urgent' : ''}`}>{due.label}</span>;
 }
 
+/**
+ * Delegated work (6 Nov 2026, task-delegation): the task ids Nick handed over,
+ * so a delegated commitment is never mistaken for one somebody volunteered.
+ */
+function DelegatedChip({ d }) {
+  if (!d) return null;
+  const ids = (d.items || []).map((i) => i.label).filter(Boolean);
+  const title = (d.items || []).map((i) => `${i.label} ${i.title || ''}`.trim()).join(' · ');
+  return (
+    <span className="cn-chip cn-chip--delegated" title={title || 'Delegated by you'}>
+      Delegated{ids.length ? ` · ${ids.join(' · ')}` : ''}{d.at ? ` · ${String(d.at).slice(0, 10)}` : ''}
+    </span>
+  );
+}
+
 const PROGRESS_WORDS = {
   fulfilled: 'done (fact)', closed: 'closed', contradicted: 'still open (said so)', likely_fulfilled: 'probably done (inferred)',
   progress_observed: 'moving', no_evidence: 'no sign of movement', unknown: 'could not check',
@@ -49,6 +64,16 @@ function Detail({ id, onClose, onChanged }) {
   const [saveError, setSaveError] = useState(null);
   const [people, setPeople] = useState(null);
   const [closed, setClosed] = useState(null);
+  const takeBack = async (key) => {
+    if (!window.confirm('Take this back? The task comes back to your list and this commitment closes.')) return;
+    setSaving('take-back'); setSaveError(null);
+    try {
+      await postCanonical('/api/delegation/take-back', { key });
+      setClosed('Taken back — it is on your task list again.');
+      setTimeout(() => onChanged && onChanged(), 1500);
+    } catch (e) { setSaveError(e.message); }
+    setSaving(null);
+  };
   const resolveAs = async (outcome) => {
     setSaving(outcome); setSaveError(null);
     try {
@@ -90,6 +115,10 @@ function Detail({ id, onClose, onChanged }) {
         <span className="cn-detail-acts">
           {closed ? <span className="cn-muted">{closed}</span> : <>
             <button type="button" className="cn-btn" disabled={!!saving} onClick={() => resolveAs('done')}>Done</button>
+            {item.delegation && item.delegation.key && (
+              <button type="button" className="cn-btn" disabled={!!saving} title="Reopen the task(s) on your list and close this commitment"
+                onClick={() => takeBack(item.delegation.key)}>Take it back</button>
+            )}
             <button type="button" className="cn-btn" disabled={!!saving} title="It was never owed, or it was a misread of the meeting"
               onClick={() => resolveAs('not-owed')}>Not owed</button>
           </>}
@@ -97,6 +126,10 @@ function Detail({ id, onClose, onChanged }) {
         </span>
       </div>
       <dl className="cn-dl">
+        {item.delegation && <><dt>Delegated</dt><dd>
+          To {item.delegation.to}{item.delegation.at ? ` on ${String(item.delegation.at).slice(0, 10)}` : ''}{item.delegation.via === 'told' ? ' (you told them)' : ' (by email)'}
+          {(item.delegation.items || []).map((i) => <div key={`${i.kind}:${i.id}`} className="cn-ev">{i.label} · {i.title || (i.kind === 'email' ? 'an email' : 'task')}</div>)}
+        </dd></>}
         <dt>Belief</dt><dd><ProvenanceBadge kind={evidence.provenance.kind} confidence={evidence.provenance.confidence} /> from {evidence.source.kind}{evidence.source.date ? ` on ${evidence.source.date}` : ''}{evidence.source.path ? <span className="cn-path"> · {evidence.source.path}</span> : null}</dd>
         <dt>Who</dt><dd>{item.counterpart.status === 'resolved' ? `${item.counterpart.name} (${item.counterpart.method || 'matched'})` : item.counterpart.why}
           {item.counterpart.status !== 'resolved' && evidence.source && evidence.source.kind === 'meeting-waiting-on' && (
@@ -169,7 +202,8 @@ function WhoPicker({ raw, people, setPeople, disabled, onPick }) {
 }
 
 export default function CommitmentsPanel({ focusContext = null } = {}) {
-  const [direction, setDirection] = useState((focusContext && focusContext.direction) || 'i-owe');
+  // Delegated is the default view (Nick, 6 Nov 2026): the work he handed out.
+  const [direction, setDirection] = useState((focusContext && focusContext.direction) || 'delegated');
   const [domain, setDomain] = useState((focusContext && focusContext.domain) || '');
   const [tagging, setTagging] = useState(null);
   const [tagError, setTagError] = useState(null);
@@ -198,7 +232,9 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
   const [dueFilter, setDueFilter] = useState('all');
   const [open, setOpen] = useState(null);
   const [limit, setLimit] = useState(PAGE);
-  const path = `/api/canonical/commitments?direction=${direction}${domain ? `&domain=${domain}` : ''}`;
+  const path = direction === 'delegated'
+    ? `/api/canonical/commitments?direction=owed-to-me&delegated=1${domain ? `&domain=${domain}` : ''}`
+    : `/api/canonical/commitments?direction=${direction}${domain ? `&domain=${domain}` : ''}`;
   const { data, error, loading, reload } = useCanonical(path);
 
   const items = useMemo(() => {
@@ -223,7 +259,7 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
       </p>
 
       <div className="cn-tabs" role="tablist">
-        {[['i-owe', 'I owe'], ['owed-to-me', 'Owed to me']].map(([id, label]) => (
+        {[['delegated', 'Delegated'], ['i-owe', 'I owe'], ['owed-to-me', 'Owed to me']].map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={direction === id}
             className={`cn-tab${direction === id ? ' cn-tab--on' : ''}`} onClick={() => { setDirection(id); setOpen(null); setLimit(PAGE); }}>
             {label}
@@ -265,7 +301,10 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
       {tagError && <div className="cn-error">Not saved — {tagError}</div>}
       {loading && !data && <div className="cn-muted">Reading the world model…</div>}
       {error && <div className="cn-error">Couldn’t read commitments — {error}. This is not the same as having none.</div>}
-      {data && !items.length && !error && <div className="cn-empty">Nothing here — the world model holds no open commitments matching this.</div>}
+      {data && direction === 'delegated' && data.delegationsKnown === false && <div className="cn-error">Couldn’t read your hand-overs — this tab may be missing some. It is not the same as having none.</div>}
+      {data && !items.length && !error && (direction === 'delegated'
+        ? <div className="cn-empty">Nothing delegated and still open. Use Delegate… on a task card to hand work to one of the team.</div>
+        : <div className="cn-empty">Nothing here — the world model holds no open commitments matching this.</div>)}
 
       <ul className="cn-list">
         {items.slice(0, limit).map((c) => (
@@ -273,6 +312,7 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
             <button type="button" className="cn-rowbtn" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
               <div className="cn-rowtitle">{c.description}</div>
               <div className="cn-meta">
+                <DelegatedChip d={c.delegation} />
                 <Counterpart c={c} />
                 <Due due={c.due} />
                 {c.meeting && <span className="cn-meeting" title={c.meeting.linked ? 'tied to a calendar occurrence' : c.meeting.why}>{c.meeting.linked ? '📅' : '📝'} {c.meeting.title}</span>}

@@ -324,6 +324,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/delegation/:id/hand-over', 'email.send', { machine: 'refuse' }),
   R('POST', '/api/delegation/:id/dismiss', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/delegation/scan', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/delegation/tasks/draft', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/delegation/tasks', 'email.send', { machine: 'refuse' }),
+  R('POST', '/api/delegation/take-back', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/escalation/people/address', 'vault.write', { machine: 'refuse' }),
 
   // Microsoft tasks.

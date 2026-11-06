@@ -413,3 +413,6 @@
 .cn-headline-detail { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .cn-panel .cn-headline-detail .cn-chip { margin-left: 0; }
 .cn-tile .cn-measureform, .cn-tile .cn-goal-actions { width: 100%; flex-wrap: wrap; }
+
+/* Delegated by Nick (6 Nov 2026) — the task ids he handed over. */
+.cn-chip--delegated { border-color: var(--accent); color: var(--accent); font-weight: 600; }
