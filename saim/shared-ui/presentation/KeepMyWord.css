@@ -260,3 +260,38 @@
 .kmw__start { font-size: 13px; padding: 12px 18px; }
 .kmw__switch { margin-top: 16px; }
 .kmw__switch .kmw__actions { margin-top: 10px; }
+
+/* ── Holding the week as four cards on EVERY surface (6 Nov 2026) ─────────────
+   The desktop's readout (Keeping my word · Monday report · Next · Needs your
+   judgement) is now what the SAiM shells draw too. NEURO's Now keeps its own
+   tuned copy in AdhdPanel.css; these are the shared defaults. A phone stacks
+   them two-up above the situation; the wide scene keeps them in its left column. */
+.kmw__week--workspace { max-width: none; }
+.kmw__week--workspace .kmw__cards { display: grid; gap: 10px; margin-top: 10px; }
+.kmw__week--workspace .kmw__card {
+  border: 1px solid var(--kmw-line, rgba(214, 144, 66, 0.46));
+  border-radius: 10px; padding: 11px 13px 12px; background: rgba(214, 144, 66, 0.05);
+  min-width: 0;
+}
+.kmw__week--workspace .kmw__card-title { margin: 0 0 4px; font: 700 10px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--kmw-amber, #d69042); }
+.kmw__week--workspace .kmw__card .kmw__figure { font-size: 34px; margin: 4px 0 6px; }
+.kmw__week--workspace .kmw__card .kmw__figure--note { font-size: 19px; letter-spacing: -0.01em; line-height: 1.15; }
+.kmw__week--workspace .kmw__card .kmw__line { margin: 3px 0; overflow-wrap: anywhere; }
+.kmw__week--workspace .kmw__card .kmw__strong { margin: 2px 0 3px; font-size: 15px; line-height: 1.3; }
+.kmw__week--workspace .kmw__card--late .kmw__strong,
+.kmw__week--workspace .kmw__card--unknown .kmw__strong { color: var(--kmw-gold, #f2b95f); }
+.kmw__week--workspace .kmw__judge-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.kmw__week--workspace .kmw__judge-item {
+  display: block; width: 100%; padding: 5px 0; border: 0; border-top: 1px solid var(--kmw-line, rgba(214, 144, 66, 0.3));
+  background: none; text-align: left; cursor: pointer; color: var(--kmw-ink, #f0eee7); font: 13px/1.35 Georgia, serif; overflow-wrap: anywhere;
+}
+.kmw__week--workspace span.kmw__judge-item { cursor: default; }
+.kmw__week--workspace .kmw__judge-why { display: block; font: 11px/1.4 -apple-system, system-ui, sans-serif; color: var(--kmw-dim, #a5a49a); }
+/* Phone and any narrow column: side by side where two fit, never squeezed. */
+.sit--phone .kmw__week--workspace .kmw__cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.sit--phone .kmw__week--workspace .kmw__card .kmw__figure { font-size: 28px; }
+.sit--phone .kmw__week--workspace { margin: 0 0 1.6rem; }
+/* The promise as the lead's WHY: tied to the card above it, not a second card. */
+.sit--scene .kmw__why { margin: -0.4rem 0 1.4rem; padding-left: 14px; border-left: 2px solid var(--kmw-amber, #d69042); }
+/* The desktop's card inside the dark scene: same buttons, the scene's ground. */
+.sit--scene .att-card { background: rgba(10, 12, 16, 0.72); }

@@ -28,7 +28,13 @@ const path = require('path');
 const COMPONENTS = path.join(__dirname, '..', '..', 'frontend', 'src', 'components');
 const SRC = path.join(__dirname, '..', '..', 'frontend', 'src');
 
+// The card itself lives in saim/shared-ui since 6 Nov 2026 (one card on every
+// surface); frontend's AttentionCard.jsx is the desktop's thin mount of it.
+const SHARED_CARD = path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'AttentionCard.jsx');
 function read(rel, base = COMPONENTS) {
+  if (rel === 'AttentionCard.jsx' && base === COMPONENTS) {
+    return [fs.readFileSync(path.join(base, rel), 'utf-8'), fs.readFileSync(SHARED_CARD, 'utf-8')].join('\n');
+  }
   return fs.readFileSync(path.join(base, rel), 'utf-8');
 }
 
@@ -93,7 +99,7 @@ test('opening an item calls nothing — navigation is not an action', () => {
   const openBody = card.slice(card.indexOf('const open = ()'), card.indexOf('const start = ()'));
   assert.ok(openBody.length > 0, 'the open handler should be findable');
   assert.ok(!/apiFetch|fetch\(/.test(openBody), 'Open context must not make a request');
-  assert.ok(openBody.includes('onNavigate'), 'Open context must navigate');
+  assert.ok(openBody.includes('onOpen'), 'Open context must hand off to the shell navigation');
 });
 
 test('starting a session tells the record and moves no state', () => {

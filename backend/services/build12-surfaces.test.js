@@ -63,13 +63,15 @@ test('positive control: without a presentation the same call falls back to the o
   assert.match(html, /surface__content/);
 });
 
+// 6 Nov 2026: the phone draws the desktop's card, so its verbs are the desktop's words.
 test('the primary keeps its five verbs on the phone, through the shell’s onAct', () => {
   const html = renderToString(React.createElement(Surface, {
     data: payloadFor('working-busy'), layout: 'situation', profile: 'phone', onAct: async () => ({}), onOpen() {},
   }));
   assert.match(html, /Reply to Simon about renewals/);
-  assert.match(html, /That&#x27;s done|That’s done/);
+  assert.match(html, />Done</);
   assert.match(html, /Not now/);
+  assert.match(html, /att-card/, 'the shared desktop card, not a second one');
 });
 
 test('the mic slot is a PROP and reaches the phone composition', () => {

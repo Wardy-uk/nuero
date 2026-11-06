@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const esbuild = require('esbuild');
 
-const CARD = path.resolve(__dirname, '..', '..', 'frontend', 'src', 'components', 'AttentionCard.jsx');
+const CARD = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'AttentionCard.jsx');
 let taskDestination;
 
 test.before(async () => {

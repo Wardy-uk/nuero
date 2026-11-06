@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
-import AttentionCard from './AttentionCard';
+import AttentionCard, { DesktopNeedsYouActs } from './AttentionCard';
+import { leadIsThePromise } from '../../../saim/shared-ui/presentation/kmwLead.mjs';
 import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
 import { performCardTarget, kindsFor } from '../../../saim/shared-ui/presentation/cardOpen.mjs';
 import MakeReady from '../../../saim/app/src/components/MakeReady.jsx';
@@ -18,17 +19,8 @@ import { startTaskSession } from '../../../saim/shared-ui/startTask.mjs';
 // declare, and "Start this task" — the focus-session route, then the Task
 // workflow screen, which holds the promise's own controls). There is no second ranker here.
 
-/**
- * PURE. Is the lead card this promise's own task? Only by an id the server gave both —
- * the card's task (capacity cards carry `meta.taskId`) or its promise link
- * (`open.ref`) — never by matching titles.
- */
-export function leadIsThePromise(card, kmw) {
-  const t = kmw && kmw.thread;
-  if (!card || !t) return false;
-  if (card.meta && card.meta.taskId != null && t.taskId != null && Number(card.meta.taskId) === Number(t.taskId)) return true;
-  return Boolean(card.open && t.key && card.open.ref === `promise:${t.key}`);
-}
+// The promise joins its lead card by id — shared with the SAiM shells.
+export { leadIsThePromise };
 
 /** PURE. Does this payload carry the presentation this scene renders? */
 export function hasScene(data) {
@@ -74,8 +66,15 @@ export default function NowScene({ attention, onNavigate, onStarted, blockTasks 
       omitNextIds={new Set((blockTasks || []).map((t) => `commitment:task:${t.taskId}`))}
       profile="desktop"
       renderPrimary={attention.primary ? () => (
-        <AttentionCard card={attention.primary} onNavigate={onNavigate} onAct={attention.act} onStarted={onStarted} />
+        <AttentionCard card={attention.primary} onNavigate={onNavigate} onAct={attention.act} onStarted={onStarted} onChanged={() => attention.refresh()} />
       ) : null}
+      // A Needs-you row's own answers (6 Nov 2026) — the SAME shared control the SAiM
+      // shells draw: open it, and "Done" for a task / "Seen it" otherwise.
+      renderNeedsYouActs={(it) => {
+        const id = it && it.actionRef && it.actionRef.recordId;
+        const card = id ? (attention.cards || []).find((c) => c && c.recordId === id) : null;
+        return card ? <DesktopNeedsYouActs card={card} onNavigate={onNavigate} onAct={attention.act} /> : null;
+      }}
       onOpen={(it) => {
         if (!onNavigate || !it) return;
         if (it.kind === 'event') onNavigate('calendar');

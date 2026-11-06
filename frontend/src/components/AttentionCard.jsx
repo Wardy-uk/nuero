@@ -1,344 +1,39 @@
-import React, { useState } from 'react';
-import { apiFetch } from '../api';
-import actionSurfaces from '../../../shared/action-surfaces.cjs';
-import './AttentionCard.css';
+import SharedAttentionCard, { taskDestination, cardDestination, NeedsYouActs } from '../../../saim/shared-ui/AttentionCard.jsx';
+import { desktopCall } from '../desktopCall';
 
-const { resolveNueroNavigation } = actionSurfaces;
+// The desktop's mount of the ONE attention card (6 Nov 2026). The card itself —
+// buttons, wording, action semantics, "Move due date" — lives in
+// `saim/shared-ui/AttentionCard.jsx` and every SAiM surface renders the same
+// one. All this file adds is what only the desktop can do: navigate NEURO's
+// views, and call NEURO with its own authenticated fetch.
 
-/**
- * One canonical attention card, with the exact action semantics.
- *
- * Every surface that renders work — Now, Focus, Briefing — renders THIS, so the
- * five buttons cannot come to mean five different things in three places. The
- * wording, the destination and the permitted action set all come off the
- * record; nothing here reranks, rephrases or decides urgency.
- *
- * ── The semantics, each one a bug that has actually happened ────────────────
- *
- * **Open context** navigates, and calls NOTHING. This is the one that was
- * wrong: Briefing's "Do it" POSTed `/api/focus/action-done`, which logs an
- * outcome and dismisses the item — so opening a thing recorded it as finished
- * before any work had been done.
- *
- * **Start this** starts a focus session and leaves the record exactly where it
- * was. Picking something up is not finishing it. The record is told (`start`)
- * only so the friction read has the evidence; no state moves.
- *
- * **Done** is Nick saying so, and is the ONLY path that resolves. It closes the
- * underlying task where one can be found, and SAYS which of the two happened —
- * a tick held by the outcome-note rule must not read as a completion.
- *
- * **Not now** / **Waiting on someone** defer with the reason recorded, because
- * a thing put off three times because it needs context is a different problem
- * from one put off three times as not-now, and the friction read is built on
- * knowing which.
- *
- * **Not relevant** dismisses: it teaches suppression and touches no work.
- *
- * **Seen it** acknowledges: the card STAYS on screen and stops notifying, which
- * is the one distinction the old suppression timer could not express. It is on
- * the record's action set and the phone has always rendered it; the desktop
- * silently dropped it, so on a card that cannot be dismissed (an imminent
- * meeting, an escalation) there was no way to say "yes, I know" at all.
- *
- * Nothing here auto-completes, auto-defers, auto-dismisses, auto-starts or
- * sends anything on Nick's behalf. Every one of these is a click.
- */
+export { taskDestination, cardDestination };
 
-// Where "Open context" actually goes, in words. The button has always been
-// correct and has always been mute about it: on a card reading "Do your standup
-// — 2 minutes, do it before anything else", the only thing offering to take
-// him there said `Open context`, and the one field that names the destination
-// (`actionHint`, "Open Standup") was composed server-side and read by SAiM
-// alone.
-//
-// ⚠ IT IS NOT `card.actionHint`, deliberately. Those strings are prose written
-// for SAiM's sentence-shaped surface and several of them are not navigations:
-// "Start here, then review the rest" on a button whose whole contract is that
-// it navigates and calls NOTHING, sat beside a "Start this" button that really
-// does start a session, is two buttons saying start and meaning different
-// things — the exact confusion the canonical label set exists to prevent.
-// The verb stays ours; only the destination comes from the resolver.
-//
-// ⚠ An unmapped view falls back to the generic label rather than guessing a
-// name from the view id — today's wording, never a worse one.
-const VIEW_LABELS = {
-  dashboard: 'Open queue',
-  'meeting-prep': 'Open prep',
-  todos: 'Open tasks',
-  standup: 'Open standup',
-  inbox: 'Open inbox',
-  imports: 'Open imports',
-  // Briefing merged into Now (Build 10E); a card routed there opens Now.
-  today: 'Open Now',
-  chat: 'Open chat',
-};
-
-const LABELS = {
-  open: 'Open context',
-  acknowledge: 'Seen it',
-  start: 'Start this',
-  complete: 'Done',
-  dismiss: 'Not relevant',
-};
-
-// How long each deferral lasts. Both are ordinary working spans rather than
-// "until you look again" — a deferral with no end is a dismissal in disguise.
-const NOT_NOW_MINUTES = 120;
-const WAITING_MINUTES = 24 * 60;
-
-/**
- * "Open" on a card about ONE task opens THAT task, not the list (Nick, 2 Oct
- * 2026). TodoPanel already pins a row from `taskId` / `msId` / `taskText`
- * (see taskPin.js); the card simply never handed them over.
- *
- * - A todo card carries `meta.owner` ({taskId} or {msId}). Its title is the
- *   task's own text, used as the last-resort pin. A summary card ("3 tasks
- *   with no date") has no owner and gets no pin, so it still opens the list.
- * - A NEURO task block arrives as a meeting. When it still holds open work,
- *   `meta.blockTaskIds` names it, and Open goes to the first of those tasks
- *   rather than to meeting prep, which has nothing to say about a solo block.
- *
- * Returns null when there is nothing to pin; the caller then falls back to the
- * ordinary destination.
- */
-export function taskDestination(card) {
-  const meta = card.meta || {};
-  if (card.type === 'todo' && meta.owner) {
-    const ctx = { taskText: card.title || null };
-    if (meta.owner.taskId != null) ctx.taskId = meta.owner.taskId;
-    if (meta.owner.msId != null) ctx.msId = meta.owner.msId;
-    return { view: 'todos', context: ctx, label: 'Open task' };
-  }
-  if (card.type === 'meeting' && Array.isArray(meta.blockTaskIds) && meta.blockTaskIds.length) {
-    return { view: 'todos', context: { taskId: meta.blockTaskIds[0] }, label: 'Open task' };
-  }
-  return null;
+/** Navigation only: a destination's view + its pinning context. No request. */
+export function desktopOpen(onNavigate) {
+  return (card, destination) => {
+    const d = destination || cardDestination(card);
+    if (!d || !onNavigate) return false;
+    onNavigate(d.view, { fromAttention: true, attentionCard: card, ...(d.context || {}) });
+    return true;
+  };
 }
 
-export default function AttentionCard({
-  card,
-  onNavigate,
-  onAct,
-  onStarted,
-  compact = false,
-  showEvidence = true,
-}) {
-  const [busy, setBusy] = useState(null);
-  const [rawOutcome, setRawOutcome] = useState(null);
+export function DesktopNeedsYouActs({ card, onNavigate, onAct }) {
+  return <NeedsYouActs card={card} onOpen={onNavigate ? desktopOpen(onNavigate) : null} onAct={onAct} />;
+}
 
-  if (!card) return null;
-
-  // A message belongs to the card it was about. React reuses this component when
-  // the next item takes the slot, so an unscoped message ("Put off — waiting on
-  // someone") carried over onto the new card until a refresh (23 Oct 2026).
-  const cardKey = card.recordId || card.id || card.title;
-  const outcome = rawOutcome && rawOutcome.cardKey === cardKey ? rawOutcome : null;
-  const setOutcome = (o) => setRawOutcome(o ? { ...o, cardKey } : null);
-
-  const actions = Array.isArray(card.actions) ? card.actions : [];
-  // A card with no record has no canonical action set. Rather than guessing one
-  // (which is how a Done button appears over a thing that cannot be completed),
-  // it gets the two the legacy path can genuinely honour.
-  const permitted = card.recordId ? actions : ['open', 'dismiss', 'defer'];
-
-  const run = async (key, fn) => {
-    if (busy) return;
-    setBusy(key);
-    try {
-      const result = await fn();
-      if (result && result.ok === false) {
-        setOutcome({ kind: 'error', text: result.why || 'That did not go through.' });
-      } else if (result && result.text) {
-        setOutcome({ kind: 'ok', text: result.text });
-      } else {
-        setOutcome(null);
-      }
-    } catch (e) {
-      setOutcome({ kind: 'error', text: e.message });
-    }
-    setBusy(null);
-  };
-
-  // Where this card goes, resolved once so the LABEL and the click cannot
-  // disagree about it — a button naming a destination it does not open is worse
-  // than the mute one it replaced.
-  const destination = taskDestination(card)
-    || resolveNueroNavigation({ type: card.type, meta: card.meta, id: card.id })
-    || (card.tab ? { view: card.tab } : null);
-  const openLabel = destination?.label
-    || (destination && VIEW_LABELS[destination.view]) || LABELS.open;
-
-  // Navigation only. No request, by design — see the header.
-  const open = () => {
-    if (!destination) {
-      setOutcome({ kind: 'error', text: 'Nothing to open for this one.' });
-      return;
-    }
-    onNavigate?.(destination.view, { fromAttention: true, attentionCard: card, ...(destination.context || {}) });
-  };
-
-  const start = () => run('start', async () => {
-    const res = await apiFetch('/api/session/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: card.title, source: 'attention' }),
-    });
-    const json = await res.json().catch(() => ({}));
-    // 409 is "you're already on something" — a question, not a failure. Nothing
-    // is switched without Nick saying so.
-    if (res.status === 409 && json.session) {
-      const ok = window.confirm(
-        `You're ${json.session.elapsedMinutes} minutes into "${json.session.text}".\n\nPark it and start this instead?`
-      );
-      if (!ok) return { ok: true, text: null };
-      const forced = await apiFetch('/api/session/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: card.title, source: 'attention', force: true }),
-      });
-      if (!forced.ok) return { ok: false, why: 'Could not start that session.' };
-    } else if (!res.ok) {
-      return { ok: false, why: json.error || 'Could not start that session.' };
-    }
-    // Told, not moved: the record stays where it was.
-    if (card.recordId) await onAct?.(card, 'start');
-    onStarted?.(card);
-    return { ok: true, text: 'Session started. The record is untouched.' };
-  });
-
-  const done = () => run('complete', async () => {
-    const result = await onAct?.(card, 'complete');
-    if (!result || result.ok === false) return result || { ok: false, why: 'Nothing handled that.' };
-    // ⚠ Three outcomes, not two, and the third is the one that shipped wrong.
-    // "Done — card cleared" was said whenever no task could be closed, and the
-    // card was NOT cleared: the pool regenerates it on the very next poll and a
-    // terminal record never re-matches, so a new one opens and it is back within
-    // the second. Four resolved records for one Microsoft task in three days,
-    // each one reported as a clearance. If the work is still open, say so — the
-    // honest sentence is what stops Nick pressing it a fifth time.
-    // `handled`: off the list without a task closing — an escalation he dealt
-    // with, still open in Jira. Not "nothing was closed", which would send him
-    // off to press it again.
-    const text = result.taskCompleted === true
-      ? `Done. ${result.taskWhy || 'Task closed too.'}`
-      : result.handled === true
-        ? `Done — ${result.taskWhy || 'off your list'}.`
-        : `Nothing was closed — ${result.taskWhy || 'no task matched this card'}. It will come back until the work is closed where it lives.`;
-    return { ok: true, text };
-  });
-
-  const defer = (reason, minutes, label) => run(reason, async () => {
-    const result = await onAct?.(card, 'defer', { reason, minutes });
-    if (!result || result.ok === false) return result || { ok: false, why: 'Nothing handled that.' };
-    return { ok: true, text: `${label}${result.canonical === false ? ' (legacy snooze — no record for this card)' : ''}` };
-  });
-
-  const acknowledge = () => run('acknowledge', async () => {
-    const result = await onAct?.(card, 'acknowledge');
-    if (!result || result.ok === false) return result || { ok: false, why: 'Nothing handled that.' };
-    // Said out loud, because the card deliberately does not disappear and a
-    // button that looks like it did nothing is a button nobody presses twice.
-    return { ok: true, text: 'Noted. It stays here, but it will not interrupt again.' };
-  });
-
-  const dismiss = () => run('dismiss', async () => {
-    const result = await onAct?.(card, 'dismiss');
-    if (!result || result.ok === false) return result || { ok: false, why: 'Nothing handled that.' };
-    return { ok: true, text: 'Marked not relevant. The work itself is untouched.' };
-  });
-
+export default function AttentionCard({ card, onNavigate, onAct, onStarted, onChanged = null, compact = false, showEvidence = true }) {
   return (
-    <article className={`att-card att-card--${card.urgency || 'none'}${compact ? ' att-card--compact' : ''}`}>
-      <header className="att-card__head">
-        <span className="att-card__type">{String(card.type || 'item').replace(/_/g, ' ')}</span>
-        {card.state && card.state !== 'active' && (
-          /* The lifecycle state is rendered, never re-derived. An acknowledged
-             card STAYS visible — that is the whole distinction the old
-             suppression timer could not express. */
-          <span className={`att-card__state att-card__state--${card.state}`}>{card.state}</span>
-        )}
-        {!card.recordId && (
-          <span className="att-card__state att-card__state--nolifecycle" title="No canonical attention record — actions fall back to the legacy suppression timer">
-            no record
-          </span>
-        )}
-      </header>
-
-      <h3 className="att-card__title">{card.title}</h3>
-      {/* `say` is SAiM's sentence, composed server-side. `reason` is the raw
-          field dump behind it and is the fallback, never the preference. */}
-      <p className="att-card__say">{card.say || card.reason}</p>
-
-      {showEvidence && Array.isArray(card.evidence) && card.evidence.length > 0 && (
-        <ul className="att-card__evidence">
-          {card.evidence.slice(0, 3).map((e, i) => (
-            <li key={i}>
-              <span className="att-card__evsrc">{e.source}</span>
-              <span className="att-card__evref">{e.ref}</span>
-              {e.detail && <span className="att-card__evdetail">{e.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {outcome && (
-        <p className={`att-card__outcome att-card__outcome--${outcome.kind}`}>{outcome.text}</p>
-      )}
-
-      {/*
-        Already being worked on. The server drops `start` from the permitted set
-        when a session is running on this very card, so the button cannot be
-        offered — but a card that merely loses a button says nothing, and the
-        thing Nick needs to know is that he is ALREADY on it.
-
-        ⚠ Says how long and what it was cut down to, because after a shrink the
-        card's title and the thing actually being done are different, and the
-        step is the half that lets him pick the thread back up.
-      */}
-      {card.session && (
-        <p className="att-card__session">
-          In progress — {card.session.elapsedMinutes} min
-          {card.session.nextStep ? <> · on “{card.session.nextStep}”</> : null}
-          {card.session.status !== 'active' ? ` · ${card.session.status}` : ''}
-        </p>
-      )}
-
-      <div className="att-card__actions">
-        {permitted.includes('open') && (
-          <button className="att-card__btn" type="button" onClick={open}>{openLabel}</button>
-        )}
-        {permitted.includes('acknowledge') && card.state !== 'acknowledged' && (
-          <button className="att-card__btn" type="button" disabled={busy === 'acknowledge'} onClick={acknowledge}>
-            {busy === 'acknowledge' ? '…' : LABELS.acknowledge}
-          </button>
-        )}
-        {permitted.includes('start') && (
-          <button className="att-card__btn att-card__btn--do" type="button" disabled={busy === 'start'} onClick={start}>
-            {busy === 'start' ? '…' : LABELS.start}
-          </button>
-        )}
-        {permitted.includes('complete') && (
-          <button className="att-card__btn att-card__btn--do" type="button" disabled={busy === 'complete'} onClick={done}>
-            {busy === 'complete' ? '…' : LABELS.complete}
-          </button>
-        )}
-        {permitted.includes('defer') && (
-          <>
-            <button className="att-card__btn" type="button" disabled={busy === 'not-now'} onClick={() => defer('not-now', NOT_NOW_MINUTES, 'Put off for now.')}>
-              Not now
-            </button>
-            <button className="att-card__btn" type="button" disabled={busy === 'waiting-on-someone'} onClick={() => defer('waiting-on-someone', WAITING_MINUTES, 'Noted as waiting on someone else.')}>
-              Waiting on someone
-            </button>
-          </>
-        )}
-        {permitted.includes('dismiss') && (
-          <button className="att-card__btn att-card__btn--quiet" type="button" disabled={busy === 'dismiss'} onClick={dismiss}>
-            {LABELS.dismiss}
-          </button>
-        )}
-      </div>
-    </article>
+    <SharedAttentionCard
+      card={card}
+      onOpen={desktopOpen(onNavigate)}
+      onAct={onAct}
+      call={desktopCall}
+      onStarted={onStarted}
+      onChanged={onChanged}
+      compact={compact}
+      showEvidence={showEvidence}
+    />
   );
 }

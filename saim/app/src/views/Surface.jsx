@@ -18,6 +18,8 @@ import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import AskDock from '../../../shared-ui/presentation/AskDock';
 import PreparedMove from '../components/PreparedMove';
+import MakeReady from '../components/MakeReady';
+import { loadEligible } from '../makeReady.mjs';
 import { startTaskSession } from '../../../shared-ui/startTask.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
@@ -101,6 +103,24 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   // Which prepared record Home should open (a card's "open", or a draft just prepared).
   const [showMove, setShowMove] = useState(null);
   const [voiceOut, setVoiceOut] = useState(() => isVoiceOutEnabled());
+
+  // The desktop's card on every surface (6 Nov 2026): NEURO's fetch as {status, body}
+  // for "Start this" and "Move due date", and "Make this ready" on the rows SAiM can
+  // prepare. Never on the kiosk — a wall performs nothing.
+  const kiosk = platformNow() === 'kiosk';
+  const cardCall = kiosk ? null : makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+  const [eligible, setEligible] = useState(() => new Map());
+  useEffect(() => {
+    if (kiosk) return undefined;
+    let alive = true;
+    loadEligible(makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders })).then((m) => { if (alive) setEligible(m); });
+    return () => { alive = false; };
+  }, [state.data, kiosk]);
+  const eligibleFor = (it) => {
+    const ref = it && it.actionRef;
+    return (ref && ref.cardId && eligible.get(`attention:${ref.cardId}`)) || (it && it.id && eligible.get(`attention:${it.id}`)) || null;
+  };
+
 
   // The passing question. Null most of the time — this is an ambient screen
   // that can be spoken to, not a chat window.
@@ -723,6 +743,12 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       rootClassName="surface"
       onOpen={open}
       onAct={act}
+      call={cardCall}
+      onRefresh={() => load({ quiet: true })}
+      renderItemExtra={kiosk ? null : (it) => {
+        const e = eligibleFor(it);
+        return e ? <MakeReady item={e} call={cardCall} onOpenDraft={(recordId) => onNavigate?.('drafts', { context: recordId ? { recordId } : null })} /> : null;
+      }}
       onRoomAct={roomAct}
       onRouterAct={routerAct}
       onFocusBlock={platformNow() === 'kiosk' ? null : focusBlockAct}

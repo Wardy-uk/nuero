@@ -15,6 +15,8 @@ import { surfaceRgb } from './fieldDrive.mjs';
 import { labelFor, isActivePhase } from '../../shared/operation-phase.cjs';
 import { nextStep } from './presentation/nextStep.mjs';
 import FocusBlockView from './FocusBlock.jsx';
+import AttentionCard, { NeedsYouActs } from './AttentionCard.jsx';
+import { leadIsThePromise } from './presentation/kmwLead.mjs';
 import './AttentionSurface.css';
 
 // AttentionSurface — the attention feed, rendered.
@@ -195,6 +197,14 @@ export default function AttentionSurface({
   onFocusBlock = null,
   // Opens the task list ("Something else"). Null = not offered.
   onSomethingElse = null,
+  // ── The desktop's card on every surface (6 Nov 2026) ──
+  // NEURO's fetch as {status, body}: starting a focus session from a card and
+  // "Move due date". Null (the kiosk) → neither is offered.
+  call = null,
+  // Re-read the feed after a card changed something outside the lifecycle (a re-date).
+  onRefresh = null,
+  // A control after a row's own action ("Make this ready"). Null → none.
+  renderItemExtra = null,
   footAside = null,
   footExtra = null,
   // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
@@ -530,47 +540,18 @@ export default function AttentionSurface({
   if (layout === 'situation' && presentation) {
     const prof = profile || profileFor({ platform: platformNow(), width: viewportWidth() });
     const primaryCard = primary && primary.kind === 'item' ? primary : null;
-    // The one current thing, with the same five verbs it has everywhere: open,
-    // that's done, not now (with durations and a reason), seen it, not mine.
-    const renderPrimary = primaryCard && onAct ? () => (
-      <article className={`sit__object sit__object--${presentation.primary && presentation.primary.priority === 'P0' ? 'p0' : 'p1'}`}>
-        <span className="sit__object-tag">{presentation.primary && presentation.primary.priority === 'P0' ? 'Needs you' : 'Now'}</span>
-        <p className="sit__object-title">{primaryCard.title}</p>
-        {primaryCard.session && (
-          <p className="sit__object-sub">
-            {primaryCard.session.status === 'active' ? 'You’re on it' : 'You started this'}
-            {Number.isFinite(primaryCard.session.elapsedMinutes) ? ` — ${primaryCard.session.elapsedMinutes} min in` : ''}
-          </p>
-        )}
-        {primaryCard.say && <p className="sit__object-sub">{primaryCard.say}</p>}
-        <div className="sit__object-acts">
-          {(!canOpen || canOpen(primaryCard)) && (
-            <button type="button" className="sit__chip sit__chip--yes" onClick={() => onOpen && onOpen(primaryCard)}>
-              {primaryCard.actionHint || 'Open it'}
-            </button>
-          )}
-          {canComplete(primaryCard) && (
-            <button type="button" className="sit__chip" disabled={busy}
-              onClick={() => { act(primaryCard, 'complete'); setDeferring(false); }}>That&rsquo;s done</button>
-          )}
-          <button type="button" className="sit__chip" disabled={busy} onClick={() => setDeferring((v) => !v)}
-            aria-expanded={deferring}>Not now</button>
-        </div>
-        {deferring && (
-          <div className="sit__object-acts">
-            {DEFERRALS.map((d) => (
-              <button key={d.label} type="button" className="sit__chip sit__chip--quiet" disabled={busy}
-                onClick={() => { act(primaryCard, 'defer', { minutes: d.minutes, reason: d.reason }); setDeferring(false); }}>{d.label}</button>
-            ))}
-            <button type="button" className="sit__chip sit__chip--quiet" disabled={busy}
-              onClick={() => { act(primaryCard, 'acknowledge'); setDeferring(false); }}>Seen it</button>
-            {(primaryCard.actions || []).includes('dismiss') && (
-              <button type="button" className="sit__chip sit__chip--quiet" disabled={busy}
-                onClick={() => { act(primaryCard, 'dismiss'); setDeferring(false); }}>Not mine</button>
-            )}
-          </div>
-        )}
-      </article>
+    // The one current thing — the SAME card NEURO's desktop Now draws (6 Nov 2026):
+    // open, seen it, start, done, not now / waiting on someone, move due date, not relevant.
+    const openCard = (card) => (onOpen && (!canOpen || canOpen(card)) ? onOpen : null);
+    const renderPrimary = primaryCard ? () => (
+      <AttentionCard
+        card={primaryCard}
+        onOpen={openCard(primaryCard)}
+        onAct={onAct || null}
+        call={prof === 'kiosk' || prof === 'watch' ? null : call}
+        onChanged={onRefresh}
+        onStarted={onRefresh}
+      />
     ) : null;
     // Opening a thing from Next goes where that thing lives. A transition keeps
     // its own destination; an event is meeting prep; a commitment or a task is
@@ -583,26 +564,10 @@ export default function AttentionSurface({
       if (!id) return null;
       return [primaryCard, ...secondary].find((c) => c && c.recordId === id) || null;
     };
-    const renderNeedsYouActs = onAct ? (it) => {
+    const renderNeedsYouActs = (onAct || onOpen) ? (it) => {
       const card = cardFor(it);
       if (!card) return null;
-      const acts = card.actions || [];
-      const done = card.type === 'todo' && canComplete(card);
-      const answer = done ? 'complete' : acts.includes('acknowledge') ? 'acknowledge' : null;
-      return (
-        <div className="sit__object-acts">
-          {onOpen && (!canOpen || canOpen(card)) && (
-            <button type="button" className="sit__chip sit__chip--yes" onClick={() => onOpen(card)}>
-              {card.actionHint || 'Open it'}
-            </button>
-          )}
-          {answer && (
-            <button type="button" className="sit__chip" onClick={() => act(card, answer)}>
-              {done ? 'Done' : 'Seen it'}
-            </button>
-          )}
-        </div>
-      );
+      return <NeedsYouActs card={card} onOpen={openCard(card)} onAct={onAct || null} />;
     } : null;
     const openItem = (item) => {
       if (!item) return;
@@ -713,6 +678,11 @@ export default function AttentionSurface({
           presentation={presentation}
           profile={prof}
           scene={scene}
+          // The desktop's readout (the four Holding-the-week cards) and its promise-as-why,
+          // on every surface; the layout stacks them where the screen is narrow.
+          workspace
+          kmwJoinsLead={leadIsThePromise(primaryCard, presentation.keepMyWord)}
+          renderItemExtra={prof === 'kiosk' || prof === 'watch' ? null : renderItemExtra}
           field={(
             <Field
               activity={context?.activity}
