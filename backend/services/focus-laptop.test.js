@@ -29,7 +29,7 @@ process.env.NEURO_DB_PATH = path.join(root, 'flaptop.db');
 process.env.OBSIDIAN_VAULT_PATH = path.join(root, 'vault');
 fs.mkdirSync(process.env.OBSIDIAN_VAULT_PATH, { recursive: true });
 process.env.JIRA_BASE_URL = 'https://nurturtech.atlassian.net';
-process.env.NEURO_DESKTOP_URL = 'https://nuero.nickward.co.uk';
+process.env.NEURO_DESKTOP_URL = 'https://neuro.nickward.co.uk';
 process.env.OBSIDIAN_VAULT_NAME = 'Nicks knowledge base';
 process.env.PUSH_QUIET_HOURS = 'off';
 delete process.env.VAPID_PUBLIC_KEY;
@@ -47,8 +47,8 @@ test.before(async () => { await db.init(); });
 
 const NOTE = 'obsidian://open?vault=Nicks%20knowledge%20base&file=Projects%2FSupport%2FRota%20plan';
 const JIRA = 'https://nurturtech.atlassian.net/browse/NT-14855';
-const TASK = 'https://nuero.nickward.co.uk/?view=task&taskId=42';
-const DRAFTS = 'https://nuero.nickward.co.uk/?view=drafts';
+const TASK = 'https://neuro.nickward.co.uk/?view=task&taskId=42';
+const DRAFTS = 'https://neuro.nickward.co.uk/?view=drafts';
 
 function resetQueue() { db.setState(di.STATE_KEY, ''); }
 
@@ -71,11 +71,11 @@ test('⚠ NEGATIVE: anything that is not a NEURO-built link is refused', () => {
     'https://nurturtech.atlassian.net/browse/NT-1?x=1',
     'https://nurturtech.atlassian.net/browse/NT-1#c',
     'https://nurturtech.atlassian.net/secure/admin',
-    'https://nuero.nickward.co.uk/?view=settings',
-    'https://nuero.nickward.co.uk/?view=task&taskId=42&pin=1',
-    'https://nuero.nickward.co.uk/?view=drafts&x=1',
-    'https://nuero.nickward.co.uk/api/actions/1/approve',
-    'https://nuero.nickward.co.uk/?view=task&taskId=abc',
+    'https://neuro.nickward.co.uk/?view=settings',
+    'https://neuro.nickward.co.uk/?view=task&taskId=42&pin=1',
+    'https://neuro.nickward.co.uk/?view=drafts&x=1',
+    'https://neuro.nickward.co.uk/api/actions/1/approve',
+    'https://neuro.nickward.co.uk/?view=task&taskId=abc',
     'obsidian://open?vault=Other&file=x',
     'obsidian://open?vault=Nicks%20knowledge%20base&file=..%2F..%2Fsecret',
     'obsidian://open?vault=Nicks%20knowledge%20base&file=x&extra=1',
@@ -85,10 +85,10 @@ test('⚠ NEGATIVE: anything that is not a NEURO-built link is refused', () => {
     'file:///C:/Windows/System32/cmd.exe',
     'data:text/html,hi',
     'ms-settings:privacy',
-    'https://nuero.nickward.co.uk/?view=drafts extra',
-    'https://nuero.nickward.co.uk/?view=drafts\\',
-    'https://nuero.nickward.co.uk/?view=drafts\n',
-    `https://nuero.nickward.co.uk/?view=task&taskId=${'1'.repeat(700)}`,
+    'https://neuro.nickward.co.uk/?view=drafts extra',
+    'https://neuro.nickward.co.uk/?view=drafts\\',
+    'https://neuro.nickward.co.uk/?view=drafts\n',
+    `https://neuro.nickward.co.uk/?view=task&taskId=${'1'.repeat(700)}`,
     '', null, 42,
   ];
   for (const u of bad) assert.equal(di.urlAllowed(u), false, JSON.stringify(u));
@@ -331,10 +331,10 @@ test('agent: the same shapes pass and the same bad URLs fail, on the laptop’s 
   const good = [NOTE, JIRA, TASK, DRAFTS];
   const bad = [
     'https://evil.example.com/browse/NT-1', 'http://nurturtech.atlassian.net/browse/NT-1',
-    'https://nurturtech.atlassian.net/browse/NT-1?x=1', 'https://nuero.nickward.co.uk/?view=settings',
+    'https://nurturtech.atlassian.net/browse/NT-1?x=1', 'https://neuro.nickward.co.uk/?view=settings',
     'obsidian://open?vault=Other&file=x', 'obsidian://open?vault=Nicks%20knowledge%20base&file=..%2Fx',
     'obsidian://new?vault=Nicks%20knowledge%20base&file=x', 'javascript:alert(1)', 'file:///C:/Windows/System32/cmd.exe',
-    'https://nuero.nickward.co.uk/?view=drafts&x=1', 'https://user@nuero.nickward.co.uk/?view=drafts',
+    'https://neuro.nickward.co.uk/?view=drafts&x=1', 'https://user@neuro.nickward.co.uk/?view=drafts',
   ];
   const json = path.join(root, 'urls.json');
   fs.writeFileSync(json, JSON.stringify({ good, bad }), 'utf8');
@@ -343,7 +343,7 @@ $ErrorActionPreference = 'Stop'
 . ${q(MODULE)}
 $u = Get-Content -Raw ${q(json)} | ConvertFrom-Json
 $out = @{ good = @($u.good | ForEach-Object { [bool](Test-NeuroOpenUrl $_) }); bad = @($u.bad | ForEach-Object { [bool](Test-NeuroOpenUrl $_) });
-  narrowed = [bool](Test-NeuroOpenUrl '${JIRA}' @('nuero.nickward.co.uk')) }
+  narrowed = [bool](Test-NeuroOpenUrl '${JIRA}' @('neuro.nickward.co.uk')) }
 "JSON:" + ($out | ConvertTo-Json -Compress)
 `);
   assert.deepEqual(r.good, good.map(() => true));

@@ -166,11 +166,11 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
 
       {!state.loading && !state.error && !handledInSaim && (
         <div className="notif__body">
-          <p className="notif__lede">This one needs the full NUERO desktop companion rather than SAiM mobile.</p>
+          <p className="notif__lede">This one needs the full NEURO desktop companion rather than SAiM mobile.</p>
           <div className="notif__actions">
             {nueroUrl && (
               <button type="button" className="notif__btn notif__btn--primary" onClick={openNuero}>
-                Open in NUERO
+                Open in NEURO
               </button>
             )}
             <button type="button" className="notif__btn" onClick={onDismiss}>Dismiss</button>
@@ -296,7 +296,7 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
       )}
 
       {!state.loading && !state.error && !handledInSaim && !nueroUrl && (
-        <div className="notif__status">No linked NUERO destination was included with this notification.</div>
+        <div className="notif__status">No linked NEURO destination was included with this notification.</div>
       )}
     </section>
   );

@@ -56,7 +56,7 @@ function whereWords(places) {
 }
 
 /** PURE. The block NEURO owns, from a workout-view page. */
-function renderBlock(v, { photoEmbeds = [], linkBase = 'https://nuero.nickward.co.uk' } = {}) {
+function renderBlock(v, { photoEmbeds = [], linkBase = 'https://neuro.nickward.co.uk' } = {}) {
   const w = v.watch; const t = v.track || {};
   const L = [OPEN, ''];
   const where = whereWords(v.places);

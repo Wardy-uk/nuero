@@ -29,7 +29,7 @@ function init() {
   // Changing the subject cannot invalidate existing subscriptions: it is a
   // per-request JWT claim, and a subscription is bound to the KEY PAIR.
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || 'https://nuero.nickward.co.uk',
+    process.env.VAPID_SUBJECT || 'https://neuro.nickward.co.uk',
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
   );

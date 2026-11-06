@@ -12,7 +12,7 @@ const neuroConfig = require('./neuroConfig');
 const neuro = require('./neuroSnapshot');
 
 // ⚠ No default base URL — this module was the fourth copy of a hardcoded
-// `https://nuero.nickward.co.uk`, and it was the one that kept POLLING it every 90
+// `https://neuro.nickward.co.uk`, and it was the one that kept POLLING it every 90
 // seconds on a SAiM with no NEURO configured at all. See neuroConfig.js.
 function config(env = process.env) {
   return {

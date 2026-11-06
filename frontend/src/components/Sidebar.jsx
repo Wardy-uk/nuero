@@ -3,6 +3,7 @@ import { apiUrl } from '../api';
 import './Sidebar.css';
 import { VIEW_GROUPS, groupOfView } from './ViewTabs';
 import { useWorkOnly, WORK_ONLY_HIDDEN_GROUPS, WORK_ONLY_HIDDEN_ITEMS } from '../workOnly';
+import { SaimMark } from './BrandMarks';
 
 const PRIMARY_ITEMS = [
   // ── Build 10P: Nick-first navigation ───────────────────────────────────────
@@ -121,7 +122,12 @@ const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.flatMap((i) => [
 
 // Option B (Brief 003): when the `saim_desktop_workspace` switch is on, SAiM
 // leads the primary row and Now stays right beneath it as the fallback.
-const SAIM_ITEM = { id: 'saim', label: 'SAiM', icon: '◉' };
+// The SAiM entry wears her mark and wordmark (6 Nov 2026, Nick's mockup).
+const SAIM_ITEM = {
+  id: 'saim',
+  label: <span className="brand-word" aria-label="SAiM">SA<span className="brand-word__i">i</span>M</span>,
+  icon: <SaimMark width={18} />,
+};
 
 function readOpenGroups() {
   try { return JSON.parse(localStorage.getItem('sidebar_groups_open') || '{}') || {}; } catch { return {}; }

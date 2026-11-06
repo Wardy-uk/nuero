@@ -99,7 +99,7 @@ export default function ProfilePanel() {
    * server-side whatever the browser does — proved live on 31 Aug, when a turn
    * that came back "Failed to fetch" had in fact completed and recorded a fact.
    *
-   * `nuero.nickward.co.uk` fronts through Netlify to the Pi, and that proxy
+   * `neuro.nickward.co.uk` fronts through Netlify to the Pi, and that proxy
    * gives up around thirty seconds. A turn measured 14s directly, so a longer
    * one with more tool rounds crosses it — which means holding the connection
    * open was never going to be reliable and polling is the honest shape.

@@ -3,7 +3,7 @@
 // NEURO is the canonical brain. SAiM is a manifestation layer: it reads from NEURO
 // and hands writes back to NEURO. That makes the NEURO connection a hard dependency,
 // and a hard dependency must be EXPLICIT. It used to be implicit: neuroSnapshot.js
-// and neuroChat.js each carried their own copy of `https://nuero.nickward.co.uk` as a
+// and neuroChat.js each carried their own copy of `https://neuro.nickward.co.uk` as a
 // default, so an unconfigured SAiM silently reached a public host over the open
 // internet and looked configured while doing it. There is no default any more — an
 // unset NEURO_BASE_URL is reported as not-configured, loudly, at startup and on

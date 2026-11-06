@@ -1,0 +1,67 @@
+/* NEURO / SAiM lockups (6 Nov 2026). Sized for a working screen, not a poster:
+   the mockup's proportions, roughly half its scale. */
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  line-height: 1;
+}
+
+.brand-lockup__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.brand-word {
+  font-family: 'Michroma', var(--font-sans);
+  font-weight: 400;
+  color: var(--text-primary);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  -webkit-text-stroke: 0.4px currentColor; /* Michroma has one weight; the mockup is heavier */
+}
+
+/* SAiM's lowercase i is part of her name — keep it lowercase, a touch narrower. */
+.brand-word__i { text-transform: none; letter-spacing: 0.02em; }
+
+.brand-sub {
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brand-mark { flex-shrink: 0; display: block; }
+.brand-mark--neuro { color: var(--accent); filter: drop-shadow(0 0 3px rgba(90, 163, 249, 0.45)); }
+.brand-mark--saim { color: var(--text-primary); }
+.brand-mark__core { fill: var(--accent); }
+
+/* Top bar: compact. */
+.brand-lockup--neuro .brand-word { font-size: 15px; }
+.brand-lockup--neuro .brand-sub { font-size: 10px; }
+
+/* SAiM workspace header: a little larger than the top bar, still a header. */
+.brand-lockup--saim { gap: 12px; }
+.brand-lockup--saim .brand-word { font-size: 20px; }
+.brand-lockup--saim .brand-sub { font-size: 11.5px; }
+
+/* Sidebar entry: mark + name only, same height as the other rows. */
+.brand-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.brand-side .brand-word { font-size: 11px; letter-spacing: 0.06em; }
+
+@media (max-width: 900px) {
+  .brand-lockup--neuro .brand-sub { display: none; }
+}
+@media (max-width: 600px) {
+  .brand-lockup--saim .brand-word { font-size: 17px; }
+  .brand-lockup--saim .brand-sub { white-space: normal; }
+}

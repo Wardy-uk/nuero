@@ -3,6 +3,7 @@ import React from 'react';
 import { apiUrl, getPin } from '../api';
 import { assessWorker } from '../../../shared/worker-health.cjs';
 import './Topbar.css';
+import { NeuroLockup } from './BrandMarks';
 
 // Which room Nick is in, for the banner.
 //
@@ -253,7 +254,7 @@ export default function Topbar({ status, onMenuToggle, onChatToggle, chatOpen, w
         <button className="topbar-menu-btn" onClick={onMenuToggle} aria-label="Menu">
           <span /><span /><span />
         </button>
-        <span className="topbar-logo">NUERO</span>
+        <span className="topbar-logo" title="NEURO"><NeuroLockup /></span>
         {roomHere
           ? <span className="topbar-room" title="Where your watch was last picked up">{roomHere}</span>
           : <span className="topbar-version">v1.0</span>}

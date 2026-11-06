@@ -6,6 +6,7 @@ import NowScene, { hasScene } from './NowScene';
 import { focusTaskOf } from './AdhdPanel';
 import './AdhdPanel.css';
 import './SaimWorkspace.css';
+import { SaimLockup } from './BrandMarks';
 
 // The SAiM workspace (Build Brief 003, Option B, 23 Oct 2026) — NEURO Desktop's
 // primary tab when the `saim_desktop_workspace` switch is on.
@@ -123,7 +124,7 @@ export function SaimWorkspaceView({ attention, onNavigate, onStarted, blockTasks
   return (
     <div className="adhd saim-ws">
       <header className="saim-ws__head">
-        <h2 className="saim-ws__title">SAiM</h2>
+        <h2 className="saim-ws__title" aria-label="SAiM — Situational Awareness & Intelligence Module"><SaimLockup /></h2>
         {onNavigate && (
           <button type="button" className="saim-ws__now" onClick={() => onNavigate('today')}>Open Now</button>
         )}

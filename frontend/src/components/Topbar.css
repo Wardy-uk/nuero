@@ -39,10 +39,9 @@
 }
 
 .topbar-logo {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--accent);
-  letter-spacing: 1px;
+  display: inline-flex;
+  min-width: 0;
+  margin-right: 10px;
 }
 
 .topbar-version {

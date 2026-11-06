@@ -45,7 +45,7 @@
   they need as arguments.
 #>
 
-$script:NeuroDefaultOpenHosts = @('nurturtech.atlassian.net', 'nuero.nickward.co.uk')
+$script:NeuroDefaultOpenHosts = @('nurturtech.atlassian.net', 'neuro.nickward.co.uk')
 $script:NeuroDefaultVault = 'Nicks knowledge base'
 
 # --- PURE ----------------------------------------------------------------------

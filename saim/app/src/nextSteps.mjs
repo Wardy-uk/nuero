@@ -21,7 +21,7 @@ export const TAB_FOR_VIEW = Object.freeze({
   task: 'task',
 });
 
-export const NEURO_DESKTOP_URL = 'https://nuero.nickward.co.uk/';
+export const NEURO_DESKTOP_URL = 'https://neuro.nickward.co.uk/';
 
 /** PURE. The NEURO desktop link for a view, carrying any flat context values. */
 export function desktopUrlFor(view, context = null) {

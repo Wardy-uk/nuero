@@ -34,7 +34,7 @@ const STATE_PREFIX = 'focus_block_laptop:';
 const MAX_OPENS = 3;
 
 function neuroBase() {
-  return String(process.env.NEURO_DESKTOP_URL || 'https://nuero.nickward.co.uk').replace(/\/+$/, '');
+  return String(process.env.NEURO_DESKTOP_URL || 'https://neuro.nickward.co.uk').replace(/\/+$/, '');
 }
 function jiraBase() {
   return String(process.env.JIRA_BASE_URL || '').replace(/\/+$/, '');

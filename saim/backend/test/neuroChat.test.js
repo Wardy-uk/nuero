@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const neuroChat = require('../src/integrations/neuroChat');
 
 // ⚠ NEGATIVE, and it replaces a test that asserted the opposite. There used to be a
-// hardcoded default base URL (`https://nuero.nickward.co.uk`) in this module and in
+// hardcoded default base URL (`https://neuro.nickward.co.uk`) in this module and in
 // neuroSnapshot, so a SAiM with nothing but a PIN reported itself AVAILABLE and
 // silently reached a public host over the open internet. A PIN alone is not a
 // destination, and an implicit remote dependency is not configuration.

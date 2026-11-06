@@ -98,7 +98,7 @@ test('Start plans: act, calendar, a SAiM tab, else NEURO desktop', () => {
   assert.deepEqual(H.startPlan({ start: { view: 'meeting-prep' } }), { kind: 'tab', tab: 'prep', context: null });
   const url = H.startPlan({ start: { view: 'weekly-risk', context: { week: '2026-11-02', nested: { a: 1 } } } });
   assert.equal(url.kind, 'url');
-  assert.equal(url.url, 'https://nuero.nickward.co.uk/?view=weekly-risk&week=2026-11-02');
+  assert.equal(url.url, 'https://neuro.nickward.co.uk/?view=weekly-risk&week=2026-11-02');
 });
 
 test('a push names its row; a link names its row; nothing else does', () => {

@@ -317,7 +317,7 @@ app.get('/api/status', async (req, res) => {
   const ollamaReachable = await aiRouting.checkOllama();
 
   res.json({
-    agent: 'NUERO',
+    agent: 'NEURO',
     version: '1.0.0',
     uptime: process.uptime(),
     // ⚠ `jira_status` / `jira_last_sync` / `jira_last_error` were read here and
@@ -482,7 +482,7 @@ async function start() {
   require('./services/ai-gate-peer').start();
 
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Server] NUERO running on 0.0.0.0:${PORT}`);
+    console.log(`[Server] NEURO running on 0.0.0.0:${PORT}`);
     // SAiM's prepared move: warm the in-memory evidence index AFTER the server is
     // listening, so the first Surface read can answer inside its budget. Read-only
     // (no write, mint or network), yields between notes, never fails startup.

@@ -292,7 +292,7 @@ function urlPolicy() {
   let jiraHost = null;
   try { jiraHost = process.env.JIRA_BASE_URL ? new URL(process.env.JIRA_BASE_URL).hostname.toLowerCase() : null; } catch { jiraHost = null; }
   let neuroHost = null;
-  try { neuroHost = new URL(process.env.NEURO_DESKTOP_URL || 'https://nuero.nickward.co.uk').hostname.toLowerCase(); } catch { neuroHost = null; }
+  try { neuroHost = new URL(process.env.NEURO_DESKTOP_URL || 'https://neuro.nickward.co.uk').hostname.toLowerCase(); } catch { neuroHost = null; }
   return { jiraHost, neuroHost, vault: process.env.OBSIDIAN_VAULT_NAME || 'Nicks knowledge base' };
 }
 
