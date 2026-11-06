@@ -688,3 +688,8 @@
 .inbox-cal-allday { display: inline-flex; gap: 4px; align-items: center; }
 
 .inbox-invite-note { flex-basis: 100%; font-size: 13px; color: var(--text-muted); }
+
+/* A reply on an escalation email's thread (6 Nov 2026). */
+.inbox-esc-chip { margin-left: 8px; padding: 1px 7px; border-radius: 10px; font-size: 11px;
+  border: 1px solid var(--warning); color: var(--warning); white-space: nowrap; }
+.inbox-item-focus { outline: 2px solid var(--accent); outline-offset: 2px; }

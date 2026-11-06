@@ -710,3 +710,8 @@
 .esc-file-addr { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
 .esc-file-addr-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .esc-file-addr-row input, .esc-file-addr-row select { min-width: 200px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; font-size: 13px; }
+
+/* A reply to an escalation email is waiting in the inbox (6 Nov 2026). */
+.esc-pill-mail-reply { color: var(--warning, #f0a040); border-color: color-mix(in srgb, var(--warning, #f0a040) 45%, transparent); }
+.esc-row-mail-reply { color: var(--warning, #f0a040); }
+.esc-row-mail-reply a { color: inherit; text-decoration: underline; }

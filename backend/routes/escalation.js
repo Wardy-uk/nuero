@@ -243,6 +243,10 @@ router.get('/active', async (req, res) => {
 
   let emailed = null;
   try { emailed = emailedTickets(); } catch (e) { console.warn('[Escalation] emailed read failed:', e.message); }
+  // Replies on those emails' threads (escalation-replies.js): who and when,
+  // never the body. null = could not read.
+  let emailReplies = null;
+  try { emailReplies = require('../services/escalation-replies').byTicket(); } catch (e) { console.warn('[Escalation] email replies read failed:', e.message); }
 
   res.json({
     escalations: decorated,
@@ -250,6 +254,7 @@ router.get('/active', async (req, res) => {
     // Tickets escalated by email ("Escalate by email…"), so a row can say so.
     // null = could not read, which is not the same as none sent.
     emailed,
+    emailReplies,
     total: decorated.length,
     rejections,
     rejectionsError,

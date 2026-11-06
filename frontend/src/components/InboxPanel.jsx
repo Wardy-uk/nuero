@@ -28,6 +28,24 @@ export default function InboxPanel({ focusContext }) {
   const [clearingFyi, setClearingFyi] = useState(false);
   const [confirmClearFyi, setConfirmClearFyi] = useState(null);
 
+  // A reply on an escalation email's thread says which ticket it is about
+  // (6 Nov 2026). The Escalations page only flags it; it is read here.
+  const escChip = (e) => {
+    const k = triage?.escalationTickets?.[e.id];
+    return k ? <span className="inbox-esc-chip" title={`A reply to your escalation email about ${k}`}>re: {k} escalation</span> : null;
+  };
+  // ?view=inbox&email=<id> (from a ticket's "Open in inbox"): show and scroll to it.
+  const focusEmail = focusContext?.email || null;
+  useEffect(() => {
+    if (!focusEmail || !triage) return;
+    setShowAllAction(true); setShowDelegate(true); setFyiOpen(true);
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-email-id="${CSS.escape(focusEmail)}"]`);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('inbox-item-focus'); }
+    }, 150);
+    return () => clearTimeout(t);
+  }, [focusEmail, triage]);
+
   const fetchTriage = () => {
     fetch(apiUrl('/api/email/triage'))
       .then(r => r.json())
@@ -290,7 +308,7 @@ export default function InboxPanel({ focusContext }) {
         <div className="inbox-section">
           <div className="inbox-section-label inbox-section-action">ACTION ({action.length})</div>
           {(showAllAction ? action : action.slice(0, 5)).map(e => (
-            <EmailCard key={e.id} email={e} borderClass="urgency-high" onDismiss={dismiss} dismissing={dismissing} onReplied={handleReplied} onPromote={promote} />
+            <EmailCard key={e.id} email={e} sourceChip={escChip(e)} borderClass="urgency-high" onDismiss={dismiss} dismissing={dismissing} onReplied={handleReplied} onPromote={promote} />
           ))}
           {!showAllAction && action.length > 5 && (
             <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAllAction(true)}>
@@ -310,7 +328,7 @@ export default function InboxPanel({ focusContext }) {
             <>
               <div className="inbox-section-label inbox-section-delegate">DELEGATE ({delegate.length})</div>
               {delegate.map(e => (
-                <EmailCard key={e.id} email={e} borderClass="urgency-medium" onDismiss={dismiss} dismissing={dismissing} onReplied={handleReplied} onPromote={promote} />
+                <EmailCard key={e.id} email={e} sourceChip={escChip(e)} borderClass="urgency-medium" onDismiss={dismiss} dismissing={dismissing} onReplied={handleReplied} onPromote={promote} />
               ))}
             </>
           )}
@@ -353,7 +371,7 @@ export default function InboxPanel({ focusContext }) {
             </p>
           )}
           {fyiOpen && [...fyi, ...ignore].map(e => (
-            <EmailCard key={e.id} email={e} borderClass="urgency-low" onDismiss={dismiss} dismissing={dismissing} onReplied={handleReplied} onPromote={promote} />
+            <EmailCard key={e.id} email={e} sourceChip={escChip(e)} borderClass="urgency-low" onDismiss={dismiss} dismissing={dismissing} onReplied={handleReplied} onPromote={promote} />
           ))}
         </div>
       )}

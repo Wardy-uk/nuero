@@ -155,6 +155,8 @@ function readNueroLaunchIntent() {
   if (!view) return { view: 'today', context: null };
   // The Task workflow screen (31 Oct 2026): ?view=task&taskId=N&key=promise:N.
   if (view === 'task') return { view: 'task', context: { taskId: params.get('taskId') || null, key: params.get('key') || null } };
+  // An exact email (6 Nov 2026): ?view=inbox&email=<triage id> scrolls to that card.
+  if (view === 'inbox' && params.get('email')) return { view: 'inbox', context: { email: params.get('email') } };
   if (view === 'workout') return { view: 'workout', context: params.get('id') ? { workoutId: params.get('id') } : null };
   return {
     view: canonicalView(view),

@@ -135,6 +135,9 @@ router.get('/triage', async (req, res) => {
       // written into the component, or the screen states a window the sweep is
       // not actually using the day either one changes.
       fyiAgeOutDays: emailTriage._internals.AGE_OUT_DAYS,
+      // emailId → ticket key, for a reply on an escalation email's thread, so
+      // the card can say what it is about (escalation-replies.js).
+      escalationTickets: (() => { try { return require('../services/escalation-replies').ticketByEmail(); } catch { return {}; } })(),
       ...data
     });
   } catch (e) {

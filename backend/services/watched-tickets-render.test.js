@@ -363,3 +363,20 @@ test('an auto-confirmed commitment says so and offers Dismiss; a proposal still 
   assert.match(html, />Remove</, 'a hand-confirmed one keeps Remove');
   assert.equal((html.match(/Confirmed automatically/g) || []).length, 1);
 });
+
+test('a reply to the escalation email shows on the row and under Needs you, never as mail', () => {
+  const replies = { 'NT-20': { count: 1, unseen: 1, latest: { emailId: 'AAMk1', from: 'Chris Middleton', at: '2026-11-06T10:42:00Z', seen: false },
+    replies: [{ emailId: 'AAMk1', from: 'Chris Middleton', at: '2026-11-06T10:42:00Z', seen: false }] } };
+  const emailed = { 'NT-20': [{ at: '2026-11-06T09:34:00Z', to: ['Chris Middleton'], status: 'verified' }] };
+  const items = mod.withHistory(mod.mergeTickets([], { active: [watched()], listening: [] }), emailed, new Set(), replies);
+  assert.ok(items[0].needs.includes(mod.EMAIL_REPLY_NEED), 'puts the ticket under Needs you');
+  const html = render({ escalations: [], watched: { active: [watched()], listening: [] }, emailed, emailReplies: replies, initialExpanded: ['NT-20'] });
+  assert.match(html, /emailed · Chris replied/);
+  assert.match(html, /Open in inbox/);
+  assert.match(html, /view=inbox&amp;email=AAMk1/);
+  assert.ok(!html.includes('>email reply<'), 'no second alert pill for it');
+  const seen = { 'NT-20': { ...replies['NT-20'], unseen: 0, replies: [{ ...replies['NT-20'].replies[0], seen: true, seenBy: 'you-replied' }] } };
+  const html2 = render({ escalations: [], watched: { active: [watched()], listening: [] }, emailed, emailReplies: seen, initialExpanded: ['NT-20'] });
+  assert.match(html2, /you answered it/);
+  assert.ok(!html2.includes('Open in inbox'));
+});

@@ -147,12 +147,31 @@ export function sentimentItems(sentiment = []) {
  * emails sent with "Escalate by email…" (newest first) and, for rows from the
  * sentiment/rejection sections, whether it is also raised in Jira. PURE.
  */
-export function withHistory(list, emailed = null, raisedKeys = new Set()) {
-  return (list || []).map((it) => ({
-    ...it,
-    mail: (emailed && emailed[it.key]) || null,
-    raisedInJira: !it.esc && raisedKeys.has(it.key),
-  }));
+export function withHistory(list, emailed = null, raisedKeys = new Set(), replies = null) {
+  return (list || []).map((it) => {
+    // Replies on the escalation email's thread (6 Nov 2026): a signal, never the
+    // mail itself. An unseen one puts the ticket under Needs you; dealing with
+    // it in the inbox (or replying from Outlook) is what clears it.
+    const mailReplies = (replies && replies[it.key]) || null;
+    const needs = mailReplies?.unseen ? [...(it.needs || []), EMAIL_REPLY_NEED] : it.needs;
+    return {
+      ...it,
+      needs,
+      mail: (emailed && emailed[it.key]) || null,
+      mailReplies,
+      raisedInJira: !it.esc && raisedKeys.has(it.key),
+    };
+  });
+}
+
+export const EMAIL_REPLY_NEED = 'email reply';
+
+/** "Chris replied 10:42" / "2 replies · Alex 14:05" for the emailed pill. PURE. */
+export function replyLabel(r) {
+  if (!r || !r.count || !r.latest) return '';
+  const first = String(r.latest.from || 'someone').split(/[\s@]/)[0];
+  const when = `${clockLabel(r.latest.at).replace(/ today$/, '')}`;
+  return r.count === 1 ? `${first} replied ${when}` : `${r.count} replies · ${first} ${when}`;
 }
 
 /** "Chris · 28 Oct 12:41" for the newest email on a ticket. PURE. */
@@ -1047,15 +1066,17 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
           onClick={(e) => { e.stopPropagation(); if (watch?.unread) onRead(item.key); }}>{item.key}</a>
         <span className="esc-trow-summary" title={item.summary}>{item.summary || '—'}</span>
         <span className="esc-trow-pills">
-          {item.needs.filter((n) => !/^update due|^promised update|^confirm/.test(n)).map((n) => <span key={n} className="esc-pill esc-pill-alert">{n}</span>)}
+          {item.needs.filter((n) => !/^update due|^promised update|^confirm/.test(n) && n !== EMAIL_REPLY_NEED).map((n) => <span key={n} className="esc-pill esc-pill-alert">{n}</span>)}
           {route && <span className="esc-pill esc-pill-esc" title={route.title}>{route.label.replace('escalated · ', '')}</span>}
           {item.sent && <span className="esc-pill esc-pill-alert" title="NOVA's current sentiment score for the customer, -1 to +1">angry {item.sent.score}</span>}
           {watch && !item.listening && <span className="esc-pill esc-pill-watch" title="You get a push when the customer replies">watching</span>}
           {draft && <span className="esc-pill esc-pill-watch" title="NEURO drafted a reply when the customer replied — open the ticket to check it. Never posted on its own.">draft ready</span>}
           {item.raisedInJira && <span className="esc-pill esc-pill-esc" title="Also raised in Jira (it is in the escalated list)">raised in Jira</span>}
           {item.mail?.length > 0 && (
-            <span className="esc-pill esc-pill-mail" title={item.mail.map((m) => `Emailed ${mailLabel(m)}${m.status === 'verified' ? '' : ` (${m.status})`}`).join('; ')}>
-              emailed{item.mail.length > 1 ? ` ×${item.mail.length}` : ''}
+            <span className={item.mailReplies?.unseen ? 'esc-pill esc-pill-mail esc-pill-mail-reply' : 'esc-pill esc-pill-mail'}
+              title={item.mail.map((m) => `Emailed ${mailLabel(m)}${m.status === 'verified' ? '' : ` (${m.status})`}`).join('; ')
+                + (item.mailReplies?.unseen ? ' — a reply is waiting in your inbox' : '')}>
+              emailed{item.mail.length > 1 ? ` ×${item.mail.length}` : ''}{item.mailReplies?.count ? ` · ${replyLabel(item.mailReplies)}` : ''}
             </span>
           )}
         </span>
@@ -1091,6 +1112,14 @@ export function TicketCard({ item, busy, expanded, onToggle, highlighted, escala
             {(item.mail || []).map((m, i) => (
               <span key={`m${i}`} className="esc-row-mailed" title={m.status === 'verified' ? 'Confirmed in Sent Items' : `Status: ${m.status}`}>
                 escalated by email to {mailLabel(m)}{m.status === 'verified' ? '' : ` (${m.status})`}
+              </span>
+            ))}
+            {(item.mailReplies?.replies || []).map((r) => (
+              <span key={`r${r.emailId}`} className={r.seen ? 'esc-row-mailed' : 'esc-row-mail-reply'}>
+                {r.from || 'Someone'} replied {dayMonth(r.at)} {clockLabel(r.at).replace(/ today$/, '')}
+                {r.seen
+                  ? (r.seenBy === 'you-replied' ? ' · you answered it' : ' · dealt with in the inbox')
+                  : <> · <a href={`/?view=inbox&email=${encodeURIComponent(r.emailId)}`} onClick={(e) => e.stopPropagation()}>Open in inbox</a></>}
               </span>
             ))}
             {watch && !watch.baselineTaken && <span title="NEURO could not read the comments yet; it will on the next check">waiting for first read</span>}
@@ -1202,7 +1231,7 @@ export function TicketsView({
   watched, watchedError, note, busy, reasons = [],
   rejections = [], rejectionsError = null, onSeenRejection,
   sentiment = [], sentimentError = null, onSeenSentiment,
-  emailed = null, onEmailed,
+  emailed = null, onEmailed, emailReplies = null,
   opened, onOpen, onCloseOpened,
   highlightKey, escalatingKey, onEscalate, onCloseEscalate, onEscalated,
   onWatch, onRead, onUnwatch, onCommit, onRefresh, onPosted,
@@ -1216,11 +1245,11 @@ export function TicketsView({
   useEffect(() => { if (highlightKey) setExpanded((prev) => new Set(prev).add(highlightKey)); }, [highlightKey]);
   const [key, setKey] = useState('');
   const raisedKeys = new Set((escalations || []).map((e) => e.key));
-  const items = withHistory(mergeTickets(escalations || [], watched), emailed, raisedKeys);
+  const items = withHistory(mergeTickets(escalations || [], watched), emailed, raisedKeys, emailReplies);
   const counts = Object.fromEntries(FILTERS.map(([id, , test]) => [id, items.filter(test).length]));
-  const rejItems = withHistory(rejectionItems(rejections || []), emailed, raisedKeys);
+  const rejItems = withHistory(rejectionItems(rejections || []), emailed, raisedKeys, emailReplies);
   const rejUnseen = rejItems.filter((r) => r.needs.length).length;
-  const sentItems = withHistory(sentimentItems(sentiment || []), emailed, raisedKeys);
+  const sentItems = withHistory(sentimentItems(sentiment || []), emailed, raisedKeys, emailReplies);
   const sentUnseen = sentItems.filter((s) => s.needs.length).length;
   // "All" shows the sentiment and rejection sections too, so it counts them —
   // each ticket once, however many sections it sits in (28 Oct 2026: All read 3
@@ -1408,6 +1437,7 @@ export default function EscalationPanel() {
   const [rejectionsError, setRejectionsError] = useState(null);
   const [sentiment, setSentiment] = useState(null);
   const [emailed, setEmailed] = useState(null);
+  const [emailReplies, setEmailReplies] = useState(null);
   const [sentimentError, setSentimentError] = useState(null);
   const [watchedError, setWatchedError] = useState(null);
   const [note, setNote] = useState(null);
@@ -1436,6 +1466,7 @@ export default function EscalationPanel() {
       setSentiment(data.sentiment || null);
       setSentimentError(data.sentimentError || null);
       setEmailed(data.emailed || null);
+      setEmailReplies(data.emailReplies || null);
       setEscalationsWarning(data.warning || null);
       setEscalationsError(null);
     } catch (err) {
@@ -1517,6 +1548,7 @@ export default function EscalationPanel() {
       sentiment={sentiment}
       sentimentError={sentimentError}
       emailed={emailed}
+      emailReplies={emailReplies}
       onEmailed={() => loadEscalations()}
       onSeenSentiment={(k) => {
         setSentiment((prev) => (prev || []).map((s) => (s.key === k ? { ...s, seen: true } : s)));

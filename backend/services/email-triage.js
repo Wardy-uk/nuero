@@ -838,9 +838,11 @@ async function runTriage({ force = false } = {}) {
       const convById = new Map(emails.map(e => [e.id, e.conversationId || null]));
       let entries = swept.entries.map(e => (e.conversationId || !convById.get(e.id)) ? e : { ...e, conversationId: convById.get(e.id) });
       let repliedClosed = 0;
+      let sentMsgs = null;
       try {
         const sent = await microsoft.fetchSentMail({ sinceIso: new Date(Date.now() - LOOKBACK_HOURS * 3600000).toISOString(), maxResults: 300 });
         if (sent && Array.isArray(sent.messages)) {
+          sentMsgs = sent.messages;
           const r = closeRepliedElsewhere(entries, sent.messages);
           entries = r.entries; repliedClosed = r.closed;
           if (r.closed) console.log(`[EmailTriage] ${r.closed} email(s) already answered from Outlook — closed as ${REPLIED_ELSEWHERE}`);
@@ -856,6 +858,7 @@ async function runTriage({ force = false } = {}) {
       db.setState('email_triage_time', String(Date.now()));
       console.log(`[EmailTriage] ${emails.length} emails, none new since last run — skipped the model call`);
       kickMutedArchive();
+      kickEscalationReplies(entries, sentMsgs);
       return { ok: true, skipped: true, classified: 0, ...outstandingCounts() };
     }
 
@@ -954,9 +957,11 @@ async function runTriage({ force = false } = {}) {
 
     // Answered from Outlook: closed off Sent Items. An unreadable Sent Items
     // closes nothing (could not look is not "he replied").
+    let sentMsgs = null;
     try {
       const sent = await microsoft.fetchSentMail({ sinceIso: new Date(windowStart).toISOString(), maxResults: 300 });
       if (sent && Array.isArray(sent.messages)) {
+        sentMsgs = sent.messages;
         const r = closeRepliedElsewhere(updated, sent.messages);
         updated = r.entries;
         if (r.closed) console.log(`[EmailTriage] ${r.closed} email(s) already answered from Outlook — closed as ${REPLIED_ELSEWHERE}`);
@@ -979,6 +984,8 @@ async function runTriage({ force = false } = {}) {
     // Muted senders' mail is archived in Outlook too. Started, never awaited,
     // never allowed to fail triage.
     kickMutedArchive();
+    // Replies to escalation emails are marked on their ticket. Same rules.
+    kickEscalationReplies(updated, sentMsgs);
 
     // Raise/refresh/clear the urgent-email banner off the set just stored.
     // The retired scanner used to own this; the nudge now fires from the same
@@ -1054,6 +1061,15 @@ async function runTriage({ force = false } = {}) {
 // of Graph calls, and a failure there is a logged reason, never a failed triage.
 function kickMutedArchive() {
   try { require('./email-muted-archive').kick(); } catch (e) { console.warn('[EmailTriage] muted archive not started:', e.message); }
+}
+
+// Replies on an escalation email's thread (6 Nov 2026) — see
+// escalation-replies.js. Started, never awaited, never allowed to fail triage.
+function kickEscalationReplies(entries, sent) {
+  if (process.env.NODE_TEST_CONTEXT) return;
+  try {
+    require('./escalation-replies').sync({ entries, sent }).catch((e) => console.warn('[EmailTriage] escalation replies:', e.message));
+  } catch (e) { console.warn('[EmailTriage] escalation replies:', e.message); }
 }
 
 function getStoredTriage() {

@@ -405,7 +405,7 @@ export function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied
   const age = receivedAge(email.received);
 
   return (
-    <div className={`inbox-item ${borderClass}${selected ? ' inbox-item-selected' : ''}`} data-testid="email-card">
+    <div className={`inbox-item ${borderClass}${selected ? ' inbox-item-selected' : ''}`} data-testid="email-card" data-email-id={email.id}>
       <div className="inbox-item-header">
         {onSelect && (
           <input
