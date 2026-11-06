@@ -5,7 +5,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parse, decide, createKeeper } = require('../src/power/chargeKeeper');
+const { parse, decide, contradicts, createKeeper, RESEND_MS } = require('../src/power/chargeKeeper');
 const store = require('../src/presence/store');
 
 const NOW = Date.parse('2026-09-12T10:00:00Z');
@@ -76,6 +76,41 @@ test('a socket already where it should be is not switched again', async () => {
   const r = await k.apply('bedroom', { entity: 'switch.bedroom_socket_1', low: 40, high: 80 }, NOW);
   assert.equal(r.changed, false);
   assert.equal(calls.length, 1, 'it read the state and stopped there');
+});
+
+// The 6 Nov 2026 failure: Tuya stopped pushing state, HA said "on" for five days while
+// the strip was off, and the keeper believed HA over the tablet all the way to 1%.
+test('HA saying "already on" does not beat a device that says it is not charging', async () => {
+  store.reset();
+  store.record({ room: 'bedroom', status: 'present', healthy: true, batteryPct: 39, charging: false }, new Date(NOW));
+  const calls = [];
+  const k = createKeeper({ env: ENV, log: quiet, fetchImpl: async (url, init) => {
+    calls.push({ url, method: init?.method || 'GET' });
+    return ok(url.includes('/states/') ? { state: 'on' } : []);
+  } });
+  const r = await k.apply('bedroom', { entity: 'switch.bedroom_socket_1', low: 40, high: 80 }, NOW);
+  assert.equal(r.changed, true);
+  assert.match(r.resent, /not charging/);
+  assert.equal(calls[1].url, 'http://ha.test:8123/api/services/switch/turn_on');
+
+  // Throttled: the next tick does not hammer the cloud…
+  const r2 = await k.apply('bedroom', { entity: 'switch.bedroom_socket_1', low: 40, high: 80 }, NOW + 60000);
+  assert.equal(r2.changed, false);
+  assert.equal(calls.length, 3, 'read only');
+  // …but it tries again once RESEND_MS has passed.
+  const r3 = await k.apply('bedroom', { entity: 'switch.bedroom_socket_1', low: 40, high: 80 }, NOW + RESEND_MS);
+  assert.equal(r3.changed, true);
+});
+
+test('contradicts: what counts as the device disagreeing with HA', () => {
+  assert.equal(contradicts(reading({ charging: true }), 'on', NOW), null);
+  assert.equal(contradicts(reading({ charging: null }), 'on', NOW), null, 'no flag means trust HA');
+  assert.match(contradicts(reading({ charging: false }), 'on', NOW), /not charging/);
+  assert.match(contradicts(reading({ at: new Date(NOW - 6 * 60000).toISOString() }), 'on', NOW), /silent/, 'a dead tablet cannot report');
+  assert.match(contradicts(null, 'on', NOW), /silent/);
+  assert.match(contradicts(reading({ charging: true }), 'off', NOW), /still charging/);
+  assert.equal(contradicts(reading({ charging: false }), 'off', NOW), null);
+  assert.equal(contradicts(reading({ charging: true, at: new Date(NOW - 6 * 60000).toISOString() }), 'off', NOW), null, 'stale never forces off');
 });
 
 test('an unreachable Home Assistant leaves the socket alone and reports why', async () => {

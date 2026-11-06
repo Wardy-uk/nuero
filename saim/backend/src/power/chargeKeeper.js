@@ -21,7 +21,16 @@
  * generates no service calls; and it re-asserts, so a socket switched off by hand while
  * the phone is low comes back on at the next tick.
  *
- * `parse` and `decide` are PURE.
+ * ⚠ HOME ASSISTANT'S STATE CAN BE STALE, SO THE DEVICE GETS THE LAST WORD (6 Nov 2026).
+ * The bedroom strip is on Tuya's cloud integration, whose push updates died on 1 Nov:
+ * every turn_off reached the strip, HA went on saying "on", and at 40% the keeper read
+ * "socket already on" and never sent turn_on. The Fire ran from 80% to flat and died.
+ * So when HA claims the socket is already right, the device's own `charging` flag is
+ * checked: a fresh reading that contradicts it (should charge, isn't; should hold, is)
+ * re-sends the command — and so does a device that has gone quiet while it should be
+ * charging, since a dead tablet cannot report. Throttled to once per RESEND_MS.
+ *
+ * `parse`, `decide` and `contradicts` are PURE.
  */
 
 const store = require('../presence/store');
@@ -31,6 +40,8 @@ const TICK_MS = 60 * 1000;
 const STALE_MS = 5 * 60 * 1000;
 const DEFAULT_LOW = 40;
 const DEFAULT_HIGH = 80;
+// How often a command HA says is already in force may be sent again.
+const RESEND_MS = 5 * 60 * 1000;
 
 /**
  * "bedroom=switch.bedroom_socket_1:40:80,study=switch.x" -> Map. PURE.
@@ -68,9 +79,26 @@ function decide(reading, { low, high }, now = Date.now(), staleMs = STALE_MS) {
   return { desired: null, why: `battery ${pct}% — between ${low} and ${high}, leaving it` };
 }
 
+/**
+ * HA says the socket is already `desired`. Does the device disagree? PURE.
+ * Returns a reason to re-send, or null to trust HA.
+ */
+function contradicts(reading, desired, now = Date.now(), staleMs = STALE_MS) {
+  const ageMs = reading && reading.at ? now - new Date(reading.at).getTime() : NaN;
+  const fresh = Number.isFinite(ageMs) && ageMs <= staleMs;
+  if (desired === 'on') {
+    if (!fresh) return 'the device is silent — a flat device cannot say it is not charging';
+    if (reading.charging === false) return 'the device says it is not charging';
+    return null;
+  }
+  if (desired === 'off' && fresh && reading.charging === true) return 'the device says it is still charging';
+  return null;
+}
+
 function createKeeper({ env = process.env, fetchImpl = (...a) => fetch(...a), log = console } = {}) {
   const keepers = parse(env.SAIM_CHARGE_KEEPERS);
   const lastLogged = new Map();
+  const lastResent = new Map();
   let timer = null;
 
   const base = () => (env.SAIM_HA_BASE_URL || '').replace(/\/+$/, '');
@@ -99,9 +127,17 @@ function createKeeper({ env = process.env, fetchImpl = (...a) => fetch(...a), lo
       const state = await ha(`/api/states/${entity}`);
       const current = state && typeof state.state === 'string' ? state.state : null;
       if (current === desired) {
-        // Log a state only when it changes, or an always-on socket writes a line a minute.
-        if (lastLogged.get(room) !== why) { log.log(`[charge] ${room}: ${why} (socket already ${desired})`); lastLogged.set(room, why); }
-        return { room, entity, desired, why, changed: false };
+        const doubt = contradicts(reading, desired, now);
+        const since = now - (lastResent.get(room) || 0);
+        if (!doubt || since < RESEND_MS) {
+          // Log a state only when it changes, or an always-on socket writes a line a minute.
+          if (lastLogged.get(room) !== why) { log.log(`[charge] ${room}: ${why} (socket already ${desired})`); lastLogged.set(room, why); }
+          return { room, entity, desired, why, changed: false };
+        }
+        await ha(`/api/services/switch/turn_${desired}`, { method: 'POST', body: JSON.stringify({ entity_id: entity }) });
+        lastResent.set(room, now);
+        log.warn(`[charge] ${room}: ${why} — HA says ${entity} is already ${desired} but ${doubt}; sent turn_${desired} again`);
+        return { room, entity, desired, why, changed: true, resent: doubt };
       }
       await ha(`/api/services/switch/turn_${desired}`, { method: 'POST', body: JSON.stringify({ entity_id: entity }) });
       log.log(`[charge] ${room}: ${why} — switched ${entity} ${desired}${current ? ` (was ${current})` : ''}`);
@@ -136,4 +172,4 @@ function createKeeper({ env = process.env, fetchImpl = (...a) => fetch(...a), lo
   return { start, stop, tick, apply, keepers };
 }
 
-module.exports = { createKeeper, parse, decide, TICK_MS, STALE_MS, DEFAULT_LOW, DEFAULT_HIGH };
+module.exports = { createKeeper, parse, decide, contradicts, TICK_MS, STALE_MS, RESEND_MS, DEFAULT_LOW, DEFAULT_HIGH };
