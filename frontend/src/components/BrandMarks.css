@@ -16,17 +16,19 @@
   min-width: 0;
 }
 
-/* Soft, rounded, substantial: white letters. */
+/* Wide, smooth curves, fuller weight: Michroma has one (light) weight, so the
+   stroke supplies the body the approved version has. White letters. */
 .brand-word {
-  font-family: 'Audiowide', var(--font-sans);
+  font-family: 'Michroma', var(--font-sans);
   font-weight: 400;
   color: #ffffff;
-  letter-spacing: 0.06em;
+  -webkit-text-stroke: 0.05em #ffffff;
+  letter-spacing: 0.05em;
   white-space: nowrap;
 }
 
 /* SAiM's lowercase i is electric blue — it is part of her name. */
-.brand-word__i { color: #1e8bff; text-transform: none; }
+.brand-word__i { color: #1e8bff; -webkit-text-stroke-color: #1e8bff; text-transform: none; }
 
 /* Readable, muted silver. */
 .brand-sub {
@@ -46,12 +48,12 @@
 .brand-mark__satellite { fill: #ffffff; }
 
 /* Top bar. */
-.brand-lockup--neuro .brand-word { font-size: 18px; }
+.brand-lockup--neuro .brand-word { font-size: 17px; }
 .brand-lockup--neuro .brand-sub { font-size: 12px; }
 
 /* SAiM workspace header. */
 .brand-lockup--saim { gap: 13px; }
-.brand-lockup--saim .brand-word { font-size: 24px; }
+.brand-lockup--saim .brand-word { font-size: 23px; }
 .brand-lockup--saim .brand-sub { font-size: 13px; }
 
 /* Sidebar entry: same lettering and colours, at the size of the other items. */
@@ -60,7 +62,7 @@
   align-items: center;
   gap: 8px;
 }
-.brand-side .brand-word { font-size: 15px; }
+.brand-side .brand-word { font-size: 12px; -webkit-text-stroke-width: 0.04em; }
 
 @media (max-width: 900px) {
   .brand-lockup--neuro .brand-sub { display: none; }

@@ -34,9 +34,9 @@ export function SaimMark({ width = 44 }) {
   const height = Math.round(width * 0.56);
   return (
     <svg className="brand-mark brand-mark--saim" width={width} height={height} viewBox="0 0 50 28" aria-hidden="true" focusable="false">
-      <ellipse cx="25" cy="14" rx="21.5" ry="6.8" transform="rotate(-20 25 14)" fill="none" className="brand-mark__ring" strokeWidth="1.7" />
+      <ellipse cx="25" cy="14" rx="21.5" ry="8.6" transform="rotate(-22 25 14)" fill="none" className="brand-mark__ring" strokeWidth="1.6" />
       <circle cx="25" cy="14" r="5.4" className="brand-mark__core" />
-      <circle cx="42.4" cy="4.6" r="3" className="brand-mark__satellite" />
+      <circle cx="41.1" cy="3.1" r="3" className="brand-mark__satellite" />
     </svg>
   );
 }

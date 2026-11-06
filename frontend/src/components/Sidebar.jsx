@@ -126,7 +126,7 @@ const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.flatMap((i) => [
 const SAIM_ITEM = {
   id: 'saim',
   label: <SaimWord />,
-  icon: <SaimMark width={24} />,
+  icon: <SaimMark width={20} />,
 };
 
 function readOpenGroups() {
