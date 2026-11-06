@@ -1,10 +1,10 @@
-/* NEURO / SAiM lockups (6 Nov 2026). Sized for a working screen, not a poster:
-   the mockup's proportions, roughly half its scale. */
+/* NEURO / SAiM lockups (6 Nov 2026, Nick's approved mockup). The mockup's
+   proportions at a working-screen size. */
 
 .brand-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   min-width: 0;
   line-height: 1;
 }
@@ -12,56 +12,60 @@
 .brand-lockup__text {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
+/* Soft, rounded, substantial: white letters. */
 .brand-word {
-  font-family: 'Michroma', var(--font-sans);
+  font-family: 'Audiowide', var(--font-sans);
   font-weight: 400;
-  color: var(--text-primary);
-  letter-spacing: 0.08em;
+  color: #ffffff;
+  letter-spacing: 0.06em;
   white-space: nowrap;
-  -webkit-text-stroke: 0.4px currentColor; /* Michroma has one weight; the mockup is heavier */
 }
 
-/* SAiM's lowercase i is part of her name — keep it lowercase, a touch narrower. */
-.brand-word__i { text-transform: none; letter-spacing: 0.02em; }
+/* SAiM's lowercase i is electric blue — it is part of her name. */
+.brand-word__i { color: #1e8bff; text-transform: none; }
 
+/* Readable, muted silver. */
 .brand-sub {
   font-family: var(--font-sans);
-  color: var(--text-secondary);
+  font-weight: 400;
+  color: #b9bec8;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.brand-mark { flex-shrink: 0; display: block; }
-.brand-mark--neuro { color: var(--accent); filter: drop-shadow(0 0 3px rgba(90, 163, 249, 0.45)); }
-.brand-mark--saim { color: var(--text-primary); }
-.brand-mark__core { fill: #2f8fff; }
+.brand-mark { flex-shrink: 0; display: block; overflow: visible; }
+.brand-mark--neuro { color: #4f9cf9; }
+.brand-mark__ring { stroke: #d6dae2; }
+.brand-mark__core { fill: #1e8bff; filter: drop-shadow(0 0 2px rgba(30, 139, 255, 0.8)); }
+.brand-mark__satellite { fill: #ffffff; }
 
-/* Top bar: compact. */
-.brand-lockup--neuro .brand-word { font-size: 15px; }
-.brand-lockup--neuro .brand-sub { font-size: 10px; }
+/* Top bar. */
+.brand-lockup--neuro .brand-word { font-size: 18px; }
+.brand-lockup--neuro .brand-sub { font-size: 12px; }
 
-/* SAiM workspace header: a little larger than the top bar, still a header. */
-.brand-lockup--saim { gap: 12px; }
-.brand-lockup--saim .brand-word { font-size: 20px; }
-.brand-lockup--saim .brand-sub { font-size: 11.5px; }
+/* SAiM workspace header. */
+.brand-lockup--saim { gap: 13px; }
+.brand-lockup--saim .brand-word { font-size: 24px; }
+.brand-lockup--saim .brand-sub { font-size: 13px; }
 
-/* Sidebar entry: mark + name only, same height as the other rows. */
+/* Sidebar entry: same lettering and colours, at the size of the other items. */
 .brand-side {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
-.brand-side .brand-word { font-size: 11px; letter-spacing: 0.06em; }
+.brand-side .brand-word { font-size: 15px; }
 
 @media (max-width: 900px) {
   .brand-lockup--neuro .brand-sub { display: none; }
 }
 @media (max-width: 600px) {
-  .brand-lockup--saim .brand-word { font-size: 17px; }
+  .brand-lockup--saim .brand-word { font-size: 20px; }
   .brand-lockup--saim .brand-sub { white-space: normal; }
 }

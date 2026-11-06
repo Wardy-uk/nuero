@@ -1,43 +1,49 @@
-// The NEURO and SAiM marks (6 Nov 2026, from Nick's mockup). Inline SVG so they
-// need no asset request and inherit nothing but size. Purely decorative: each
-// lockup carries its name as real text beside the mark, so the SVGs are hidden
-// from assistive tech.
+// The NEURO and SAiM marks (6 Nov 2026, from Nick's approved mockup). Inline SVG
+// so they need no asset request. Purely decorative: each lockup carries its name
+// as real text beside the mark, so the SVGs are hidden from assistive tech.
 import './BrandMarks.css';
 
-/** NEURO: a small constellation — one node, eight around it, faint links. */
-export function NeuroMark({ size = 26 }) {
-  const outer = Array.from({ length: 8 }, (_, i) => {
-    const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
-    return [16 + Math.cos(a) * 11, 16 + Math.sin(a) * 11];
-  });
+// NEURO's connected-node shape — the same pear-shaped network as the app's
+// shortcut icon (frontend/public/favicon.svg), node for node.
+const NEURO_NODES = [
+  [256, 140, 22], [170, 220, 18], [342, 220, 18], [140, 320, 15],
+  [256, 300, 20], [372, 320, 15], [210, 390, 16], [310, 390, 16],
+];
+const NEURO_LINKS = [
+  [0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 4], [3, 6], [4, 6], [4, 7], [5, 7],
+];
+
+/** NEURO: the connected-node network from the shortcut icon. */
+export function NeuroMark({ size = 32 }) {
   return (
-    <svg className="brand-mark brand-mark--neuro" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <g stroke="currentColor" strokeWidth="0.6" opacity="0.35">
-        {outer.map(([x, y], i) => <line key={`s${i}`} x1="16" y1="16" x2={x} y2={y} />)}
-        {outer.map(([x, y], i) => {
-          const [nx, ny] = outer[(i + 1) % outer.length];
-          return <line key={`r${i}`} x1={x} y1={y} x2={nx} y2={ny} />;
-        })}
+    <svg className="brand-mark brand-mark--neuro" width={Math.round(size * 0.92)} height={size} viewBox="118 112 276 302" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="9" strokeLinecap="round" opacity="0.75">
+        {NEURO_LINKS.map(([a, b]) => (
+          <line key={`${a}-${b}`} x1={NEURO_NODES[a][0]} y1={NEURO_NODES[a][1]} x2={NEURO_NODES[b][0]} y2={NEURO_NODES[b][1]} />
+        ))}
       </g>
       <g fill="currentColor">
-        <circle cx="16" cy="16" r="2.6" />
-        {outer.map(([x, y], i) => <circle key={`n${i}`} cx={x} cy={y} r={i % 2 ? 1.3 : 1.8} />)}
+        {NEURO_NODES.map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r + 4} />)}
       </g>
     </svg>
   );
 }
 
-/** SAiM: a tilted orbit with her light inside it and a point riding the ring. */
-export function SaimMark({ width = 40 }) {
+/** SAiM: a long tilted orbit, her blue light at the centre, a white satellite on the ring. */
+export function SaimMark({ width = 44 }) {
   const height = Math.round(width * 0.56);
   return (
     <svg className="brand-mark brand-mark--saim" width={width} height={height} viewBox="0 0 50 28" aria-hidden="true" focusable="false">
-      {/* A long, tilted orbit; her light at its centre; a point riding the ring near its upper-right end. */}
-      <ellipse cx="25" cy="14" rx="22" ry="7" transform="rotate(-20 25 14)" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="25" cy="14" r="4.6" className="brand-mark__core" />
-      <circle cx="42.7" cy="4.4" r="2.3" fill="currentColor" />
+      <ellipse cx="25" cy="14" rx="21.5" ry="6.8" transform="rotate(-20 25 14)" fill="none" className="brand-mark__ring" strokeWidth="1.7" />
+      <circle cx="25" cy="14" r="5.4" className="brand-mark__core" />
+      <circle cx="42.4" cy="4.6" r="3" className="brand-mark__satellite" />
     </svg>
   );
+}
+
+/** SAiM's name: white letters, an electric-blue lowercase i. */
+export function SaimWord() {
+  return <span className="brand-word" aria-label="SAiM">SA<span className="brand-word__i">i</span>M</span>;
 }
 
 /** The top-bar lockup: mark, NEURO, and what it stands for. */
@@ -59,9 +65,19 @@ export function SaimLockup() {
     <span className="brand-lockup brand-lockup--saim">
       <SaimMark />
       <span className="brand-lockup__text">
-        <span className="brand-word">SA<span className="brand-word__i">i</span>M</span>
+        <SaimWord />
         <span className="brand-sub">Situational Awareness &amp; Intelligence Module</span>
       </span>
+    </span>
+  );
+}
+
+/** The sidebar entry: same mark, lettering and colours, at menu size. */
+export function SaimMenuLabel() {
+  return (
+    <span className="brand-side">
+      <SaimMark width={22} />
+      <SaimWord />
     </span>
   );
 }
