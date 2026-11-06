@@ -162,6 +162,17 @@ test('the card offers "Move due date" where it can write — not on the kiosk, n
   assert.doesNotMatch(render({ call, onAct: null }), /Not now|>Done</, 'no lifecycle → no lifecycle buttons');
 });
 
+test('a Needs-you row naming one task offers "Move due date" too — and both shells pass it a call', () => {
+  const call = async () => ({ status: 200, body: {} });
+  const row = (props) => renderToString(React.createElement(Card.NeedsYouActs, { card: capacityCard, onOpen: () => true, onAct: async () => ({ ok: true }), ...props }));
+  assert.match(row({ call }), /Move due date/);
+  assert.match(row({ call }), /Seen it/);
+  assert.doesNotMatch(row({ call: null }), /Move due date/, 'the kiosk passes no call');
+  assert.doesNotMatch(row({ call, card: { ...capacityCard, meta: { by: '2026-11-06' } } }), /Move due date/, 'a summary card names no task');
+  assert.match(read('frontend/src/components/AttentionCard.jsx'), /<NeedsYouActs[^>]*call=\{desktopCall\}/);
+  assert.match(read('saim/shared-ui/AttentionSurface.jsx'), /<NeedsYouActs[^>]*call=\{prof === 'kiosk'/);
+});
+
 test('dueLabel slices the key, never shifting a day', () => {
   assert.match(Card.dueLabel('2026-11-09'), /9 Nov/);
 });

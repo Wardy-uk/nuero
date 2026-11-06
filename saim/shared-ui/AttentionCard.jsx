@@ -152,19 +152,46 @@ export async function moveDue(call, target, dateStr) {
   return { ok: false, why: (r && r.body && (r.body.error || r.body.why)) || `NEURO refused it (${r ? r.status : 'no answer'}).` };
 }
 
+/** The due-date choices (presets + a day picker). Shared by the card and the Needs-you row. */
+function DuePicker({ disabled, onPick }) {
+  const presets = duePresets(new Date());
+  return (
+    <div className="att-card__due" role="group" aria-label="Move the due date">
+      <span className="att-card__due-label">Due</span>
+      {presets.map((p) => (
+        <button key={p.id} type="button" className="att-card__btn" disabled={disabled} onClick={() => onPick(p.date)}>
+          {p.label} <span className="att-card__btn--quiet">· {dueLabel(p.date)}</span>
+        </button>
+      ))}
+      <input
+        type="date"
+        className="att-card__due-pick"
+        min={toDateStr(new Date())}
+        aria-label="Pick a day"
+        disabled={disabled}
+        onChange={(e) => { if (e.target.value) onPick(e.target.value); }}
+      />
+    </div>
+  );
+}
+
 /**
  * The Needs-you row's own answers — open it, and ONE way to answer it ("Done"
  * where it is a task, "Seen it" otherwise). The same on every surface.
+ * With `call`, a row naming ONE task also offers "Move due date" (6 Nov 2026,
+ * Nick: an overdue task on Needs you could not be re-dated where it was shown).
  */
-export function NeedsYouActs({ card, onOpen = null, onAct = null }) {
+export function NeedsYouActs({ card, onOpen = null, onAct = null, call = null, onChanged = null }) {
   const [note, setNote] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [dueOpen, setDueOpen] = useState(false);
   if (!card) return null;
   const acts = card.actions || [];
   const done = card.type === 'todo' && acts.includes('complete');
   const answer = !onAct ? null : done ? 'complete' : acts.includes('acknowledge') && card.state !== 'acknowledged' ? 'acknowledge' : null;
   const destination = cardDestination(card);
-  if (!onOpen && !answer) return null;
+  const dueTarget = call ? dueTargetOf(card) : null;
+  if (!onOpen && !answer && !dueTarget) return null;
   const press = async () => {
     if (busy) return;
     setBusy(true);
@@ -172,6 +199,20 @@ export function NeedsYouActs({ card, onOpen = null, onAct = null }) {
       const r = await onAct(card, answer);
       if (r && r.ok === false) setNote({ error: true, text: r.why || r.error || 'That did not go through.' });
       else setNote(null);
+    } catch (e) { setNote({ error: true, text: e.message }); }
+    setBusy(false);
+  };
+  const redate = async (dateStr) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await moveDue(call, dueTarget, dateStr);
+      if (!r.ok) setNote({ error: true, text: r.why });
+      else {
+        setDueOpen(false);
+        setNote({ error: false, text: `Due date moved to ${dueLabel(dateStr)}.` });
+        onChanged?.(card);
+      }
     } catch (e) { setNote({ error: true, text: e.message }); }
     setBusy(false);
   };
@@ -188,7 +229,13 @@ export function NeedsYouActs({ card, onOpen = null, onAct = null }) {
             {busy ? '…' : done ? LABELS.complete : LABELS.acknowledge}
           </button>
         )}
+        {dueTarget && (
+          <button type="button" className="att-card__btn" aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>
+            {LABELS.due}
+          </button>
+        )}
       </div>
+      {dueTarget && dueOpen && <DuePicker disabled={busy} onPick={redate} />}
       {note && <p className={`att-needs__note${note.error ? ' att-needs__note--error' : ''}`}>{note.text}</p>}
     </>
   );
@@ -316,9 +363,6 @@ export default function AttentionCard({
     return { ok: true, text: `Due date moved to ${dueLabel(dateStr)}.` };
   });
 
-  const presets = dueOpen ? duePresets(new Date()) : [];
-  const todayStr = toDateStr(new Date());
-
   return (
     <article className={`att-card att-card--${card.urgency || 'none'}${compact ? ' att-card--compact' : ''}`}>
       <header className="att-card__head">
@@ -416,24 +460,7 @@ export default function AttentionCard({
         )}
       </div>
 
-      {dueTarget && dueOpen && (
-        <div className="att-card__due" role="group" aria-label="Move the due date">
-          <span className="att-card__due-label">Due</span>
-          {presets.map((p) => (
-            <button key={p.id} type="button" className="att-card__btn" disabled={busy === 'due'} onClick={() => redate(p.date)}>
-              {p.label} <span className="att-card__btn--quiet">· {dueLabel(p.date)}</span>
-            </button>
-          ))}
-          <input
-            type="date"
-            className="att-card__due-pick"
-            min={todayStr}
-            aria-label="Pick a day"
-            disabled={busy === 'due'}
-            onChange={(e) => { if (e.target.value) redate(e.target.value); }}
-          />
-        </div>
-      )}
+      {dueTarget && dueOpen && <DuePicker disabled={busy === 'due'} onPick={redate} />}
     </article>
   );
 }

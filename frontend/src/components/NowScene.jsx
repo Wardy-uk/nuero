@@ -73,7 +73,7 @@ export default function NowScene({ attention, onNavigate, onStarted, blockTasks 
       renderNeedsYouActs={(it) => {
         const id = it && it.actionRef && it.actionRef.recordId;
         const card = id ? (attention.cards || []).find((c) => c && c.recordId === id) : null;
-        return card ? <DesktopNeedsYouActs card={card} onNavigate={onNavigate} onAct={attention.act} /> : null;
+        return card ? <DesktopNeedsYouActs card={card} onNavigate={onNavigate} onAct={attention.act} onChanged={() => attention.refresh()} /> : null;
       }}
       onOpen={(it) => {
         if (!onNavigate || !it) return;

@@ -567,7 +567,7 @@ export default function AttentionSurface({
     const renderNeedsYouActs = (onAct || onOpen) ? (it) => {
       const card = cardFor(it);
       if (!card) return null;
-      return <NeedsYouActs card={card} onOpen={openCard(card)} onAct={onAct || null} />;
+      return <NeedsYouActs card={card} onOpen={openCard(card)} onAct={onAct || null} call={prof === 'kiosk' || prof === 'watch' ? null : call} onChanged={onRefresh} />;
     } : null;
     const openItem = (item) => {
       if (!item) return;

@@ -19,8 +19,8 @@ export function desktopOpen(onNavigate) {
   };
 }
 
-export function DesktopNeedsYouActs({ card, onNavigate, onAct }) {
-  return <NeedsYouActs card={card} onOpen={onNavigate ? desktopOpen(onNavigate) : null} onAct={onAct} />;
+export function DesktopNeedsYouActs({ card, onNavigate, onAct, onChanged = null }) {
+  return <NeedsYouActs card={card} onOpen={onNavigate ? desktopOpen(onNavigate) : null} onAct={onAct} call={desktopCall} onChanged={onChanged} />;
 }
 
 export default function AttentionCard({ card, onNavigate, onAct, onStarted, onChanged = null, compact = false, showEvidence = true }) {
