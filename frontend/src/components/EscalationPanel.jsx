@@ -591,6 +591,11 @@ export function devAsk(devItems) {
  * fact off the ticket card, editable before sending. With an open linked dev
  * item it asks for that by name; otherwise a [gap] Send will not pass.
  */
+// The ONE gap the draft writes. Send is held only while this text is still in
+// the body — never on any [bracket], because Jira summaries carry their own
+// ("… (Expired) [SF]") and that held Send for good (6 Nov 2026).
+export const ESCALATION_GAP = '[What you need from them, and by when]';
+
 export function escalationEmailDraft(item, devItems = null) {
   const esc = item.esc || item.rej || item.sent || {};
   const raised = item.esc ? ageDays(esc.created) : null;
@@ -610,7 +615,7 @@ export function escalationEmailDraft(item, devItems = null) {
     !!devAsk(devItems) && `Dev work item${devAsk(devItems).includes(' and ') ? 's' : ''}: ${(devItems || []).filter((d) => !d.done).map((d) => `${d.key}${d.status ? ` (${d.status})` : ''}`).join(', ')}`,
     !!item.rej && 'Rejected by Tier 2 — the rejection is awaiting approval',
     '',
-    devAsk(devItems) ? `Can we get ${devAsk(devItems)} prioritised please` : '[What you need from them, and by when]',
+    devAsk(devItems) ? `Can we get ${devAsk(devItems)} prioritised please` : ESCALATION_GAP,
   ];
   return {
     subject: `Escalation: ${item.key}${item.summary ? ` — ${item.summary}` : ''}`.slice(0, 240),
@@ -800,7 +805,7 @@ function EmailEscalation({ item, onClose, onSent }) {
     setTyped(v);
   };
 
-  const gap = /\[[^\]]+\]/.test(body);
+  const gap = body.includes(ESCALATION_GAP);
   const pending = typed.trim() ? parseRecipient(typed, people) : null;
   const all = pending && !recipients.some((x) => x.email === pending.email) ? [...recipients, pending] : recipients;
 
@@ -905,7 +910,7 @@ function EmailEscalation({ item, onClose, onSent }) {
       <input className="esc-email-to" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" maxLength={240} />
       <textarea className="esc-reply-text" rows={12} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Email" />
       <p className="esc-reply-note">
-        Sent from your work address when you press Send{gap ? ' — fill in the [square brackets] first' : ''}.
+        Sent from your work address when you press Send{gap ? ' — replace the [What you need from them…] line first' : ''}.
       </p>
       <div className="esc-ticket-actions esc-ticket-actions-left">
         <button type="button" className="esc-btn esc-btn-primary" disabled={busy || !all.length || !subject.trim() || !body.trim() || gap} onClick={send}>
