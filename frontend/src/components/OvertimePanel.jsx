@@ -120,7 +120,7 @@ function ApprovalCard({ claim, onDone }) {
     const r = await postJson(`/api/overtime-claims/${claim.id}/decide`, { decision, note: note || null, overrideReason: override || null });
     setBusy(false);
     if (!r.ok) { setErr(r.error || 'Not saved'); return; }
-    onDone();
+    onDone(`${decision === 'approve' ? 'Approved' : 'Rejected'}: ${claim.agentName}, ${dayLabel(claim.date)} ${claim.start}–${claim.end} (${hours(claim.minutes)}).`);
   };
 
   const warned = !!check && check.wtr.warnings.length > 0;
@@ -162,7 +162,7 @@ function ApprovalCard({ claim, onDone }) {
             <input value={override} maxLength={1000} onChange={(e) => setOverride(e.target.value)} /></label>
         )}
         <button className="ot__primary" disabled={busy || !check || blocked || (warned && !override.trim())} onClick={() => decide('approve')}>
-          {warned ? 'Approve with warnings' : 'Approve'}
+          {busy ? 'Saving — NOVA is re-checking…' : warned ? 'Approve with warnings' : 'Approve'}
         </button>
         <button className="ot__quiet" disabled={busy || !note.trim()} onClick={() => decide('reject')}>Reject</button>
         <button className="ot__quiet" disabled={checking} onClick={runCheck}>{checking ? 'Checking…' : 'Re-check'}</button>
@@ -176,6 +176,7 @@ function Approvals() {
   const [claims, setClaims] = useState(null);
   const [me, setMe] = useState(null);
   const [err, setErr] = useState(null);
+  const [done, setDone] = useState([]);
   const load = useCallback(async () => {
     try {
       const [c, s] = await Promise.all([getJson('/api/overtime-claims?status=submitted'), getJson('/api/overtime-claims/signoff').catch(() => null)]);
@@ -190,8 +191,9 @@ function Approvals() {
   const team = claims.filter((c) => !own.includes(c));
   return (
     <div>
+      {done.map((d, k) => <div key={k} className="ot__ok">{d}</div>)}
       {!team.length && <div className="ot__muted">No overtime claims waiting for a decision.</div>}
-      {team.map((c) => <ApprovalCard key={c.id} claim={c} onDone={load} />)}
+      {team.map((c) => <ApprovalCard key={c.id} claim={c} onDone={(msg) => { if (msg) setDone((d) => [...d, msg]); load(); }} />)}
       {own.length > 0 && (
         <div className="ot__card">
           <div className="ot__label">Your own overtime — Chris approves these</div>

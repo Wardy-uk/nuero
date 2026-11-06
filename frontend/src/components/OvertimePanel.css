@@ -4,6 +4,7 @@
 .ot__muted { color: var(--text-muted); font-size: 13px; }
 .ot__warn { color: var(--warning); font-size: 13px; margin: 4px 0; }
 .ot__bad { color: var(--danger); font-size: 13px; margin: 6px 0; }
+.ot__ok { color: var(--success, #3fb950); font-size: 13px; margin: 6px 0; }
 .ot__tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
 .ot__tab { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 13px; cursor: pointer; }
 .ot__tab--on { color: var(--accent); border-color: var(--accent-dim); }
