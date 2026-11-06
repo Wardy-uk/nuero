@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { KmwMove, KmwDelivery } from './presentation/KeepMyWord.jsx';
 import { startTaskSession, switchQuestion } from './startTask.mjs';
+import TaskDue from './TaskDue.jsx';
 import './presentation/KeepMyWord.css';
 import './TaskWorkflow.css';
 
@@ -63,6 +64,8 @@ export function TaskWorkflowView({
   onBack = null, onOpenTask = null, onSessionAct = null, onStart = null, onSwitch = null, onCancelSwitch = null,
   onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null,
   renderPromiseSave = null, renderTools = null, readOnly = false,
+  // NEURO's fetch ({status, body}) — with it the due date can be changed here. Null → shown only.
+  call = null, onDueChanged = null,
 }) {
   const thread = (data && data.thread) || null;
   const task = (data && data.task) || null;
@@ -88,11 +91,20 @@ export function TaskWorkflowView({
           </p>
         ) : task ? (
           <p className="twf__meta">
-            {task.dueDate ? <span className="twf__due">Due {task.dueDate}</span> : <span>No due date</span>}
-            {task.moscow && <span> · {String(task.moscow).toUpperCase()}</span>}
+            {task.moscow && <span>{String(task.moscow).toUpperCase()}</span>}
             {task.status && <span className="twf__pill">{task.status}</span>}
           </p>
         ) : null}
+        {/* The due date, changeable wherever a task opens (6 Nov 2026). */}
+        {(task || thread) && id && (
+          <TaskDue
+            target={{ kind: 'neuro', taskId: Number(id) }}
+            due={task ? task.dueDate : null}
+            hideValue={Boolean(thread)}
+            call={actions ? call : null}
+            onChanged={onDueChanged}
+          />
+        )}
         {thread && thread.preparation && thread.preparation.why && <p className="twf__why">{thread.preparation.why}</p>}
         {thread && thread.held && <p className="twf__why twf__held">{thread.held.say}</p>}
         {mine && actions && <FocusClock session={mine} busy={sessionBusy} onAct={onSessionAct || (() => {})} />}
@@ -217,6 +229,8 @@ export default function TaskWorkflow({ taskId = null, promiseKey = null, call, s
       {...rest}
       data={data} loading={loading} error={error} taskId={taskId}
       session={session} sessionBusy={sessionBusy} sessionNote={sessionNote} conflict={conflict}
+      call={call}
+      onDueChanged={async () => { await load(); if (onChanged) onChanged(); }}
       onSessionAct={sessionAct}
       onStart={() => start(false)}
       onSwitch={() => start(true)}

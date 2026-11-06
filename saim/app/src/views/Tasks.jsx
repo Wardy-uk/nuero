@@ -10,6 +10,7 @@ import { msPlanBadge } from '../../../../shared/ms-task.cjs';
 import { domainBadge } from '../../../../shared/task-domain.cjs';
 import { Lit } from '../../../shared-ui/Lit.jsx';
 import ProposalChips from '../../../shared-ui/ProposalChips.jsx';
+import TaskDue from '../../../shared-ui/TaskDue.jsx';
 
 import './Tasks.css';
 
@@ -213,12 +214,24 @@ function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, 
         </div>
       )}
 
-      {/* Build 10H — SAiM is not the place for task administration. MoSCoW,
-          priority, estimate and due date are edited in NEURO's Tasks screen;
-          SAiM ticks, puts things off and hands off. */}
+      {/* The due date, changeable wherever a task opens (Nick, 6 Nov 2026) — the
+          task's own edit route, the same write as NEURO's Tasks screen. MoSCoW,
+          priority and estimate stay in NEURO (Build 10H). */}
+      {(isNeuro || isMs) && (
+        <div className="tasks__group">
+          <span className="tasks__label">Due</span>
+          <TaskDue
+            target={isNeuro ? { kind: 'neuro', taskId: item.task_id } : { kind: 'microsoft', msId: item.ms_id }}
+            due={item.due_date ? String(item.due_date).slice(0, 10) : null}
+            call={agentCall}
+            readOnly={platformNow() === 'kiosk'}
+            onChanged={onChanged}
+          />
+        </div>
+      )}
       {isNeuro && (
         <div className="tasks__group">
-          <span className="tasks__note">To change MoSCoW, priority, estimate or due date, open Tasks in NEURO.</span>
+          <span className="tasks__note">To change MoSCoW, priority or estimate, open Tasks in NEURO.</span>
         </div>
       )}
 

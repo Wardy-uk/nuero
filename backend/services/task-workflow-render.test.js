@@ -74,9 +74,20 @@ test('a task that is NOT a promise: header from the task row and tools — no Ne
     onPrepareDelivery: async () => ({ ok: true }), onPromiseMove: async () => ({}),
   })));
   assert.match(h, /Tidy the support macros/);
-  assert.match(h, /Due 2026-11-05/);
+  assert.match(h, /Due Thu 5 Nov/);
   assert.match(h, /TOOLS 77/);
   assert.doesNotMatch(h, /Next for this promise|Evidence|delivery note|Keeping your word/);
+});
+
+test('the due date can be changed from the task screen — not read-only, not without a call', () => {
+  const data = { ok: true, task: { id: 77, text: 'x', dueDate: '2026-11-05' }, thread: null };
+  const call = async () => ({ status: 200, body: {} });
+  assert.match(text(renderToString(React.createElement(W.TaskWorkflowView, { data, call }))), />Change due date</);
+  assert.match(text(renderToString(React.createElement(W.TaskWorkflowView, { data: { ...data, task: { id: 77, text: 'x', dueDate: null } }, call }))), /No due date[\s\S]*>Set a due date</);
+  assert.doesNotMatch(text(renderToString(React.createElement(W.TaskWorkflowView, { data, call, readOnly: true }))), /Change due date/, 'the kiosk is read-only');
+  assert.doesNotMatch(text(renderToString(React.createElement(W.TaskWorkflowView, { data }))), /Change due date/, 'no call → nothing to write with');
+  // A promise: the thread already says when it is due; the control is still there.
+  assert.match(text(renderToString(React.createElement(W.TaskWorkflowView, { data: { ok: true, task: { id: 31, text: 'x', dueDate: '2026-11-03' }, thread: THREAD }, call }))), />Change due date</);
 });
 
 test('the focus clock for THIS task: elapsed, Pause, That’s done; another task’s session is not this one’s clock', () => {

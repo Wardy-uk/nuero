@@ -169,6 +169,12 @@
 .att-needs__note { margin: 6px 0 0; font-size: 12px; color: var(--muted, #99a0b0); }
 .att-needs__note--error { color: #f08a8d; }
 
+/* The due field wherever a task opens (TaskDue.jsx, 6 Nov 2026). */
+.task-due { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.task-due__value { font-weight: 600; }
+.task-due .att-card__due { flex-basis: 100%; margin-top: 2px; }
+.task-due .att-needs__note { flex-basis: 100%; }
+
 /* What the task is, why, and where it came from (6 Nov 2026). Folded: the card
    stays one glance; the detail is one tap away. */
 .att-card__detail { margin: 0 0 10px; font-size: 12px; color: var(--muted, #99a0b0); }

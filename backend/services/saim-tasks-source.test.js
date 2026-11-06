@@ -47,9 +47,13 @@ test('the routes SAiM keeps are called — and the editing routes are gone', () 
   assert.match(src, /'\/api\/todos\/lane\/defer'/);
   assert.match(src, /'\/api\/todos\/lane\/undefer'/, 'a snooze must have a way back');
   assert.match(src, /'\/api\/capture\/todo'/);
-  // Build 10H: no Planner/To Do write, no due-date control, no triage editor.
+  // Build 10H: no Planner/To Do PROGRESS write, no triage editor. The DUE DATE is the
+  // one exception (Nick, 6 Nov 2026: "so I can change it anywhere") — through the
+  // shared TaskDue control and the task's own edit route, never a second editor.
   assert.doesNotMatch(src, /wip-ms/, 'SAiM must not write progress to Planner / To Do');
-  assert.doesNotMatch(src, /DueControl|due_date/, 'due dates are edited in NEURO');
+  assert.doesNotMatch(src, /DueControl/, 'no SAiM-only due editor');
+  assert.match(src, /import TaskDue from '\.\.\/\.\.\/\.\.\/shared-ui\/TaskDue\.jsx'/, 'the due date uses the shared control');
+  assert.match(componentBody('TaskPanel'), /<TaskDue[\s\S]*readOnly=\{platformNow\(\) === 'kiosk'\}/, 'read-only on the kiosk');
   assert.doesNotMatch(src, /TaskFieldEditor|estimateExact|moscow:\s*draft/, 'triage fields are edited in NEURO');
   assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'components', 'DueControl.jsx')), false,
     'DueControl should be deleted, not left unreachable');
