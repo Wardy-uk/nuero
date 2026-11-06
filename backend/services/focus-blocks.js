@@ -35,8 +35,10 @@
  * 10. The block clock rides on the attention payload (`focusBlock.clock`) for
  *     every surface, iOS included.
  * 11. Five minutes before the end: "note where you got to" — optional.
- * 12. At the end: Done / More time / Stuck. No answer: the session ends with
- *     the block and NOTHING is completed.
+ * 12. At the end: "This block has reached its time limit — end it?" (Nick,
+ *     6 Nov 2026: it should not just end). The session KEEPS RUNNING until he
+ *     answers: End it (optionally ticking the block's tasks), More time or
+ *     Stuck. Nothing is ever completed without his tick.
  *
  * THE TIMING ENGINE is `tick()`, a durable runtime job every minute. Each
  * moment is CLAIMED in `focus_block_moments` (INSERT OR IGNORE) before anything
@@ -260,7 +262,11 @@ function phaseOf(block, state, session, now, fired = new Set()) {
     if (t >= end - WIND_DOWN_MINUTES * 60000) return 'wind-down';
     return 'running';
   }
-  if (chosen && !st.end_answer && t < end + END_PROMPT_MINUTES * 60000 && fired.has(`end@${block.end_time}`)) return 'end';
+  // The question stays until he answers it while his session on the task is
+  // still running (nothing ends it for him); once that session has gone, it
+  // stays the usual 30 minutes.
+  if (chosen && !st.end_answer && fired.has(`end@${block.end_time}`)
+    && (live || t < end + END_PROMPT_MINUTES * 60000)) return 'end';
   return 'over';
 }
 
@@ -321,7 +327,7 @@ const SAY = {
   ready: (b) => `Up next at ${b.start_time} — your focus block.`,
   twoMinute: () => 'Two minutes in. Carry on, or stop there?',
   windDown: () => '5 minutes left — note where you got to.',
-  end: (b) => `Your ${b.start_time} block is over. How did it go?`,
+  end: (b) => `Your ${b.start_time}–${b.end_time} focus block has reached its time limit. End it?`,
   tooBig: () => 'Is this too big? Make it smaller.',
   stopped: () => 'Stopped after two minutes — that counts as a start.',
 };
@@ -484,6 +490,8 @@ function composeView(block, state, session, now, phase, notice = null) {
     chosen: clock && clock.task ? clock.task : null,
     windNote: st.wind_note || null,
     moreTime: phase === 'end' ? MORE_TIME : [],
+    // At the time limit: the block's open tasks, each tickable when ending it.
+    endTasks: phase === 'end' ? endTasksOf(block, st) : [],
     held: hold && Number(hold.blockId) === Number(block.id) ? (hold.held || []).length + (hold.overflow || 0) : 0,
     clock,
     notice,
@@ -508,6 +516,20 @@ function focusState(now = new Date()) {
   const hold = focusHold.read();
   if (!focusHold.activeAt(hold, now)) return { inFocus: false, until: null, task: null, blockId: null };
   return { inFocus: true, until: hold.until, task: hold.taskText || null, blockId: Number(hold.blockId) || null };
+}
+
+/** The block's tasks still open: the one picked first, then the block's own items. */
+function endTasksOf(block, st) {
+  const ids = [];
+  if (st && st.chosen_task_id != null) ids.push(Number(st.chosen_task_id));
+  try { for (const it of db.listTaskBlockItems(block.id)) { const id = Number(it.task_id); if (!ids.includes(id)) ids.push(id); } } catch {}
+  const out = [];
+  for (const id of ids) {
+    let r = null;
+    try { r = db.getTaskRow(id); } catch { r = null; }
+    if (r && !['done', 'dropped'].includes(r.status)) out.push({ taskId: r.id, text: r.text });
+  }
+  return out;
 }
 
 function chosenText(st) {
@@ -614,8 +636,9 @@ async function fire(kind, block, st, session, now, deps) {
     const sess = deps.session || require('./focus-session');
     const live = st.chosen_task_id != null && session && Number(session.taskId) === Number(st.chosen_task_id)
       && !['done', 'abandoned'].includes(session.status);
-    // No answer: the session ends with the block. Nothing is completed.
-    if (live) { try { sess.endWith('block-ended', now.getTime()); } catch (e) { console.warn('[FocusBlocks] end session:', e.message); } }
+    // ⚠ The session is NOT ended here (Nick, 6 Nov 2026: "it shouldn't just
+    // end"). It keeps running and the screen asks; only his answer ends it.
+    void sess; void live;
     await releaseHeld(deps, now);
     if (st.chosen_task_id == null) {
       // Offered and nothing picked: a pass for each candidate on screen.
@@ -624,7 +647,7 @@ async function fire(kind, block, st, session, now, deps) {
       for (const c of offered) recordPass(c.taskId, block.id, 'missed', null, now);
       return;
     }
-    await deps.push(SAY.end(block), `${chosenText(st) || 'Your task'} — Done, more time, or stuck?`,
+    await deps.push(SAY.end(block), `${chosenText(st) || 'Your task'} — end it (tick it off if it’s done), or more time?`,
       { type: 'block_end', tab: 'surface', key: key(`end@${block.end_time}`), blockId: block.id });
   }
 }
@@ -876,14 +899,54 @@ function appendToOutcomeNote(block, text, now) {
  * extends the block by 15 or 30 if the diary is free; Stuck offers to make it
  * smaller and keeps the smaller step for the next offer.
  */
-async function endAnswer(blockId, { answer, minutes = null, step = null } = {}, { now = new Date(), deps = {} } = {}) {
+async function endAnswer(blockId, { answer, minutes = null, step = null, complete = null } = {}, { now = new Date(), deps = {} } = {}) {
   ensure();
-  if (!['done', 'more', 'stuck'].includes(answer)) return { ok: false, code: 400, error: 'answer must be done, more or stuck' };
+  if (!['done', 'more', 'stuck', 'end'].includes(answer)) return { ok: false, code: 400, error: 'answer must be end, done, more or stuck' };
   const block = db.getTaskBlockRow(blockId);
   if (!block) return { ok: false, code: 404, error: `No block #${blockId}` };
   const st = getState(blockId);
   if (!st || st.chosen_task_id == null) return { ok: false, code: 409, error: 'No task was picked for this block' };
   const taskId = Number(st.chosen_task_id);
+
+  // End it — the session stops; only the tasks he ticked are completed.
+  if (answer === 'end') {
+    const list = complete == null ? [] : complete;
+    if (!Array.isArray(list) || list.some((x) => !Number.isInteger(Number(x)))) {
+      return { ok: false, code: 400, error: 'complete must be a list of task ids' };
+    }
+    const allowed = new Set(endTasksOf(block, st).map((t) => Number(t.taskId)));
+    const ids = [...new Set(list.map(Number))];
+    const stray = ids.filter((id) => !allowed.has(id));
+    if (stray.length) return { ok: false, code: 400, error: `not an open task in this block: ${stray.join(', ')}` };
+    const sess = deps.session || require('./focus-session');
+    const live = sess.current(now.getTime());
+    if (live && Number(live.taskId) === taskId) {
+      try {
+        if (ids.includes(taskId)) sess.finish({ completeTask: false }, now.getTime());
+        else sess.endWith('block-ended', now.getTime());
+      } catch (e) { console.warn('[FocusBlocks] end session:', e.message); }
+    }
+    const store = require('./task-store');
+    const completed = [];
+    for (const id of ids) {
+      try { store.setStatus(id, 'done'); completed.push(id); } catch (e) { console.warn(`[FocusBlocks] complete #${id}:`, e.message); }
+    }
+    if (completed.length) db.updateTaskBlockRow(blockId, { status: 'complete', completed_at: now.toISOString() });
+    putState(blockId, { end_answer: 'ended' });
+    await releaseHeld(deps, now);
+    let win = null;
+    if (completed.length) {
+      try {
+        const wins = require('./wins');
+        try { wins.sync({}); } catch {}
+        win = wins.headline(wins.summary(now));
+      } catch { win = null; }
+    }
+    const say = completed.length
+      ? `Block ended — ticked off ${completed.length === 1 ? 'one task' : `${completed.length} tasks`}.`
+      : 'Block ended. Nothing ticked off — the task is still open.';
+    return { ok: true, answer, completed, failed: ids.filter((id) => !completed.includes(id)), win, say };
+  }
 
   if (answer === 'done') {
     const sess = deps.session || require('./focus-session');
@@ -906,6 +969,13 @@ async function endAnswer(blockId, { answer, minutes = null, step = null } = {}, 
     const s = String(step || '').trim();
     recordPass(taskId, blockId, 'stuck', s || null, now);
     putState(blockId, { end_answer: 'stuck' });
+    // The session no longer ends on its own at the time limit, so Stuck ends it.
+    try {
+      const sess = deps.session || require('./focus-session');
+      const live = sess.current(now.getTime());
+      if (live && Number(live.taskId) === taskId) sess.endWith('block-ended', now.getTime());
+    } catch (e) { console.warn('[FocusBlocks] end session:', e.message); }
+    await releaseHeld(deps, now);
     return {
       ok: true, answer, offer: 'make-smaller',
       say: s ? `Kept “${s}” — that’s what I’ll offer next time.` : 'What is the smallest next bit? I’ll offer that next time.',

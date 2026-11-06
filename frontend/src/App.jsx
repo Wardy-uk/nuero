@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import interactions from '../../shared/interaction-buffer.cjs';
-import { apiUrl, getPin, setPin, clearPin } from './api';
+import { apiUrl, apiFetch, getPin, setPin, clearPin } from './api';
+import { FocusBlockEndWatch } from '../../saim/shared-ui/FocusBlock.jsx';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import NudgeBanner from './components/NudgeBanner';
@@ -14,6 +15,22 @@ import SessionBadge from './components/SessionBadge';
 import useFeatureFlag from './useFeatureFlag';
 import { SAIM_FLAG, shouldOpenSaim, isDefaultLaunch } from './saimWorkspace';
 import './App.css';
+
+// The focus block's time-limit question pops up on every view but Now (which
+// shows the block itself). Module-level so the watcher's effect is stable.
+async function fetchFocusBlock() {
+  const res = await apiFetch('/api/focus-blocks');
+  const j = await res.json();
+  return j && j.focusBlock ? j.focusBlock : null;
+}
+async function actFocusBlock(blockId, action, body = {}) {
+  try {
+    const res = await apiFetch(`/api/focus-blocks/${encodeURIComponent(blockId)}/${action}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    return await res.json().catch(() => ({ ok: res.ok }));
+  } catch (e) { return { ok: false, error: e.message }; }
+}
 
 // ── Eager: the surfaces used from a standing start ───────────────────────────
 //
@@ -557,6 +574,7 @@ function AuthenticatedApp() {
               </Suspense>
             </div>
           </ErrorBoundary>
+          {activeView !== 'today' && <FocusBlockEndWatch fetchBlock={fetchFocusBlock} onAct={actFocusBlock} />}
         </main>
         <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
           <ChatPanel location={location} />

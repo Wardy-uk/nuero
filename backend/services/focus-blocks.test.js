@@ -163,11 +163,12 @@ test('one block, walked by the clock: ready → start → choose → 2 min → w
   assert.equal(focusBlocks.view({ now: at(11, 11) }).phase, 'wind-down');
   assert.equal((await focusBlocks.windDown(id, { note: 'Drafted weeks 44–46' }, { now: at(11, 12) })).ok, true);
 
-  // End: no answer → the session ends with the block, NOTHING completed; the
-  // held push comes back as ONE summary; the check-in is pushed.
+  // Time limit: the session does NOT end on its own (Nick, 6 Nov 2026) —
+  // it keeps running and the screen asks; NOTHING is completed; the held push
+  // comes back as ONE summary; the question is pushed.
   r = await focusBlocks.tick({ now: at(11, 15), deps });
   assert.deepEqual(r.fired, [`${id}:end@11:15`]);
-  assert.equal(focusSession.current(at(11, 15).getTime()), null, 'the session ended with the block');
+  assert.ok(focusSession.current(at(11, 15).getTime()), 'the session keeps running until he answers');
   assert.equal(db.getTaskRow(a).status !== 'done', true, 'no answer completes nothing');
   const summary = push.sent.find((p) => p.type === 'block_summary');
   assert.ok(summary, 'held pushes released as one summary');
@@ -177,17 +178,47 @@ test('one block, walked by the clock: ready → start → choose → 2 min → w
   v = focusBlocks.view({ now: at(11, 16) });
   assert.equal(v.phase, 'end');
   assert.deepEqual(v.moreTime, [15, 30]);
-  assert.equal(focusSession.history()[0].endedReason, 'block-ended');
+  assert.match(v.say, /time limit/);
+  assert.deepEqual(v.endTasks.map((t) => t.taskId), [a], 'the block’s open task is offered to tick');
+  // Still asking well past the old 30-minute window, because the session is still running.
+  assert.equal(focusBlocks.view({ now: at(12, 0) }).phase, 'end');
 
   // Restart after the end: nothing again.
   assert.deepEqual((await focusBlocks.tick({ now: at(11, 15), deps })).fired, []);
 
-  // Done: completes through task-store.
-  const done = await focusBlocks.endAnswer(id, { answer: 'done' }, { now: at(11, 17), deps });
+  // A task that is not in the block is refused; nothing changes.
+  const stray = await focusBlocks.endAnswer(id, { answer: 'end', complete: [a + 999] }, { now: at(11, 17), deps });
+  assert.equal(stray.ok, false);
+  assert.ok(focusSession.current(at(11, 17).getTime()));
+
+  // End it, ticking the task: the session finishes, the task completes through task-store.
+  const done = await focusBlocks.endAnswer(id, { answer: 'end', complete: [a] }, { now: at(11, 17), deps });
   assert.equal(done.ok, true);
+  assert.deepEqual(done.completed, [a]);
+  assert.equal(focusSession.current(at(11, 17).getTime()), null);
   assert.equal(db.getTaskRow(a).status, 'done');
   assert.equal(db.getTaskBlockRow(id).status, 'complete');
   assert.equal(focusBlocks.view({ now: at(11, 18) }), null);
+});
+
+test('Ending a block WITHOUT ticking leaves the task open and ends the session', async () => {
+  reset();
+  const a = task('Write the rota');
+  const deps = { graph: fakeGraph(), push: fakePush() };
+  const made = await focusBlocks.createOpenBlock({ date: DAY, startTime: '10:30', minutes: 45, basis: { multiplier: 1, learned: true, basis: 'test' }, deps });
+  const id = made.blockId;
+  await focusBlocks.tick({ now: at(10, 30), deps });
+  assert.equal((await focusBlocks.choose(id, { taskId: a }, { now: at(10, 31), deps })).ok, true);
+  await focusBlocks.tick({ now: at(11, 15), deps });
+  assert.ok(focusSession.current(at(11, 16).getTime()));
+  const r = await focusBlocks.endAnswer(id, { answer: 'end', complete: [] }, { now: at(11, 16), deps });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.completed, []);
+  assert.match(r.say, /still open/);
+  assert.equal(focusSession.current(at(11, 16).getTime()), null);
+  assert.equal(focusSession.history()[0].endedReason, 'block-ended');
+  assert.notEqual(db.getTaskRow(a).status, 'done');
+  assert.equal(focusBlocks.view({ now: at(11, 17) }), null);
 });
 
 test('"Stop there" after two minutes is a START, archived cleanly — never a failure', async () => {

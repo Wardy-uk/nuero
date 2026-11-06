@@ -32,14 +32,12 @@ function minutesUntil(clock, nowMs) {
   return Math.max(0, Math.ceil((start - nowMs) / 60000));
 }
 
-export function FocusBlockView({ block, onAct = null, onSomethingElse = null, now = null }) {
+export function FocusBlockView({ block, onAct = null, onSomethingElse = null, now = null, popupOnly = false }) {
   const [tick, setTick] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState(null);
   const [smaller, setSmaller] = useState({});
   const [note, setNote] = useState('');
-  const [stuck, setStuck] = useState(false);
-  const [step, setStep] = useState('');
 
   useEffect(() => {
     if (now != null) return undefined;
@@ -62,6 +60,10 @@ export function FocusBlockView({ block, onAct = null, onSomethingElse = null, no
       setBusy(false);
     }
   } : null;
+
+  if (popupOnly) {
+    return block.phase === 'end' && act ? <EndPopup block={block} act={act} busy={busy} said={said} /> : null;
+  }
 
   if (block.phase === 'notice') {
     return (
@@ -184,26 +186,118 @@ export function FocusBlockView({ block, onAct = null, onSomethingElse = null, no
 
       {block.phase === 'end' && act && (
         <>
-          <span className="fblock__acts">
-            <button type="button" className="fblock__btn fblock__btn--go" disabled={busy} onClick={() => act('end', { answer: 'done' })}>Done</button>
-            {(block.moreTime || []).map((m) => (
-              <button key={m} type="button" className="fblock__btn" disabled={busy} onClick={() => act('end', { answer: 'more', minutes: m })}>{`${m} more min`}</button>
-            ))}
-            <button type="button" className="fblock__btn" disabled={busy} onClick={() => setStuck(true)}>Stuck</button>
-          </span>
-          {stuck && (
-            <span className="fblock__acts">
-              <input className="fblock__input" type="text" placeholder="Make it smaller — the smallest next bit" value={step}
-                onChange={(e) => setStep(e.target.value)} />
-              <button type="button" className="fblock__btn" disabled={busy} onClick={() => act('end', { answer: 'stuck', step })}>Keep that</button>
-            </span>
-          )}
+          <EndControls block={block} act={act} busy={busy} />
+          <EndPopup block={block} act={act} busy={busy} said={said} />
         </>
       )}
 
       {said && <p className="fblock__said" role="status">{said}</p>}
     </section>
   );
+}
+
+/**
+ * At the time limit (Nick, 6 Nov 2026: "it shouldn't just end — pop up and ask
+ * do I want to end it, with the option to mark the task(s) complete"). The
+ * session keeps running until one of these is pressed. Nothing is ticked unless
+ * he ticks it.
+ */
+function EndControls({ block, act, busy }) {
+  const tasks = block.endTasks || [];
+  const [ticked, setTicked] = useState({});
+  const [stuck, setStuck] = useState(false);
+  const [step, setStep] = useState('');
+  const ids = tasks.filter((t) => ticked[t.taskId]).map((t) => t.taskId);
+  const endLabel = ids.length ? `End block · tick ${ids.length === 1 ? 'it' : `${ids.length}`} off` : 'End block';
+  return (
+    <div className="fblock__end">
+      {tasks.length > 0 && (
+        <ul className="fblock__ticks">
+          {tasks.map((t) => (
+            <li key={t.taskId}>
+              <label className="fblock__tick">
+                <input type="checkbox" checked={Boolean(ticked[t.taskId])} disabled={busy}
+                  onChange={(e) => setTicked({ ...ticked, [t.taskId]: e.target.checked })} />
+                <span>{t.text}</span>
+                <span className="fblock__quiet">{ticked[t.taskId] ? ' — done' : ''}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <span className="fblock__acts">
+        <button type="button" className="fblock__btn fblock__btn--go" disabled={busy}
+          onClick={() => act('end', { answer: 'end', complete: ids })}>{endLabel}</button>
+        {(block.moreTime || []).map((m) => (
+          <button key={m} type="button" className="fblock__btn" disabled={busy} onClick={() => act('end', { answer: 'more', minutes: m })}>{`${m} more min`}</button>
+        ))}
+        <button type="button" className="fblock__btn" disabled={busy} onClick={() => setStuck(true)}>Stuck</button>
+      </span>
+      {stuck && (
+        <span className="fblock__acts">
+          <input className="fblock__input" type="text" placeholder="Make it smaller — the smallest next bit" value={step}
+            onChange={(e) => setStep(e.target.value)} />
+          <button type="button" className="fblock__btn" disabled={busy} onClick={() => act('end', { answer: 'stuck', step })}>Keep that</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+const LATER_KEY = 'neuro_fblock_end_later';
+function laterKey(block) { return `${block.blockId}@${block.endTime}`; }
+function readLater() { try { return sessionStorage.getItem(LATER_KEY); } catch { return null; } }
+function writeLater(v) { try { sessionStorage.setItem(LATER_KEY, v); } catch { /* private mode */ } }
+
+/** The pop-up over the whole screen. "Later" hides it on this device until the block changes. */
+function EndPopup({ block, act, busy, said }) {
+  const [later, setLater] = useState(() => readLater() === laterKey(block));
+  if (later) return null;
+  return (
+    <div className="fblock-pop" role="dialog" aria-modal="true" aria-label="Focus block time limit">
+      <div className="fblock fblock--end fblock-pop__card">
+        <div className="fblock__head">
+          <span className="fblock__label">Focus block · time limit</span>
+          <span className="fblock__clock">{`${block.startTime}–${block.endTime}`}</span>
+        </div>
+        {block.say && <p className="fblock__say">{block.say}</p>}
+        <p className="fblock__quiet">Your session is still running until you choose.</p>
+        <EndControls block={block} act={act} busy={busy} />
+        {said && <p className="fblock__said" role="status">{said}</p>}
+        <span className="fblock__acts fblock__acts--foot">
+          <button type="button" className="fblock__btn fblock__btn--quiet"
+            onClick={() => { writeLater(laterKey(block)); setLater(true); }}>Later</button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * For every screen that does NOT already show the focus block (desktop views
+ * other than Now; SAiM tabs other than the Surface): polls the block and pops
+ * the time-limit question up. `fetchBlock` → Promise<focusBlock|null>;
+ * `onAct(blockId, action, body)` as the shells already have. No onAct = nothing.
+ */
+export function FocusBlockEndWatch({ fetchBlock, onAct, everyMs = 30000 }) {
+  const [block, setBlock] = useState(null);
+  useEffect(() => {
+    if (!fetchBlock || !onAct) return undefined;
+    let dead = false;
+    const read = async () => {
+      try { const b = await fetchBlock(); if (!dead) setBlock(b && b.phase === 'end' ? b : null); }
+      catch { /* a failed read shows nothing new; the push still reached him */ }
+    };
+    read();
+    const id = setInterval(read, everyMs);
+    return () => { dead = true; clearInterval(id); };
+  }, [fetchBlock, onAct, everyMs]);
+  if (!block || !onAct) return null;
+  return <FocusBlockView key={laterKey(block)} block={block} onAct={async (action, body) => {
+    const r = await onAct(block.blockId, action, body);
+    try { const b = await fetchBlock(); setBlock(b && b.phase === 'end' ? b : null); } catch { /* keep */ }
+    return r;
+  }} popupOnly />;
 }
 
 export default FocusBlockView;

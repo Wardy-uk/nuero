@@ -82,11 +82,11 @@ router.post('/:id/wind-down', async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// POST /api/focus-blocks/:id/end — the end check-in: done, more time (15/30), or stuck (make it smaller).
+// POST /api/focus-blocks/:id/end — at the time limit: end it (complete: [task ids] ticks those), done, more time (15/30), or stuck.
 router.post('/:id/end', async (req, res) => {
-  if (!guard(req, res, ['answer', 'minutes', 'step'])) return;
-  const { answer, minutes, step } = req.body || {};
-  try { send(res, await focusBlocks.endAnswer(Number(req.params.id), { answer, minutes, step })); }
+  if (!guard(req, res, ['answer', 'minutes', 'step', 'complete'])) return;
+  const { answer, minutes, step, complete } = req.body || {};
+  try { send(res, await focusBlocks.endAnswer(Number(req.params.id), { answer, minutes, step, complete })); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

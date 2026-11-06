@@ -82,8 +82,17 @@ test('two-minute, wind-down and end each offer their own answers', () => {
   assert.match(two, /2 notifications held for the end\./);
   const wind = render({ ...base, phase: 'wind-down', say: '5 minutes left — note where you got to.', candidates: [], chosen });
   assert.match(wind, /Where you got to \(optional\)/);
-  const end = render({ ...base, phase: 'end', say: 'Your 10:30 block is over. How did it go?', candidates: [], chosen, moreTime: [15, 30] });
-  for (const label of ['Done', '15 more min', '30 more min', 'Stuck']) assert.match(end, new RegExp(`>${label}<`));
+  const end = render({ ...base, phase: 'end', say: 'Your 10:30–11:15 focus block has reached its time limit. End it?', candidates: [], chosen, moreTime: [15, 30],
+    endTasks: [{ taskId: 1, text: 'Write the rota cover plan' }, { taskId: 2, text: 'Review the backlog' }] });
+  for (const label of ['End block', '15 more min', '30 more min', 'Stuck', 'Later']) assert.match(end, new RegExp(`>${label}<`));
+  // The time-limit question pops up, with a tick box per task — none ticked for him.
+  assert.match(end, /class="fblock-pop" role="dialog"/);
+  assert.match(end, /Review the backlog/);
+  assert.match(end, /type="checkbox"/);
+  assert.doesNotMatch(end, /checked=""/);
+  // Read-only (kiosk): no pop-up and no buttons.
+  const ro = render({ ...base, phase: 'end', candidates: [], chosen, endTasks: [{ taskId: 1, text: 'x' }] }, { onAct: null });
+  assert.doesNotMatch(ro, /fblock-pop|<button/);
 });
 
 test('a notice (a block moved or dropped) is said, and nothing else', () => {

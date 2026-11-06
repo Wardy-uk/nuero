@@ -864,7 +864,7 @@ function finish({ completeTask = false, reflection = null } = {}, now = Date.now
  * `two-minute-stop` — Nick opened it for two minutes and stopped there. That is
  * a START, and is archived as one (initiation-signals never filters on
  * endedReason), never as a failure or an abandonment of the work.
- * `block-ended` — the block's window closed with no answer; the session ends
+ * `block-ended` — Nick ended the block at its time limit (or said Stuck); the session ends
  * with it and NOTHING is completed.
  */
 const BLOCK_END_REASONS = ['two-minute-stop', 'block-ended'];

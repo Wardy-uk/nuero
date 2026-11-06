@@ -27,6 +27,7 @@ const fetchWhereabouts = () => apiFetch('/api/signals/room');
 const canShowTab = (t) => t.menu !== false && (t.id !== 'voice' || Boolean(speechRecognitionCtor()));
 import DeploymentGuard from './components/DeploymentGuard';
 import UpdateChip from '../../shared-ui/UpdateChip';
+import { FocusBlockEndWatch } from '../../shared-ui/FocusBlock.jsx';
 import { readRuntime } from './runtime';
 import './App.css';
 import { isDebugView } from './debugView.mjs';
@@ -73,6 +74,13 @@ const { resolveSaimLitePlan, resolveSaimLiteTab } = actionSurfaces;
 
 // Module scope so the hook's effect is not re-created on every render.
 const fetchAttentionForField = () => apiFetch('/api/attention');
+// The focus block's time-limit question pops up on every tab but the Surface
+// (which shows the block itself). Never on the kiosk — that shell is separate.
+const fetchFocusBlock = async () => { const j = await apiFetch('/api/focus-blocks'); return j && j.focusBlock ? j.focusBlock : null; };
+const actFocusBlock = async (blockId, action, body = {}) => {
+  try { return await apiFetch(`/api/focus-blocks/${encodeURIComponent(blockId)}/${action}`, { method: 'POST', body: JSON.stringify(body) }); }
+  catch (e) { return { ok: false, error: e.message }; }
+};
 
 // Which screen is on, for the usage heatmap. Direct to NEURO with the PIN.
 // ⚠ Fire and forget — a usage grid never costs a navigation. See the hook.
@@ -409,6 +417,7 @@ export default function App() {
       </header>
 
       <main className="app__view">
+        {active !== 'surface' && <FocusBlockEndWatch fetchBlock={fetchFocusBlock} onAct={actFocusBlock} />}
         {pushed && (
           // A pushed secondary screen: its name, and the way back to where he was.
           <div className="app__back">
