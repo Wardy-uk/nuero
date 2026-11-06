@@ -915,6 +915,10 @@ function updateTask(id, fields = {}, opts = {}) {
         // estimates separately, because that is the number the planner needs
         // and re-estimating a task that already had one is a different act.
         estimateWasSet: row.estimate_minutes != null,
+        // Who: 'nick' from his own screens, 'machine:<name>' from a machine
+        // client, null from NEURO's own services. Read by standup-honesty so a
+        // date the day planner moved is never counted as Nick's slip.
+        by: opts.by || null,
       });
     } catch {}
   }

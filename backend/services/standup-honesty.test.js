@@ -82,3 +82,13 @@ test('render names rungs and pauses', () => {
   assert.match(out, /PAUSED/);
   assert.match(out, /2h30/);
 });
+
+test('only Nick\'s date moves are his slips — never NEURO\'s timers', () => {
+  assert.strictEqual(h.isNickMove({ by: 'nick' }, '2026-11-06 07:15:00'), true);
+  assert.strictEqual(h.isNickMove({ by: 'machine:mcp-local' }, '2026-11-06 07:15:00'), true);
+  assert.strictEqual(h.isNickMove({ by: null }, '2026-11-06 09:45:51'), false);
+  // Logged before `by` existed: a whole-minute stamp is a timer.
+  assert.strictEqual(h.isNickMove({}, '2026-10-28 07:15:00'), false);
+  assert.strictEqual(h.isNickMove({}, '2026-10-23 06:15:01'), false);
+  assert.strictEqual(h.isNickMove({}, '2026-11-04 09:45:51'), true);
+});

@@ -137,7 +137,10 @@ router.patch('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const before = db.getTaskRow(id);
-    const task = taskStore.updateTask(id, req.body || {});
+    // Who made the change rides on the triage log, so the standup's slip ladder
+    // can tell Nick moving a date from NEURO moving it (standup-honesty.js).
+    const machine = require('../services/authority-guard').machineName(req);
+    const task = taskStore.updateTask(id, req.body || {}, { by: machine ? `machine:${machine}` : 'nick' });
     if (!task) return res.status(404).json({ error: 'Task not found' });
     // Same push as /complete — a task can be finished by editing its status as
     // well as by the button, and a link that only worked down one of those two

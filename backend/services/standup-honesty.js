@@ -141,11 +141,37 @@ function setStatus(taskId, kind, note, now = new Date()) {
 
 // ── Gathering (the only part that reads) ────────────────────────────────────
 
+/**
+ * PURE. Was this date move Nick's? ⚠ NEURO's own timers (day planner, leave
+ * guard, auto-schedule passes) move dates too, and counting those as his slips
+ * is exactly the dishonesty this exists to avoid — measured on #358, 12 moves in
+ * 30 days, several at 07:15:00 / 06:15:01 on the dot.
+ *   by 'nick'        → his (from his own screens)
+ *   by 'machine:…'   → his (a machine client acts on his instruction — Sara, MCP)
+ *   by null          → NEURO's own service: not his
+ *   no `by` at all   → logged before 6 Nov 2026: his unless it landed on a whole
+ *                      minute (:00/:01), which is a timer's signature, not a person's
+ */
+function isNickMove(d, createdAt) {
+  if (!d || typeof d !== 'object') return false;
+  if ('by' in d) return d.by === 'nick' || (typeof d.by === 'string' && d.by.startsWith('machine:'));
+  const sec = String(createdAt || '').slice(17, 19);
+  return sec !== '00' && sec !== '01';
+}
+
+function _plannerBlockIds() {
+  try {
+    const all = JSON.parse(db.getState('day_planner_ledger') || '{}') || {};
+    return new Set(Object.values(all).flatMap((e) => (e && Array.isArray(e.blockIds) ? e.blockIds : [])).map(Number));
+  } catch { return new Set(); }
+}
+
 function _moveCounts(sinceIso) {
   const moves = new Map();
-  for (const a of db.all(`SELECT event_data FROM activity_log WHERE event_type = 'task_triaged' AND event_data LIKE '%due_date%' AND created_at >= ?`, [sinceIso])) {
+  for (const a of db.all(`SELECT event_data, created_at FROM activity_log WHERE event_type = 'task_triaged' AND event_data LIKE '%due_date%' AND created_at >= ?`, [sinceIso])) {
     let d; try { d = JSON.parse(a.event_data); } catch { continue; }
     if (!d || !Array.isArray(d.fields) || !d.fields.includes('due_date') || d.reason === 'recommit') continue;
+    if (!isNickMove(d, a.created_at)) continue;
     const id = Number(d.taskId);
     moves.set(id, (moves.get(id) || 0) + 1);
   }
@@ -153,9 +179,12 @@ function _moveCounts(sinceIso) {
 }
 
 function _lapsedCounts(sinceDate) {
+  // Time the day planner booked on its own is not time Nick chose and skipped.
+  const planner = _plannerBlockIds();
   const out = new Map();
-  for (const b of db.all(`SELECT bi.task_id FROM task_block_items bi JOIN task_blocks b ON b.id = bi.block_id
+  for (const b of db.all(`SELECT bi.task_id, b.id AS block_id FROM task_block_items bi JOIN task_blocks b ON b.id = bi.block_id
                           WHERE b.status IN ('released','dropped') AND b.date_key >= ?`, [sinceDate])) {
+    if (planner.has(Number(b.block_id))) continue;
     out.set(b.task_id, (out.get(b.task_id) || 0) + 1);
   }
   return out;
@@ -216,7 +245,11 @@ function gather({ today, now = new Date(), accountability = null, calendar = nul
       urgent.unshift({ title: c.title, why: c.reason, group: 'now', kind: 'ticket-promise', minutes: null, taskId: null });
     }
   } catch (e) { gaps.push(`ticket promises: ${e.message}`); }
-  urgent = urgent.slice(0, MAX_URGENT);
+  // At most three of any one kind: eight emails is an inbox, not a standup —
+  // the report owed, the promise to a customer and the slipping task get crowded out.
+  const perKind = new Map();
+  urgent = urgent.filter((u) => { const n = (perKind.get(u.kind) || 0) + 1; perKind.set(u.kind, n); return n <= 3; })
+    .slice(0, MAX_URGENT);
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   return { slipping, yesterday, urgent, capacity: capacity(calendar, nowMin), gaps };
@@ -255,4 +288,4 @@ function render(h) {
   return p.join('\n');
 }
 
-module.exports = { rungFor, landed, capacity, gather, render, readStatuses, setStatus, STATUS_KEY, ASSUMED_MINUTES };
+module.exports = { isNickMove, rungFor, landed, capacity, gather, render, readStatuses, setStatus, STATUS_KEY, ASSUMED_MINUTES };
