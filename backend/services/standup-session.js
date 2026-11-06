@@ -294,6 +294,22 @@ async function buildContext(kind) {
     console.warn('[StandupSession] Commitment→task link failed:', e.message);
   }
 
+  // Yesterday vs what landed, the slip ladder, what is urgent across all of
+  // NEURO, and today's free time (standup-honesty.js; Nick's design, 6 Nov 2026).
+  if (kind === KIND_STANDUP) {
+    try {
+      ctx.honesty = require('./standup-honesty').gather({
+        today: ctx.dateKey,
+        accountability: ctx.accountability,
+        calendar: Array.isArray(ctx.calendar) ? ctx.calendar : null,
+        finished: ctx.closed?.known ? (ctx.closed.items || []).map(i => i.text) : [],
+      });
+    } catch (e) {
+      console.warn('[StandupSession] Honesty read failed:', e.message);
+      ctx.honesty = null;
+    }
+  }
+
   return ctx;
 }
 
@@ -478,7 +494,7 @@ function _renderContext(ctx) {
     // Times are SLICED out of the wall-clock string, never parsed (the BST rule).
     const hm = (s) => (typeof s === 'string' && /T\d{2}:\d{2}/.test(s)) ? s.slice(11, 16) : '?';
     parts.push(`\nTODAY'S CALENDAR (start-end; an event ending at 13:00 does NOT occupy 13:00): ${ctx.calendar.map(e => `${hm(e.start)}${e.end ? `-${hm(e.end)}` : ''} ${e.subject}`).join(', ')}`);
-    parts.push(`(Meeting load is a real constraint — do not let him commit to more than the free time allows.)`);
+    parts.push(`(Meeting load is a real constraint — when his plan is bigger than the free time, say once what will slip.)`);
   }
   if (ctx.musts?.length) {
     parts.push(`\nMUST-DO TASKS: ${ctx.musts.map(m => `#${m.id} ${m.text}${m.overdue ? ' (OVERDUE)' : ''}`).join(' | ')}`);
@@ -490,6 +506,7 @@ function _renderContext(ctx) {
   if (ctx.plan) {
     parts.push(`\n90-DAY PLAN: day ${ctx.plan.day}, ${ctx.plan.done}/${ctx.plan.total} done.`);
   }
+  if (ctx.honesty) parts.push(require('./standup-honesty').render(ctx.honesty));
 
   return parts.join('\n');
 }
@@ -520,12 +537,26 @@ const STANDUP_PROMPT = `${SHARED_VOICE}
 ## Your job this morning
 Get him to ONE clear, specific set of commitments for today, and hold him to what he said yesterday.
 
+You are his coach here, not his auditor. The point is that he walks away honest with himself about what today can hold and what yesterday actually held — and feeling able to start, not told off. Warm, direct, specific. ADHD-friendly: one thing at a time, no walls of text, never shame, always a next step small enough to begin.
+
 Run it roughly like this, adapting to his answers:
-1. Open with the single most important thing from the context — a carried commitment, an unanswered escalation, a heavy meeting day. Not a greeting and a list.
-2. Chase anything carried 3+ days. That is not a task any more, it is a decision. Make him pick: do it today, give it a date, or drop it. "Carry it again" is not on the menu — say so plainly, once, without lecturing. Record the outcome with resolve_commitment — and if he says one is already finished, resolve it "done" straight away. Never tell him something is cleared unless resolve_commitment came back ok. Only record a decision he actually STATED — "continue", "move on", "ok" or no answer is never a decision; if he does not pick, leave it carried and say so. Never record anything about an ALREADY CLOSED commitment.
-3. Agree today's focus. Two or three things, not ten. If he names something vague ("look at QA", "catch up on tickets"), push once for what "done" looks like by end of day. Once.
-4. Check it fits the calendar. If he has five hours of meetings and three big commitments, say so.
-5. When you have the focus, call set_focus, then tell him you're done and he can go.
+1. Open on YESTERDAY in one honest line, from YESTERDAY'S PLAN vs WHAT LANDED: "Yesterday you planned 3 and landed 1 — the PDF's done, the Krista one and the report didn't." Facts, no score, no judgement. If it went well, say so plainly. If nothing was planned, say that instead.
+2. Then what matters TODAY: the two or three most urgent things from URGENT ACROSS NEURO and the SLIPPING list (and escalations). Something urgent there outranks an old MUST task — say which and why in a few words.
+3. Work the SLIPPING ladder, one item at a time, highest rung first (see "The slip ladder" below).
+4. PROPOSE today's plan yourself: two or three things, sized to FREE TIME LEFT TODAY, each with its time (estimate, or the 30-minute assumption — say it is one). "You've 3h free. I'd do X, Y and Z — about 2h30. Swap anything?" He edits; you go with his edits. If what he wants is more than fits, say once, plainly, what will slip — then accept his call and pass the overflow in set_focus's wont_fit.
+5. Chase anything carried 3+ days. That is not a task any more, it is a decision. Make him pick: do it today, give it a date, or drop it. "Carry it again" is not on the menu — say so plainly, once, without lecturing. Record the outcome with resolve_commitment — and if he says one is already finished, resolve it "done" straight away. Never tell him something is cleared unless resolve_commitment came back ok. Only record a decision he actually STATED — "continue", "move on", "ok" or no answer is never a decision; if he does not pick, leave it carried and say so. Never record anything about an ALREADY CLOSED commitment.
+6. If he names something vague ("look at QA", "catch up on tickets"), push once for what "done" looks like by end of day. Once.
+7. When you have the focus, call set_focus, then tell him you're done and he can go.
+
+## The slip ladder
+Each SLIPPING item carries a RUNG worked out from what NEURO recorded (days overdue, how often its date moved, booked time not used, standups carried). It is memory, not opinion — quote the facts.
+- RUNG 1 (first slip): note it lightly, in passing. "That slipped a day — still today?"
+- RUNG 2 (a pattern): name the pattern, kindly and specifically. "This is the third time the date's moved. What keeps getting in front of it?"
+- RUNG 3+ (stuck): no more carries or new dates. Offer exactly four ways out — do it today, cut it to a 15-minute first step he does today, hand it to someone, or drop it — and ask what is actually in the way. Moving the date again is not one of the four. If he picks a smaller step, use create_task for the step only if it is genuinely a new job, otherwise put the task in set_focus with the step as its text.
+- PAUSED: he told you someone else is holding it up. Do not chase it. If the note is old the line says so — ask once whether it is still blocked.
+- When he says something is blocked by someone else ("blocked by HR still"), call note_task_status with status "blocked" and what it waits on, so tomorrow does not chase it. When he says it is moving again, status "clear".
+- Never more than two ladder challenges in one standup, and never stack them in one message. Pick the highest rungs. The rest can wait for tomorrow.
+- Tone: curious, not prosecuting. You are on his side against the thing, never against him. Never "you failed", "again?", "as usual".
 
 ## Rules
 - If today's focus IS a carried commitment, resolve it with resolve_commitment("today") — do NOT also list it as a new focus item. They are one job, and treating them as two is how the list breeds.
@@ -716,8 +747,22 @@ const SESSION_TOOLS = [
         },
         blockers: { type: 'string', description: 'Anything in the way, if he named one.' },
         mood: { type: 'string', description: 'How he sounds, one short phrase. Only if he said something about it.' },
+        wont_fit: { type: 'array', items: { type: 'string' }, description: 'Things he chose to do today that will not fit the free time — you named what will slip, he kept them anyway. Recorded so tomorrow can see it.' },
       },
       required: ['items'],
+    },
+  },
+  {
+    name: 'note_task_status',
+    description: 'Remember what Nick said about a task only he knows: that it is blocked by someone else (status "blocked", note = what it is waiting on), or that it is no longer blocked (status "clear"). Kept across standups so you stop chasing a thing he cannot move. Only when he says so plainly.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'integer' },
+        status: { type: 'string', enum: ['blocked', 'clear'] },
+        note: { type: 'string', description: 'What it is waiting on, in his words ("HR to confirm").' },
+      },
+      required: ['task_id', 'status'],
     },
   },
   {
@@ -844,6 +889,8 @@ function _describeToolResult(name, input = {}, result = {}) {
         : `resolve_commitment: recorded ${result.recorded} on "${input.key}"${input.due_date ? ` (due ${input.due_date}${result.dated ? `, ${result.dated}` : ''})` : ''}${result.task_ids && result.task_ids.length ? ` for ${result.task_ids.map(id => `#${id}`).join(', ')}` : ''}`;
     case 'set_focus':
       return `set_focus: focus recorded — ${(result.focus || []).join('; ')}`;
+    case 'note_task_status':
+      return `note_task_status: #${input.task_id} ${input.status}${input.note ? ` ("${String(input.note).slice(0, 60)}")` : ''}`;
     case 'complete_task':
       return `complete_task: closed ${input.task_id != null ? `#${input.task_id}` : JSON.stringify(input).slice(0, 80)}`;
     default:
@@ -1120,6 +1167,8 @@ async function _executeTool(session, name, input = {}) {
       session.outcome.focus = items;
       session.outcome.blockers = input.blockers || null;
       session.outcome.mood = input.mood || null;
+      session.outcome.wontFit = (Array.isArray(input.wont_fit) ? input.wont_fit : [])
+        .map(s => String(s || '').trim()).filter(Boolean).slice(0, 8);
       session.state = 'ready';
       return { ok: true, focus: items, note: 'Focus recorded. Tell Nick he is done — the system writes the note.' };
     }
@@ -1186,6 +1235,12 @@ async function _executeTool(session, name, input = {}) {
 
     case 'complete_task':
       return chatTools.execute(name, input);
+
+    case 'note_task_status': {
+      const taskStore = require('./task-store');
+      if (!taskStore.getTask(Number(input.task_id))) return { ok: false, error: `No task #${input.task_id}. Nothing was recorded.` };
+      return require('./standup-honesty').setStatus(input.task_id, input.status, input.note);
+    }
 
     case 'create_meeting':
       // Governed (Build 11): prepares an invite for approval, sends nothing.
@@ -1773,7 +1828,7 @@ ${carried.length ? carried.join('\n') : '- None'}
 ${dropped.length ? `\n## Decided\n${dropped.join('\n')}\n` : ''}
 ## Blockers
 - ${o.blockers || 'None'}
-${o.mood ? `\n## Mood\n- ${o.mood}\n` : ''}`;
+${o.mood ? `\n## Mood\n- ${o.mood}\n` : ''}${o.wontFit?.length ? `\n## Won't fit today\n${o.wontFit.map(w => `- ${w}`).join('\n')}\n` : ''}`;
 }
 
 /** The EOD section, appended to whatever the morning wrote. */

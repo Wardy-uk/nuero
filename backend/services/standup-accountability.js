@@ -509,7 +509,7 @@ function buildAccountability({ lookbackDays = 14, asOf = null, ledger = null, ta
       date: previous.date,
       committed: all.length,
       done: all.filter(i => i.done).length,
-      items: all.map(i => ({ text: i.text, done: i.done })),
+      items: all.map(i => ({ text: i.text, done: i.done, taskId: i.taskId || null })),
       eodItems: (previous.eodItems || []).map(i => i.text),
       eodDone: !!previous.eodDone,
       unresolved: previous.didntGo || null,

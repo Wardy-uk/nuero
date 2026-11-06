@@ -259,7 +259,8 @@ test('a turn after a closure TELLS the model its earlier chase is settled — th
   const closedBlock = (seen.split('\nALREADY CLOSED —')[1] || '').split('\n\n')[0];
   assert.match(closedBlock, /EVEN IF YOU ASKED ABOUT ONE EARLIER/, 'the model is not told its earlier question is settled');
   assert.ok(closedBlock.includes(`"${PODCAST}" — done`), 'the closed commitment is not named to the model');
-  const carriedBlock = (seen.split('CARRIED')[1] || '').split('\n\n')[0];
+  // Anchored on the context header: the prompt now says "the CARRIED list" too.
+  const carriedBlock = (seen.split('\nCARRIED (')[1] || '').split('\n\n')[0];
   assert.ok(!carriedBlock.includes(PODCAST), 'still offered as carried');
   assert.ok(carriedBlock.includes(METRICS.slice(0, 30)), 'a live commitment vanished from the carried list');
 });
