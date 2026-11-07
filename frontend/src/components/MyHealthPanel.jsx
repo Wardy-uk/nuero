@@ -131,7 +131,7 @@ function SystemTile({ system, onNavigate, goals = null }) {
 }
 
 /** Pure view of one payload, so it renders without a network. */
-export function MyHealthView({ data, onNavigate }) {
+export function MyHealthView({ data, onNavigate, bpContext = null }) {
   const insights = data.insights || [];
   const doThis = insights.filter((i) => i.level === 'act' || i.level === 'watch');
   const gaps = insights.filter((i) => i.level === 'gap');
@@ -195,6 +195,8 @@ export function MyHealthView({ data, onNavigate }) {
         </section>
       )}
 
+      {bpContext}
+
       <section className="mh-section">
         <h2>Sources</h2>
         <div className="mh-sources">
@@ -215,6 +217,58 @@ export function MyHealthView({ data, onNavigate }) {
         <HowItWorks>{data.note}</HowItWorks>
       </section>
     </>
+  );
+}
+
+/**
+ * Blood pressure against sleep and meeting load. Renders the service's own
+ * verdict: a link is shown as one only when it cleared the corrected threshold;
+ * otherwise "no clear link", with the numbers. Nothing is judged here.
+ */
+export function BpContextView({ data }) {
+  if (!data) return null;
+  if (data.ok === false) return <p className="mh-error">Couldn’t test blood pressure against sleep and meetings: {data.error || 'no answer'}.</p>;
+  const known = (data.results || []).filter((r) => r.known);
+  return (
+    <>
+      <p className="mh-finding" data-testid="bp-context-sentence">{data.sentence}</p>
+      {known.length > 0 && (
+        <table className="mh-bp-table">
+          <thead>
+            <tr><th>Against</th><th>Reading</th><th className="mh-num">Days</th><th className="mh-num">Low third</th><th className="mh-num">High third</th><th className="mh-num">p</th></tr>
+          </thead>
+          <tbody>
+            {data.results.map((r) => (
+              <tr key={`${r.driver}-${r.outcome}`}>
+                <td>{r.driverLabel}</td>
+                <td>{r.outcomeLabel}</td>
+                <td className="mh-num">{r.days}</td>
+                <td className="mh-num">{r.known ? `${r.lowBp} at ${r.lowDriver}${r.unit}` : '—'}</td>
+                <td className="mh-num">{r.known ? `${r.highBp} at ${r.highDriver}${r.unit}` : '—'}</td>
+                <td className="mh-num">{r.known ? `${r.p}${r.significant ? ' ✓' : ''}` : r.why}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="mh-muted mh-bp-note">{data.caveat}{known.length ? ` ✓ = below the corrected threshold of ${data.threshold}.` : ''}</p>
+    </>
+  );
+}
+
+function BpContext() {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    apiFetch('/api/performance/bp-context')
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => setData({ ok: false, error: 'could not reach NEURO' }));
+  }, []);
+  return (
+    <section className="mh-section" data-testid="mh-bp-context">
+      <h2>Blood pressure, sleep and meetings</h2>
+      {data ? <BpContextView data={data} /> : <p className="mh-muted">Testing…</p>}
+    </section>
   );
 }
 
@@ -250,7 +304,7 @@ export default function MyHealthPanel({ onNavigate }) {
       </header>
       {error && <p className="mh-error">Couldn’t read your health picture: {error}. This is not an all-clear.</p>}
       {!data && !error && <p className="mh-muted">Reading every source…</p>}
-      {data && <MyHealthView data={data} onNavigate={onNavigate} />}
+      {data && <MyHealthView data={data} onNavigate={onNavigate} bpContext={<BpContext />} />}
     </div>
   );
 }

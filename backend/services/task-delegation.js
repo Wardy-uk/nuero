@@ -48,6 +48,9 @@ const VIA = ['email', 'told'];
 
 let ensured = false;
 function _db() { return require('../db/database'); }
+function _hasTable(name) {
+  try { return !!_db().get("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = ?", [name]); } catch { return false; }
+}
 const clip = (s, n) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, n);
 const londonDay = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10);
 
@@ -312,9 +315,11 @@ function _complete(row, d, nowMs) {
 
 /** Read prepared hand-over emails back: VERIFIED → delegated; failed / rejected / gone → cancelled. */
 function reconcile({ deps } = {}) {
-  ensureTable();
-  const d = _d(deps);
   const out = { delegated: 0, cancelled: 0 };
+  // Called on every Commitments read: with no table there is nothing to read
+  // back, and creating one here would make a read write.
+  if (!_hasTable('task_delegations')) return out;
+  const d = _d(deps);
   for (const row of _db().all("SELECT * FROM task_delegations WHERE status = 'prepared' AND action_id IS NOT NULL")) {
     let a = null; try { a = d.getAction(row.action_id); } catch { a = null; }
     if (a && LIVE_ACTION.has(a.status)) continue;
@@ -337,16 +342,19 @@ function reconcile({ deps } = {}) {
 function byWaitingKey({ deps } = {}) {
   const d = _d(deps);
   const out = new Map();
+  // ⚠ A READ MUST NOT CREATE TABLES (build29 "reads write nothing"). A table that
+  // does not exist yet means no delegation was ever made — a true empty answer.
+  const has = _hasTable;
   try {
-    ensureTable();
+    if (!has('task_delegations')) throw Object.assign(new Error('none yet'), { quiet: true });
     for (const r of _db().all("SELECT * FROM task_delegations WHERE status = 'delegated' AND waiting_key IS NOT NULL")) {
       let items = []; try { items = JSON.parse(r.items_json) || []; } catch { items = []; }
       out.set(r.waiting_key, { key: r.waiting_key, source: 'manual', id: r.id, to: r.person, at: r.delegated_at, via: r.via,
         items: items.map((i) => ({ kind: i.kind, id: i.id, title: i.title, label: itemLabel(i) })) });
     }
-  } catch (e) { console.warn(`[TaskDelegation] read failed: ${e.message}`); }
+  } catch (e) { if (!e.quiet) console.warn(`[TaskDelegation] read failed: ${e.message}`); }
   try {
-    require('./delegation').ensureTable();
+    if (!has('delegation_suggestions')) throw Object.assign(new Error('none yet'), { quiet: true });
     for (const r of _db().all("SELECT * FROM delegation_suggestions WHERE status = 'sent' AND waiting_key IS NOT NULL")) {
       if (out.has(r.waiting_key)) continue;
       let title = null;
@@ -356,7 +364,7 @@ function byWaitingKey({ deps } = {}) {
         : { kind: 'email', id: String(r.item_id), title: null, label: 'email' };
       out.set(r.waiting_key, { key: r.waiting_key, source: 'suggestion', id: r.id, to: r.person, at: r.decided_at, via: 'email', items: [item] });
     }
-  } catch (e) { console.warn(`[TaskDelegation] suggestion read failed: ${e.message}`); }
+  } catch (e) { if (!e.quiet) console.warn(`[TaskDelegation] suggestion read failed: ${e.message}`); }
   return out;
 }
 

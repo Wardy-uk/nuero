@@ -156,6 +156,19 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, g
         </Group>
       )}
 
+      {data.weekend && data.weekend.days && data.weekend.days.length > 0 && (
+        <Group label="This weekend" why={data.weekend.line}>
+          <TileGrid testid="outdoor-weekend">
+            {data.weekend.days.map((d) => (
+              <Tile key={d.day} accent={data.weekend.best === d.day} title={`${d.name}${data.weekend.best === d.day ? ' · better day' : ''}`}
+                foot={d.planned ? <span className="cn-chip">planned</span> : null}>
+                <Weather w={d} />
+              </Tile>
+            ))}
+          </TileGrid>
+        </Group>
+      )}
+
       {act && (
         <div className="cn-actions">
           <PrimaryAction onClick={() => setPlanning((v) => !v)}>{planning ? 'Close the route form' : 'Plan a route'}</PrimaryAction>

@@ -70,6 +70,46 @@ function rate(lastAt, expectMinutes, now = new Date(), { staleAfter = null } = {
   return { state: ageMinutes <= limit ? 'live' : 'stale', ageMinutes };
 }
 
+/**
+ * The Watch auto-lock as a sense. PURE: the desktop hosts and the clock in.
+ *
+ * ⚠ Added 7 Nov 2026 because the laptop's Watch reporter died on 27 Oct and
+ * nothing said so for eleven days: the agent kept reporting `mode: on`,
+ * `presence: blind`, and the only reader was the Set up list, which nobody
+ * re-opens. The lock is switched on, so a blind lock is a FAULT, not a choice.
+ * Off and shadow are choices and render `off`, never `stale`.
+ */
+const WATCH_LOCK_REPORT_STALE_MIN = 15;   // the agent reports it every ~2 min (setup-check's 15)
+const WATCH_BLIND_GRACE_MIN = 30;          // a reporter restart or a Bluetooth blip is not an outage
+
+function watchLockRow(hosts = [], now = new Date()) {
+  const h = (hosts || []).find((x) => x && x.watchLock);
+  if (!h) return { state: 'off', why: 'no machine runs the Watch lock', detail: 'desktop-agent.json "watchLock"' };
+  const wl = h.watchLock;
+  if (wl.mode === 'off') return { state: 'off', why: 'switched off', detail: h.host };
+  if (wl.mode === 'shadow') return { state: 'off', why: 'shadow (deciding, not locking)', detail: h.host };
+  const at = Date.parse(h.watchLockAt || '');
+  if (!Number.isFinite(at)) return { state: 'error', ageMinutes: null, why: 'unreadable report time' };
+  const ageMinutes = Math.max(0, Math.round((now.getTime() - at) / 60000));
+  if (ageMinutes > WATCH_LOCK_REPORT_STALE_MIN) {
+    return { state: 'stale', ageMinutes, why: 'the desktop agent stopped reporting the lock — nothing is locking', detail: h.host };
+  }
+  if (wl.presence === 'blind') {
+    const blindMin = wl.presenceAgeS != null ? Math.round(wl.presenceAgeS / 60) : null;
+    if (blindMin == null || blindMin > WATCH_BLIND_GRACE_MIN) {
+      return {
+        state: 'stale',
+        ageMinutes: blindMin,
+        why: `the Watch reporter has stopped${blindMin != null ? ` (last reading ${age(blindMin)} ago)` : ''} — nothing will lock`,
+        detail: `${h.host} · restart "NEURO Watch reporter" from the Startup folder`,
+      };
+    }
+    return { state: 'live', ageMinutes, detail: `${h.host} · Watch briefly unread` };
+  }
+  if (wl.failures > 0) return { state: 'error', ageMinutes, why: `${wl.failures} lock/wake call(s) failed`, detail: h.host };
+  return { state: 'live', ageMinutes, detail: `${h.host} · Watch ${wl.presence}` };
+}
+
 /** "14h 35m" / "3 days". Plain words beat a raw minute count on a status row. */
 function age(minutes) {
   if (minutes == null) return null;
@@ -342,6 +382,10 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
       detail: run.known && run.app ? `in ${run.label}` : (run.known ? run.why : null),
     };
   });
+
+  // ── Watch auto-lock ───────────────────────────────────────────────────────
+  guard('watch-lock', 'Watch lock', 'locking the laptop when your Watch leaves the desk', () =>
+    watchLockRow(require('./desktop-activity').hosts(), now));
 
   // ── Router ────────────────────────────────────────────────────────────────
   //
@@ -648,4 +692,4 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
   };
 }
 
-module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel, spineVerdict, phoneRow };
+module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel, spineVerdict, phoneRow, watchLockRow };

@@ -228,7 +228,9 @@ function suitability({ hourly = [], daily = null } = {}) {
   if (!inputs.some((i) => i.input === 'rain')) missing.push('rain');
   if (!inputs.some((i) => i.input === 'wind')) missing.push('wind');
   if (!inputs.some((i) => i.input === 'temperature')) missing.push('temperature');
-  if (!inputs.length) return { state: 'unknown', severe: false, inputs, missing, line: 'No forecast for that day yet.' };
+  // The raw numbers, so two days can be compared without parsing the sentence.
+  const measures = { rainMm, maxProb, tempHighC: hi, windKmh: daily && Number.isFinite(daily.windKmh) ? daily.windKmh : null };
+  if (!inputs.length) return { state: 'unknown', severe: false, inputs, missing, measures, line: 'No forecast for that day yet.' };
   const severe = inputs.some((i) => i.level === 'severe');
   let state = 'favourable';
   for (const i of inputs) {
@@ -239,7 +241,61 @@ function suitability({ hourly = [], daily = null } = {}) {
   const line = state === 'favourable'
     ? `Looks favourable — ${inputs.map((i) => i.said).join('; ')}.`
     : `${state === 'mixed' ? 'Mixed' : severe ? 'Severe' : 'Poor'} — ${drivers.join('; ')}.`;
-  return { state, severe, inputs, missing, line: missing.length ? `${line} Not known: ${missing.join(', ')}.` : line };
+  return { state, severe, inputs, missing, measures, line: missing.length ? `${line} Not known: ${missing.join(', ')}.` : line };
+}
+
+// ── the weekend pick (7 Nov 2026) ───────────────────────────────────────────
+
+/** The weekend days still ahead of `today` (inclusive): Sat+Sun, or just Sun on a Sunday. PURE. */
+function weekendDays(today) {
+  const d = dow(today);
+  if (d === 0) return [today];
+  if (d === 6) return [today, addDays(today, 1)];
+  const sat = addDays(today, 6 - d);
+  return [sat, addDays(sat, 1)];
+}
+
+/**
+ * Saturday against Sunday for a hike. PURE. Ranks on the SAME suitability
+ * verdict as everywhere else (favourable > mixed > poor; unknown never wins),
+ * then breaks a tie on the numbers in this order: less rain, a lower wettest
+ * hour, less wind. A difference too small to matter (under 1 mm, 10 points,
+ * 5 km/h) is a tie and says so — picking a day on 0.2 mm is false precision.
+ * Context only: it suggests nothing, books nothing and never pushes.
+ */
+function weekendPick(days = []) {
+  const ds = (days || []).filter(Boolean).map((w) => ({ day: w.day, name: dayName(w.day), state: w.state, severe: !!w.severe, line: w.line, measures: w.measures || {}, planned: !!w.planned }));
+  if (!ds.length) return { known: false, days: [], best: null, line: 'No weekend ahead to compare.' };
+  const known = ds.filter((d) => d.state && d.state !== 'unknown');
+  if (!known.length) return { known: false, days: ds, best: null, line: 'No forecast for the weekend yet.' };
+  if (ds.length === 1) {
+    const d = ds[0];
+    return { known: true, days: ds, best: d.state === 'poor' ? null : d.day, line: `Only ${d.name} is left this weekend — ${d.line}` };
+  }
+  if (known.length === 1) {
+    const k = known[0]; const other = ds.find((d) => d !== k);
+    return { known: true, days: ds, best: k.state === 'poor' ? null : k.day, line: `${k.name}: ${k.line} No forecast for ${other.name} yet.` };
+  }
+  const [a, b] = known;
+  if (a.state === 'poor' && b.state === 'poor') {
+    return { known: true, days: ds, best: null, line: `Neither weekend day looks good for a hike — ${a.name}: ${a.line} ${b.name}: ${b.line}` };
+  }
+  if (RANK[a.state] !== RANK[b.state]) {
+    const [win, lose] = RANK[a.state] < RANK[b.state] ? [a, b] : [b, a];
+    return { known: true, days: ds, best: win.day, line: `${win.name} looks better for a hike than ${lose.name} — ${win.name} is ${win.state}, ${lose.name} ${lose.severe ? 'severe' : lose.state}.` };
+  }
+  const tiers = [
+    ['rainMm', 1, (v) => `${v} mm of rain`],
+    ['maxProb', 10, (v) => `a ${Math.round(v)}% wettest hour`],
+    ['windKmh', 5, (v) => `${Math.round(v)} km/h wind`],
+  ];
+  for (const [k, min, say] of tiers) {
+    const va = a.measures[k]; const vb = b.measures[k];
+    if (!Number.isFinite(va) || !Number.isFinite(vb) || Math.abs(va - vb) < min) continue;
+    const [win, lose] = va < vb ? [a, b] : [b, a];
+    return { known: true, days: ds, best: win.day, line: `Both look ${a.state}; ${win.name} edges it — ${say(win.measures[k])} against ${say(lose.measures[k])}.` };
+  }
+  return { known: true, days: ds, best: null, tie: true, line: `${a.name} and ${b.name} look much the same for a hike (${a.state}).` };
 }
 
 // ── goal at risk (29X) and Now (29Y) ───────────────────────────────────────
@@ -449,6 +505,6 @@ module.exports = {
   STATES, KINDS, GOAL_STATES, SUITABILITY, EVIDENCE, MEANINGFUL_WALK_MIN, NOW_PLAN_AHEAD_DAYS, DECISION_AHEAD_DAYS,
   MATCH_RADIUS_M, MATCH_SHARE, MAX_GPX_CHARS,
   addDays, daysBetween, dayName, whenWords,
-  shapeWorkout, shapeConfirmedDay, isMeaningfulWalk, goalState, suitability, goalAtRisk, nowRelevance,
+  shapeWorkout, shapeConfirmedDay, isMeaningfulWalk, goalState, suitability, goalAtRisk, nowRelevance, weekendDays, weekendPick,
   daylightWeek, weeklySummary, parseGpx, matchRoute, haversineM,
 };

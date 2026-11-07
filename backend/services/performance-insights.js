@@ -247,6 +247,117 @@ function heatCost(hikes) {
   return { ...out, temperature: t, dewPoint: dp, significant: (t.p != null && t.p < 0.05) || (dp.p != null && dp.p < 0.05) };
 }
 
+// ── Blood pressure against sleep and meeting load (7 Nov 2026) ───────────────
+//
+// The card answered "what is my BP" and never "what goes with a high day". Two
+// drivers, each tested against BOTH halves of the reading, so four tests and a
+// Bonferroni threshold (the sleep-environment lesson: one of four clears 0.05 by
+// chance about one run in five).
+//
+//   • sleep — the night ending that morning (health_daily keys sleep by WAKE
+//     date, so the same row holds the night before and that day's BP);
+//   • meetings — hours in meetings with other people that day, WORKING DAYS
+//     ONLY: a weekend has no meetings and may have lower BP for a dozen other
+//     reasons, which would manufacture a "meetings raise your BP" finding.
+
+const BP_MIN_DAYS = 20;
+const BP_DRIVERS = [
+  { key: 'sleep', label: 'sleep the night before', unit: 'h', dp: 1 },
+  { key: 'meetings', label: 'time in meetings that day', unit: 'h', dp: 1 },
+];
+const BP_OUTCOMES = [
+  { key: 'bpSystolic', label: 'systolic' },
+  { key: 'bpDiastolic', label: 'diastolic' },
+];
+
+/**
+ * Hours in meetings with other people per LOCAL day, from calendar_history rows.
+ * PURE. A moved meeting keeps every slot it was ever at in history, so each
+ * event counts once, at its NEWEST slot (latest first_seen). Solo blocks,
+ * all-day entries, cancelled ones and anything whose attendees are unknown are
+ * not meetings. Times are London wall clock as Graph gave them, sliced, never
+ * re-zoned.
+ */
+function meetingHoursByDay(rows) {
+  const newest = new Map();
+  for (const r of rows || []) {
+    if (!r || !r.event_id) continue;
+    const held = newest.get(r.event_id);
+    if (!held || String(r.first_seen) > String(held.first_seen)) newest.set(r.event_id, r);
+  }
+  const out = new Map();
+  for (const r of newest.values()) {
+    if (r.attendees_other !== 1 || r.is_all_day === 1) continue;
+    if (/^\s*cancell?ed\s*:/i.test(r.subject || '')) continue;
+    const s = Date.parse(`${String(r.start_time).slice(0, 19)}Z`);
+    const e = Date.parse(`${String(r.end_time || '').slice(0, 19)}Z`);
+    if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) continue;
+    const day = String(r.start_time).slice(0, 10);
+    out.set(day, (out.get(day) || 0) + Math.min(12, (e - s) / 3600000));
+  }
+  return out;
+}
+
+/**
+ * PURE. `days` are health_daily rows (finished days); `meetings` maps a WORKING
+ * day the calendar covered to its meeting hours (0 included — a day with none is
+ * a measurement, not a gap).
+ */
+function bpContext(days, meetings = new Map()) {
+  const results = [];
+  for (const drv of BP_DRIVERS) {
+    for (const o of BP_OUTCOMES) {
+      const pairs = (days || [])
+        .filter((d) => Number.isFinite(d[o.key]))
+        .map((d) => ({ day: d.day, x: drv.key === 'sleep' ? d.asleepHours : meetings.get(d.day), y: d[o.key] }))
+        .filter((p) => Number.isFinite(p.x) && !(drv.key === 'sleep' && p.x <= 0));
+      const base = { driver: drv.key, driverLabel: drv.label, outcome: o.key, outcomeLabel: o.label, days: pairs.length };
+      if (pairs.length < BP_MIN_DAYS) {
+        results.push({ ...base, known: false, why: `only ${pairs.length} day(s) with both — need ${BP_MIN_DAYS}` });
+        continue;
+      }
+      const { r, p } = permutationTest(pairs.map((q) => q.x), pairs.map((q) => q.y));
+      const sorted = [...pairs].sort((a, b) => a.x - b.x);
+      const third = Math.floor(sorted.length / 3);
+      const lo = sorted.slice(0, third); const hi = sorted.slice(-third);
+      results.push({
+        ...base,
+        known: true,
+        r, p,
+        lowDriver: round(median(lo.map((q) => q.x)), drv.dp),
+        highDriver: round(median(hi.map((q) => q.x)), drv.dp),
+        lowBp: round(median(lo.map((q) => q.y)), 0),
+        highBp: round(median(hi.map((q) => q.y)), 0),
+        unit: drv.unit,
+      });
+    }
+  }
+  const tested = results.filter((x) => x.known).length;
+  const threshold = tested ? 0.05 / tested : 0.05;
+  for (const x of results) if (x.known) x.significant = x.p != null && x.p < threshold;
+  const found = results.filter((x) => x.significant);
+  const sentence = found.length
+    ? found.map(describeBpFinding).join(' ')
+    : tested
+      ? `No clear link between your blood pressure and ${results.filter((x) => x.known).map((x) => x.driverLabel).filter((v, i, a) => a.indexOf(v) === i).join(' or ')} across ${Math.max(...results.filter((x) => x.known).map((x) => x.days))} days.`
+      : 'Not enough days with both a blood-pressure reading and sleep or meeting data yet.';
+  return {
+    results,
+    threshold: round(threshold, 4),
+    findings: found,
+    sentence,
+    caveat: 'Daily medians of the HiLo bracelet’s readings. Meetings are counted on working days only, from the diary NEURO has kept since late August; a working day with no meetings at all (usually leave) is left out. A correlation is not a cause — a busy day can also mean less walking, more caffeine or a worse night.',
+  };
+}
+
+function describeBpFinding(f) {
+  const diff = f.highBp - f.lowBp;
+  const drv = f.driver === 'sleep'
+    ? `after longer nights (around ${f.highDriver}h against ${f.lowDriver}h)`
+    : `on days with more meetings (around ${f.highDriver}h against ${f.lowDriver}h)`;
+  return `${f.outcomeLabel[0].toUpperCase()}${f.outcomeLabel.slice(1)} ran ${Math.abs(diff)} mmHg ${diff < 0 ? 'lower' : 'higher'} ${drv} (${f.days} days, p = ${f.p}).`;
+}
+
 // ── Loaders ──────────────────────────────────────────────────────────────────
 
 const LOCATION_KEY = 'logger_location';
@@ -366,8 +477,33 @@ function loadHeatCost() {
   return heatCost(rows);
 }
 
+/**
+ * BP against sleep and meetings over the last `days` finished days.
+ * ⚠ A working day with NO meetings is left out of the meetings test: with a
+ * daily standup, that is almost always leave, and leave is not "a light day".
+ */
+function loadBpContext({ days = 180 } = {}) {
+  const db = require('../db/database');
+  const wd = require('./working-days');
+  const rows = require('./health-daily').recentDays(days, { completeOnly: true });
+  const from = rows.length ? rows[rows.length - 1].day : null;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+  const hist = from
+    ? db.all(`SELECT event_id, start_time, end_time, subject, is_all_day, attendees_other, first_seen
+                FROM calendar_history WHERE substr(start_time, 1, 10) >= ? AND substr(start_time, 1, 10) < ?`, [from, today])
+    : [];
+  const hours = meetingHoursByDay(hist);
+  const meetings = new Map();
+  for (const [day, h] of hours) if (h > 0 && wd.isWorkingDay(day)) meetings.set(day, h);
+  return { known: true, ...bpContext(rows, meetings), meetingDays: meetings.size };
+}
+
 module.exports = {
   MIN_NIGHTS,
+  BP_MIN_DAYS,
+  meetingHoursByDay,
+  bpContext,
+  loadBpContext,
   MIN_HIKES,
   pearson,
   permutationTest,

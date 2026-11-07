@@ -67,6 +67,15 @@ const ALREADY_HAVE = [
   'Car journeys from Life360, with Nick approving each one',
   'Hike weather suitability for a planned or goal hike (Outdoor, from the forecast); hike safety check-in with an overdue alert',
   'A household presence sensor (who is home, from Life360 + the router); room presence from BLE',
+  // Added 7 Nov 2026 — each of these was proposed again (and accepted) although it existed.
+  'Walking/running distance from the Watch, live (the metric is walking_running_distance)',
+  'Alcohol: drinks logged in Foodnoms are looked up by name, turned into UK units on Nutrition, and can be a goal measure',
+  'PLAUD transcripts and summaries are in the vault and searchable (semantic + keyword) from chat and MCP',
+  'Speech-to-text on pi5 (Whisper) and a living-room voice satellite; SAiM speaks through a natural TTS voice',
+  'Every sense, RescueTime included, has a live/stale row on NEURO Health and the watchdog warns when one stops',
+  'The Watch auto-lock on the laptop, with a NEURO Health warning when its Watch reporter stops',
+  'Blood pressure against sleep and meeting load (tested correlation) on My Health',
+  'A weekend hiking pick: Saturday vs Sunday ranked on the forecast, on Outdoor',
 ];
 // What Nick has RULED OUT, with why. Enforced by judge(), not just stated:
 // the first live run recommended exporting to Strava anyway.

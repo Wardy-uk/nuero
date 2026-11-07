@@ -253,6 +253,11 @@ function read({ now = Date.now(), weeks = 4 } = {}) {
     return { ...p, label, when: model.whenWords(today, p.day), weather: away <= 7 ? weatherFor(p.day, { nowMs, daily }) : null };
   });
   const nextPlan = plans[0] || null;
+  // Saturday against Sunday on the same suitability rule. Context only.
+  let weekend = null;
+  try {
+    weekend = model.weekendPick(model.weekendDays(today).map((d) => ({ ...weatherFor(d, { nowMs, daily }), planned: plans.some((p) => p.day === d) })));
+  } catch (e) { gaps.push({ input: 'weekend-pick', why: e.message }); }
 
   const goal = loopActive ? model.goalState(hiking.current) : { state: 'unknown', why: hiking ? hiking.why : 'the hiking loop could not be read' };
   const sources = sourceHealth({ nowMs });
@@ -282,7 +287,7 @@ function read({ now = Date.now(), weeks = 4 } = {}) {
     hikeGaps: activities.filter((a) => a.kind === 'hike' && a.state !== 'confirmed'),
     walks: activities.filter(model.isMeaningfulWalk),
     shortWalks: activities.filter((a) => ['walk', 'dog_walk'].includes(a.kind) && !model.isMeaningfulWalk(a)).length,
-    refused, plans, nextPlan, routes, sources, companions, now: relevance,
+    refused, plans, nextPlan, weekend, routes, sources, companions, now: relevance,
     evidence: model.EVIDENCE,
     rule: 'A hike is confirmed by a GPS track recorded with a Hiking workout, or a 60+ minute Walking workout, received within 24 hours — or by you. Steps, distance, routes, plans, weather and Ember never confirm one.',
     gaps,

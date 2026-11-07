@@ -1,7 +1,15 @@
-# Windows on ARM64: install with --prefer-binary so cryptography/pillow/winrt pull
-# their prebuilt arm64 wheels instead of trying to compile from source.
-#   pip install --prefer-binary -r requirements.txt
-bleak>=0.21
-cryptography>=44
-pystray>=0.19
-pillow>=10
+# Windows on ARM64: these versions have prebuilt arm64 wheels. Unpinned, uv/pip
+# picked cryptography 50, which has none and fails to compile (7 Nov 2026).
+#
+# Build the venv on a uv-MANAGED Python, not the system one: the reporter died
+# on 27 Oct 2026 when the system Python went 3.13 -> 3.15 and the venv's base
+# interpreter vanished. A uv Python is not removed by a system upgrade.
+#   uv python install cpython-3.13-windows-aarch64-none
+#   uv venv --python cpython-3.13-windows-aarch64-none venv
+#   uv pip install --python venv\Scripts\python.exe --only-binary cryptography,cffi,pillow -r requirements.txt
+bleak==3.0.2
+cryptography==46.0.3
+cffi==2.0.0
+pillow==12.2.0
+pystray==0.19.5
+winrt-runtime==3.2.1

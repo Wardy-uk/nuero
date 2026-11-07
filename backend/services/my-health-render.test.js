@@ -75,3 +75,22 @@ test('an incomplete picture says it is not an all-clear', async () => {
   const html = renderToString(React.createElement(MyHealthView, { data: picture({ unread: [{ input: 'days', why: 'x' }] }) }));
   assert.match(html, /not an all-clear/);
 });
+
+// ── Blood pressure against sleep and meetings (7 Nov 2026) ──────────────────
+test('BP context: renders the real bpContext() verdict, the table, and an unknown row with its reason', async () => {
+  const { BpContextView } = await load();
+  const pi = require('./performance-insights');
+  const days = Array.from({ length: 30 }, (_, i) => ({ day: `d${i}`, asleepHours: 6 + (i % 4), bpSystolic: 140 + ((i * 7) % 9), bpDiastolic: 86 }));
+  const data = { ok: true, known: true, ...pi.bpContext(days, new Map()) };
+  const html = renderToString(React.createElement(BpContextView, { data }));
+  assert.match(html, /No clear link between your blood pressure and sleep the night before/);
+  assert.match(html, /mh-bp-table/);
+  assert.match(html, /need 20/);            // the meetings rows say why they are unknown
+  assert.match(html, /corrected threshold/);
+});
+
+test('BP context: a failed read says so — never a blank or an all-clear', async () => {
+  const { BpContextView } = await load();
+  const html = renderToString(React.createElement(BpContextView, { data: { ok: false, error: 'boom' } }));
+  assert.match(html, /Couldn’t test blood pressure/);
+});

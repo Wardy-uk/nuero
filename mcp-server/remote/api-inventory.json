@@ -5042,6 +5042,22 @@
     "stream": false
   },
   {
+    "id": "get_performance_bp_context",
+    "method": "GET",
+    "route": "/api/performance/bp-context",
+    "domain": "performance",
+    "source": "routes/performance.js",
+    "line": 78,
+    "description": "GET /api/performance/bp-context.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_performance_exertion",
     "method": "GET",
     "route": "/api/performance/exertion",
@@ -5081,7 +5097,7 @@
     "route": "/api/performance/heat-cost",
     "domain": "performance",
     "source": "routes/performance.js",
-    "line": 78,
+    "line": 81,
     "description": "GET /api/performance/heat-cost.",
     "params": [],
     "query": [],

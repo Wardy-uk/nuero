@@ -74,6 +74,9 @@ router.post('/logger-location', (req, res) => {
   res.status(r.ok ? 200 : 400).json(r);
 });
 
+/** GET /api/performance/bp-context — blood pressure against the night's sleep and the day's meeting hours (tested correlation, Bonferroni-corrected). */
+router.get('/bp-context', guard(() => insights.loadBpContext()));
+
 /** GET /api/performance/heat-cost — effort against the heat, across carried hikes. */
 router.get('/heat-cost', guard(() => insights.loadHeatCost()));
 
