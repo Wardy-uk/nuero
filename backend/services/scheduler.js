@@ -1335,6 +1335,12 @@ function start() {
       .catch(e => console.error('[Scheduler] MS push queue drain failed:', e.message));
   });
 
+  // Evening Foodnoms reminder (7 Nov 2026) — 20:00 every day; the service
+  // decides (switch, already sent, logged today) and never sends twice a day.
+  cron.schedule('0 20 * * *', () => {
+    require('./food-log-nudge').run().catch((e) => console.warn(`[FoodLogNudge] ${e.message}`));
+  });
+
   // Escalation queue watcher — check every 5 minutes during work hours
   cron.schedule('*/5 8-18 * * 1-5', () => {
     jira.syncEscalations().catch(e => {

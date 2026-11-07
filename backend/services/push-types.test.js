@@ -32,6 +32,7 @@ const { ALWAYS_DELIVER } = require('./webpush');
  */
 const SUPPRESSIBLE = new Set([
   'standup', 'todo', 'eod', 'journal', '121', 'brief',
+  'food_log',          // the evening Foodnoms reminder (7 Nov 2026)
   'escalation',        // the count-based nudge; escalation_alert is the loud path
   'email',
   'nudge_cleared',

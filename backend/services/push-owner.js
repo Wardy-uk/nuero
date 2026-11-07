@@ -37,6 +37,7 @@ const OWNERS = Object.freeze({
   email: SAIM,
   standup: SAIM,
   eod: SAIM,
+  food_log: SAIM,
   journal: SAIM,
   todo: SAIM,
   '121': SAIM,

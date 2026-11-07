@@ -323,6 +323,18 @@ const FLAGS = [
       + 'what is held back and what SAiM can’t see shown beside it. Now stays one click away. Off: Now is the home, as before.',
     impact: 'desktop navigation only; nothing is written or sent',
   },
+  {
+    // 7 Nov 2026 — food-log-nudge.js. Nick: "yes add the evening nudge" (he
+    // stopped logging in Foodnoms on 20 Oct and wants a prompt to restart).
+    key: 'food_log_nudge',
+    env: 'FOOD_LOG_NUDGE',
+    default: true,
+    label: 'Evening Foodnoms reminder',
+    description: 'At 20:00, if nothing you ate or drank has reached NEURO from Foodnoms that day, SAiM sends one '
+      + 'notification. Never more than once a day; if the phone has not synced for a while it says so instead of '
+      + 'telling you that you haven’t logged.',
+    impact: 'one notification an evening at most',
+  },
 ];
 
 const BY_KEY = new Map(FLAGS.map((f) => [f.key, f]));
