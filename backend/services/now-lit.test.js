@@ -118,7 +118,9 @@ test('⚠ the reason a tick is refused is SAID, not hidden in a title', () => {
   // ⚠ And unreachable renders DASHED rather than dead: a control NEURO would
   // refuse must not look as available as one that works, and must not be
   // missing either.
-  assert.match(src, /tone=\{t\.completableOffline \? 'normal' : 'unreachable'\}/);
+  // 7 Nov 2026: online, a Microsoft / daily-note row ticks through the shared
+  // helper, so "unreachable" now means offline AND not NEURO-owned.
+  assert.match(src, /tone=\{t\.completableOffline \|\| \(online && onlineHandle\(t\)\) \? 'normal' : 'unreachable'\}/);
 });
 
 test('⚠ no screen-local palette — her colour or nothing', () => {

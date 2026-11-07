@@ -80,6 +80,8 @@ test('Spotted suggestions use the BOUNDED intake routes, never /api/actions', ()
 test('the similar-task warning reads `similar` and never blocks the add', () => {
   const tasks = componentBody('Tasks');
   assert.match(tasks, /res\?\.similar/);
-  assert.match(tasks, /both are on the list now/, 'says the task WAS created');
-  assert.doesNotMatch(tasks, /task-dedupe\/merge/, 'no auto-merge from the phone');
+  // 7 Nov 2026: the task IS created, then "Same as #N? Merge / Keep both" is
+  // asked in place (SimilarTask) — a press, never an automatic merge.
+  assert.match(tasks, /<SimilarTask /, 'asks Merge / Keep both in place');
+  assert.doesNotMatch(tasks, /task-dedupe\/merge/, 'no merge call outside the shared prompt');
 });
