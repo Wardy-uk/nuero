@@ -5,6 +5,9 @@ import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { isDebugView } from '../debugView.mjs';
 import TaskContext from '../../../shared-ui/TaskContext.jsx';
 import './PreparedMove.css';
+import { confirmIfReady } from './confirmIfReady.mjs';
+
+export { confirmIfReady };
 
 // SAiM's prepared MOMENT (20 Oct 2026) — not a card. Evidence has condensed
 // into two real things: the draft itself, as a page, with the decisions the
@@ -893,10 +896,13 @@ export default function PreparedMove({ call: injectedCall = null, onMoment = nul
       // The task's pinned context (22 Oct 2026) — not when the page already shows it for this task.
       renderContext={(taskId) => (hideContextFor != null && Number(hideContextFor) === Number(taskId) ? null : <TaskContext taskId={taskId} call={call} compact onOpen={onOpenContext} label="Context for this task" />)}
       onMakeReady={() => run(async () => {
-        const next = await makeReady(call, { offer: state.offer });
-        // The exact item just prepared — the shell opens ITS Drafts entry.
-        const rid = next && next.preparedRecordId;
-        if (rid && onPrepared) onPrepared(rid);
+        const made = await makeReady(call, { offer: state.offer });
+        // The same press goes on to the Confirm step when there is one thing to confirm.
+        const next = await confirmIfReady(call, made, sessionId);
+        // Landed on Confirm (or on the one boundary standing in the way): stay here.
+        // Otherwise the exact item just prepared — the shell opens ITS Drafts entry.
+        const rid = made && made.preparedRecordId;
+        if (rid && onPrepared && next.kind !== 'confirming' && next.kind !== 'boundary') onPrepared(rid);
         return next;
       })}
       onRespond={(response, extra) => run(() => respond(call, { view: state.view, response, ...extra }))}

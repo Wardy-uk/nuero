@@ -199,7 +199,7 @@ function stub() {
     b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
     b.onResolve({ filter: /^\.\.\/api$/ }, () => ({ path: 'api', namespace: 'stub' }));
     b.onResolve({ filter: /mobile\/outbox$/ }, () => ({ path: 'outbox', namespace: 'stub' }));
-    b.onLoad({ filter: /^api$/, namespace: 'stub' }, () => ({ contents: 'export const apiFetch = async () => ({});', loader: 'js' }));
+    b.onLoad({ filter: /^api$/, namespace: 'stub' }, () => ({ contents: 'export const apiFetch = async () => ({}); export const apiUrl = (p) => p; export const authHeaders = () => ({});', loader: 'js' }));
     b.onLoad({ filter: /^outbox$/, namespace: 'stub' }, () => ({ contents: 'export const enqueue=async()=>({});export const flush=async()=>({receipts:{}});export const discard=async()=>{};export const retry=async()=>{};export const outcomeFor=()=>({state:"pending"});export const pending=async()=>[];export const subscribe=()=>()=>{};', loader: 'js' }));
   } };
 }

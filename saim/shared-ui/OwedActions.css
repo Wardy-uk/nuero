@@ -1,0 +1,11 @@
+/* Chase · Done · Drop · Snooze on something owed to Nick (OwedActions.jsx). */
+.owed { margin-top: 6px; text-align: left; }
+.owed__acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.owed__btn { font: inherit; font-size: 0.85em; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border, rgba(255, 255, 255, 0.2)); background: transparent; color: inherit; }
+.owed__btn--ok { border-color: var(--success, #4caf50); color: var(--success, #4caf50); }
+.owed__btn--ghost { opacity: 0.85; }
+.owed__btn:disabled { opacity: 0.5; cursor: default; }
+.owed__date { font: inherit; font-size: 0.85em; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border, rgba(255, 255, 255, 0.2)); background: transparent; color: inherit; }
+.owed__flash { margin: 4px 0 0; font-size: 0.85em; }
+.owed__flash--ok { color: var(--success, #4caf50); }
+.owed__flash--bad { color: var(--danger, #e05050); }

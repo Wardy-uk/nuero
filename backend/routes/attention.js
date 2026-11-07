@@ -219,6 +219,29 @@ router.post('/records/:id/act', async (req, res) => {
       }
     }
 
+    // ⚠ A daily-note checkbox (audit F9). Ticked HERE because the line is
+    // found by its TEXT now — never an offset captured when the card was built —
+    // and ticked through the same toggle /api/todos/toggle uses. Exactly one open,
+    // file-backed line must match: none or several is said, never guessed.
+    if (result.pendingFile) {
+      const r = completeVaultLineByText(result.pendingFile);
+      taskCompleted = r.ok;
+      taskWhy = r.why;
+    }
+
+    // ⚠ A card about ONE email (audit F10): Done dismisses the email as done,
+    // Not relevant as not-relevant — the same writes the Inbox buttons make —
+    // so it leaves Inbox ACTION / Next steps instead of only the card clearing.
+    let emailOutcome = null;
+    if (result.pendingEmail) {
+      emailOutcome = dismissOneEmail(result.pendingEmail);
+      if (action === 'complete') {
+        taskCompleted = false;
+        taskWhy = emailOutcome.why;
+        result.handled = emailOutcome.ok;
+      }
+    }
+
     // The pool is rebuilt from working memory, which caches for TEN MINUTES —
     // so without this the client's immediate refresh re-renders the card that
     // was just completed and it reads as a button that did nothing. Same call
@@ -240,6 +263,8 @@ router.post('/records/:id/act', async (req, res) => {
       taskWhy,
       // Present only when the completion had to leave the building.
       msPush,
+      // Present only for a card about one email: what happened to the email.
+      ...(emailOutcome ? { email: emailOutcome } : {}),
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -337,4 +362,48 @@ router.post('/meeting/resume', (req, res) => {
   }
 });
 
+/**
+ * Tick the ONE open vault checkbox whose text is `text` (and, when given, whose
+ * source is `source`). → { ok, why }. Never throws.
+ */
+function completeVaultLineByText({ text, source = null } = {}) {
+  try {
+    const obsidian = require('../services/obsidian');
+    const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const want = norm(text);
+    if (!want) return { ok: false, why: 'the card names no checkbox' };
+    const { active = [] } = obsidian.parseVaultTodos({ dbTasks: false }) || {};
+    let hits = active.filter((t) => !t.task_id && !t.ms_id && t.filePath && t.lineNumber != null && !t.done && norm(t.text) === want);
+    if (source && hits.length > 1) {
+      const bySource = hits.filter((t) => t.source === source);
+      if (bySource.length) hits = bySource;
+    }
+    if (hits.length === 0) return { ok: false, why: 'could not find that checkbox open in the vault any more — it may already be ticked' };
+    if (hits.length > 1) return { ok: false, why: `${hits.length} open checkboxes read exactly like this — tick the right one on Tasks` };
+    const line = hits[0];
+    const { status, text: ticked } = obsidian.toggleTask(line.filePath, line.lineNumber);
+    if (status !== 'done') return { ok: false, why: 'the line was not open, so nothing was ticked' };
+    try { require('../services/ms-complete').recordCompletion({ text: ticked || line.text, filePath: line.filePath, lineNumber: line.lineNumber, owner: 'vault' }); } catch { /* the tick stands */ }
+    return { ok: true, why: `ticked in ${line.source || 'the vault'}` };
+  } catch (e) {
+    return { ok: false, why: `could not tick it in the vault — ${e.message}` };
+  }
+}
+
+/** Dismiss ONE email from the triage. → { ok, reason, why }. Never throws. */
+function dismissOneEmail({ emailId, reason }) {
+  try {
+    const triage = require('../services/email-triage');
+    const item = (triage.getStoredTriage() || []).find((e) => e.id === emailId);
+    if (!item) return { ok: false, reason, why: 'the email is no longer in triage — nothing else to clear' };
+    if (item.dismissed) return { ok: true, reason, why: 'the email was already dealt with in the Inbox' };
+    triage.dismissEmail(emailId, reason);
+    return { ok: true, reason, why: reason === 'done' ? 'email marked done — it has left the Inbox list' : 'email marked not relevant in the Inbox too' };
+  } catch (e) {
+    return { ok: false, reason, why: `the card cleared, but the email could not be marked — ${e.message}` };
+  }
+}
+
 module.exports = router;
+module.exports.completeVaultLineByText = completeVaultLineByText;
+module.exports.dismissOneEmail = dismissOneEmail;

@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { useEffect, useMemo, useState } from 'react';
+import { apiFetch, apiUrl, authHeaders } from '../api';
+import { makeCall } from '../preparedMove.mjs';
+import OwedActions from '../../../shared-ui/OwedActions.jsx';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import { ContextItem } from '../../../shared-ui/TaskContext.jsx';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
@@ -75,6 +77,9 @@ function PrepAgenda({ offer }) {
 export default function MeetingPrep({ context = null }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const path = prepPath(context);
+  // Chase / Done on "Noted as outstanding" (7 Nov 2026) — five minutes before the
+  // 1-2-1 is when he notices. Never on the kiosk (no send or write door there).
+  const owedCall = useMemo(() => (platformNow() === 'kiosk' ? null : makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders })), []);
 
   useEffect(() => {
     let live = true;
@@ -156,8 +161,9 @@ export default function MeetingPrep({ context = null }) {
                       parse he cannot see. This reports what a note recorded and
                       shows which note, so he can weigh it himself.
 
-                      Read-only on purpose: chasing needs an approval step, and
-                      that lives in NEURO's People board. */}
+                      Chase and Done in place (7 Nov 2026): Chase drafts the email
+                      and shows it here with Send — one press, then Sent Items is
+                      checked. Nothing on the kiosk. */}
                   {a.waitingOn?.length > 0 && (
                     <div className="mp__owes">
                       <div className="mp__owes-h">Noted as outstanding ({a.waitingOn.length})</div>
@@ -174,6 +180,7 @@ export default function MeetingPrep({ context = null }) {
                               ? `from ${String(w.sourcePath).split('/').pop().replace(/\.md$/, '')}${w.sourceDate ? ` · ${w.sourceDate}` : ''}`
                               : 'no source recorded — worth checking before raising'}
                           </span>
+                          {w.key && <OwedActions call={owedCall} waitingKey={w.key} only={['chase', 'done']} compact />}
                         </div>
                       ))}
                     </div>

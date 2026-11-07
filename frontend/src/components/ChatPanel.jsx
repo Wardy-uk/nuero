@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { apiUrl, apiFetch } from '../api';
 import { speakSaim, isVoiceOutEnabled, setVoiceOutEnabled } from '../voiceUtils';
-import { executeDirect, directOutcome } from '../directAction';
+import { desktopCall } from '../desktopCall';
+import ChatProposal from '../../../saim/shared-ui/ChatProposal.jsx';
 import './ChatPanel.css';
 
 const STORAGE_KEY = 'neuro_last_conversation_id';
@@ -311,39 +312,8 @@ function useVoiceInput() {
 
 // speakSaim imported from voiceUtils
 
-/**
- * An exact action SAiM prepared in this chat (9 Oct 2026): a meeting invite or
- * an email reply, shown in full, sent only when Nick presses the button —
- * a one-use intent grant bound to exactly what is shown. No Actions card.
- */
-function ChatProposal({ action }) {
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const d = action.draft || {};
-  const calendar = /calendar/.test(action.actionType || '');
-  const who = (d.to || []).map(r => r.name || r.email).join(', ');
-  const go = async () => {
-    setBusy(true);
-    try { const x = await executeDirect(action); setResult({ x, o: directOutcome(x) }); }
-    catch (e) { setResult({ x: { ok: false }, o: { tone: 'bad', text: e.message } }); }
-    setBusy(false);
-  };
-  const done = result && result.x.ok;
-  return (
-    <div className="chat-proposal">
-      <div className="chat-proposal-head">{calendar ? 'Invite' : 'Reply'} — {d.subject}</div>
-      {calendar
-        ? <div className="chat-proposal-line">{String(d.start || '').slice(0, 10)} {String(d.start || '').slice(11, 16)}–{String(d.end || '').slice(11, 16)} · {who}</div>
-        : <><div className="chat-proposal-line">To {who}</div><pre className="chat-proposal-body">{d.body}</pre></>}
-      {result && <div className={`chat-proposal-outcome chat-proposal-${result.o.tone}`}>{result.o.text}</div>}
-      {!done && (
-        <button className="btn btn-primary chat-proposal-btn" onClick={go} disabled={busy}>
-          {busy ? (calendar ? 'Booking…' : 'Sending…') : result?.x?.needsConfirm ? 'Confirm again & send' : calendar ? 'Book & send invite' : 'Send reply'}
-        </button>
-      )}
-    </div>
-  );
-}
+// ChatProposal (SAiM's prepared invite / reply with Send under her reply) is
+// shared with SAiM's Chat on the phone: saim/shared-ui/ChatProposal.jsx.
 
 export default function ChatPanel({ location }) {
   const [messages, setMessages] = useState([]);
@@ -670,7 +640,7 @@ export default function ChatPanel({ location }) {
               ) : msg.role === 'assistant' ? (
                 <div className="chat-msg-body">
                   <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
-                  {(msg.proposals || []).map((a) => <ChatProposal key={a.actionId} action={a} />)}
+                  {(msg.proposals || []).map((a) => <ChatProposal key={a.actionId} action={a} call={desktopCall} />)}
                   {msg.content && msg.content.length > 20 && !streaming && (
                     <TodoSaveButton messageContent={msg.content} apiUrlFn={apiUrl} />
                   )}

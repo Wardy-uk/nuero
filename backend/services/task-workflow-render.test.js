@@ -64,7 +64,7 @@ test('a promise task: header, Next (delivery + move with the save slot), tools s
   assert.match(h, /Nick will send Hope the onboarding checklist/, 'evidence');
   const at = (s) => h.indexOf(s);
   assert.ok(at('twf__title') < at('Draft the delivery note') && at('Draft the delivery note') < at('TOOLS 31') && at('TOOLS 31') < at('Evidence'), 'header → Next → tools → evidence');
-  assert.match(h, />Start a focus session</, 'no session yet: a way to start one here too');
+  assert.match(h, />Start</, 'no session yet: a way to start one here too');
 });
 
 test('a task that is NOT a promise: header from the task row and tools — no Next, no evidence', () => {
@@ -101,34 +101,58 @@ test('the focus clock for THIS task: elapsed, Pause, That’s done; another task
   assert.doesNotMatch(other, /3 min in/);
 });
 
-test('a start NEURO refused is said on the screen; a conflict asks to switch; read-only draws no control', () => {
+test('a start NEURO refused is said on the screen; a parked task offers Resume; read-only draws no control', () => {
   const data = { ok: true, task: { id: 31, text: 'x' }, thread: THREAD };
   const err = text(renderToString(React.createElement(W.TaskWorkflowView, { data, sessionNote: { message: 'NEURO answered 500, so no focus session was started.', error: true } })));
   assert.match(err, /no focus session was started/);
-  const sw = text(renderToString(React.createElement(W.TaskWorkflowView, { data, conflict: { text: 'Weekly risk' }, onSwitch: () => {} })));
-  assert.match(sw, /You’re on Weekly risk\. Switch to this\?/);
-  assert.match(sw, />Switch to this</);
-  const ro = text(renderToString(React.createElement(W.TaskWorkflowView, { data, readOnly: true, onStart: () => {}, onPrepareDelivery: async () => ({}), renderPromiseSave: () => 'SAVE' })));
-  assert.doesNotMatch(ro, /<button[^>]*>(Draft the delivery note|Start a focus session|Pause)</);
+  // 7 Nov 2026: no switch question — the running task is parked and offered back.
+  const call = async () => ({ status: 200, body: {} });
+  const pk = text(renderToString(React.createElement(W.TaskWorkflowView, { data, call, parked: { taskId: 5, text: 'Weekly risk', elapsedMinutes: 12 }, onStart: () => {} })));
+  assert.match(pk, /Parked “Weekly risk” \(12 min in\)\./);
+  assert.match(pk, />Resume it</);
+  assert.doesNotMatch(pk, /Switch to this/);
+  const ro = text(renderToString(React.createElement(W.TaskWorkflowView, { data, readOnly: true, onStart: () => {}, onDone: () => {}, onNotToday: async () => ({}), onPrepareDelivery: async () => ({}), renderPromiseSave: () => 'SAVE' })));
+  assert.doesNotMatch(ro, /<button[^>]*>(Draft the delivery note|Start|Pause|Done|Not today)</);
   assert.doesNotMatch(ro, /SAVE/);
+});
+
+test('with no session running the header offers Start, Done, Not today and Delegate (audit F5/F18)', () => {
+  const call = async () => ({ status: 200, body: {} });
+  const data = { ok: true, task: { id: 77, text: 'Tidy the support macros', status: 'open' }, thread: null };
+  const h = text(renderToString(React.createElement(W.TaskWorkflowView, { data, call, onStart: () => {}, onDone: () => {}, onNotToday: async () => ({ ok: true }), onDelegated: () => {} })));
+  assert.match(h, />Start</); assert.match(h, />Done</); assert.match(h, />Not today</); assert.match(h, />Delegate…</);
+  // A running session on THIS task: the clock's own controls instead.
+  const on = text(renderToString(React.createElement(W.TaskWorkflowView, { data, call, session: { taskId: 77, status: 'active', elapsedMinutes: 3 }, onStart: () => {}, onDone: () => {}, onNotToday: async () => ({}), onDelegated: () => {} })));
+  assert.doesNotMatch(on, />Not today</); assert.match(on, />That’s done</);
+  // A refused tick says why, in the server's words.
+  const refused = text(renderToString(React.createElement(W.TaskWorkflowView, { data, call, onDone: () => {}, tickOutcome: { kind: 'refused', reason: 'NT-12 closes this one' } })));
+  assert.match(refused, /Not closed — NT-12 closes this one/);
+  const repeated = text(renderToString(React.createElement(W.TaskWorkflowView, { data, call, onDone: () => {}, tickOutcome: { kind: 'repeated', notice: 'Done — next due Fri 14 Nov', taskId: 77 } })));
+  assert.match(repeated, /Done — next due Fri 14 Nov/); assert.match(repeated, />Undo</);
+  const jira = text(renderToString(React.createElement(W.TaskWorkflowView, { data: { ...data, task: { ...data.task, jiraKey: 'NT-12' } }, call })));
+  assert.match(jira, /NT-12 closes this one/);
 });
 
 test('startTaskSession: 409 → the running task named; same task → already on it; error → said; force is passed', async () => {
   const { startTaskSession } = await import(require('url').pathToFileURL(path.join(ROOT, 'saim', 'shared-ui', 'startTask.mjs')).href);
   const calls = [];
   const call = (r) => async (p, o) => { calls.push({ p, o }); return r; };
-  assert.deepEqual(await startTaskSession(call({ status: 409, body: { ok: false, session: { taskId: 5, text: 'Weekly risk' } } }), { taskId: 31 }), { ok: false, conflict: { text: 'Weekly risk' } });
+  // 409 on another task: switched straight away (force), the old one reported as parked.
+  const seq = [{ status: 409, body: { ok: false, session: { taskId: 5, text: 'Weekly risk', elapsedMinutes: 7 } } }, { status: 200, body: { ok: true, session: { taskId: 31 } } }];
+  const sw = await startTaskSession(async (p, o) => { calls.push({ p, o }); return seq.shift(); }, { taskId: 31 });
+  assert.equal(sw.ok, true); assert.deepEqual(sw.parked, { taskId: 5, text: 'Weekly risk', elapsedMinutes: 7 });
+  assert.equal(calls[calls.length - 1].o.body.force, true, 'the second call forces');
   assert.equal((await startTaskSession(call({ status: 409, body: { ok: false, session: { taskId: 31, text: 'x' } } }), { taskId: 31 })).already, true);
   const e = await startTaskSession(call({ status: 400, body: { error: 'bad' } }), { taskId: 31 });
   assert.equal(e.ok, false); assert.equal(e.error, 'bad');
-  await startTaskSession(call({ status: 200, body: { ok: true, session: {} } }), { taskId: 31, force: true });
+  await startTaskSession(call({ status: 200, body: { ok: true, session: {} } }), { taskId: 31, minutes: 15 });
   const last = calls[calls.length - 1];
-  assert.equal(last.p, '/api/session/start'); assert.equal(last.o.method, 'POST'); assert.equal(last.o.body.force, true); assert.equal(last.o.body.taskId, 31);
+  assert.equal(last.p, '/api/session/start'); assert.equal(last.o.method, 'POST'); assert.equal(last.o.body.force, undefined, 'a plain start does not force'); assert.equal(last.o.body.taskId, 31); assert.equal(last.o.body.minutes, 15);
 });
 
 test('the screen reads ONE route and the focus-session routes, and holds no send/approve call', () => {
   const src = fs.readFileSync(path.join(ROOT, 'saim', 'shared-ui', 'TaskWorkflow.jsx'), 'utf-8');
   const paths = [...src.matchAll(/['`](\/api\/[^'`?$]+)/g)].map((m) => m[1]).sort();
-  assert.deepEqual([...new Set(paths)], ['/api/promises/workflow', '/api/session', '/api/session/finish', '/api/session/pause', '/api/session/resume']);
+  assert.deepEqual([...new Set(paths)], ['/api/promises/workflow', '/api/session', '/api/session/finish', '/api/session/pause', '/api/session/resume', '/api/todos/lane/defer']);
   assert.ok(!/approve|intent-grant|execute-direct/i.test(src.replace(/\/\/.*$/gm, '')));
 });

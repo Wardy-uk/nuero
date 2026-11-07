@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../api';
+import { desktopCall } from '../../desktopCall';
+import { completeTask } from '../../../../saim/shared-ui/completeTask.mjs';
+import { TickOutcome } from '../../../../saim/shared-ui/TaskActions.jsx';
 
 /**
  * Shared pieces for screens that read the canonical contract (/api/canonical,
@@ -128,24 +131,47 @@ export function ImportanceChip({ value, basis }) {
 export { DOMAIN_LABELS };
 
 /**
- * 8 Oct 2026 — the Life page showed tasks with no way to finish them. Only a
- * task NEURO OWNS can be ticked here (`task:neuro:<n>`); a reminder belongs to
- * Apple and is ticked in Reminders, so it says so instead of offering a button
- * that cannot work. Returns null for anything else.
+ * 8 Oct 2026 — the Life page showed tasks with no way to finish them. A task
+ * NEURO owns (`task:neuro:<n>`) or a Microsoft one (`task:ms-planner:<id>` /
+ * `task:ms-todo:<id>`) can be ticked here, through the ONE shared completion
+ * helper (saim/shared-ui/completeTask.mjs, 7 Nov 2026) — so a repeating task
+ * says where it went instead of silently reappearing, and a refusal says why.
+ * A reminder belongs to Apple and is ticked in Reminders, so it says so instead
+ * of offering a button that cannot work. Returns null for anything else.
  */
 export function neuroTaskNumber(id) {
   const m = /^task:neuro:(\d+)$/.exec(String(id || ''));
   return m ? Number(m[1]) : null;
 }
-export function DoneTick({ id, source, busy, onDone }) {
+/** The completion handle a canonical id stands for, or null. PURE. */
+export function completionItemOf(id, title = '') {
   const n = neuroTaskNumber(id);
-  if (n == null) {
+  if (n != null) return { task_id: n, text: title };
+  const m = /^task:(ms-planner|ms-todo):(.+)$/.exec(String(id || ''));
+  if (m) return { ms_id: m[2], source: m[1] === 'ms-planner' ? 'MS Planner' : 'MS ToDo', text: title };
+  return null;
+}
+export function DoneTick({ id, title = '', busy, onDone }) {
+  const [state, setState] = useState(null); // null | 'busy' | outcome
+  const item = completionItemOf(id, title);
+  if (!item) {
     if (/^task:eventkit-reminders:/.test(String(id || ''))) return <span className="cn-done cn-done--elsewhere" title="Apple owns this — tick it in Reminders and it closes here on the next push">○</span>;
     return null;
   }
+  const tick = async (e) => {
+    e.stopPropagation();
+    if (state === 'busy') return;
+    setState('busy');
+    const o = await completeTask(desktopCall, item);
+    setState(o);
+    if (o.kind === 'done' || o.kind === 'repeated' || o.kind === 'rolled') onDone?.(o);
+  };
+  const outcome = state && state !== 'busy' ? state : null;
   return (
-    <button type="button" className="cn-done" disabled={busy} aria-label="Mark done" title="Mark done"
-      onClick={(e) => { e.stopPropagation(); onDone(n); }}>✓</button>
+    <span className="cn-done-wrap">
+      <button type="button" className="cn-done" disabled={busy || state === 'busy'} aria-label="Mark done" title="Mark done" onClick={tick}>{state === 'busy' ? '…' : '✓'}</button>
+      {outcome && outcome.kind !== 'done' && <TickOutcome outcome={outcome} call={desktopCall} onUndone={() => onDone?.(outcome)} />}
+    </span>
   );
 }
 /** The explanation a card owes, kept one click away rather than on the page. */

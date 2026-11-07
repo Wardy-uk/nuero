@@ -7,10 +7,17 @@
  * one-use confirmation is spent.
  *
  * EVERY CONSEQUENTIAL ALLOWANCE DEFAULTS TO ZERO. No grant row = nothing may be
- * done. A grant covers ONE London day and, for the first action, can never
- * exceed: one solo calendar block of up to 30 minutes, one NEW note, one
- * prepared move, £0 spend, 0 contacts — for the one action type below. Those
- * ceilings are CHECK constraints in the table as well as rules here.
+ * done. The ceilings (per London day: three moves, three solo blocks of up to
+ * 30 minutes each, three new notes or reply drafts; always £0 spend and 0
+ * contacts) are CHECK constraints in the table as well as rules here.
+ *
+ * ⚠ STANDING SINCE 7 Nov 2026 (Nick: "the allowance is a thing I must remember
+ * every morning or nothing works"). A grant now lasts from its day until Nick
+ * takes it away (Take it away / Stop all SAiM actions); the per-day counts
+ * still reset each London day and EVERY move is still confirmed on its own.
+ * A grant made before then said "It ends at midnight on …" in the statement
+ * Nick agreed to, and keeps that meaning — `isStanding` reads the statement,
+ * so no old daily grant comes back to life.
  *
  * Two independent gates must BOTH be open for anything to happen:
  *   1. the environment master lock (SAIM_PREPARED_MOVE_EXECUTION on the Pi) —
@@ -250,21 +257,37 @@ function stop({ by = 'nick', now = Date.now() } = {}) {
 
 // ── Grants ───────────────────────────────────────────────────────────────────
 
+/** The line every pre-7-Nov-2026 (daily) grant's statement carries. */
+const DAILY_MARK = 'It ends at midnight on';
+/** Does this grant row last until revoked? PURE. A daily grant said so in its own words. */
+function isStanding(g) {
+  if (!g) return false;
+  return !String(g.statement || '').includes(DAILY_MARK);
+}
+
+/**
+ * The allowance in force on `day`: a grant FOR that day, else the newest
+ * unrevoked standing grant that started on or before it. A daily grant from an
+ * earlier day never counts (it ended at its own midnight).
+ */
 function _grantFor(day) {
   // read only: never creates the schema (see has())
   if (!has()) return null;
-  return db.get(`SELECT * FROM saim_authority_grants WHERE day = ? AND revoked_at IS NULL ORDER BY granted_at DESC LIMIT 1`, [day]) || null;
+  const exact = db.get(`SELECT * FROM saim_authority_grants WHERE day = ? AND revoked_at IS NULL ORDER BY granted_at DESC LIMIT 1`, [day]);
+  if (exact) return exact;
+  const earlier = db.all(`SELECT * FROM saim_authority_grants WHERE day < ? AND revoked_at IS NULL ORDER BY day DESC, granted_at DESC LIMIT 20`, [day]);
+  return earlier.find(isStanding) || null;
 }
 
 /** What the grant for `day` would say, in Nick's words. PURE. */
 function statementFor(terms, lock) {
   const lines = [
-    `Allow SAiM to carry out up to ${words(terms.moves)} prepared ${terms.moves === 1 ? 'move' : 'moves'} on ${dayLong(terms.day)}.`,
+    `Allow SAiM to carry out up to ${words(terms.moves)} prepared ${terms.moves === 1 ? 'move' : 'moves'} a day, from ${dayLong(terms.day)} until you take it away.`,
     'Each one still shows you exactly what it will do, and waits for you to confirm it before it writes anything.',
-    `Altogether: up to ${words(terms.blocks)} private calendar ${terms.blocks === 1 ? 'block' : 'blocks'} of up to ${terms.blockMinutes} minutes each (just you, nobody invited), and up to ${words(terms.notes)} new ${terms.notes === 1 ? 'note or reply draft' : 'notes or reply drafts'}.`,
+    `Each day: up to ${words(terms.blocks)} private calendar ${terms.blocks === 1 ? 'block' : 'blocks'} of up to ${terms.blockMinutes} minutes each (just you, nobody invited), and up to ${words(terms.notes)} new ${terms.notes === 1 ? 'note or reply draft' : 'notes or reply drafts'}.`,
     'A reply draft waits in Actions for your approval — nothing is ever sent.',
     'No sending, no contacting anyone, no meeting invitations, no tasks, no shared-board changes, and no changes to what SAiM may do.',
-    `It ends at midnight on ${dayLong(terms.day)}.`,
+    'It lasts until you take it away — “Take the allowance away” or “Stop all SAiM actions” end it at once.',
   ];
   if (lock && !lock.open) lines.push('Carrying out moves is switched off on NEURO’s server right now, so until that is switched on SAiM can prepare moves but not do them.');
   return lines;
@@ -337,13 +360,18 @@ function grant({ confirmToken, by = 'nick', now = Date.now() } = {}) {
   return { ok: true, day: t.day, statement: t.statement };
 }
 
-/** Take today's (or a given day's) allowance away. Immediate: reducing authority needs no ceremony. */
+/** Take the allowance in force (today's, or a given day's) away. Immediate: reducing authority needs no ceremony. */
 function revoke({ day = null, by = 'nick', now = Date.now() } = {}) {
   const d = day || londonDay(now);
-  const g = _grantFor(d);
-  if (!g) return { ok: true, revoked: false, why: `there was no allowance for ${dayLong(d)}` };
-  db.run(`UPDATE saim_authority_grants SET revoked_at = ?, revoked_by = ? WHERE id = ? AND revoked_at IS NULL`, [iso(now), by, g.id]);
-  event('revoked', { day: d }, now);
+  // "Take it away" means nothing is left in force: a day's own grant may sit
+  // on top of an older standing one, so keep going until none answers.
+  let n = 0;
+  for (let g = _grantFor(d); g && n < 20; g = _grantFor(d)) {
+    db.run(`UPDATE saim_authority_grants SET revoked_at = ?, revoked_by = ? WHERE id = ? AND revoked_at IS NULL`, [iso(now), by, g.id]);
+    n += 1;
+  }
+  if (!n) return { ok: true, revoked: false, why: `there was no allowance in force on ${dayLong(d)}` };
+  event('revoked', { day: d, grants: n }, now);
   return { ok: true, revoked: true, day: d };
 }
 
@@ -351,7 +379,7 @@ function revoke({ day = null, by = 'nick', now = Date.now() } = {}) {
 function previewResume({ now = Date.now() } = {}) {
   const st = stopState();
   if (!st.stopped) return { ok: false, code: 409, why: 'SAiM’s actions are not stopped' };
-  const statement = ['SAiM’s actions will be able to run again — still only within today’s allowance, and only with the device lock open.'];
+  const statement = ['SAiM’s actions will be able to run again — still only within the allowance you gave, each move still confirmed by you.'];
   const { token, expiresAt } = _mint('resume', { statement }, now);
   return { ok: true, statement, confirmToken: token, expiresAt };
 }
@@ -521,19 +549,21 @@ function status({ now = Date.now() } = {}) {
       ? { open: true, say: 'SAiM is ready.' }
       : { open: false, say: 'Carrying out moves is switched off on NEURO’s server.' },
     allowance: granted
-      ? { open: canAct || (allowance.moves.left > 0), say: `Today SAiM may carry out up to ${words(g.moves)} prepared ${g.moves === 1 ? 'move' : 'moves'}, each only after you confirm it.` }
-      : { open: false, say: 'You haven’t allowed SAiM to carry out any prepared moves today.' },
+      ? { open: canAct || (allowance.moves.left > 0), say: isStanding(g)
+        ? `SAiM may carry out up to ${words(g.moves)} prepared ${g.moves === 1 ? 'move' : 'moves'} a day, each only after you confirm it, until you take it away.`
+        : `Today SAiM may carry out up to ${words(g.moves)} prepared ${g.moves === 1 ? 'move' : 'moves'}, each only after you confirm it.` }
+      : { open: false, say: 'You haven’t allowed SAiM to carry out any prepared moves.' },
   };
   return {
     ok: true, contract: 'saim-authority-v1', day, dayLabel: dayLong(day),
     gates, stopped: st.stopped, stoppedSince: st.since,
-    grant: g ? { day: g.day, blockMinutes: g.block_minutes, moves: g.moves, statement: JSON.parse(g.statement), grantedAt: g.granted_at } : null,
+    grant: g ? { day: g.day, blockMinutes: g.block_minutes, moves: g.moves, statement: JSON.parse(g.statement), grantedAt: g.granted_at, standing: isStanding(g) } : null,
     allowance, active, receipts, canAct, leftToday,
     summary: st.stopped ? 'All SAiM actions are stopped.'
       : canAct ? `SAiM can carry out ${words(movesLeft)} more prepared ${movesLeft === 1 ? 'move' : 'moves'} today, each after you confirm it.`
-        : !lock.open && !granted ? 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any today.'
+        : !lock.open && !granted ? 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any.'
           : !lock.open ? 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server.'
-            : !granted ? 'You haven’t allowed SAiM to carry out any prepared moves today.'
+            : !granted ? 'You haven’t allowed SAiM to carry out any prepared moves.'
               : 'Today’s prepared moves are used up. It starts again tomorrow.',
   };
 }
@@ -547,7 +577,7 @@ function status({ now = Date.now() } = {}) {
 const BOUNDARY = {
   device: 'Carrying out moves is switched off on NEURO’s server, so I can prepare this but not do it.',
   stop: 'You’ve stopped all SAiM actions. Resume them in “What SAiM may do” and I can do this.',
-  allowance: 'You haven’t allowed me to carry out prepared moves today. Allow up to three in “What SAiM may do” — I’ll still ask before each one.',
+  allowance: 'You haven’t allowed me to carry out prepared moves. Allow up to three a day in “What SAiM may do” — it lasts until you take it away, and I’ll still ask before each one.',
   used: 'Today’s prepared moves are used up. It starts again tomorrow; “What SAiM may do” shows what was done.',
   unreadable: 'I couldn’t check what I’m allowed to do, so I won’t do anything yet.',
 };
@@ -589,7 +619,7 @@ const _test = {
 };
 
 module.exports = {
-  ACTION, CEILING, STEP_KINDS, OUTPUT_KINDS, CONFIRM_TTL_MS, STOPPED_SAY, BOUNDARY, boundaryOf, londonDay, masterLock, stopState, stop, previewResume, resume,
+  ACTION, CEILING, DAILY_MARK, isStanding, STEP_KINDS, OUTPUT_KINDS, CONFIRM_TTL_MS, STOPPED_SAY, BOUNDARY, boundaryOf, londonDay, masterLock, stopState, stop, previewResume, resume,
   validateTerms, statementFor, previewGrant, grant, revoke, usage, judge, wouldFit, reserve, settle, releaseUnstarted, recordReceipt,
   status, brief, _test,
 };

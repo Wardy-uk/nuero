@@ -276,3 +276,7 @@
   margin-left: 0.35rem;
   white-space: nowrap;
 }
+
+/* Spotted — task suggestions waiting on Add / Dismiss (7 Nov 2026). */
+.tasks__spotted-acts { display: inline-flex; gap: 0.35rem; flex: none; }
+.tasks__item .tick-out { margin: 0.2rem 0 0; }

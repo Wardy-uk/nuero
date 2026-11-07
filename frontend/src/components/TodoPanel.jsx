@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { HandOverHint } from './HandOver';
 import DelegateTasks, { setDelegatePool } from './DelegateTasks';
+import { completeTask, ownerOf as completionOwner, jiraHint } from '../../../saim/shared-ui/completeTask.mjs';
+import NotTodayPicker from '../../../saim/shared-ui/NotToday.jsx';
+import { StartFocus } from '../../../saim/shared-ui/TaskActions.jsx';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import { duePresets } from '../../../shared/due-dates.cjs';
@@ -364,79 +367,6 @@ const MS_LOCAL_STATE_CHIP = {
  * shared Save would make one button whose blast radius ranges from "changed a
  * letter" to "put this on the internet".
  */
-/**
- * Pick this task up NOW.
- *
- * The task list had no way to start a focus session on anything — three
- * surfaces could start one (the Now card, quick wins, TimeFitCard) and none of
- * them was the screen where Nick actually browses his work. So starting meant
- * going to Now and hoping the thing he wanted was the card it had chosen.
- *
- * ⚠ It navigates NOWHERE and needs no `onNavigate`. The session is server-side
- * state and `SessionBadge` renders it in the topbar on every page, so starting
- * from here shows up immediately without yanking him off the list he is working
- * through — which would undo the point of being able to start from it.
- *
- * A session already running comes back 409 with that session attached, which is
- * a QUESTION rather than an error: it names what he is on and offers the swap,
- * exactly as AdhdPanel does. Choosing not to swap must leave both alone.
- */
-function StartSessionControl({ todo }) {
-  const [state, setState] = useState(null); // null | 'busy' | 'started' | error string
-
-  async function start(force) {
-    setState('busy');
-    try {
-      const res = await fetch(apiUrl('/api/session/start'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: todo.task_id ?? null,
-          text: todo.text,
-          // The task's own estimate when it has one, so the session is measured
-          // against a number Nick set rather than the assumed thirty — which is
-          // what makes the close-out line worth reading.
-          minutes: todo.estimateMinutes ?? null,
-          force: Boolean(force),
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (res.status === 409 && json.session) {
-        const swap = window.confirm(
-          `You're ${json.session.elapsedMinutes} minutes into "${json.session.text}".\n\nPark it and start this instead?`
-        );
-        if (!swap) { setState(null); return; }
-        return start(true);
-      }
-      if (!res.ok) throw new Error(json.error || `${res.status}`);
-      setState('started');
-    } catch (e) {
-      setState(e.message);
-    }
-    return undefined;
-  }
-
-  return (
-    <div className="todo-edit-group">
-      <label className="todo-edit-label">Focus</label>
-      <button
-        type="button"
-        className="todo-edit-btn"
-        disabled={state === 'busy'}
-        onClick={(e) => { e.stopPropagation(); start(false); }}
-      >
-        {state === 'busy' ? 'Starting…' : 'Start now'}
-      </button>
-      {state === 'started' && (
-        <span className="todo-edit-note">Running — it's in the bar at the top.</span>
-      )}
-      {state && !['busy', 'started'].includes(state) && (
-        <span className="todo-edit-note todo-edit-note--bad">Couldn't start: {state}</span>
-      )}
-    </div>
-  );
-}
-
 function TaskControls({ todo, onPatch, busy, onRefresh }) {
   // Drafted under the PATCH field names, not the row's — `taskPriority` on the
   // row is `priority` on the wire, and drafting under the display name is how
@@ -673,7 +603,18 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
           and this one had no button anywhere outside the Now tab — so the screen
           where Nick actually browses his work could not start a session on any
           of it. */}
-      <StartSessionControl todo={todo} />
+      {/* ONE Start (shared): a running session is parked, not asked about. */}
+      <div className="todo-edit-group">
+        <label className="todo-edit-label">Focus</label>
+        <StartFocus
+          call={desktopCall}
+          taskId={todo.task_id ?? null}
+          text={todo.text}
+          minutes={todo.estimateMinutes ?? null}
+          className="todo-edit-btn"
+          noteClass="todo-edit-note"
+        />
+      </div>
 
       {/* Share with the house — the same instinct as blocking time: it is a
           thought you have while LOOKING at the task, so it lives on the open
@@ -1423,9 +1364,7 @@ export function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch
         className={`todo-checkbox ${isToggling ? 'toggling' : ''}`}
         onClick={() => onToggle(todo)}
         disabled={isToggling || (!editable && !todo.filePath)}
-        title={todo.jiraKey
-          ? `${todo.jiraKey} closes this one — resolve it in Jira`
-          : 'Mark done'}
+        title={jiraHint(todo) || 'Mark done'}
       />
       <div className="todo-text-col" onClick={() => onExpand(isExpanded ? null : rowKey(todo))} style={{ cursor: 'pointer' }}>
         <span className={`todo-text ${isExpanded ? '' : 'todo-text-truncated'}`}>{todo.text}</span>
@@ -1813,48 +1752,24 @@ function wipKeyFor(todo) {
 const HELD_REASON_LABELS = {
   'too-big': 'too big',
   'waiting-on-someone': 'blocked on someone',
-  'no-context': 'wrong context',
+  'no-context': 'missing something',
   'not-now': 'not today',
   unspecified: 'no reason given',
 };
 
-const NOT_TODAY_REASONS = [
-  { key: 'too-big', label: "It's too big", desc: 'Needs breaking down before it can start' },
-  { key: 'waiting-on-someone', label: "I'm blocked", desc: 'Waiting on somebody else' },
-  { key: 'no-context', label: 'Wrong context', desc: "Can't do this from where I am" },
-  { key: 'not-now', label: 'Just not today', desc: 'No reason beyond timing' },
-];
-
+// The four reasons live ONCE in saim/shared-ui/notTodayReasons.mjs (7 Nov 2026),
+// and "It's too big" asks for the smallest first step and starts 15 minutes on
+// it instead of hiding the task (saim/shared-ui/NotToday.jsx).
 function NotToday({ item, busy, onDefer }) {
-  const [open, setOpen] = useState(false);
-
-  if (!open) {
-    return (
-      <button
-        className="todo-nottoday-btn"
-        disabled={busy}
-        title="Move it out of today's lane. The task stays open and keeps its due date."
-        onClick={() => setOpen(true)}
-      >
-        Not today
-      </button>
-    );
-  }
-
   return (
-    <div className="todo-nottoday">
-      <span className="todo-nottoday-q">Why not?</span>
-      {NOT_TODAY_REASONS.map(r => (
-        <button
-          key={r.key}
-          className="todo-nottoday-reason"
-          disabled={busy}
-          title={r.desc}
-          onClick={() => { setOpen(false); onDefer(item, r.key); }}
-        >{r.label}</button>
-      ))}
-      <button className="todo-nottoday-reason" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
-    </div>
+    <NotTodayPicker
+      onDefer={(key) => onDefer(item, key)}
+      call={desktopCall}
+      taskId={item.task_id ?? null}
+      text={item.text}
+      busy={busy}
+      classes={{ btn: 'todo-nottoday-btn', reason: 'todo-nottoday-reason', wrap: 'todo-nottoday' }}
+    />
   );
 }
 
@@ -2307,13 +2222,17 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
           return;
         }
       }
-      const post = (ids, v) => fetch(apiUrl('/api/actions/batch'), {
+      // The BOUNDED intake routes (7 Nov 2026): the server refuses anything that is
+      // not a pending capture_todo, so this button can only ever add or drop a task
+      // suggestion — never approve an email that slipped into the selection.
+      const post = (ids, v) => fetch(apiUrl('/api/todos/suggestions/batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, verb: v }),
+        body: JSON.stringify({ ids, verb: v === 'approve' ? 'add' : 'dismiss' }),
       }).then(r => r.json());
 
       const main = await post(primaries, verb);
+      if (main && main.ok === false && !main.succeeded) throw new Error(main.error || 'refused');
       if (duplicates.length) await post(duplicates, 'reject');
 
       const done = main.succeeded || [];
@@ -2334,7 +2253,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
       if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) {
       console.error('[TodoPanel] Batch error:', e);
-      setBatchError('Batch failed. Nothing was changed.');
+      setBatchError(`Batch failed${e && e.message ? ` — ${e.message}` : ''}. Nothing was changed.`);
     }
     setBatching(false);
   };
@@ -2357,7 +2276,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
       }
       setSuggestionError(null);
       const results = await Promise.all(
-        ids.map((id, i) => fetch(apiUrl(`/api/actions/${id}/${i === 0 ? verb : 'reject'}`), {
+        ids.map((id, i) => fetch(apiUrl(`/api/todos/suggestions/${id}/${i === 0 && verb === 'approve' ? 'add' : 'dismiss'}`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         }))
@@ -2365,7 +2284,10 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
       if (results.every(r => r.ok)) {
         setResolvedSuggestions(prev => [...prev, ...ids]);
       } else {
-        console.error(`[TodoPanel] Suggestion ${verb} failed:`, results.map(r => r.status));
+        // Said, never only logged: the server's own words for why it refused.
+        const bad = results.find(r => !r.ok);
+        const body = bad ? await bad.json().catch(() => ({})) : {};
+        setSuggestionError(`Couldn't ${verb === 'approve' ? 'add' : 'dismiss'} "${item.text.slice(0, 60)}" — ${body.error || `HTTP ${bad && bad.status}`}`);
       }
       if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) {
@@ -2551,81 +2473,33 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
     setToggling(prev => ({ ...prev, [key]: false }));
   };
 
+  // ⚠ ONE completion helper (saim/shared-ui/completeTask.mjs, 7 Nov 2026) for
+  // every surface: owner order (task_id → ms_id → vault line) and the reading of
+  // what came back — done / repeated / rolled / held / refused — live there, so
+  // this panel, SAiM's Tasks, Now's quick wins, the time-fit card and Life's
+  // ticks cannot disagree about it. What it RETURNS drives the notices below.
   const toggleTodo = async (todo) => {
-    // Tasks NEURO owns complete in the DB; file-backed mirrors still toggle the line.
-    if (todo.task_id) {
-      const key = `task:${todo.task_id}`;
-      setToggling(prev => ({ ...prev, [key]: true }));
-      try {
-        const res = await fetch(apiUrl(`/api/tasks/${todo.task_id}/${todo.done ? 'reopen' : 'complete'}`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        const data = await res.clone().json().catch(() => ({}));
-        const held = data?.task?.held || null;
-        // A repeating task came back OPEN at its next date. Painting it done
-        // would show a tick the next refresh removes — so say where it went.
-        const recurred = res.ok ? (data?.recurred || null) : null;
-        setRepeatNotice(recurred ? { ...recurred, taskId: todo.task_id, text: todo.text } : null);
-        // Only paint it done locally if it actually went done. Optimistically
-        // ticking a held task would show the opposite of what happened, and the
-        // next refresh would silently un-tick it.
-        if (res.ok && !held && !recurred) setLocalDone(prev => ({ ...prev, [key]: todo.done ? 0 : 1 }));
-        setHoldNotice(held ? { ...held, text: todo.text } : null);
-        // ⚠ A refusal is SHOWN, not logged. This was a console.error, so every
-        // guard in updateTask — the Jira link, and anything added later — reached
-        // Nick as a checkbox that did nothing at all. The server's own words are
-        // used verbatim: it is the one place that knows which ticket, and a
-        // second phrasing here is a second answer free to drift from it.
-        setRefusalNotice(res.ok ? null : {
-          text: todo.text,
-          reason: data?.error || `the server refused it (${res.status}) and gave no reason`,
-        });
-        if (mode === 'focused') refreshFocus(); else await fetchTodos();
-      } catch (e) { console.error('[TodoPanel] Task complete error:', e); }
-      setToggling(prev => ({ ...prev, [key]: false }));
-      return;
-    }
-
-    if (!todo.filePath || todo.lineNumber == null) return;
-    const key = `${todo.filePath}:${todo.lineNumber}`;
+    const owner = completionOwner(todo);
+    if (!owner) return;
+    const key = owner.kind === 'neuro' ? `task:${todo.task_id}` : `${todo.filePath}:${todo.lineNumber}`;
     setToggling(prev => ({ ...prev, [key]: true }));
     try {
-      let res;
-      let rolled = null;
-      if (todo.ms_id && (todo.source === 'MS Planner' || todo.source === 'MS ToDo')) {
-        res = await fetch(apiUrl('/api/todos/complete-ms'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            msId: todo.ms_id,
-            source: todo.source,
-            filePath: todo.filePath,
-            lineNumber: todo.lineNumber
-          })
-        });
-        // Vault is toggled either way, but say so when Microsoft didn't take it.
-        const data = await res.clone().json().catch(() => ({}));
-        setMsPushWarning(data.warning || null);
-        // A recurring task rolled forward instead of closing. The server has
-        // already repainted the mirror line to what Microsoft now holds, so the
-        // row must NOT be painted done here — showing a tick that the next
-        // refresh removes is precisely how this looked like a lost completion.
-        rolled = data.rolled || null;
-        setMsRolledNotice(rolled ? (data.notice || null) : null);
-      } else {
-        res = await fetch(apiUrl('/api/todos/toggle'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath: todo.filePath, lineNumber: todo.lineNumber })
-        });
-      }
-      if (res.ok && !rolled) setLocalDone(prev => ({ ...prev, [key]: todo.done ? 0 : 1 }));
-      else if (!res.ok) console.error('[TodoPanel] Toggle failed:', res.status);
-      // Small delay to let vault cache invalidate before refetch
-      await new Promise(r => setTimeout(r, 300));
-      if (mode === 'focused') refreshFocus();
-      else await fetchTodos();
+      // A ticked NEURO task un-ticks (reopen); a ticked vault line toggles back.
+      const outcome = await completeTask(desktopCall, todo, { reopen: Boolean(todo.done) && owner.kind === 'neuro' });
+      // A repeating task came back OPEN at its next date. Painting it done
+      // would show a tick the next refresh removes — so say where it went.
+      setRepeatNotice(outcome.kind === 'repeated' ? { ...outcome.recurred, notice: outcome.notice, taskId: outcome.taskId, text: todo.text } : null);
+      // A recurring Microsoft task rolled forward instead of closing.
+      setMsRolledNotice(outcome.kind === 'rolled' ? outcome.notice : null);
+      setHoldNotice(outcome.kind === 'held' ? { ...outcome.held, text: todo.text } : null);
+      // ⚠ A refusal is SHOWN, in the server's own words (a Jira-linked task names
+      // the ticket that closes it).
+      setRefusalNotice(outcome.kind === 'refused' || outcome.kind === 'error' ? { text: todo.text, reason: outcome.reason } : null);
+      setMsPushWarning(outcome.kind === 'done' && outcome.warning ? outcome.warning : null);
+      // Only paint it done locally if it actually went done.
+      if (outcome.kind === 'done') setLocalDone(prev => ({ ...prev, [key]: todo.done ? 0 : 1 }));
+      if (owner.kind !== 'neuro') await new Promise(r => setTimeout(r, 300)); // vault cache
+      if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) { console.error('[TodoPanel] Toggle error:', e); }
     setToggling(prev => ({ ...prev, [key]: false }));
   };
@@ -2667,7 +2541,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
 
         {msPushWarning && (
           <div className="todo-ms-warning" onClick={() => setMsPushWarning(null)}>
-            Marked done here, but not in Microsoft — {msPushWarning}
+            {msPushWarning}
           </div>
         )}
 
@@ -2982,7 +2856,7 @@ export default function TodoPanel({ focusContext, onClearContext, onNavigate }) 
       </div>
       {msPushWarning && (
         <div className="todo-ms-warning" onClick={() => setMsPushWarning(null)}>
-          Marked done here, but not in Microsoft — {msPushWarning}
+          {msPushWarning}
         </div>
       )}
       {msRolledNotice && (

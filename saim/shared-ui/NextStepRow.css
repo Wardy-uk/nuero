@@ -1,0 +1,26 @@
+/* One Next steps row (7 Nov 2026) — shared by NEURO desktop and SAiM.
+   Layout and the new in-place panels only; each shell's NextSteps CSS keeps
+   its own colours for .ns-row / .ns-btn / .ns-chip / .ns-kind. */
+.ns-row-main { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.ns-row-head { display: flex; gap: 8px; align-items: baseline; }
+.ns-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ns-title, .ns-why { display: block; }
+.ns-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.ns-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; line-height: 1.4; }
+.ns-note--ok { color: #3fb950; }
+.ns-note--warn, .ns-note--parked { color: #e9b46a; }
+.ns-note--bad { color: #ff7b72; }
+
+.ns-panel { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(127, 127, 127, 0.25); padding-top: 8px; }
+.ns-panel-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ns-slot { font-size: 15px; font-weight: 600; }
+
+.ns-drafts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ns-draft { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border: 1px solid rgba(127, 127, 127, 0.25); border-radius: 8px; padding: 8px 10px; }
+.ns-draft-text { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ns-draft-subject { font-weight: 600; overflow-wrap: anywhere; }
+.ns-draft-preview { font-size: 13px; opacity: 0.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ns-draft-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ns-draft > .ns-note { flex-basis: 100%; }
+.ns-step-input { flex: 1 1 240px; font: inherit; font-size: 15px; color: inherit; background: rgba(127, 127, 127, 0.08); border: 1px solid rgba(127, 127, 127, 0.35); border-radius: 6px; padding: 8px 10px; min-height: 40px; box-sizing: border-box; }

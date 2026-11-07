@@ -27,7 +27,7 @@ async function load() {
         build.onResolve({ filter: /\/EmailCard$/ }, () => ({ path: 'EmailCard', namespace: 'stub' }));
         build.onResolve({ filter: /\/openVault$/ }, () => ({ path: 'openVault', namespace: 'stub' }));
         build.onLoad({ filter: /.*/, namespace: 'stub' }, (a) => ({ loader: 'js', contents:
-          a.path === 'api' ? 'export const apiUrl = (p) => p;'
+          a.path === 'api' ? 'export const apiUrl = (p) => p; export async function apiFetch() { throw new Error("no network in a render test"); }'
             : a.path === 'EmailCard' ? 'export function CalendarBar() { return null; }'
               : 'export function openInVault() {}' }));
       },

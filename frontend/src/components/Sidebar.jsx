@@ -147,6 +147,13 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
   const [escTitle, setEscTitle] = useState('');
   const [inboxCount, setInboxCount] = useState(0);
   const [couldDoCount, setCouldDoCount] = useState(0);
+  // Queues that wait on Nick's press (7 Nov 2026, Nick: anything not badged
+  // depends on him remembering to go and look). Same honesty as the rest: a
+  // failed read keeps the last number, never shows 0.
+  const [draftsCount, setDraftsCount] = useState(0);
+  const [triageCount, setTriageCount] = useState(0);
+  const [bookCount, setBookCount] = useState(0);
+  const [overtimeCount, setOvertimeCount] = useState(0);
   // Microsoft sign-in due or expired (27 Oct 2026): a menu button, not a banner
   // (Nick's call). Null = could not ask, which shows nothing rather than a guess.
   const [msSignIn, setMsSignIn] = useState(null);
@@ -169,7 +176,12 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
   }, [activeView]);
 
   useEffect(() => {
+    // The heavier reads (the whole task list, a NOVA bridge call, every draft's
+    // view) run every fifth minute, not every minute. The first pass runs all.
+    let tick = 0;
     function fetchCounts() {
+      const slow = tick % 5 === 0;
+      tick += 1;
       fetch(apiUrl('/api/imports/pending'))
         .then(res => res.json())
         .then(data => setImportsCount(data.count || 0))
@@ -222,6 +234,11 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
         fetch(apiUrl('/api/actions')).then(res => res.json()),
         fetch(apiUrl('/api/prepared-actions?limit=1')).then(res => res.json()),
       ]).then(([legacy, governed]) => {
+        // People: NOVA's "1-2-1s to book" — the same filter the People board's list uses,
+        // read off this same response (live rows are always included), so no extra call.
+        if (governed.status === 'fulfilled' && Array.isArray(governed.value.actions)) {
+          setBookCount(governed.value.actions.filter(a => a && a.status === 'prepared' && a.actionType === 'create_calendar_event' && a.origin === '1to1-book').length);
+        }
         const l = legacy.status === 'fulfilled'
           ? (legacy.value.pendingTotal ?? (legacy.value.pending || []).length) : null;
         const ny = governed.status === 'fulfilled' ? governed.value.needsYou : null;
@@ -233,12 +250,51 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
           l === null ? 'other actions: could not check' : `${l} other pending`,
         ].join(' · '));
       });
+
+      if (slow) {
+        // Drafts: prepared moves waiting on his answer or confirmation (held ones cannot be acted on).
+        fetch(apiUrl('/api/prepared-moves/drafts'))
+          .then(res => (res.ok ? res.json() : null))
+          .then(data => {
+            const confirm = data && data.ok && data.sections && Array.isArray(data.sections.confirm) ? data.sections.confirm : null;
+            if (confirm) setDraftsCount(confirm.filter(r => r && r.status !== 'held').length);
+          })
+          .catch(() => {});
+
+        // Tasks: how many still need triage (the "Triage (N)" button inside Tasks).
+        fetch(apiUrl('/api/todos'))
+          .then(res => (res.ok ? res.json() : null))
+          .then(data => { if (data && typeof data.triageCount === 'number') setTriageCount(data.triageCount); })
+          .catch(() => {});
+
+        // Overtime: claims agents submitted that wait for Nick's decision. His own
+        // claims are Chris's to approve (they ride in the sign-off email), so they
+        // are not counted — the same split the Overtime screen makes.
+        Promise.all([
+          fetch(apiUrl('/api/overtime-claims?status=submitted')).then(res => (res.ok ? res.json() : null)),
+          fetch(apiUrl('/api/overtime-claims/signoff')).then(res => (res.ok ? res.json() : null)).catch(() => null),
+        ]).then(([data, so]) => {
+          if (!data || !data.ok || !Array.isArray(data.claims)) return;
+          const me = so && so.me ? String(so.me).toLowerCase() : null;
+          setOvertimeCount(data.claims.filter(c => !me || String((c && c.agentEmail) || '').toLowerCase() !== me).length);
+        }).catch(() => {});
+      }
     }
 
     fetchCounts();
     const interval = setInterval(fetchCounts, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // The newer queue badges, by item id. `n` is shown only when above zero.
+  const QUEUE_BADGES = {
+    drafts: { n: draftsCount, title: 'Drafts waiting on your answer or confirmation' },
+    todos: { n: triageCount, title: 'Tasks still to triage (MoSCoW, priority, estimate, due date, origin)' },
+    people: { n: bookCount, title: '1-2-1s NOVA asked to book — one tap sends each invite' },
+    overtime: { n: overtimeCount, title: 'Overtime claims waiting for your decision' },
+  };
+  // A collapsed group still says something in it is waiting on him.
+  const groupBadge = (group) => group.items.reduce((sum, item) => sum + ((QUEUE_BADGES[item.id] && QUEUE_BADGES[item.id].n) || 0), 0);
 
   const renderItem = (item) => (
     <button
@@ -272,6 +328,9 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
         )}
         {item.id === 'inbox' && inboxCount > 0 && (
           <span className="sidebar-badge" title="Unread in Outlook and not dealt with here">{inboxCount > 99 ? '99+' : inboxCount}</span>
+        )}
+        {QUEUE_BADGES[item.id] && QUEUE_BADGES[item.id].n > 0 && (
+          <span className="sidebar-badge" title={QUEUE_BADGES[item.id].title}>{QUEUE_BADGES[item.id].n > 99 ? '99+' : QUEUE_BADGES[item.id].n}</span>
         )}
 
       </span>
@@ -311,6 +370,9 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
               aria-expanded={!!openGroups[group.id]}
             >
               <span className="sidebar-group-label">{group.label}</span>
+              {!openGroups[group.id] && groupBadge(group) > 0 && (
+                <span className="sidebar-badge" title="Something in here is waiting on you">{groupBadge(group) > 99 ? '99+' : groupBadge(group)}</span>
+              )}
               <span className="sidebar-group-chevron">{openGroups[group.id] ? '▾' : '▸'}</span>
             </button>
             {openGroups[group.id] && group.items.filter((item) => !(workOnly && WORK_ONLY_HIDDEN_ITEMS.has(item.id))).map(item => renderItem(item))}

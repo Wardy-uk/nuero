@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DomainChips, ProvenanceBadge, Freshness, when, DOMAIN_IDS, DOMAIN_LABELS } from './canonicalUi';
+import { desktopCall } from '../../desktopCall';
+import OwedActions from '../../../../saim/shared-ui/OwedActions.jsx';
 import './Canonical.css';
 
 /**
@@ -10,8 +12,10 @@ import './Canonical.css';
  * people, meeting links, progress evidence). It deliberately does NOT read
  * /api/waiting-on: that table is a SOURCE the projection folds, and a screen
  * reading the source beside the belief is how one fact gets two answers.
- * Chasing and snoozing still happen in People (the chase is a governed draft);
- * this screen says what NEURO believes and why.
+ * Acting is another matter (7 Nov 2026): an "owed to me" row carries the SAME
+ * Chase · Done · Drop · Snooze as People (OwedActions) on the collapsed row, and
+ * Chase shows the exact email with Send in place — each going to the record
+ * that owns it (the waiting-on row; Done/Drop through the canonical resolve).
  *
  * Honesty rules on screen:
  *  • An unresolved person keeps their raw name AND the reason — never hidden,
@@ -78,7 +82,7 @@ function Detail({ id, onClose, onChanged }) {
     setSaving(outcome); setSaveError(null);
     try {
       await postCanonical(`/api/canonical/commitments/${encodeURIComponent(id)}/resolve`, { outcome });
-      setClosed(outcome === 'done' ? 'Marked done.' : 'Marked not owed.');
+      setClosed(outcome === 'done' ? 'Marked done.' : 'Dropped.');
       // The world model follows the owner a moment later.
       setTimeout(() => onChanged && onChanged(), 1500);
     } catch (e) { setSaveError(e.message); }
@@ -120,7 +124,7 @@ function Detail({ id, onClose, onChanged }) {
                 onClick={() => takeBack(item.delegation.key)}>Take it back</button>
             )}
             <button type="button" className="cn-btn" disabled={!!saving} title="It was never owed, or it was a misread of the meeting"
-              onClick={() => resolveAs('not-owed')}>Not owed</button>
+              onClick={() => resolveAs('not-owed')}>Drop</button>
           </>}
           <button type="button" className="cn-btn" onClick={onClose}>Close</button>
         </span>
@@ -201,6 +205,34 @@ function WhoPicker({ raw, people, setPeople, disabled, onPick }) {
   );
 }
 
+/**
+ * The actions on the COLLAPSED row (7 Nov 2026): Done always; for something a
+ * colleague owes (a waiting-on row behind it) also Chase, Drop and Snooze — the
+ * same control People uses. Done/Drop close through the canonical resolve (the
+ * owner decides); Chase/Snooze need the waiting-on key, read from the evidence
+ * only when pressed.
+ */
+export function RowActions({ c, call = desktopCall, onChanged = null }) {
+  const waiting = c.provenance && c.provenance.source && c.provenance.source.kind === 'meeting-waiting-on';
+  const resolve = async (status) => {
+    try {
+      await postCanonical(`/api/canonical/commitments/${encodeURIComponent(c.id)}/resolve`, { outcome: status === 'done' ? 'done' : 'not-owed' });
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  };
+  const getKey = async () => {
+    const r = await call(`/api/canonical/commitments/${encodeURIComponent(c.id)}`);
+    const ref = r && r.body && r.body.evidence && r.body.evidence.source && r.body.evidence.source.ref;
+    return typeof ref === 'string' && ref.startsWith('waiting-on:') ? ref.slice('waiting-on:'.length) : null;
+  };
+  return (
+    <div className="cn-rowacts">
+      <OwedActions call={call} getKey={getKey} resolve={resolve} only={waiting ? ['chase', 'done', 'drop', 'snooze'] : ['done']}
+        compact onChanged={(what) => { if (what !== 'chase-sent' && onChanged) setTimeout(onChanged, 1500); }} />
+    </div>
+  );
+}
+
 export default function CommitmentsPanel({ focusContext = null } = {}) {
   // Delegated is the default view (Nick, 6 Nov 2026): the work he handed out.
   const [direction, setDirection] = useState((focusContext && focusContext.direction) || 'delegated');
@@ -254,7 +286,7 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
         <button type="button" className="cn-btn" onClick={reload}>Refresh</button>
       </div>
       <p className="cn-sub">
-        What NEURO believes is owed, in both directions, from the world model. Chase or snooze a colleague’s item in People.
+        What NEURO believes is owed, in both directions, from the world model. Chase, close or snooze each one right here.
         {data && <> · <Freshness projection={data.freshness} /></>}
       </p>
 
@@ -331,6 +363,7 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
                 </select>
               </div>
             )}
+            <RowActions c={c} onChanged={reload} />
             {open === c.id && <Detail id={c.id} onClose={() => setOpen(null)} onChanged={() => { setOpen(null); reload(); }} />}
           </li>
         ))}

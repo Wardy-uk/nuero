@@ -1,0 +1,8 @@
+/* "Same as #N?" at capture (SimilarTask.jsx) — shared by the desktop and SAiM. */
+.similar-task { margin: 8px 0 0; padding: 8px 10px; border: 1px solid var(--warning, #e0a030); border-radius: 8px; background: rgba(224, 160, 48, 0.08); text-align: left; }
+.similar-task__say { margin: 0; overflow-wrap: anywhere; }
+.similar-task__err { margin: 6px 0 0; font-size: 0.9em; color: var(--danger, #e05050); }
+.similar-task__acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.similar-task__go, .similar-task__quiet { font: inherit; font-size: 0.9em; padding: 6px 14px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border, rgba(255, 255, 255, 0.2)); background: transparent; color: inherit; }
+.similar-task__go { background: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); color: #fff; font-weight: 600; }
+.similar-task__go:disabled, .similar-task__quiet:disabled { opacity: 0.55; cursor: default; }

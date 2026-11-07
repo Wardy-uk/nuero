@@ -15,8 +15,10 @@ import { surfaceRgb } from './fieldDrive.mjs';
 import { labelFor, isActivePhase } from '../../shared/operation-phase.cjs';
 import { nextStep } from './presentation/nextStep.mjs';
 import FocusBlockView from './FocusBlock.jsx';
-import AttentionCard, { NeedsYouActs } from './AttentionCard.jsx';
+import AttentionCard, { NeedsYouActs, AttentionActions } from './AttentionCard.jsx';
 import { leadIsThePromise } from './presentation/kmwLead.mjs';
+import WaitingDrafts from './WaitingDrafts.jsx';
+import MeetingOverChip from './MeetingOverChip.jsx';
 import './AttentionSurface.css';
 
 // AttentionSurface — the attention feed, rendered.
@@ -63,7 +65,9 @@ import './AttentionSurface.css';
 export const DEFERRALS = [
   { label: 'An hour', minutes: 60, reason: 'not-now' },
   { label: 'This afternoon', minutes: 240, reason: 'not-now' },
-  { label: 'Tomorrow', minutes: 60 * 20, reason: 'no-context' },
+  // ⚠ "Tomorrow" is a WHEN, not a reason: it records `not-now` (7 Nov 2026).
+  // It used to record `no-context`, which friction.js read back as "wrong context".
+  { label: 'Tomorrow', minutes: 60 * 20, reason: 'not-now' },
   { label: 'Too big', minutes: 60 * 20, reason: 'too-big' },
 ];
 
@@ -287,9 +291,9 @@ export default function AttentionSurface({
     // Null is the normal case and renders nothing — the situation changing is
     // what this surface DOES, and annotating that would be noise on every read.
     askedSurface = null,
-    // What waits for Nick's approval in NEURO (Build 9), one sentence composed
-    // by `approval-summary`. Rendered as a STATEMENT — approval is desktop-only
-    // and needs a human proof, so there is deliberately no button here.
+    // What waits for Nick's press (Build 9), one sentence composed by
+    // `approval-summary`, with each waiting draft listed under it with Send
+    // (7 Nov 2026 — one press on any attended screen; never on the kiosk).
     approvals = null,
     // saim-handoff-v1: WHERE to go for the lead SAiM chose (saim/policy).
     // Read for the one next step on the home; never re-decided here.
@@ -567,7 +571,13 @@ export default function AttentionSurface({
       if (!id) return null;
       return [primaryCard, ...secondary].find((c) => c && c.recordId === id) || null;
     };
-    const renderNeedsYouActs = (onAct || onOpen) ? (it) => {
+    // The waiting drafts (7 Nov 2026): each with Send in place, on any attended
+    // shell that can reach NEURO — never the kiosk or the watch (call null there).
+    const draftsCall = prof === 'kiosk' || prof === 'watch' ? null : call;
+    const renderNeedsYouActs = (onAct || onOpen || draftsCall) ? (it) => {
+      if (it && it.id === 'approvals') {
+        return draftsCall ? <WaitingDrafts call={draftsCall} onChanged={() => { if (onRefresh) setTimeout(onRefresh, 4000); }} /> : null;
+      }
       const card = cardFor(it);
       if (!card) return null;
       return <NeedsYouActs card={card} onOpen={openCard(card)} onAct={onAct || null} call={prof === 'kiosk' || prof === 'watch' ? null : call} onChanged={onRefresh} />;
@@ -627,13 +637,19 @@ export default function AttentionSurface({
       } catch (e) { setNaErr(`${undo ? 'Not undone' : 'Not recorded'} — ${e.message}. Nothing was changed.`); }
       setNaBusy(false);
     };
-    const stepEl = step ? (
+    // "It's over" while a real meeting runs (7 Nov 2026, audit): the desktop had
+    // it; SAiM only had it by voice. Never on a wall or the watch.
+    const overChip = meeting && meeting.key && call && prof !== 'kiosk' && prof !== 'watch'
+      ? <MeetingOverChip meeting={meeting} call={call} onChanged={onRefresh} />
+      : null;
+    const stepEl = (step || overChip) ? (
       <div className="sit__step" role="group" aria-label="Next step">
-        {step.primary && <button type="button" className="sit__chip sit__chip--yes sit__step-go" onClick={() => runStep(step.primary)}>{step.primary.label}</button>}
-        {step.alternatives.map((a) => (
+        {overChip}
+        {step && step.primary && <button type="button" className="sit__chip sit__chip--yes sit__step-go" onClick={() => runStep(step.primary)}>{step.primary.label}</button>}
+        {(step ? step.alternatives : []).map((a) => (
           <button key={a.label} type="button" className="sit__chip sit__chip--quiet sit__step-alt" onClick={() => runStep(a)}>{a.label}</button>
         ))}
-        {step.notAttending && !notAttended && (
+        {step && step.notAttending && !notAttended && (
           <button type="button" className="sit__chip sit__chip--quiet sit__step-skip" disabled={naBusy} onClick={() => notAttend(step.notAttending)} data-meeting-key={step.notAttending.key}>I’m not attending</button>
         )}
       </div>
@@ -906,82 +922,22 @@ export default function AttentionSurface({
                   {primary.say && <p className="surface__saysub">{primary.say}</p>}
                 </>
               )}
+              {/* ⚠ The SAME buttons as the shared card (7 Nov 2026, audit F4): open,
+                  seen it, start, done, "Not today" with the four shared reasons
+                  ("It's too big" offers the smallest first step), move due date,
+                  not relevant. This older layout had its own second vocabulary
+                  ("That's done / Not now → … / Not mine"). */}
               {primary.kind === 'item' && onAct && !speaks && (
-                <>
-                  <div className="surface__acts">
-                    {(!canOpen || canOpen(primary)) && (
-                      <button
-                        type="button"
-                        className="surface__btn surface__btn--go"
-                        onClick={() => onOpen && onOpen(primary)}
-                      >
-                        {primary.actionHint || 'Open it'}
-                      </button>
-                    )}
-                    {/* The sentence he would say, not a UI verb. It is Nick's
-                        explicit confirmation — the ONLY action that resolves —
-                        and what it closed is reported below, never implied. */}
-                    {canComplete(primary) && (
-                      <button
-                        type="button"
-                        className="surface__btn"
-                        disabled={busy}
-                        onClick={() => { act(primary, 'complete'); setDeferring(false); }}
-                      >
-                        That&rsquo;s done
-                      </button>
-                    )}
-                    {/* ⚠ "Not now" opens the durations rather than deferring on
-                        a guess. A snooze whose length SAiM picked is one Nick
-                        has no reason to trust, and the length is most of what
-                        the gesture means. */}
-                    <button
-                      type="button"
-                      className="surface__btn"
-                      disabled={busy}
-                      onClick={() => setDeferring((v) => !v)}
-                    >
-                      Not now
-                    </button>
-                  </div>
-
-                  {deferring && (
-                    <div className="surface__acts surface__acts--defer">
-                      {DEFERRALS.map((d) => (
-                        <button
-                          key={d.label}
-                          type="button"
-                          className="surface__btn surface__btn--small"
-                          disabled={busy}
-                          onClick={() => { act(primary, 'defer', { minutes: d.minutes, reason: d.reason }); setDeferring(false); }}
-                        >
-                          {d.label}
-                        </button>
-                      ))}
-                      {/* Seen is NOT a snooze. It stops SAiM asking again while
-                          leaving the card exactly where it is — the one state
-                          the old suppression timer could not express. */}
-                      <button
-                        type="button"
-                        className="surface__btn surface__btn--small"
-                        disabled={busy}
-                        onClick={() => { act(primary, 'acknowledge'); setDeferring(false); }}
-                      >
-                        Seen it
-                      </button>
-                      {(primary.actions || []).includes('dismiss') && (
-                        <button
-                          type="button"
-                          className="surface__btn surface__btn--small"
-                          disabled={busy}
-                          onClick={() => { act(primary, 'dismiss'); setDeferring(false); }}
-                        >
-                          Not mine
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </>
+                <div className="surface__cardacts">
+                  <AttentionActions
+                    card={primary}
+                    onOpen={(!canOpen || canOpen(primary)) && onOpen ? onOpen : null}
+                    onAct={onAct}
+                    call={call || null}
+                    onChanged={onRefresh}
+                    onStarted={onRefresh}
+                  />
+                </div>
               )}
             </>
           ) : (
@@ -1301,20 +1257,24 @@ export default function AttentionSurface({
           </p>
         )}
 
-        {/* ── Something needs you, in NEURO ────────────────────────────────
-            A drafted email awaiting approval, or a send NEURO could not
-            confirm. ⚠ NO BUTTON, ON ANY SHELL: approving needs the approval
-            code at the desk (Build 7), and an ambient surface that can send is
-            one that can send by accident. The sentence names where to go.
-            `say` is null when nothing waits, which renders nothing; an
-            unreadable queue says so in its own muted words rather than
-            reading as "nothing to approve". */}
+        {/* ── Something needs you ──────────────────────────────────────────
+            A drafted email awaiting his press, or a send NEURO could not
+            confirm. Since 24 Oct 2026 one press sends on any attended screen,
+            so each waiting draft is listed with Send in place (WaitingDrafts,
+            one-use intent grant). The kiosk passes no `call`: the sentence
+            stands alone there. `say` is null when nothing waits; an unreadable
+            queue says so in its own muted words. */}
         {!hideSecondary && approvals?.say && (
-          <p className={`surface__approvals${approvals.known === false ? ' surface__approvals--unknown' : ''}`}
-            data-approvals={approvals.known === false ? 'unknown' : 'waiting'}>
-            {approvals.known !== false && <span className="surface__approvalstag">Needs you</span>}
-            {approvals.say}
-          </p>
+          <div className="surface__approvalsblock">
+            <p className={`surface__approvals${approvals.known === false ? ' surface__approvals--unknown' : ''}`}
+              data-approvals={approvals.known === false ? 'unknown' : 'waiting'}>
+              {approvals.known !== false && <span className="surface__approvalstag">Needs you</span>}
+              {approvals.say}
+            </p>
+            {approvals.known !== false && (approvals.needsApproval || 0) > 0 && call && (
+              <WaitingDrafts call={call} onChanged={() => { if (onRefresh) setTimeout(onRefresh, 4000); }} />
+            )}
+          </div>
         )}
 
         {/* ── What she has noticed ──────────────────────────────────────────

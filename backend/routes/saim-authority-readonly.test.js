@@ -106,7 +106,7 @@ test('1. on a fresh database, status — repeated and concurrent — writes noth
   // The correct zero state.
   assert.equal(s.contract, 'saim-authority-v1');
   assert.equal(s.gates.device.open, false); assert.equal(s.gates.device.say, 'Carrying out moves is switched off on NEURO’s server.');
-  assert.equal(s.grant, null); assert.equal(s.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves today.');
+  assert.equal(s.grant, null); assert.equal(s.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves.'); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
   for (const k of ['blocks', 'minutes', 'notes', 'moves']) assert.deepEqual([s.allowance[k].granted, s.allowance[k].used, s.allowance[k].left], [0, 0, 0], k);
   assert.equal(s.allowance.spendPence, 0); assert.equal(s.allowance.contacts, 0);
   assert.equal(s.stopped, false); assert.deepEqual(s.receipts, []); assert.equal(s.active.state, 'none'); assert.equal(s.canAct, false);
@@ -139,9 +139,10 @@ test('2. the May do screen renders from that zero state, and rendering changes n
   const html = renderToString(React.createElement(mod.exports.AuthorityView, { state: { kind: 'ready', status: s } }));
   const t = html.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   assert.match(t, /Carrying out moves is switched off on NEURO’s server\./);
-  assert.match(t, /Allow SAiM to carry out up to three prepared moves today/);
-  assert.match(t, /you haven’t allowed any today\./);
-  assert.match(t, /Allow SAiM to carry out up to three prepared moves today/); assert.match(t, /Nothing has been carried out today\./);
+  // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away.
+  assert.match(t, /Allow SAiM to carry out up to three prepared moves a day/);
+  assert.match(t, /you haven’t allowed any\./);
+  assert.match(t, /Allow SAiM to carry out up to three prepared moves a day/); assert.match(t, /Nothing has been carried out today\./);
   assert.match(html, /Stop all SAiM actions/);
   assert.deepEqual(fingerprint(), before, 'rendering May do from the zero state wrote nothing');
 });

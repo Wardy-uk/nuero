@@ -119,11 +119,14 @@ test('quick wins can be picked up as well as ticked off', () => {
 
 test('a task that fits in the gap can be started and closed from the row', () => {
   const src = code(read('TimeFitCard.jsx'));
-  assert.ok(/\/api\/session\/start/.test(src), 'the card that says what fits must be able to begin it');
-  assert.ok(/\/complete/.test(src), 'and to close it');
-  // ⚠ A held tick must never render as done. That is the silent half-failure
-  // shape this codebase refuses everywhere else.
-  assert.ok(/json\.task\?\.held/.test(src), 'a held completion must be read off the returned row and said out loud');
+  // Both through the ONE shared helpers (7 Nov 2026): Start parks a running
+  // session without asking; Done covers every owner and SAYS what happened.
+  assert.ok(/startTaskSession\(desktopCall/.test(src), 'the card that says what fits must be able to begin it');
+  assert.ok(/completeTask\(desktopCall, item\)/.test(src), 'and to close it');
+  // ⚠ A held / repeated / refused tick must never render as done: the outcome
+  // is rendered on the row rather than assumed.
+  assert.ok(/<TickOutcome outcome=\{tickOut\.outcome\}/.test(src), 'what the tick did must be said out loud');
+  assert.ok(!/window\.confirm/.test(src), 'no browser confirm when a session is already running');
 });
 
 test('a friction insight can reach the work it is about', () => {

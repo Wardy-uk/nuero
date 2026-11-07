@@ -104,7 +104,7 @@ test('zero by default: no allowance, nothing can act, and the executor refuses b
   for (const k of ['blocks', 'minutes', 'notes', 'moves']) assert.equal(s.allowance[k].granted, 0, k);
   assert.equal(s.allowance.spendPence, 0); assert.equal(s.allowance.contacts, 0);
   assert.equal(s.canAct, false);
-  assert.equal(s.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves today.');
+  assert.equal(s.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves.'); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
   assert.equal(budget.reserve({ moveKey: 'm', steps: [{ key: 'm:calendar', kind: 'calendar.solo', minutes: 10 }] }).limit, 'no-allowance');
 
   const rec = stored(); const grantId = confirmation(rec);
@@ -156,7 +156,9 @@ test('grant: only the day and block length may be chosen; ceilings refused, neve
   const p = budget.previewGrant({ blockMinutes: 30 });
   assert.equal(p.ok, true);
   assert.equal(p.terms.spendPence, 0); assert.equal(p.terms.contacts, 0); assert.equal(p.terms.blocks, 3); assert.equal(p.terms.notes, 3); assert.equal(p.terms.moves, 3);
-  assert.match(p.statement[0], /^Allow SAiM to carry out up to three prepared moves on /);
+  // Nick changed the rule on 7 Nov 2026: a grant stands from its day until taken away (no more midnight).
+  assert.match(p.statement[0], /^Allow SAiM to carry out up to three prepared moves a day, from .+ until you take it away\.$/);
+  assert.doesNotMatch(p.statement.join(' '), new RegExp(budget.DAILY_MARK), 'a new grant never says it ends at midnight');
   assert.match(p.statement.join(' '), /waits for you to confirm it before it writes anything/);
   assert.match(p.statement.join(' '), /No sending, no contacting anyone, no meeting invitations, no tasks, no shared-board changes, and no changes to what SAiM may do/);
   assert.doesNotMatch(p.statement.join(' '), /\bPi\b|\benv\b|SAIM_|\block\b/i, 'no implementation words');
@@ -191,6 +193,45 @@ test('the database itself refuses anything past the ceiling, and a grant is neve
   assert.throws(() => db.run(`DELETE FROM saim_authority_events`), /append-only/);
   assert.equal(budget.revoke().revoked, true);
   assert.throws(() => db.run(`UPDATE saim_authority_grants SET revoked_at = NULL WHERE id = ?`, [g.id]), /immutable/, 'a revocation cannot be undone by editing');
+});
+
+// ── Standing allowance (Nick changed the rule on 7 Nov 2026) ─────────────────
+// The allowance used to end at midnight and had to be given again every
+// morning. It now stands until Nick takes it away; the per-day counts still
+// reset each London day, and every move is still confirmed on its own.
+
+test('standing: an allowance given today is still in force tomorrow, with a fresh day of moves', () => {
+  fresh();
+  const s = budget.status({ now: NOW + DAY });
+  assert.ok(s.grant, 'tomorrow still has the allowance');
+  assert.equal(s.grant.standing, true);
+  assert.equal(s.allowance.moves.granted, 3); assert.equal(s.allowance.moves.used, 0, 'the daily count starts again');
+  assert.equal(budget.wouldFit({ moveKey: 'tomorrow', steps: [{ key: 'tomorrow:calendar', kind: 'calendar.solo', minutes: 30 }], now: NOW + DAY }).ok, true);
+  assert.equal(budget.brief({ now: NOW + 3 * DAY }).granted, true, 'and the day after');
+  // The ceilings still hold on a later day: a 31-minute block is refused.
+  assert.equal(budget.wouldFit({ moveKey: 'big', steps: [{ key: 'big:calendar', kind: 'calendar.solo', minutes: 31 }], now: NOW + DAY }).limit, 'minutes');
+});
+
+test('standing: taking it away (or Stop) ends it at once, today and every day after', () => {
+  fresh();
+  assert.equal(budget.revoke({ now: NOW + DAY }).revoked, true);
+  assert.equal(budget.status({ now: NOW + DAY }).grant, null);
+  assert.equal(budget.status({ now: NOW + 2 * DAY }).grant, null);
+  assert.equal(budget.status().grant, null, 'the grant itself is revoked, not just one day of it');
+  fresh();
+  budget.stop({});
+  assert.equal(budget.wouldFit({ moveKey: 's', steps: [{ key: 's:calendar', kind: 'calendar.solo', minutes: 10 }], now: NOW + DAY }).limit, 'stop');
+});
+
+test('standing: a grant made before 7 Nov 2026 said "It ends at midnight" and keeps that meaning', () => {
+  fresh({ grant: false });
+  const yesterday = ymd(NOW - DAY);
+  db.run(`INSERT INTO saim_authority_grants (id, day, action, blocks, block_minutes, notes, moves, spend_pence, contacts, statement, granted_at, granted_by)
+    VALUES ('ag_old_daily', ?, 'prepared-move.block-and-note', 3, 30, 3, 3, 0, 0, ?, ?, 'nick')`,
+  [yesterday, JSON.stringify(['Allow SAiM to carry out up to three prepared moves on that day.', `It ends at midnight on ${yesterday}.`]), new Date(NOW - DAY).toISOString()]);
+  assert.equal(budget.isStanding(db.get(`SELECT * FROM saim_authority_grants WHERE id = 'ag_old_daily'`)), false);
+  assert.equal(budget.status().grant, null, 'an old daily grant never comes back to life');
+  assert.equal(budget.status({ now: NOW - DAY }).grant.standing, false, 'on its own day it still counts, as it said');
 });
 
 // ── Both gates ───────────────────────────────────────────────────────────────

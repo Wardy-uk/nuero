@@ -173,8 +173,8 @@ function savedWork({ now = Date.now(), deps = {} } = {}) {
     const title = s.title || r.moveKey;
     if (reply && !note) {
       let pa = null;
-      try { pa = reply.id ? db.get(`SELECT status, updated_at FROM prepared_actions WHERE id = ?`, [reply.id]) : null; } catch { pa = null; }
-      const paSay = !pa ? 'In Actions' : pa.status === 'verified' || pa.status === 'executed' ? 'Sent — read back in Sent Items' : pa.status === 'rejected' || pa.status === 'superseded' || pa.status === 'cancelled' ? `Not sent (${pa.status})` : 'In Actions — waiting for your approval code. Not sent.';
+      try { pa = reply.id ? db.get(`SELECT status, updated_at FROM prepared_actions WHERE action_id = ?`, [reply.id]) : null; } catch { pa = null; }
+      const paSay = !pa ? 'In Actions' : pa.status === 'verified' || pa.status === 'executed' ? 'Sent — read back in Sent Items' : pa.status === 'rejected' || pa.status === 'superseded' || pa.status === 'cancelled' ? `Not sent (${pa.status})` : 'Waiting for you to send it. Not sent.';
       out.communication.push({ moveKey: r.moveKey, recordId: r.recordId, kindLabel: 'Reply draft', title, actionId: reply.id || null, status: paSay, savedAt: r.at || null });
       continue;
     }

@@ -218,7 +218,7 @@ test('communication drafts: a confirmed reply is listed apart, with what really 
   const pd = require('./prepared-drafts');
   const R = { 'saim-move:v2:email-reply:email:abc': { recordId: 'rr', moveKey: 'saim-move:v2:email-reply:email:abc', target: 'live', at: '2026-10-22T09:00:00Z', steps: [{ step: 'reply', status: 'done', id: 'pa_1' }] } };
   const w = (status) => pd.savedWork({ deps: { db: fakeDb(R, { actions: { pa_1: { status } } }), store: fakeStore({ rr: { title: 'Re: renewal', kind: 'email-reply' } }), getTask: () => null } });
-  assert.equal(w('prepared').communication[0].status, 'In Actions — waiting for your approval code. Not sent.');
+  assert.equal(w('prepared').communication[0].status, 'Waiting for you to send it. Not sent.');
   assert.equal(w('verified').communication[0].status, 'Sent — read back in Sent Items');
   assert.equal(w('prepared').work.length, 0, 'a reply never crowds the saved work');
 });

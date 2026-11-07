@@ -1,0 +1,42 @@
+/* One prepared action, finished in place (PreparedSend.jsx). Shared by SAiM and
+   the NEURO desktop, so colours fall back when a shell has no token for them. */
+.psend {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  text-align: left;
+  min-width: 0;
+}
+.psend--compact { padding: 8px 10px; }
+.psend__head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; font-size: 0.85em; }
+.psend__type { font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.8; }
+.psend__to { opacity: 0.85; overflow-wrap: anywhere; }
+.psend__subject, .psend__line { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.psend__line { font-weight: 400; }
+.psend__body { white-space: pre-wrap; font-family: inherit; font-size: 0.9em; margin: 6px 0 0; max-height: 260px; overflow: auto; }
+.psend__more summary { cursor: pointer; font-size: 0.85em; opacity: 0.8; margin-top: 4px; }
+.psend__note { margin: 6px 0 0; font-size: 0.85em; opacity: 0.75; }
+.psend__outcome { margin: 6px 0 0; font-size: 0.9em; }
+.psend__outcome--ok { color: var(--success, #4caf50); }
+.psend__outcome--warn { color: var(--warning, #e0a030); }
+.psend__outcome--bad { color: var(--danger, #e05050); }
+.psend__acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.psend__go, .psend__quiet {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
+  background: transparent;
+  color: inherit;
+}
+.psend__go { background: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); color: #fff; font-weight: 600; }
+.psend__go:disabled, .psend__quiet:disabled { opacity: 0.55; cursor: default; }
+.psend__edit { display: grid; gap: 6px; margin-top: 6px; }
+.psend__edit label { display: grid; gap: 2px; font-size: 0.85em; }
+.psend__edit input, .psend__edit textarea { font: inherit; width: 100%; box-sizing: border-box; padding: 6px; border-radius: 6px; border: 1px solid var(--border, rgba(255, 255, 255, 0.2)); background: transparent; color: inherit; }
+.waitdrafts { display: grid; gap: 4px; margin-top: 6px; }
+.waitdrafts__err { margin: 6px 0 0; font-size: 0.85em; opacity: 0.8; }

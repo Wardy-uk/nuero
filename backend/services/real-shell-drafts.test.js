@@ -410,7 +410,7 @@ for (const [s, shell] of [['d', 'desktop'], ['p', 'phone']]) {
   test(`${shell}: Waiting for allowance opens the boundary, and "What SAiM may do" opens in place`, (t) => {
     if (skipWhy) return t.skip(skipWhy);
     const r = results[`${s}-list`]; okRun(r);
-    assert.match(String(r.boundary), /You haven’t allowed me to carry out prepared moves today/);
+    assert.match(String(r.boundary), /You haven’t allowed me to carry out prepared moves\. Allow up to three a day/); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
     assert.ok(r.route);
     assert.match(String(r.authority), /What SAiM may do/);
   });
@@ -442,7 +442,7 @@ for (const [s, shell] of [['d', 'desktop'], ['p', 'phone']]) {
     assert.equal(r.rows.find((x) => x.recordId === rec.id).status, 'Ready to confirm');
     if (s === 'd') assert.deepEqual(r.navs, [{ view: 'drafts', context: { recordId: rec.id } }], 'the desktop navigates with App.handleNavigate’s (view, context)');
     assert.ok(r.confirm, '"Open the confirmation" reaches the real confirmation');
-    assert.ok(r.confirmWrites.some((w) => /Put the reply to .* in Actions, waiting for your approval code\. It is NOT sent\./.test(w)), JSON.stringify(r.confirmWrites));
+    assert.ok(r.confirmWrites.some((w) => /Put the reply to .* in Actions, waiting for you to send it\. It is NOT sent\./.test(w)), JSON.stringify(r.confirmWrites));
   });
 }
 test('phone, in a meeting: "See what SAiM can make ready" is a control that opens the exact item; pressing it lands on its Drafts entry', (t) => {

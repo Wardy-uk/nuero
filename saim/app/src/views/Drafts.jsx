@@ -17,6 +17,7 @@ import { makeCall, load, askToConfirm, newSessionId } from '../preparedMove.mjs'
 import { loadDrafts, focusRow } from '../drafts.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import PromiseSave from '../components/PromiseSave.jsx';
+import PreparedSend from '../../../shared-ui/PreparedSend.jsx';
 import './Drafts.css';
 
 const TONE = { 'needs-answer': 'ask', 'ready-to-save': 'ready', 'ready-to-confirm': 'ready', 'waiting-allowance': 'wait', held: 'held' };
@@ -121,7 +122,7 @@ export function AgentWork({ agent, onOpenTask = null }) {
   );
 }
 
-export function DraftsView({ data, agent = null, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, onFollowup = null, message = null }) {
+export function DraftsView({ data, agent = null, openKey = null, openMode = null, readOnly = false, opening = null, onOpen, onClose, renderItem, renderComm = null, busy = false, onOpenNote = null, onOpenTask = null, onCompleteTask = null, onAbandon = null, onRestore = null, onFollowup = null, message = null }) {
   if (!data) return <section className="drafts" aria-label="Drafts"><h1 className="drafts__title">Drafts</h1><p className="drafts__sub">Reading Drafts…</p></section>;
   if (!data.ok) {
     return (
@@ -203,6 +204,9 @@ export function DraftsView({ data, agent = null, openKey = null, openMode = null
                   <button type="button" className="drafts__go drafts__go--quiet" disabled={busy} onClick={() => onFollowup(c, 'decline')}>Not this one</button>
                 </>
               )}
+              {/* A drafted email (7 Nov 2026): Send / Edit / Reject right here —
+                  the same one-press send as Actions, never "go to the desk". */}
+              {!readOnly && renderComm && c.actionId ? renderComm(c) : null}
             </li>
           ))}
         </ul>
@@ -216,6 +220,26 @@ export function DraftsView({ data, agent = null, openKey = null, openMode = null
       )}
     </section>
   );
+}
+
+/**
+ * One communication draft, read by its action id and finished in place
+ * (7 Nov 2026). A row whose draft is no longer waiting (sent, rejected) shows
+ * the server's status line instead of a button.
+ */
+export function CommDraft({ call, actionId, onChanged = null }) {
+  const [action, setAction] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let live = true;
+    call(`/api/prepared-actions/${encodeURIComponent(actionId)}`)
+      .then((r) => { if (!live) return; if (r && r.status === 200 && r.body && r.body.action) setAction(r.body.action); else setErr((r && r.body && r.body.error) || `NEURO answered ${r && r.status}`); })
+      .catch((e) => { if (live) setErr(e.message || 'NEURO didn’t answer'); });
+    return () => { live = false; };
+  }, [call, actionId]);
+  if (err) return <p className="drafts__say">Couldn’t read this draft ({err}).</p>;
+  if (!action || action.status !== 'prepared') return null;
+  return <PreparedSend action={action} call={call} compact onChanged={() => { if (onChanged) setTimeout(onChanged, 2500); }} />;
 }
 
 /**
@@ -307,6 +331,7 @@ export default function Drafts({ call: injectedCall = null, context = null, onOp
         try { await call('/api/prepared-moves/drafts/outcome', { method: 'POST', body: { moveKey: w.moveKey, outcome: 'restore' } }); } catch { /* the re-read shows it */ }
         await reload(); setBusy(false);
       }}
+      renderComm={(c) => <CommDraft key={c.actionId} call={call} actionId={c.actionId} onChanged={() => reload()} />}
       renderItem={(r) => <PromiseSave key={r.moveKey} recordId={r.recordId} call={call} drafts initial={(open && open.initial) || null} onChanged={() => reload()} onOpenNote={onOpenNote} />}
     />
   );

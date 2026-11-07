@@ -114,6 +114,12 @@ function whatFits(tasks, minutes, { limit = 5 } = {}) {
     if (estimate == null) assumedCount++;
     items.push({
       task_id: task.task_id ?? task.id ?? null,
+      // The handles the shared Done needs for a Microsoft or daily-note row
+      // (7 Nov 2026); null on a NEURO task, which is closed by its id.
+      ms_id: task.ms_id || null,
+      source: task.source || null,
+      filePath: task.filePath || null,
+      lineNumber: task.lineNumber ?? null,
       text: task.text,
       moscow: task.moscow || null,
       due_date: task.due_date || null,

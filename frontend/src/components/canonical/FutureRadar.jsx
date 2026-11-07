@@ -39,7 +39,9 @@ export function FutureRadarCard() {
   };
   const active = goals.data ? (goals.data.goals || []).filter((g) => g.status === 'active') : [];
   const openTasks = tasks.data ? tasks.data.items || [] : [];
-  const onDone = (n) => act(async () => { await postCanonical(`/api/tasks/${n}/complete`, {}); await tasks.reload(); });
+  // DoneTick closes the task itself (the shared completion helper) and calls this
+  // only once something closed — a repeating task is shown its next date there.
+  const onDone = () => act(async () => { await tasks.reload(); });
 
   // The server orders the items (needs-you first); the card only SPLITS that
   // order into two groups — it never re-ranks.
@@ -128,7 +130,7 @@ function RadarItem({ item, goals, tasks, busy, act, onDone }) {
   return (
     <li className={`cn-row cn-radar cn-radar--${item.actionState}`}>
       <div className="cn-radar-line">
-      <DoneTick id={item.id} busy={busy} onDone={onDone} />
+      <DoneTick id={item.id} title={item.title} busy={busy} onDone={onDone} />
       <button type="button" className="cn-rowbtn" onClick={() => setOpen(!open)} aria-expanded={open} title={item.whyVisible.join(' ')}>
         <span className="cn-radar-when">{item.when}{item.time ? ` · ${item.time}` : ''}</span>
         <span className="cn-rowtitle">{item.title}</span>
@@ -218,7 +220,7 @@ export function AdminRow({ item, busy, act, onDone }) {
   const ann = item.annotation || {};
   return (
     <li className="cn-row cn-arow" style={{ padding: '10px 12px' }}>
-      {item.canTick ? <DoneTick id={item.obligationId} busy={busy} onDone={onDone} /> : item.state !== 'done' && /^task:eventkit-reminders:/.test(item.obligationId) ? <DoneTick id={item.obligationId} /> : null}
+      {item.canTick ? <DoneTick id={item.obligationId} title={item.title} busy={busy} onDone={onDone} /> : item.state !== 'done' && /^task:eventkit-reminders:/.test(item.obligationId) ? <DoneTick id={item.obligationId} /> : null}
       <div className="cn-arow-body">
         <div className="cn-arow-top">
           <span className="cn-rowtitle">{item.title}</span>
@@ -325,7 +327,8 @@ export function PersonalAdminCard() {
     try { await fn(); await reload(); } catch (e) { setNote(`Not saved — ${e.message}`); }
     setBusy(false);
   };
-  const done = (n) => act(() => postCanonical(`/api/tasks/${n}/complete`, {}));
+  // The tick itself is DoneTick's (shared completion helper); this reloads after.
+  const done = () => act(async () => {});
   const activation = data.audit && data.audit.activation;
   const candidates = (activation && activation.candidates) || [];
   // One press answers the question the setup steps were asking: this list IS

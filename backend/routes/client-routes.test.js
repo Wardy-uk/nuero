@@ -409,7 +409,18 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 const CLOSED_ON_PURPOSE = new Set(['health', 'desktop', 'saim-authority', 'task-context', 'task-agent', 'focus-blocks', 'meeting-followups', 'calendar-care',
   // Next steps (3 Nov 2026): every row acts, and the kiosk is read-only — the kiosk
   // shell leaves the tab out of its menu and the view makes no request there.
-  'next-steps']);
+  'next-steps',
+  // One press sends on any ATTENDED screen (7 Nov 2026): the waiting drafts on
+  // SAiM's home, chat proposals, Drafts' communication rows and chases
+  // (PreparedSend / WaitingDrafts / ChatProposal / OwedActions / sendPrepared),
+  // "Turn on and send" (feature-flags) and "Same as #N? Merge" (task-dedupe).
+  // Every one is given `call` = null on the kiosk (AttentionSurface by profile,
+  // Chat / Drafts / Meeting prep by platformNow()), so it renders as a statement
+  // there and makes no request; the kiosk proxy keeps these segments closed.
+  'prepared-actions', 'feature-flags', 'waiting-on', 'task-dedupe',
+  // Delegate (TaskWorkflow, SAiM Tasks) and Book a 1-2-1 in place (NextStepRow),
+  // 7 Nov 2026: both act, and neither is drawn on the read-only kiosk.
+  'delegation', '1to1']);
 
 // EXACT paths a shared view calls only when it is NOT read-only — the kiosk renders
 // those views read-only (platformNow() === 'kiosk'), so the control that calls them

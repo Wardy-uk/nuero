@@ -66,12 +66,11 @@ test('the close-out is shown verbatim from the finish response', () => {
 
 test('no length is sent when none was chosen', () => {
   const start = body('StartCard');
-  // Positive control on the scan itself: the start call is in this function.
-  assert.match(start, /sessionPost\('\/api\/session\/start', body\)/);
-  // The only way `minutes` reaches the body is behind the guard.
-  assert.match(start, /if \(minutes != null\) body\.minutes = minutes;/);
-  assert.doesNotMatch(start, /minutes:\s*minutes/, 'minutes must never be put into the body unconditionally');
-  assert.doesNotMatch(start, /\{[^}]*\bminutes\b[^}]*\}\s*;?\s*\n\s*if \(minutes/, 'the body literal must not already carry minutes');
+  // Positive control on the scan itself: the start goes through the ONE shared helper.
+  assert.match(start, /startTaskSession\(saimStartCall, \{ taskId: picked\.taskId, text: picked\.text, minutes,/);
+  // The helper puts `minutes` in the body only when one was chosen.
+  const helper = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'startTask.mjs'), 'utf8');
+  assert.match(helper, /if \(minutes != null && Number\.isFinite\(Number\(minutes\)\)\) body\.minutes = Number\(minutes\);/);
   // The default is "not saying", never a number dressed up as his choice.
   assert.match(start, /useState\(null\);\s*\n\s*const \[busy/);
   // A restart from the return prompt is not a new statement about length either.
@@ -79,10 +78,9 @@ test('no length is sent when none was chosen', () => {
   assert.doesNotMatch(card, /\bminutes\b\s*:/, 'the return prompt must not send a length');
 });
 
-test('a running session is named and replaced only on an explicit force', () => {
+test('a running session is PARKED without a question, and offered back (7 Nov 2026)', () => {
   const start = body('StartCard');
-  assert.match(start, /409/, 'the conflict must be recognised');
-  assert.match(start, /if \(force\) body\.force = true;/, 'force is sent only when asked');
-  assert.match(start, /begin\(true\)/, 'and only from the explicit switch button');
-  assert.match(start, /begin\(false\)/);
+  assert.doesNotMatch(start, /Switch to this|window\.confirm/, 'no switch question at the moment of starting');
+  assert.match(start, /setParked\(r\.parked \|\| null\)/);
+  assert.match(start, /<ParkedNote parked=\{parked\}/, '"Parked X — Resume it" in place');
 });

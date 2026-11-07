@@ -32,7 +32,7 @@ const CHANNEL_LOCAL = 'native-local';
 // default for that kind when it is P0; `existing` names a sender that already
 // interrupts for it, so the policy can say why it adds nothing.
 const KINDS = {
-  approval: { eligible: true, ttlHours: 12, why: 'A governed draft is waiting for your approval code.' },
+  approval: { eligible: true, ttlHours: 12, why: 'A drafted email is waiting for you to send it.' },
   escalation: { eligible: true, ttlHours: 24, why: 'A Jira escalation has no reply from you.', existing: 'web-push escalation_alert (PWA)' },
   email: { eligible: false, ttlHours: 6, why: 'The urgent-email lane is a classifier call, not a P0 verdict — it stays a nudge.', existing: 'email nudge' },
   meeting: { eligible: false, ttlHours: 1, why: 'A meeting about to start is a time cue — meeting_alert and the calendar already notify.', existing: 'meeting_alert' },

@@ -702,6 +702,16 @@ function sweep({ now = new Date(), poolAvailable = false } = {}) {
  * reschedule that task — the card is NEURO's opinion about what deserves
  * attention, and disagreeing with the opinion is not doing the job.
  */
+/**
+ * The ONE email a card is about, or null. PURE. A pile ("5 emails need action")
+ * names none — closing a pile from one press would dismiss mail nobody read.
+ */
+function singleEmailOf(row) {
+  if (!row || row.type !== 'email') return null;
+  const meta = _parse(row.meta, {});
+  return meta && meta.emailId && (meta.count == null || Number(meta.count) === 1) ? String(meta.emailId) : null;
+}
+
 function act(recordId, action, opts = {}) {
   const now = opts.now || new Date();
   const at = now.toISOString();
@@ -739,6 +749,8 @@ function act(recordId, action, opts = {}) {
       let handled = false;
       let taskWhy = 'nothing to complete';
       let pendingMicrosoft = null;
+      let pendingFile = null;
+      let pendingEmail = null;
       const target = completionTargetFor({
         type: row.type,
         title: row.title,
@@ -756,10 +768,14 @@ function act(recordId, action, opts = {}) {
         pendingMicrosoft = { msId: target.msId, msSource: target.msSource };
         taskWhy = 'pushing to Microsoft';
       } else if (target && target.kind === 'file') {
-        // Named, never silently treated as "nothing to complete" — the card is
-        // about a real checkbox in a real file and Nick should be told why the
-        // tick stopped here rather than being left to assume it worked.
-        taskWhy = 'this one is a checkbox in the vault — tick it there';
+        // A vault checkbox (a daily note). Like Microsoft, the write happens in
+        // the ROUTE, not here: the line is found by its TEXT at the moment of the
+        // press (never an offset captured when the card was built — that is the
+        // wrong-line risk `ownerOf` refuses to carry), and ticked through the same
+        // toggle the Tasks screen uses. Exactly one open line must match; the
+        // route says so when it is none or several (7 Nov 2026, audit F9).
+        pendingFile = { text: target.text, source: target.source || null };
+        taskWhy = 'ticking the checkbox in the vault';
       } else if (target) {
         try {
           const taskStore = require('./task-store');
@@ -838,6 +854,12 @@ function act(recordId, action, opts = {}) {
             }
           }
         }
+      } else if (singleEmailOf(row)) {
+        // Done on a card about ONE email = that email is dealt with. The route
+        // dismisses it from the triage as `done`, so it leaves Inbox ACTION and
+        // Next steps too, instead of the card clearing while the email waits.
+        pendingEmail = { emailId: singleEmailOf(row), reason: 'done' };
+        taskWhy = 'marking the email done';
       } else if (row.type === 'escalation') {
         // ⚠ Done on an escalation (Nick, 11 Sep 2026). The card is built from
         // Jira's "no reply from you, not seen" list, so resolving the record
@@ -872,6 +894,12 @@ function act(recordId, action, opts = {}) {
         // MUST await it and report the outcome; ignoring it resolves the record
         // and leaves the task open, which is the bug this whole change is about.
         pendingMicrosoft,
+        // Non-null for a vault checkbox: the route ticks the ONE open line whose
+        // text matches, and reports it — never claimed here.
+        pendingFile,
+        // Non-null for a card about ONE email: the route dismisses it from the
+        // triage as done, so the email leaves Inbox ACTION too (audit F10).
+        pendingEmail,
         record: db.setAttentionState(recordId, STATES.RESOLVED, at, { resolution: 'completed' }),
       };
     }
@@ -904,7 +932,14 @@ function act(recordId, action, opts = {}) {
         console.warn('[Attention] Could not teach suppression:', e.message);
       }
       _event(recordId, 'dismissed', at, opts.reason || null);
-      return { ok: true, record: db.setAttentionState(recordId, STATES.SUPPRESSED, at, { resolution: 'dismissed' }) };
+      // "Not relevant" on ONE email: the email is dismissed as not-relevant too
+      // (the route does it), which is also the triage classifier's feedback.
+      const email = singleEmailOf(row);
+      return {
+        ok: true,
+        pendingEmail: email ? { emailId: email, reason: 'not-relevant' } : null,
+        record: db.setAttentionState(recordId, STATES.SUPPRESSED, at, { resolution: 'dismissed' }),
+      };
     }
 
     // Cancel a deferral early. `releaseDeferrals` does the same transition on a
@@ -998,6 +1033,7 @@ module.exports = {
   actionsFor,
   isStartable,
   completionTargetFor,
+  singleEmailOf,
   notifySignature,
   shouldNotify,
   expiryFor,

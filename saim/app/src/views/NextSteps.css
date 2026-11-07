@@ -43,3 +43,12 @@
 .ns-cal__wide { width: 100%; }
 .ns-cal__allday { display: flex; align-items: center; gap: 4px; }
 .ns-cal__allday input { min-height: 0; }
+/* Shared row (saim/shared-ui/NextStepRow.jsx, 7 Nov 2026): stacked on the phone. */
+.ns-row-main { flex-direction: column; align-items: stretch; gap: 6px; }
+.ns-text { gap: 6px; }
+.ns-note--ok { color: #7ee2a8; }
+.ns-note--warn, .ns-note--parked { color: #e9b46a; }
+.ns-note--bad { color: #ff7b72; }
+.ns-panel { border-top-color: rgba(255,255,255,0.1); }
+.ns-draft { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); }
+.ns-slot { color: #e6edf3; }

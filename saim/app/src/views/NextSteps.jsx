@@ -1,8 +1,9 @@
 // Next steps (3 Nov 2026) — everything pending in one list, on the phone. The
-// SAME server list (GET /api/next-steps) and the same three choices on every
-// row as NEURO desktop's NextStepsPage: Start, Snooze, Not today. The server
-// composes and orders it from the modules that own each thing; this screen
-// renders it and ranks nothing — filters only cut.
+// SAME server list (GET /api/next-steps) and, since 7 Nov 2026, the SAME row
+// component as NEURO desktop's NextStepsPage (saim/shared-ui/NextStepRow.jsx):
+// a task's Start starts a focus session, Done ticks it, Book sends a 1-2-1
+// invite, the drafts row sends each draft, Done for now on a garden note. The
+// server composes and orders the list; this screen ranks nothing — filters only cut.
 //
 // ⚠ Not on the kiosk: the kiosk is read-only and /api/next-steps is not a
 // proxy door. The kiosk shell leaves the tab out of its menu, and if it is ever
@@ -11,28 +12,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiUrl, authHeaders } from '../api';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import { startPlan } from '../nextSteps.mjs';
+import { makeCall } from '../preparedMove.mjs';
+import NextStepRow from '../../../shared-ui/NextStepRow.jsx';
 import './NextSteps.css';
 
 const GROUPS = [
   { key: 'now', label: 'NEEDS YOU NOW' },
   { key: 'today', label: 'TODAY' },
   { key: 'week', label: 'THIS WEEK' },
-];
-
-const KIND_LABEL = { email: 'EMAIL', report: 'REPORT', drafts: 'DRAFTS', task: 'TASK', people: 'PEOPLE' };
-
-const SNOOZES = [
-  { label: '1 hour', minutes: 60 },
-  { label: '3 hours', minutes: 180 },
-  { label: 'Tomorrow', notToday: true },
-  { label: 'Next week', minutes: 7 * 24 * 60 },
-];
-
-const NOT_TODAY_REASONS = [
-  { reason: 'not-now', label: 'Just not today' },
-  { reason: 'too-big', label: 'Too big' },
-  { reason: 'waiting-on-someone', label: 'Waiting on someone' },
-  { reason: 'no-context', label: 'Missing something' },
 ];
 
 const FILTERS = [
@@ -42,12 +29,6 @@ const FILTERS = [
   { key: 'quick', label: 'Under 15 min' },
   { key: 'snoozed', label: 'Snoozed' },
 ];
-
-function untilLabel(iso) {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '';
-  return new Date(t).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-}
 
 function post(path, body) {
   return fetch(apiUrl(path), { method: 'POST', headers: authHeaders(path), body: JSON.stringify(body) })
@@ -117,78 +98,16 @@ export function CalendarForm({ source, emailId, subject, onClose, onAdded }) {
   );
 }
 
-export function NextStepRow({ item, highlighted = false, snoozed = false, onStart, onChanged }) {
-  const [menu, setMenu] = useState(null); // null | 'snooze' | 'nottoday'
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const [calOpen, setCalOpen] = useState(false);
+const appCall = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
 
-  const call = async (path, body, fallback) => {
-    setBusy(true); setErr('');
-    const r = await post(path, { id: item.id, ...body });
-    setBusy(false); setMenu(null);
-    if (r.ok) onChanged(); else setErr(r.error || fallback);
-  };
-
-  const start = () => {
-    const plan = startPlan(item);
-    if (plan.kind === 'calendar') { setCalOpen((o) => !o); return; }
-    if (plan.kind === 'act') { call('/api/next-steps/act', { action: plan.action }, 'NEURO did not take that.'); return; }
-    onStart(item, plan);
-  };
-
-  const cal = item.calendar || null;
-  return (
-    <li className={`ns-row${highlighted ? ' is-highlighted' : ''}${item.group === 'now' && !snoozed ? ' is-now' : ''}`} id={`ns-${item.id}`} data-item-id={item.id}>
-      <div className="ns-row-head">
-        <span className={`ns-kind ns-kind-${item.kind}`}>{KIND_LABEL[item.kind] || String(item.kind || '').toUpperCase()}</span>
-        {item.minutes != null && !snoozed && <span className="ns-mins">{item.minutes} min</span>}
-      </div>
-      <p className="ns-title">{item.title}</p>
-      <p className="ns-why">
-        {snoozed
-          ? `Snoozed until ${untilLabel(item.snoozedUntil)}${item.snoozeReason && item.snoozeReason !== 'not-now' && item.snoozeReason !== 'unspecified' ? ` · ${item.snoozeReason.replace(/-/g, ' ')}` : ''}`
-          : item.why}
-      </p>
-      <div className="ns-actions">
-        {snoozed ? (
-          <button type="button" className="ns-btn ns-btn-secondary" disabled={busy} onClick={() => call('/api/next-steps/undefer', {}, 'Could not bring it back.')}>{busy ? '…' : 'Bring it back'}</button>
-        ) : (
-          <>
-            <button type="button" className="ns-btn ns-btn-primary" disabled={busy} onClick={start}>{(item.start && item.start.label) || 'Start'}</button>
-            <button type="button" className="ns-btn ns-btn-secondary" aria-expanded={menu === 'snooze'} disabled={busy} onClick={() => setMenu(menu === 'snooze' ? null : 'snooze')}>Snooze ▾</button>
-            <button type="button" className="ns-btn ns-btn-quiet" aria-expanded={menu === 'nottoday'} disabled={busy} onClick={() => setMenu(menu === 'nottoday' ? null : 'nottoday')}>Not today</button>
-          </>
-        )}
-      </div>
-      {menu === 'snooze' && (
-        <div className="ns-menu" role="group" aria-label="Snooze for">
-          {SNOOZES.map((s) => (
-            <button type="button" key={s.label} className="ns-chip" disabled={busy}
-              onClick={() => call('/api/next-steps/defer', s.notToday ? { notToday: true } : { minutes: s.minutes }, 'Not snoozed.')}>{s.label}</button>
-          ))}
-        </div>
-      )}
-      {menu === 'nottoday' && (
-        <div className="ns-menu" role="group" aria-label="Why not today">
-          <span className="ns-menu-label">Why? It comes back tomorrow morning.</span>
-          {NOT_TODAY_REASONS.map((r) => (
-            <button type="button" key={r.reason} className="ns-chip" disabled={busy}
-              onClick={() => call('/api/next-steps/defer', { notToday: true, reason: r.reason }, 'Not snoozed.')}>{r.label}</button>
-          ))}
-        </div>
-      )}
-      {calOpen && cal && (
-        <CalendarForm source={cal.source} emailId={cal.emailId} subject={item.title} onClose={() => setCalOpen(false)} onAdded={onChanged} />
-      )}
-      {calOpen && !cal && <div className="ns-err">This row carries no email to read a date from.</div>}
-      {err && <div className="ns-err">{err}</div>}
-    </li>
-  );
-}
+const renderCalendar = ({ item, onClose, onAdded }) => (item.calendar
+  ? <CalendarForm source={item.calendar.source} emailId={item.calendar.emailId} subject={item.title} onClose={onClose} onAdded={onAdded} />
+  : <div className="ns-err">This row carries no email to read a date from.</div>);
 
 /** PURE render of the list. */
-export function NextStepsView({ data, filter = 'all', setFilter = () => {}, highlight = null, onStart = () => {}, onChanged = () => {} }) {
+export function NextStepsView({ data, filter = 'all', setFilter = () => {}, highlight = null, onStart = () => {}, onChanged = () => {}, onOpenTask = null, call = appCall }) {
+  // The phone is a web surface: its one-press sends mint `neuro-web` grants.
+  const rowProps = { call, surface: 'neuro-web', onOpen: (it) => onStart(it, startPlan(it)), onOpenTask, onChanged, renderCalendar };
   const items = data.items || [];
   const snoozed = data.snoozed || [];
   const quick = (x) => x.minutes != null && x.minutes <= 15;
@@ -222,7 +141,7 @@ export function NextStepsView({ data, filter = 'all', setFilter = () => {}, high
       {filter === 'snoozed' ? (
         <ul className="ns-list">
           {shown.length === 0 && <li className="ns-empty">Nothing snoozed.</li>}
-          {shown.map((it) => <NextStepRow key={it.id} item={it} snoozed onStart={onStart} onChanged={onChanged} />)}
+          {shown.map((it) => <NextStepRow key={it.id} item={it} snoozed {...rowProps} />)}
         </ul>
       ) : (
         <>
@@ -237,7 +156,7 @@ export function NextStepsView({ data, filter = 'all', setFilter = () => {}, high
                 <h2 className={`ns-h2${g.key === 'now' ? ' is-now' : ''}`}>{g.label} · {rows.length}</h2>
                 <ul className="ns-list">
                   {rows.map((it) => (
-                    <NextStepRow key={it.id} item={it} highlighted={highlight === it.id} onStart={onStart} onChanged={onChanged} />
+                    <NextStepRow key={it.id} item={it} highlighted={highlight === it.id} {...rowProps} />
                   ))}
                 </ul>
               </section>
@@ -264,7 +183,9 @@ export default function NextSteps({ context = null, onNavigate = null }) {
   }, []);
 
   useEffect(() => {
-    if (kiosk) return undefined;
+    const onOpenTask = onNavigate ? (taskId) => onNavigate('task', { context: { taskId } }) : null;
+
+  if (kiosk) return undefined;
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);
@@ -284,8 +205,10 @@ export default function NextSteps({ context = null, onNavigate = null }) {
     if (url && typeof window !== 'undefined') window.open(url, '_blank', 'noopener');
   };
 
+  const onOpenTask = onNavigate ? (taskId) => onNavigate('task', { context: { taskId } }) : null;
+
   if (kiosk) return <div className="ns"><p className="ns-empty">Next steps lives on your phone and on NEURO desktop — not on this screen.</p></div>;
   if (error && !data) return <div className="ns"><p className="ns-gap">{error}</p></div>;
   if (!data) return <div className="ns"><p className="ns-empty">Reading what’s pending…</p></div>;
-  return <NextStepsView data={data} filter={filter} setFilter={setFilter} highlight={highlight} onStart={onStart} onChanged={load} />;
+  return <NextStepsView data={data} filter={filter} setFilter={setFilter} highlight={highlight} onStart={onStart} onOpenTask={onOpenTask} onChanged={load} />;
 }

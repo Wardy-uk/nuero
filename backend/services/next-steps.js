@@ -91,12 +91,48 @@ function _weeklyReport(gaps) {
   }
 }
 
+/** PURE. One waiting governed draft, shaped for the row: what it is, who it
+ * goes to, a short preview, and the exact version + payload hash a one-press
+ * Send binds its grant to. The server re-checks every one of those on send. */
+function draftRow(a) {
+  const d = (a && a.draft) || {};
+  const people = (list) => (Array.isArray(list) ? list : [])
+    .map((x) => (x && (x.name || x.email)) || (typeof x === 'string' ? x : null)).filter(Boolean);
+  const to = people(d.to).length ? people(d.to) : people(d.attendees);
+  const text = String(d.body || d.bodyText || d.text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return {
+    actionId: a.actionId,
+    version: a.version || 1,
+    payloadHash: a.payloadHash,
+    actionType: a.actionType,
+    status: a.status,
+    subject: String(d.subject || d.title || a.actionType || 'Draft').slice(0, 140),
+    to: to.slice(0, 3),
+    toMore: Math.max(0, to.length - 3),
+    when: d.start ? String(d.start).slice(0, 16).replace('T', ' ') : null,
+    preview: text ? (text.length > 280 ? `${text.slice(0, 280)}…` : text) : null,
+    from: a.sendsFrom && a.sendsFrom.address ? a.sendsFrom.address : null,
+    // Send here only when NEURO can actually execute it now; an uncertain or
+    // failed one needs the Actions screen, where its history is.
+    canSend: a.status === 'prepared' && a.executes === true,
+  };
+}
+
 function _drafts(gaps) {
   try {
-    const ny = require('./prepared-actions').needsYou();
+    const pa = require('./prepared-actions');
+    const ny = pa.needsYou();
     if (!ny || !ny.known) { gaps.push('drafts waiting: could not check'); return []; }
     const n = (ny.needsApproval || 0) + (ny.needsReview || 0);
     if (!n) return [];
+    // The same set needsYou counts: prepared, uncertain, or failed-but-safe.
+    let drafts = [];
+    try {
+      drafts = pa.listLive()
+        .filter((a) => a.status === 'prepared' || a.status === 'execution_uncertain' || (a.status === 'failed' && a.retrySafe === true))
+        .slice(0, 10)
+        .map(draftRow);
+    } catch (e) { gaps.push(`drafts list: ${e.message}`); }
     return [{
       id: 'drafts:waiting',
       kind: 'drafts',
@@ -105,7 +141,9 @@ function _drafts(gaps) {
       title: `${n} drafted email${n === 1 ? '' : 's'} waiting on you`,
       why: ny.say || 'NEURO has prepared these; nothing is sent until you press.',
       minutes: Math.min(30, n * 3),
-      start: { label: 'Open', view: 'actions', context: null },
+      start: { label: 'Show them', view: 'actions', context: null, action: 'drafts' },
+      drafts,
+      draftsMore: Math.max(0, n - drafts.length),
       card: { type: 'next_drafts', title: 'Drafts waiting', dedupeKey: 'next:drafts' },
     }];
   } catch (e) {
@@ -140,7 +178,13 @@ function _tasks(gaps, now) {
         title: t.text,
         why,
         minutes: t.estimateMinutes || null,
-        start: { label: 'Start', view: 'todos', context: t.task_id ? { taskId: t.task_id, fromFocus: true } : null },
+        // Start = a focus session on THIS task, in place (7 Nov 2026 audit: it
+        // used to only navigate). `view` stays as the Open fallback.
+        start: { label: 'Start', view: 'todos', context: t.task_id ? { taskId: t.task_id, fromFocus: true } : null, action: 'focus' },
+        // What the row needs to start and tick it. Done is offered only for a
+        // NEURO task (the one owner /api/tasks/:id/complete closes); the server
+        // re-reads the task by id either way.
+        task: { taskId: t.task_id || null, text: t.text, canComplete: Boolean(t.task_id) },
         // The SAME key the Must Move lane and Now use for a task card.
         card: { type: 'todo', title: t.text },
       });
@@ -174,7 +218,12 @@ function _oneToOnes(gaps) {
         title: s.state === 'unwritten' ? `Write up ${p.name}'s 1-2-1` : `Book ${p.name}'s 1-2-1`,
         why: detect.cadenceLabel(s),
         minutes: s.state === 'unwritten' ? 10 : 2,
-        start: { label: s.state === 'unwritten' ? 'Open' : 'Book', view: 'people', context: null },
+        // Book proposes a slot in place (POST /api/1to1/propose with this
+        // person) and one press prepares + sends the invite — the governed path.
+        start: s.state === 'unwritten'
+          ? { label: 'Open', view: 'people', context: null }
+          : { label: 'Book', view: 'people', context: null, action: 'book-121' },
+        oneToOne: { person: p.name, state: s.state },
         card: { type: 'next_121', title: p.name, dedupeKey: `next:121:${p.name}` },
       });
     }
@@ -448,4 +497,4 @@ function minutesUntilTomorrowMorning(now = Date.now()) {
   return Math.max(60, (24 - h) * 60 - m + 8 * 60);
 }
 
-module.exports = { read, defer, undefer, act, detectEventDate, arrange, minutesUntilTomorrowMorning, GROUP_ORDER };
+module.exports = { read, defer, undefer, act, detectEventDate, arrange, draftRow, minutesUntilTomorrowMorning, GROUP_ORDER };

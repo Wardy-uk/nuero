@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
+import { desktopCall } from '../desktopCall';
+import SimilarTask from '../../../saim/shared-ui/SimilarTask.jsx';
 import './CapturePanel.css';
 
 const MAX_SIZE = 10 * 1024 * 1024;
@@ -224,6 +226,8 @@ export default function CapturePanel() {
   const [preview, setPreview] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  // "Same as #N?" — kept until Nick answers it, through typing the next thing (7 Nov 2026).
+  const [similarAsk, setSimilarAsk] = useState(null); // { newId, similar }
   const [recent, setRecent] = useState([]);
   const [queueCount, setQueueCount] = useState(getQueue().length);
   const [showAttach, setShowAttach] = useState(false);
@@ -353,6 +357,11 @@ export default function CapturePanel() {
         try { navigator.vibrate?.(100); } catch {}
         fetchRecent();
         if (kind === 'feature') captured.reload();
+        // The server says this reads like a task already open: ask, in place, and
+        // keep asking until answered — the confirmation line clears, the question does not.
+        if (kind === 'task' && data.similar && data.similar.id && data.created && data.taskId) {
+          setSimilarAsk({ newId: data.taskId, similar: data.similar });
+        }
         setTimeout(resetForm, 3000);
       }
     } finally {
@@ -389,6 +398,10 @@ export default function CapturePanel() {
             {result.error || (result.queued ? 'Queued on this device. It has NOT reached NEURO yet — it will send when you are back online.' : result.where)}
           </span>
         </div>
+      )}
+      {similarAsk && (
+        <SimilarTask newId={similarAsk.newId} similar={similarAsk.similar} call={desktopCall}
+          onAnswered={() => setTimeout(() => setSimilarAsk(null), 2500)} />
       )}
       {result?.partial && (
         <div className="capture-result-banner capture-result-partial">

@@ -72,9 +72,9 @@ test('zero by default, and the status names both gates in Nick’s words', async
   assert.equal(s.status, 200);
   assert.equal(s.json.contract, 'saim-authority-v1');
   assert.equal(s.json.gates.device.say, 'Carrying out moves is switched off on NEURO’s server.');
-  assert.equal(s.json.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves today.');
+  assert.equal(s.json.gates.allowance.say, 'You haven’t allowed SAiM to carry out any prepared moves.'); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
   assert.equal(s.json.canAct, false);
-  assert.equal(s.json.summary, 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any today.');
+  assert.equal(s.json.summary, 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any.');
 });
 
 test('grant: strict body, exact preview, one-use confirmation — and the device stays locked', async () => {
@@ -94,7 +94,7 @@ test('grant: strict body, exact preview, one-use confirmation — and the device
   assert.equal(g.status, 200, JSON.stringify(g.json));
   assert.equal((await call('POST', 'grant', { confirmToken: p.json.confirmToken })).status, 409, 'one use');
   const s = (await call('GET', 'status')).json;
-  assert.equal(s.gates.allowance.say, 'Today SAiM may carry out up to three prepared moves, each only after you confirm it.');
+  assert.equal(s.gates.allowance.say, 'SAiM may carry out up to three prepared moves a day, each only after you confirm it, until you take it away.'); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
   assert.equal(s.gates.device.open, false, 'granting never opens the device lock');
   assert.equal(s.canAct, false);
   assert.equal(s.summary, 'SAiM can prepare moves, but carrying them out is switched off on NEURO’s server.');

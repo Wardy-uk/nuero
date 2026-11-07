@@ -54,6 +54,7 @@ const TYPES = Object.freeze({
   email: [P, W],
   standup: [P, W], eod: [P, W],
   journal: [P, ME],
+  food_log: [P, ME],
   todo: [L, W],
   '121': [P, W],
   day_plan: [P, W], brief: [P, W],

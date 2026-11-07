@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import actionSurfaces from '../../shared/action-surfaces.cjs';
 import { dueLabel, moveDue, DuePicker } from './TaskDue.jsx';
+import NotToday, { notTodayMinutes, ParkedNote } from './NotToday.jsx';
+import { startTaskSession } from './startTask.mjs';
+import { NOT_TODAY_REASONS } from './notTodayReasons.mjs';
 import './AttentionCard.css';
 
 export { dueLabel, moveDue };
@@ -31,13 +34,15 @@ const { resolveNueroNavigation } = actionSurfaces;
  * POSTed `/api/focus/action-done`, which logged an outcome and dismissed the
  * item — so opening a thing recorded it as finished before any work was done.
  *
- * **Start this** starts a focus session and leaves the record exactly where it
+ * **Start** starts a focus session and leaves the record exactly where it
  * was. The record is told (`start`) only so the friction read has the evidence.
+ * A session already running is parked without asking (startTask.mjs).
  *
  * **Done** is Nick saying so, and is the ONLY path that resolves. It SAYS which
  * of the outcomes happened.
  *
- * **Not now** / **Waiting on someone** defer with the reason recorded.
+ * **Not today** defers with one of the four shared reasons recorded
+ * (notTodayReasons.mjs); "It's too big" offers the smallest first step instead.
  *
  * **Move due date** (6 Nov 2026) re-dates the TASK the card is about, through
  * the task's own edit route — the same write as editing it in Tasks, so the
@@ -73,15 +78,17 @@ const VIEW_LABELS = {
 const LABELS = {
   open: 'Open context',
   acknowledge: 'Seen it',
-  start: 'Start this',
+  start: 'Start',
   complete: 'Done',
   dismiss: 'Not relevant',
   due: 'Move due date',
 };
 
-// How long each deferral lasts — a deferral with no end is a dismissal in disguise.
-const NOT_NOW_MINUTES = 120;
-const WAITING_MINUTES = 24 * 60;
+// How long each deferral lasts — a deferral with no end is a dismissal in
+// disguise. ONE vocabulary on every surface (notTodayReasons.mjs, 7 Nov 2026):
+// "Not today" opens the four reasons; a day for waiting-on-someone, otherwise
+// until tomorrow morning (NotToday.jsx notTodayMinutes).
+const DEFER_SAY = Object.fromEntries(NOT_TODAY_REASONS.map((r) => [r.key, r.key === 'waiting-on-someone' ? 'Noted as waiting on someone else.' : `Put off until tomorrow — ${r.label.toLowerCase()}.`]));
 
 /**
  * "Open" on a card about ONE task opens THAT task, not the list (Nick, 2 Oct
@@ -213,19 +220,24 @@ export function NeedsYouActs({ card, onOpen = null, onAct = null, call = null, o
   );
 }
 
-export default function AttentionCard({
-  card,
-  onOpen = null,
-  onAct = null,
-  call = null,
-  onStarted = null,
-  onChanged = null,
-  compact = false,
-  showEvidence = true,
-}) {
+/** The ONE task a card is about, by id, or null. PURE. */
+export function cardTaskId(card) {
+  const meta = (card && card.meta) || {};
+  if (meta.owner && meta.owner.taskId != null) return Number(meta.owner.taskId);
+  if (card && card.type === 'capacity' && meta.taskId != null && Number.isFinite(Number(meta.taskId))) return Number(meta.taskId);
+  return null;
+}
+
+/**
+ * The card's answers — open, seen it, start, done, not today, move due date, not
+ * relevant — with what each one did said underneath. Exported so SAiM's older
+ * layouts (?look=approach|list) draw the SAME buttons as the card (audit F4).
+ */
+export function AttentionActions({ card, onOpen = null, onAct = null, call = null, onStarted = null, onChanged = null, showOutcome = true }) {
   const [busy, setBusy] = useState(null);
   const [rawOutcome, setRawOutcome] = useState(null);
   const [rawDue, setRawDue] = useState(null);
+  const [rawParked, setRawParked] = useState(null);
 
   if (!card) return null;
 
@@ -237,6 +249,7 @@ export default function AttentionCard({
   const setOutcome = (o) => setRawOutcome(o ? { ...o, cardKey } : null);
   const dueOpen = rawDue && rawDue.cardKey === cardKey;
   const setDueOpen = (v) => setRawDue(v ? { cardKey, pick: '' } : null);
+  const parked = rawParked && rawParked.cardKey === cardKey ? rawParked.parked : null;
 
   const actions = Array.isArray(card.actions) ? card.actions : [];
   // A card with no record has no canonical action set; it gets the ones that
@@ -244,6 +257,7 @@ export default function AttentionCard({
   const permitted = card.recordId ? actions : ['open', 'dismiss', 'defer'];
   const canAct = Boolean(onAct);
   const dueTarget = call ? dueTargetOf(card) : null;
+  const taskId = cardTaskId(card);
 
   const run = async (key, fn) => {
     if (busy) return;
@@ -273,26 +287,17 @@ export default function AttentionCard({
     if (onOpen?.(card, destination) === false) setOutcome({ kind: 'error', text: 'Nothing to open for this one.' });
   };
 
+  // ONE Start (startTask.mjs): the task's id when the card names one, and a
+  // session already running is PARKED straight away — no confirm dialog — with
+  // "Parked X — Resume it" offered in place (7 Nov 2026).
   const start = () => run('start', async () => {
-    const body = { text: card.title, source: 'attention' };
-    const res = await call('/api/session/start', { method: 'POST', body });
-    // 409 is "you're already on something" — a question, not a failure. Nothing
-    // is switched without Nick saying so.
-    if (res.status === 409 && res.body && res.body.session) {
-      const s = res.body.session;
-      const ok = typeof window !== 'undefined' && window.confirm(
-        `You're ${s.elapsedMinutes} minutes into "${s.text}".\n\nPark it and start this instead?`
-      );
-      if (!ok) return { ok: true, text: null };
-      const forced = await call('/api/session/start', { method: 'POST', body: { ...body, force: true } });
-      if (!(forced.status >= 200 && forced.status < 300)) return { ok: false, why: 'Could not start that session.' };
-    } else if (!(res.status >= 200 && res.status < 300)) {
-      return { ok: false, why: (res.body && res.body.error) || 'Could not start that session.' };
-    }
+    const r = await startTaskSession(call, { taskId, text: card.title, source: 'attention' });
+    if (!r.ok) return { ok: false, why: r.error || 'Could not start that session.' };
+    setRawParked(r.parked ? { cardKey, parked: r.parked } : null);
     // Told, not moved: the record stays where it was.
     if (card.recordId) await onAct?.(card, 'start');
     onStarted?.(card);
-    return { ok: true, text: 'Session started. The record is untouched.' };
+    return { ok: true, text: r.already ? 'Already in focus on this.' : 'Session started. The record is untouched.' };
   });
 
   const done = () => run('complete', async () => {
@@ -309,11 +314,16 @@ export default function AttentionCard({
     return { ok: true, text };
   });
 
-  const defer = (reason, minutes, label) => run(reason, async () => {
-    const result = await onAct?.(card, 'defer', { reason, minutes });
-    if (!result || result.ok === false) return result || { ok: false, why: 'Nothing handled that.' };
-    return { ok: true, text: label };
-  });
+  // "Not today", with the reason recorded. Returned to the picker so a refusal is said there.
+  const deferWith = async (reason) => {
+    setBusy(reason);
+    try {
+      const result = await onAct?.(card, 'defer', { reason, minutes: notTodayMinutes(reason) });
+      if (!result || result.ok === false) return { ok: false, error: (result && (result.why || result.error)) || 'Nothing handled that.' };
+      setOutcome({ kind: 'ok', text: DEFER_SAY[reason] || 'Put off.' });
+      return { ok: true };
+    } finally { setBusy(null); }
+  };
 
   const acknowledge = () => run('acknowledge', async () => {
     const result = await onAct?.(card, 'acknowledge');
@@ -324,6 +334,8 @@ export default function AttentionCard({
   const dismiss = () => run('dismiss', async () => {
     const result = await onAct?.(card, 'dismiss');
     if (!result || result.ok === false) return result || { ok: false, why: 'Nothing handled that.' };
+    // A card about one email: the email itself is marked not relevant too.
+    if (result.email) return { ok: true, text: result.email.ok ? `Marked not relevant — ${result.email.why}.` : `Card cleared — ${result.email.why}.` };
     return { ok: true, text: 'Marked not relevant. The work itself is untouched.' };
   });
 
@@ -334,6 +346,72 @@ export default function AttentionCard({
     onChanged?.(card);
     return { ok: true, text: `Due date moved to ${dueLabel(dateStr)}.` };
   });
+
+  return (
+    <>
+      {showOutcome && outcome && (
+        <p className={`att-card__outcome att-card__outcome--${outcome.kind}`}>{outcome.text}</p>
+      )}
+      {parked && <ParkedNote parked={parked} call={call} className="att-card__outcome att-card__outcome--ok" />}
+
+      <div className="att-card__actions">
+        {onOpen && permitted.includes('open') && (
+          <button className="att-card__btn" type="button" onClick={open}>{openLabel}</button>
+        )}
+        {canAct && permitted.includes('acknowledge') && card.state !== 'acknowledged' && (
+          <button className="att-card__btn" type="button" disabled={busy === 'acknowledge'} onClick={acknowledge}>
+            {busy === 'acknowledge' ? '…' : LABELS.acknowledge}
+          </button>
+        )}
+        {canAct && call && permitted.includes('start') && (
+          <button className="att-card__btn att-card__btn--do" type="button" disabled={busy === 'start'} onClick={start}>
+            {busy === 'start' ? '…' : LABELS.start}
+          </button>
+        )}
+        {canAct && permitted.includes('complete') && (
+          <button className="att-card__btn att-card__btn--do" type="button" disabled={busy === 'complete'} onClick={done}>
+            {busy === 'complete' ? '…' : LABELS.complete}
+          </button>
+        )}
+        {canAct && permitted.includes('defer') && (
+          <NotToday
+            onDefer={deferWith}
+            call={call}
+            taskId={taskId}
+            text={card.title}
+            busy={Boolean(busy)}
+            onStarted={() => onStarted?.(card)}
+            classes={{ btn: 'att-card__btn', reason: 'att-card__btn', wrap: 'att-card__nottoday' }}
+          />
+        )}
+        {dueTarget && (
+          <button className="att-card__btn" type="button" aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>
+            {LABELS.due}
+          </button>
+        )}
+        {canAct && permitted.includes('dismiss') && (
+          <button className="att-card__btn att-card__btn--quiet" type="button" disabled={busy === 'dismiss'} onClick={dismiss}>
+            {LABELS.dismiss}
+          </button>
+        )}
+      </div>
+
+      {dueTarget && dueOpen && <DuePicker disabled={busy === 'due'} onPick={redate} />}
+    </>
+  );
+}
+
+export default function AttentionCard({
+  card,
+  onOpen = null,
+  onAct = null,
+  call = null,
+  onStarted = null,
+  onChanged = null,
+  compact = false,
+  showEvidence = true,
+}) {
+  if (!card) return null;
 
   return (
     <article className={`att-card att-card--${card.urgency || 'none'}${compact ? ' att-card--compact' : ''}`}>
@@ -378,10 +456,6 @@ export default function AttentionCard({
         </ul>
       )}
 
-      {outcome && (
-        <p className={`att-card__outcome att-card__outcome--${outcome.kind}`}>{outcome.text}</p>
-      )}
-
       {/* Already being worked on — and what it was cut down to. */}
       {card.session && (
         <p className="att-card__session">
@@ -391,48 +465,7 @@ export default function AttentionCard({
         </p>
       )}
 
-      <div className="att-card__actions">
-        {onOpen && permitted.includes('open') && (
-          <button className="att-card__btn" type="button" onClick={open}>{openLabel}</button>
-        )}
-        {canAct && permitted.includes('acknowledge') && card.state !== 'acknowledged' && (
-          <button className="att-card__btn" type="button" disabled={busy === 'acknowledge'} onClick={acknowledge}>
-            {busy === 'acknowledge' ? '…' : LABELS.acknowledge}
-          </button>
-        )}
-        {canAct && call && permitted.includes('start') && (
-          <button className="att-card__btn att-card__btn--do" type="button" disabled={busy === 'start'} onClick={start}>
-            {busy === 'start' ? '…' : LABELS.start}
-          </button>
-        )}
-        {canAct && permitted.includes('complete') && (
-          <button className="att-card__btn att-card__btn--do" type="button" disabled={busy === 'complete'} onClick={done}>
-            {busy === 'complete' ? '…' : LABELS.complete}
-          </button>
-        )}
-        {canAct && permitted.includes('defer') && (
-          <>
-            <button className="att-card__btn" type="button" disabled={busy === 'not-now'} onClick={() => defer('not-now', NOT_NOW_MINUTES, 'Put off for now.')}>
-              Not now
-            </button>
-            <button className="att-card__btn" type="button" disabled={busy === 'waiting-on-someone'} onClick={() => defer('waiting-on-someone', WAITING_MINUTES, 'Noted as waiting on someone else.')}>
-              Waiting on someone
-            </button>
-          </>
-        )}
-        {dueTarget && (
-          <button className="att-card__btn" type="button" aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>
-            {LABELS.due}
-          </button>
-        )}
-        {canAct && permitted.includes('dismiss') && (
-          <button className="att-card__btn att-card__btn--quiet" type="button" disabled={busy === 'dismiss'} onClick={dismiss}>
-            {LABELS.dismiss}
-          </button>
-        )}
-      </div>
-
-      {dueTarget && dueOpen && <DuePicker disabled={busy === 'due'} onPick={redate} />}
+      <AttentionActions card={card} onOpen={onOpen} onAct={onAct} call={call} onStarted={onStarted} onChanged={onChanged} />
     </article>
   );
 }

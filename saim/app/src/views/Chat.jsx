@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { apiFetch, apiFetchBlob, chatStream } from '../api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { apiFetch, apiFetchBlob, chatStream, apiUrl, authHeaders } from '../api';
+import { makeCall } from '../preparedMove.mjs';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
+import ChatProposal from '../../../shared-ui/ChatProposal.jsx';
 import { speakSaim, isVoiceOutEnabled, setVoiceOutEnabled, unlockAudio } from '../voiceUtils';
 import './Chat.css';
 import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
@@ -62,14 +65,30 @@ const TOOL_LABELS = {
   complete_task: 'Complete a task',
   append_daily_note: 'Add to today’s note',
   capture_feature: 'Capture a feature idea',
-  // ⚠ Labels say "approve in NEURO" (Build 9): SAiM has no
-  // approval control on any shell, so the label says where the decision lives.
-  // `create_meeting` was retired from chat in Build 9 and is gone from here.
-  draft_email_reply: 'Draft an email reply (approve in NEURO)',
+  // 7 Nov 2026: one press sends on any attended screen, so a reply or invite
+  // she prepares here is shown under her message with Send / Book
+  // (ChatProposal) — the label never sends him to the desk to decide.
+  draft_email_reply: 'Draft an email reply',
+  create_meeting: 'Prepare a meeting invite',
   get_urgent_emails: 'Check urgent email',
-  schedule_focus_block: 'Book a focus block (approve in NEURO)',
-  escalate_ticket: 'Escalate a ticket (approve in NEURO)',
+  schedule_focus_block: 'Queue a focus block',
+  escalate_ticket: 'Prepare a ticket escalation',
 };
+
+// Tools that PREPARE a governed action in an attended chat (chat-tools.js:
+// draft_email_reply, create_meeting). After a turn that ran one, the phone
+// reads the drafts SAiM made in it and shows each under her reply.
+const PROPOSING_TOOLS = new Set(['draft_email_reply', 'create_meeting']);
+
+/**
+ * PURE. The chat-attended drafts made in this turn: prepared, from the live
+ * chat window, created since the turn began (two minutes of clock slack), and
+ * not already shown under an earlier reply.
+ */
+export function turnProposals(actions, { sinceMs, shown = new Set() } = {}) {
+  return (Array.isArray(actions) ? actions : []).filter((a) => a && a.origin === 'chat-attended' && a.status === 'prepared'
+    && !shown.has(a.actionId) && Date.parse(a.createdAt) >= sinceMs - 120000);
+}
 
 function toolLabel(name) {
   const key = String(name || '').trim();
@@ -110,6 +129,9 @@ export default function Chat() {
   const [ttsVoice, setTtsVoice] = useState(getTtsVoice);
   const [showVoices, setShowVoices] = useState(false);
   const convRef = useRef(null);
+  // NEURO's fetch as {status, body}, for Send / Book on a proposal. The kiosk
+  // cannot reach the send routes (its proxy keeps them closed), so it gets none.
+  const proposalCall = useMemo(() => (platformNow() === 'kiosk' ? null : makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders })), []);
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
   const dictatedRef = useRef('');   // onend fires from a stale closure — read the text from here
@@ -279,6 +301,8 @@ export default function Chat() {
     setBusy(true);
 
     const body = { message: text, conversationId: convRef.current || undefined };
+    const turnStart = Date.now();
+    let proposing = false;
     // ⚠ Spread the last message rather than rebuilding it — rebuilding as
     // {role, content} drops the `tools` a tool turn has already attached, and the
     // tool events arrive BEFORE the text.
@@ -312,7 +336,7 @@ export default function Chat() {
           if (typeof act === 'boolean') setCanAct(act);
         },
         onChunk: (c) => { got = true; appendToLast(c); },
-        onTool: (name) => { if (name) addToolToLast(name); },
+        onTool: (name) => { if (name) { addToolToLast(name); if (PROPOSING_TOOLS.has(name)) proposing = true; } },
         // ⚠ A stream that failed MID-REPLY keeps what arrived — those words are
         // really hers — and the reason goes to the fault row beside it, never
         // appended to her sentence.
@@ -345,6 +369,26 @@ export default function Chat() {
       busyRef.current = false;
       setBusy(false);
     }
+    if (proposing && proposalCall) attachProposals(turnStart);
+  }
+
+  // What she prepared this turn, read from NEURO (the stream's own "prepared"
+  // event is not passed through by chatStream), attached under her last reply.
+  async function attachProposals(sinceMs) {
+    try {
+      const r = await proposalCall('/api/prepared-actions?limit=20');
+      if (!(r && r.status === 200 && r.body && r.body.ok)) return;
+      setMessages((m) => {
+        const shown = new Set(m.flatMap((x) => (x.proposals || []).map((a) => a.actionId)));
+        const fresh = turnProposals(r.body.actions, { sinceMs, shown });
+        if (!fresh.length) return m;
+        const copy = m.slice();
+        for (let i = copy.length - 1; i >= 0; i--) {
+          if (copy[i].role === 'assistant') { copy[i] = { ...copy[i], proposals: [...(copy[i].proposals || []), ...fresh] }; break; }
+        }
+        return copy;
+      });
+    } catch { /* the proposal still waits in NEURO's Actions */ }
   }
 
   return (
@@ -412,6 +456,9 @@ export default function Chat() {
             <div className={`chat__msg chat__msg--${m.role}`}>
               {m.content || (busy && i === messages.length - 1 ? <span className="chat__typing">…</span> : '')}
             </div>
+            {m.role === 'assistant' && (m.proposals || []).map((a) => (
+              <ChatProposal key={a.actionId} action={a} call={proposalCall} />
+            ))}
             {m.role === 'assistant' && Array.isArray(m.tools) && m.tools.length > 0 && (
               <ul className="chat__tools" title="NEURO reports which tools ran, not whether each one worked.">
                 {m.tools.map((t, j) => (

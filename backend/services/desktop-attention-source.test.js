@@ -105,7 +105,10 @@ test('opening an item calls nothing — navigation is not an action', () => {
 test('starting a session tells the record and moves no state', () => {
   const card = read('AttentionCard.jsx');
   const startBody = card.slice(card.indexOf('const start = ()'), card.indexOf('const done = ()'));
-  assert.ok(startBody.includes('/api/session/start'), 'Start this must start a focus session');
+  // Through the ONE shared start helper (7 Nov 2026): it calls /api/session/start
+  // and parks a running session without a browser confirm.
+  assert.ok(startBody.includes('startTaskSession(call'), 'Start must start a focus session');
+  assert.ok(!startBody.includes('window.confirm'), 'no confirm dialog when a session is running');
   // The only lifecycle call it may make is `start`, which is a no-op on state.
   assert.ok(startBody.includes("onAct?.(card, 'start')"));
   for (const forbidden of ["'complete'", "'dismiss'", "'defer'", "'acknowledge'"]) {
@@ -148,7 +151,7 @@ test('⚠ Done never claims a card was CLEARED when nothing was closed', () => {
   // explain why it is gone, and a rule that fails on its own explanation is a
   // rule that pressures the next person to delete the explanation.
   const card = code(read('AttentionCard.jsx'));
-  const doneBody = card.slice(card.indexOf('const done = ()'), card.indexOf('const defer = ('));
+  const doneBody = card.slice(card.indexOf('const done = ()'), card.indexOf('const deferWith = '));
   assert.ok(doneBody.length > 0, 'the done handler should be findable');
   assert.ok(
     !/card cleared/i.test(doneBody),

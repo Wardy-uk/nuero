@@ -33,7 +33,7 @@ test.before(async () => {
         build.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
         build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
         build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
-        build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = p => p;', loader: 'js' }));
+        build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiUrl = p => p; export const apiFetch = async () => ({ status: 200, json: async () => ({}) });', loader: 'js' }));
       },
     }],
   });

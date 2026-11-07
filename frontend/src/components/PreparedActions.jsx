@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
+import { desktopCall } from '../desktopCall';
+import { turnOnAndSend, switchFor, SWITCH_LABEL } from '../../../saim/shared-ui/turnOnAndSend.mjs';
 import { AttachmentList } from './AttachmentPicker';
 import './ActionsPanel.css'; // .ap-btn lives there; without it this card is unstyled anywhere but Actions
 import './PreparedActions.css';
@@ -158,7 +160,7 @@ export async function fetchApprovalState() {
  * possible right now (sending off, no approval code, locked); the card says it
  * instead of offering a button that would be refused.
  */
-export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSendDirect = null, gate = null }) {
+export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSendDirect = null, gate = null, onTurnOnAndSend = null }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [code, setCode] = useState('');
@@ -268,6 +270,14 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
 
       {!sends && open && <div className="ap-warn">{action.notExecutableWhy}. Approving records your decision; nothing will be sent.</div>}
       {open && gate && <div className="ap-warn pa-gate">{gate}</div>}
+      {/* 7 Nov 2026: blocked ONLY by its switch → flip that one switch and send, in one press. */}
+      {open && gate && sends && direct && onTurnOnAndSend && !editing && !confirming && (
+        <div className="ap-actions">
+          <button className="ap-btn ap-btn-send" disabled={busy} onClick={onTurnOnAndSend} data-turn-on={switchFor(action)}>
+            Turn on “{SWITCH_LABEL[switchFor(action)]}” and send
+          </button>
+        </div>
+      )}
 
       {confirming && open && (
         <div className="pa-confirm">
@@ -385,10 +395,10 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
   };
 
   // 9 Oct 2026: one click on something Nick started — grant, then send.
-  const sendDirect = async (a) => {
+  const sendDirect = async (a, { turnOn = false } = {}) => {
     setBusyId(a.actionId);
     try {
-      const o = directOutcome(await executeDirect(a));
+      const o = directOutcome(turnOn ? await turnOnAndSend(desktopCall, a, { surface: 'neuro-web' }) : await executeDirect(a));
       say(o.tone === 'ok', o.text);
     } catch (e) {
       say(false, e.message);
@@ -451,6 +461,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
                 gate={gateFor(data, a)}
                 onApprove={(code) => approve(a, code)}
                 onSendDirect={() => sendDirect(a)}
+                onTurnOnAndSend={() => sendDirect(a, { turnOn: true })}
                 onReject={() => act(a, 'reject', {})}
                 onEdit={(fields) => act(a, 'edit', { payloadHash: a.payloadHash, ...fields })}
               />

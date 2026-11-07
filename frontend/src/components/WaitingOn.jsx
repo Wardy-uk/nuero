@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import PreparedActions from './PreparedActions';
+import { desktopCall } from '../desktopCall';
+import OwedActions from '../../../saim/shared-ui/OwedActions.jsx';
 import './WaitingOn.css';
 
 /**
@@ -13,40 +15,23 @@ import './WaitingOn.css';
  * because the question is never "what is the oldest commitment", it is "what
  * does Naomi owe me", asked once per 1-2-1.
  *
- * PULL-ONLY (Q14). Nothing here notifies, and `Chase` DRAFTS for approval — it
- * never sends. Since Build 7 it drafts a governed chase into the ONE action
- * queue (Actions → Drafted by NEURO), shown again below filtered to chases, with
- * the same card and the same approval step: the exact email, your approval
- * code, then a check in Sent Items. A chase goes to a direct report, and an
- * automated one reads as surveillance.
+ * PULL-ONLY (Q14). Nothing here notifies, and `Chase` DRAFTS — it never sends
+ * on its own. It drafts a governed chase (the ONE action queue, shown again
+ * below filtered to chases) and, since 7 Nov 2026, shows that exact email under
+ * the row with Send: one press sends it, then Sent Items is checked. A chase
+ * goes to a direct report, and an automated one reads as surveillance.
  */
-
-const SNOOZE_PRESETS = [
-  { label: 'Tomorrow', days: 1 },
-  { label: 'Next week', days: 7 },
-  { label: '2 weeks', days: 14 },
-];
 
 // Rows shown per person before "N older". Oldest-first ordering means the cut
 // is always the least urgent end of the list.
 const ITEM_CAP = 5;
-
-/** YYYY-MM-DD n days out, built from local getters — toISOString() shifts the day in BST. */
-function isoDaysFromNow(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function ageLabel(days) {
   if (days >= 365) return `${Math.floor(days / 365)}y`;
   return `${days}d`;
 }
 
-function WaitingRow({ item, onAct, busy }) {
-  const [snoozing, setSnoozing] = useState(false);
-  const [customDate, setCustomDate] = useState('');
-
+function WaitingRow({ item, onAct, busy, onChanged }) {
   return (
     <div className={`wo-row${item.stale ? ' is-stale' : ''}${item.snoozed ? ' is-snoozed' : ''}`}>
       <div className="wo-row-main">
@@ -75,50 +60,10 @@ function WaitingRow({ item, onAct, busy }) {
         </div>
       )}
 
-      {snoozing ? (
-        <div className="wo-snooze">
-          {SNOOZE_PRESETS.map(p => (
-            <button
-              key={p.days}
-              className="wo-btn"
-              disabled={busy}
-              onClick={() => { setSnoozing(false); onAct('snooze', { until: isoDaysFromNow(p.days) }); }}
-            >
-              {p.label}
-            </button>
-          ))}
-          <input
-            type="date"
-            className="wo-date"
-            value={customDate}
-            onChange={e => setCustomDate(e.target.value)}
-          />
-          <button
-            className="wo-btn"
-            disabled={busy || !customDate}
-            onClick={() => { setSnoozing(false); onAct('snooze', { until: customDate }); }}
-          >
-            Until
-          </button>
-          <button className="wo-btn wo-btn-ghost" onClick={() => setSnoozing(false)}>Cancel</button>
-        </div>
-      ) : (
-        <div className="wo-row-actions">
-          {/* Drafts a governed chase. It does not send — approve it below or in Actions. */}
-          <button className="wo-btn" disabled={busy} onClick={() => onAct('chase')} title="Draft the chase — you read it, then press Send">
-            Chase
-          </button>
-          <button className="wo-btn wo-btn-ok" disabled={busy} onClick={() => onAct('done')} title="They delivered">
-            Done
-          </button>
-          <button className="wo-btn wo-btn-ghost" disabled={busy} onClick={() => onAct('drop')} title="Misparsed, or overtaken by events">
-            Drop
-          </button>
-          <button className="wo-btn wo-btn-ghost" disabled={busy} onClick={() => setSnoozing(true)} title="Hide until a date — it keeps ageing">
-            Snooze
-          </button>
-        </div>
-      )}
+      {/* Chase · Done · Drop · Snooze — the SAME control Commitments and SAiM's
+          Meeting prep use (7 Nov 2026). Chase drafts the email and shows it
+          right here with Send: one press sends it, then Sent Items is checked. */}
+      <OwedActions call={desktopCall} waitingKey={item.key} onChanged={onChanged} />
     </div>
   );
 }
@@ -310,6 +255,7 @@ export default function WaitingOn({ person = null, embedded = false }) {
                         item={item}
                         busy={busyKey === item.key}
                         onAct={(action, body) => act(item, action, body)}
+                        onChanged={(what) => { if (what === 'chase-sent') setQueueKey(k => k + 1); else setTimeout(load, 1500); }}
                       />
                       {flash?.key === item.key && (
                         <div className={`wo-flash${/^Failed/.test(flash.text) ? ' bad' : ''}`}>{flash.text}</div>

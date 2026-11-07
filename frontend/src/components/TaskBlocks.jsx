@@ -795,11 +795,16 @@ function RescheduleForm({ block, busy, onCancel, onMove }) {
   );
 }
 
+/**
+ * The reason sent when Nick closes a block with one press (7 Nov 2026). The
+ * backend still requires a release reason on the record; the typed "Why?
+ * (required)" box was justified by the write-up evidence rule, which was
+ * removed on 15 Sep 2026 (the note is optional), so a press is the reason.
+ */
+export const DEFAULT_RELEASE_REASON = 'Nothing to write up — closed from the block card';
+
 function Row({ block, onRelease, onDrop, onReschedule, onToggleTask, onRemoveTask, onEditNote, editing, onCloseEditor, onSaved, busy, outcome }) {
-  const [releasing, setReleasing] = useState(false);
-  const [confirmingDrop, setConfirmingDrop] = useState(false);
   const [moving, setMoving] = useState(false);
-  const [reason, setReason] = useState('');
 
   return (
     <div className={`blocks-row${block.passed ? '' : ' blocks-row-upcoming'}`}>
@@ -872,13 +877,17 @@ function Row({ block, onRelease, onDrop, onReschedule, onToggleTask, onRemoveTas
           They used to sit in a row that lined up beside the FIRST task, so
           "Didn't happen" read as belonging to that task — it does not, it ends
           the whole block, and it was clicked on that understanding. Anything
-          that acts on every task in the window now says how many, and asks. */}
+          that acts on every task in the window says how many. Since 7 Nov 2026
+          closing and dropping are ONE press each: close sends a default reason
+          (nothing needs typing at a completion moment), and drop goes straight
+          through with an Undo above the list (the restore route) instead of a
+          second "are you sure". */}
       <div className="blocks-row-actions">
         <span className="blocks-actions-label">
           Whole block ({block.tasks.length} task{block.tasks.length === 1 ? '' : 's'}):
         </span>
         {outcome && <span className={`blocks-outcome blocks-outcome-${outcome.ok ? 'ok' : 'fail'}`}>{outcome.text}</span>}
-        {!outcome && !releasing && !confirmingDrop && !moving && (
+        {!outcome && !moving && (
           <>
             {/* First of the three, because it is the only one that keeps the
                 work moving. The other two end the block; this one recovers it,
@@ -887,10 +896,10 @@ function Row({ block, onRelease, onDrop, onReschedule, onToggleTask, onRemoveTas
             <button className="btn btn-sm" disabled={busy} onClick={() => setMoving(true)}>
               Didn't get to it — move it
             </button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => setReleasing(true)}>
+            <button className="btn btn-sm" disabled={busy} onClick={() => onRelease(block, DEFAULT_RELEASE_REASON)}>
               Nothing to write up — close all {block.tasks.length}
             </button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => setConfirmingDrop(true)}>
+            <button className="btn btn-sm" disabled={busy} onClick={() => onDrop(block)}>
               Didn't happen — drop all {block.tasks.length}
             </button>
           </>
@@ -902,38 +911,6 @@ function Row({ block, onRelease, onDrop, onReschedule, onToggleTask, onRemoveTas
             onCancel={() => setMoving(false)}
             onMove={(b, when) => { setMoving(false); onReschedule(b, when); }}
           />
-        )}
-        {!outcome && confirmingDrop && (
-          <span className="blocks-confirm">
-            Drop the whole block? The {block.tasks.length} task{block.tasks.length === 1 ? '' : 's'} stay open.
-            <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { setConfirmingDrop(false); onDrop(block); }}>
-              Yes, drop it
-            </button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => setConfirmingDrop(false)}>
-              Keep it
-            </button>
-          </span>
-        )}
-        {!outcome && releasing && (
-          <div className="blocks-release">
-            {/* A reason is required, not encouraged. Without one, "release"
-                quietly becomes a second way of saying done and the evidence rule
-                stops meaning anything. */}
-            <input
-              className="blocks-release-input"
-              placeholder="Why? (required)"
-              value={reason}
-              autoFocus
-              onChange={(e) => setReason(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && reason.trim()) onRelease(block, reason.trim()); }}
-            />
-            <button className="btn btn-sm btn-primary" disabled={busy || !reason.trim()} onClick={() => onRelease(block, reason.trim())}>
-              Close it
-            </button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => { setReleasing(false); setReason(''); }}>
-              Cancel
-            </button>
-          </div>
         )}
       </div>
     </div>
@@ -1237,7 +1214,7 @@ export default function TaskBlocks() {
           editing={editingId === block.blockId}
           onCloseEditor={() => { setEditingId(null); load(); }}
           onSaved={() => load()}
-          onRelease={(b, reason) => act(b, 'release', { reason }, `Closed — ${reason}`)}
+          onRelease={(b, reason) => act(b, 'release', { reason }, reason === DEFAULT_RELEASE_REASON ? 'Closed.' : `Closed — ${reason}`)}
           onDrop={(b) => dropBlock(b)}
           onReschedule={(b, when) => rescheduleBlock(b, when)}
         />

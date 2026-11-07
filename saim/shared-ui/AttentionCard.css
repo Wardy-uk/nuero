@@ -182,3 +182,4 @@
 .att-card__detail dl { margin: 6px 0 0; display: grid; gap: 6px; }
 .att-card__detail-row dt { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #8a90a0); }
 .att-card__detail-row dd { margin: 2px 0 0; line-height: 1.45; color: var(--text, #c8cddb); }
+.att-card__nottoday { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }

@@ -36,11 +36,14 @@
 }
 .mp__owes-item {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.6rem;
   padding: 0.18rem 0;
 }
+/* Chase / Done (and the chase draft with Send) sit on their own line under the item. */
+.mp__owes-item > .owed { flex-basis: 100%; margin-top: 0.2rem; }
 .mp__owes-text { font-size: 0.84rem; min-width: 0; }
 .mp__owes-age {
   flex-shrink: 0;

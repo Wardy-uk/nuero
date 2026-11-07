@@ -28,18 +28,21 @@ const surfaceSrc = fs.readFileSync(path.join(SAiM, 'shared-ui', 'AttentionSurfac
 const phoneSrc = fs.readFileSync(path.join(SAiM, 'app', 'src', 'views', 'Surface.jsx'), 'utf8');
 const chatSrc = fs.readFileSync(path.join(SAiM, 'app', 'src', 'views', 'Chat.jsx'), 'utf8');
 const apiSrc = fs.readFileSync(path.join(SAiM, 'app', 'src', 'api.js'), 'utf8');
+const cardSrc = fs.readFileSync(path.join(SAiM, 'shared-ui', 'AttentionCard.jsx'), 'utf8');
 
 test('positive control: these are the files being scanned', () => {
   assert.match(surfaceSrc, /export default function AttentionSurface/);
   assert.match(phoneSrc, /export default function Surface/);
   assert.match(chatSrc, /export default function Chat/);
-  // The existing buttons this change sits beside are still there.
-  assert.match(surfaceSrc, /act\(primary, 'acknowledge'\)/);
-  assert.match(surfaceSrc, /includes\('dismiss'\)/);
+  // 7 Nov 2026: the older layouts draw the SHARED card's buttons (audit F4), so
+  // acknowledge / dismiss / complete live in AttentionCard's AttentionActions.
+  assert.match(surfaceSrc, /<AttentionActions[\s\S]*?card=\{primary\}/);
+  assert.match(cardSrc, /onAct\?\.\(card, 'acknowledge'\)/);
+  assert.match(cardSrc, /permitted\.includes\('dismiss'\)/);
 });
 
 test('"that\'s done" posts complete through the record route', () => {
-  assert.match(surfaceSrc, /act\(primary, 'complete'\)/, 'the card must offer complete');
+  assert.match(cardSrc, /onAct\?\.\(card, 'complete'\)/, 'the card must offer complete');
   assert.match(
     phoneSrc,
     /\/api\/attention\/records\/\$\{card\.recordId\}\/act/,
@@ -49,12 +52,11 @@ test('"that\'s done" posts complete through the record route', () => {
 });
 
 test('complete is gated on onAct, a record, and the record allowing it', () => {
-  const gate = surfaceSrc.match(/const canComplete = \(card\) => Boolean\(([\s\S]*?)\);/);
-  assert.ok(gate, 'the gate must be a named, single predicate');
-  assert.match(gate[1], /onAct/, 'no button without a shell that can act');
-  assert.match(gate[1], /card\.recordId/, 'no button without a record to resolve');
-  assert.match(gate[1], /includes\('complete'\)/, 'no button the record does not allow');
-  assert.match(surfaceSrc, /canComplete\(primary\) &&/, 'the button must be rendered behind the gate');
+  // The shared card's gate: no lifecycle → no buttons; no record → only the
+  // record-free set (which excludes complete); and only what the record allows.
+  assert.match(cardSrc, /const permitted = card\.recordId \? actions : \['open', 'dismiss', 'defer'\]/);
+  assert.match(cardSrc, /canAct && permitted\.includes\('complete'\) &&/, 'the button must be rendered behind the gate');
+  assert.match(surfaceSrc, /primary\.kind === 'item' && onAct && !speaks &&/, 'no buttons without a shell that can act');
 });
 
 test('no action falls back to the legacy dismissal — /api/focus is retired', () => {

@@ -28,6 +28,10 @@ import { HandOverSection } from './HandOver';
 import { openInVault } from '../openVault';
 // "Make this ready" after a Now row's own action — the SAME control and /eligible list the phone uses (22 Oct 2026).
 import { desktopCall } from '../desktopCall';
+import { completeTask } from '../../../saim/shared-ui/completeTask.mjs';
+import { startTaskSession } from '../../../saim/shared-ui/startTask.mjs';
+import { ParkedNote } from '../../../saim/shared-ui/NotToday.jsx';
+import { TickOutcome } from '../../../saim/shared-ui/TaskActions.jsx';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
@@ -311,6 +315,12 @@ export default function AdhdPanel({ onNavigate }) {
 
   // What the last finished session took against what Nick said it would.
   const [closeout, setCloseout] = useState(null);
+  // A start that switched away from a running session (7 Nov 2026): no question,
+  // just "Parked X — Resume it" in place.
+  const [parked, setParked] = useState(null);
+  const [startNote, setStartNote] = useState(null);
+  // What each tick actually did (repeated / rolled / refused…), by row key.
+  const [tickOut, setTickOut] = useState({});
 
   useEffect(() => { load(); }, [load]);
 
@@ -382,6 +392,16 @@ export default function AdhdPanel({ onNavigate }) {
   }, [state.data?.session?.id, state.data?.session?.status, load]);
 
   async function sessionPost(path, body) {
+    // Starting goes through the ONE shared helper: a running session is parked
+    // straight away (never a browser confirm) and offered back as "Resume it".
+    if (path === 'start') {
+      const r = await startTaskSession(desktopCall, { taskId: body?.taskId ?? null, text: body?.text || '', minutes: body?.minutes ?? null, source: 'manual' });
+      setCloseout(null);
+      setParked(r.ok ? (r.parked || null) : null);
+      setStartNote(r.ok ? null : r.error);
+      load();
+      return undefined;
+    }
     try {
       const res = await apiFetch(`/api/session/${path}`, {
         method: 'POST',
@@ -392,13 +412,6 @@ export default function AdhdPanel({ onNavigate }) {
       // 409 is "you're already on something" — not an error, a question. The
       // running session comes back with it so it can be named rather than
       // silently replaced.
-      if (res.status === 409 && json.session) {
-        const ok = window.confirm(
-          `You're ${json.session.elapsedMinutes} minutes into "${json.session.text}".\n\nPark it and start this instead?`
-        );
-        if (!ok) return;
-        return sessionPost(path, { ...(body || {}), force: true });
-      }
       if (!res.ok) throw new Error(json.error || `${res.status} ${res.statusText}`);
       // The close-out line, phrased server-side. This is the only moment the
       // real duration is known while Nick is still thinking about the task, and
@@ -422,28 +435,16 @@ export default function AdhdPanel({ onNavigate }) {
   // task is made server-side on the normalised text and left unmade when the
   // card genuinely is not a task).
 
+  // ONE completion helper (saim/shared-ui/completeTask.mjs): what the tick did
+  // is shown on the row — a repeating task says where it went, a Jira-linked one
+  // names the ticket that closes it — and a failure never replaces the panel.
   async function completeQuickWin(item, index) {
     if (busy[index]) return;
     setBusy((b) => ({ ...b, [index]: true }));
-    try {
-      if (item.task_id) {
-        await api(`/api/tasks/${item.task_id}/complete`, { method: 'POST' });
-      } else if (item.ms_id) {
-        await api('/api/todos/complete-ms', {
-          method: 'POST',
-          body: JSON.stringify({ msId: item.ms_id, source: item.source, filePath: item.filePath, lineNumber: item.lineNumber }),
-        });
-      } else if (item.filePath && item.lineNumber != null) {
-        await api('/api/todos/toggle', {
-          method: 'POST',
-          body: JSON.stringify({ filePath: item.filePath, lineNumber: item.lineNumber }),
-        });
-      }
-      load();
-    } catch (e) {
-      setState((s) => ({ ...s, error: e.message }));
-      setBusy((b) => ({ ...b, [index]: false }));
-    }
+    const o = await completeTask(desktopCall, item);
+    setTickOut((t) => ({ ...t, [`q-${index}`]: o }));
+    setBusy((b) => ({ ...b, [index]: false }));
+    if (o.kind === 'done' || o.kind === 'repeated' || o.kind === 'rolled') load();
   }
 
   /**
@@ -461,34 +462,17 @@ export default function AdhdPanel({ onNavigate }) {
   /**
    * Close an avoided task from the card it is named on.
    *
-   * Owner order is `task_id` → `ms_id` → file+line, the same order and the same
-   * three routes `completeQuickWin` and the phone's `completeTask.js` use — one
-   * more copy of that order is one more chance for them to disagree, so it is
-   * kept identical rather than improved.
+   * Owner order and outcome reading are the shared helper's
+   * (saim/shared-ui/completeTask.mjs) — no copy of the order lives here.
    */
   async function completeAvoided(s, i) {
     const key = `av-${i}`;
     if (busy[key]) return;
     setBusy((b) => ({ ...b, [key]: true }));
-    try {
-      if (s.task_id != null) {
-        await api(`/api/tasks/${s.task_id}/complete`, { method: 'POST' });
-      } else if (s.ms_id != null) {
-        await api('/api/todos/complete-ms', {
-          method: 'POST',
-          body: JSON.stringify({ msId: s.ms_id, source: s.source, filePath: s.filePath, lineNumber: s.lineNumber }),
-        });
-      } else if (s.filePath && s.lineNumber != null) {
-        await api('/api/todos/toggle', {
-          method: 'POST',
-          body: JSON.stringify({ filePath: s.filePath, lineNumber: s.lineNumber }),
-        });
-      }
-      load();
-    } catch (e) {
-      setState((st) => ({ ...st, error: e.message }));
-    }
+    const o = await completeTask(desktopCall, { ...s, text: s.label || s.text });
+    setTickOut((t) => ({ ...t, [key]: o }));
     setBusy((b) => ({ ...b, [key]: false }));
+    if (o.kind === 'done' || o.kind === 'repeated' || o.kind === 'rolled') load();
   }
 
   async function logWin(e) {
@@ -663,6 +647,13 @@ export default function AdhdPanel({ onNavigate }) {
             </ul>
           )}
         </section>
+      )}
+
+      {(parked || startNote) && (
+        <div className="adhd__card">
+          {parked && <ParkedNote parked={parked} call={desktopCall} onResumed={() => { setParked(null); load(); }} />}
+          {startNote && <p className="adhd__gap">Couldn’t start: {startNote}</p>}
+        </div>
       )}
 
       {/* ── The session container (#88) ──
@@ -1108,6 +1099,7 @@ export default function AdhdPanel({ onNavigate }) {
                   type="button"
                   onClick={() => sessionPost('start', { taskId: q.task_id ?? null, text: q.text })}
                 >Start</button>
+                <TickOutcome outcome={tickOut[`q-${i}`]} call={desktopCall} onUndone={load} />
               </li>
             ))}
           </ul>
@@ -1198,7 +1190,7 @@ export default function AdhdPanel({ onNavigate }) {
                         className="adhd__do adhd__avoid-btn"
                         type="button"
                         onClick={() => sessionPost('start', { taskId: s.task_id ?? null, text: s.label })}
-                      >Start it</button>
+                      >Start</button>
                       <button
                         className="adhd__later adhd__avoid-btn"
                         type="button"
@@ -1214,6 +1206,7 @@ export default function AdhdPanel({ onNavigate }) {
                           taskText: s.label,
                         })}
                       >Open it</button>
+                      <TickOutcome outcome={tickOut[`av-${i}`]} call={desktopCall} onUndone={load} />
                     </>
                   )}
                   {/* A snoozed reminder is not a task, so it gets the one honest

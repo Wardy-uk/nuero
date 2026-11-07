@@ -10,6 +10,10 @@ import MakeReady from '../components/MakeReady';
 import { loadEligible } from '../makeReady.mjs';
 import { makeCall } from '../preparedMove.mjs';
 import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
+import { completeTaskOutcome } from '../completeTask';
+import { outcomeLine, wentDone } from '../../../shared-ui/completeTask.mjs';
+import { startTaskSession } from '../../../shared-ui/startTask.mjs';
+import { ParkedNote } from '../../../shared-ui/NotToday.jsx';
 import './Now.css';
 
 // NOW — one current action and the next transition.
@@ -462,11 +466,12 @@ function ReturnCard({ recovery, onChanged, onFinished }) {
  * Filling in a default here would launder NEURO's assumption into something Nick
  * appeared to state, and the close-out would then grade him against it.
  *
- * ⚠ A session already running is answered, never overwritten: the route returns
- * 409, and the card names the running session and asks. Switching closes that
- * session into history — it cannot be picked back up — and the button says so.
+ * A session already running (a race — this card shows when none is) is PARKED
+ * straight away through the ONE shared start helper, and "Parked X — Resume it"
+ * is said in place (7 Nov 2026): no switch question at the moment of starting.
  */
 const START_LENGTHS = [15, 30, 60];
+const saimStartCall = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
 
 function StartCard({ tasks, assumedMinutes, onStarted }) {
   const [open, setOpen] = useState(false);
@@ -475,7 +480,7 @@ function StartCard({ tasks, assumedMinutes, onStarted }) {
   const [minutes, setMinutes] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [running, setRunning] = useState(null); // the session a 409 named
+  const [parked, setParked] = useState(null); // what a start switched away from
 
   const picked = choice || (other.trim() ? { taskId: null, text: other.trim() } : null);
 
@@ -484,46 +489,28 @@ function StartCard({ tasks, assumedMinutes, onStarted }) {
     setChoice(null);
     setOther('');
     setMinutes(null);
-    setRunning(null);
     setError(null);
   }
 
-  async function begin(force) {
+  async function begin() {
     if (!picked) return;
     setBusy(true);
     setError(null);
-    const body = picked.taskId != null ? { taskId: picked.taskId, text: picked.text } : { text: picked.text };
-    if (minutes != null) body.minutes = minutes;
-    if (force) body.force = true;
-    try {
-      await sessionPost('/api/session/start', body);
-      reset();
-      await onStarted?.();
-    } catch (e) {
-      if (/^409\b/.test(e.message)) {
-        // apiFetch flattens the 409 body into a message, so the running session
-        // is read back live rather than parsed out of a truncated string.
-        try {
-          const live = await apiFetch('/api/session');
-          if (live && live.session) setRunning(live.session);
-          else setError('NEURO said a session was already running, but none is now. Try again.');
-        } catch (readErr) {
-          setError(`A session is already running, and I couldn't read which one: ${readErr.message}`);
-        }
-      } else {
-        setError(e.message);
-      }
-    } finally {
-      setBusy(false);
-    }
+    const r = await startTaskSession(saimStartCall, { taskId: picked.taskId, text: picked.text, minutes, source: 'manual' });
+    setBusy(false);
+    if (!r.ok) { setError(r.error); return; }
+    setParked(r.parked || null);
+    reset();
+    await onStarted?.();
   }
 
   if (!open) {
     return (
       <div className="now__start">
         <button type="button" className="now__sess-btn now__sess-btn--go" onClick={() => setOpen(true)}>
-          Start a focus session
+          Start
         </button>
+        {parked && <ParkedNote parked={parked} call={saimStartCall} onResumed={async () => { setParked(null); await onStarted?.(); }} className="now__meta" />}
       </div>
     );
   }
@@ -577,30 +564,12 @@ function StartCard({ tasks, assumedMinutes, onStarted }) {
 
       {error && <div className="now__sess-err">{error}</div>}
 
-      {running ? (
-        <div className="now__sess-shrink">
-          <div className="now__sess-label">
-            You&rsquo;re already on &ldquo;{running.text || 'an untitled session'}&rdquo;
-            {running.elapsedMinutes != null ? ` (${running.elapsedMinutes}m in)` : ''}. Switching closes it and keeps
-            it in history — it can&rsquo;t be picked back up afterwards.
-          </div>
-          <div className="now__sess-acts">
-            <button type="button" className="now__sess-btn now__sess-btn--go" disabled={busy} onClick={() => begin(true)}>
-              Switch to this
-            </button>
-            <button type="button" className="now__sess-btn" disabled={busy} onClick={async () => { reset(); await onStarted?.(); }}>
-              Stay on that one
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="now__sess-acts">
-          <button type="button" className="now__sess-btn now__sess-btn--go" disabled={busy || !picked} onClick={() => begin(false)}>
-            Start
-          </button>
-          <button type="button" className="now__sess-btn" disabled={busy} onClick={reset}>Cancel</button>
-        </div>
-      )}
+      <div className="now__sess-acts">
+        <button type="button" className="now__sess-btn now__sess-btn--go" disabled={busy || !picked} onClick={() => begin()}>
+          Start
+        </button>
+        <button type="button" className="now__sess-btn" disabled={busy} onClick={reset}>Cancel</button>
+      </div>
     </Lit>
   );
 }
@@ -636,6 +605,18 @@ function Countdown({ minutesAway, running, allDay }) {
   if (running) return <span className="now__when now__when--live">on now</span>;
   if (mins < 60) return <span className="now__when">in {mins}m</span>;
   return <span className="now__when">in {Math.round(mins / 60)}h</span>;
+}
+
+/**
+ * The handle the shared completion helper needs for a row the outbox cannot
+ * replay — a Microsoft-owned task (msId) or a vault line (filePath+lineNumber).
+ * Null when NEURO has none, and the tick stays greyed. PURE.
+ */
+export function onlineHandle(t) {
+  if (!t) return null;
+  if (t.msId) return { ms_id: t.msId, source: t.msSource || null, text: t.text };
+  if (t.filePath && t.lineNumber != null) return { filePath: t.filePath, lineNumber: t.lineNumber, text: t.text };
+  return null;
 }
 
 export default function Now({ onNavigate }) {
@@ -742,6 +723,20 @@ export default function Now({ onNavigate }) {
     if (ticking) return;
     setTicking(task.id);
     setFlash(null);
+    // ONLINE, a row the outbox cannot replay (a Microsoft mirror — no NEURO id
+    // survives the delay) is ticked straight through the ONE shared completion
+    // helper, which says what happened (7 Nov 2026, audit F14). Offline it stays
+    // greyed and says why.
+    if (!task.completableOffline) {
+      try {
+        const o = await completeTaskOutcome(onlineHandle(task));
+        setFlash({ ok: wentDone(o) || o.kind === 'repeated' || o.kind === 'rolled', msg: wentDone(o) ? `Done — ${task.text.slice(0, 40)}` : outcomeLine(o) });
+      } finally {
+        setTicking(null);
+        reloadQueue();
+      }
+      return;
+    }
     try {
       const op = await enqueue('todo.complete', { taskId: task.taskId });
       const result = await flush();
@@ -761,6 +756,7 @@ export default function Now({ onNavigate }) {
   }
 
   const s = snapshot;
+  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
   const recovery = live.data?.recovery || null;
   // The live read wins over the cached snapshot when it answered; otherwise the
   // snapshot's session is the best we have and is shown as before.
@@ -938,14 +934,14 @@ export default function Now({ onNavigate }) {
                 {s.tasks.items.map((t) => (
                   <Lit
                     className="now__task"
-                    tone={t.completableOffline ? 'normal' : 'unreachable'}
+                    tone={t.completableOffline || (online && onlineHandle(t)) ? 'normal' : 'unreachable'}
                     key={t.id}
                   >
                     <button
                       type="button"
                       className="now__tick"
                       onClick={() => tick(t)}
-                      disabled={!t.completableOffline || ticking === t.id}
+                      disabled={!(t.completableOffline || (online && onlineHandle(t))) || ticking === t.id}
                       aria-label={`Complete ${t.text}`}
                     >{ticking === t.id ? '…' : '○'}</button>
                     <div className="now__task-body">
@@ -967,7 +963,7 @@ export default function Now({ onNavigate }) {
                           this one" was a plausible guess and would be wrong on
                           the vault rows. This is iOS's wording, verbatim, so the
                           two surfaces cannot phrase one refusal two ways. */}
-                      {!t.completableOffline && (
+                      {!t.completableOffline && !(online && onlineHandle(t)) && (
                         <div className="now__meta">Owned elsewhere — open it online to tick it.</div>
                       )}
                       {mr(t.id)}

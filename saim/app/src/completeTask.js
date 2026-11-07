@@ -1,37 +1,24 @@
-import { apiFetch } from './api';
+import { apiFetch, apiUrl, authHeaders } from './api';
+import { makeCall } from './preparedMove.mjs';
+import { completeTask as sharedComplete, outcomeLine } from '../../shared-ui/completeTask.mjs';
 
 // Completing a task means different things depending on who owns it, and there
-// are three owners. Getting this wrong is silent: posting a null filePath to
-// /api/todos/toggle just 400s and the task stays open.
-//
-//   task_id            → NEURO owns it (the tasks table, source of truth)
-//   ms_id              → Microsoft owns it; Graph push + vault mirror toggle
-//   filePath+lineNumber → a plain vault checkbox (daily notes, 90-day plan)
-//
-// Checked in that order: a NEURO task can also carry ms_id, and the task store
-// is the record that matters.
+// are three owners. The owner order and the reading of what the server answered
+// (done / repeated / rolled / held / refused) live ONCE, in
+// saim/shared-ui/completeTask.mjs, shared with NEURO's desktop (7 Nov 2026).
+// This file is the phone's transport for it plus the wins headline.
+
+export const saimCall = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+
 /**
  * What the day comes to, asked for straight after a completion lands.
  *
- * This is the immediacy half of the wins work. The ledger made the count TRUE;
- * this is what makes it arrive at the moment rather than in a panel Nick has to
- * remember to open — which is the difference between a scoreboard and a reward.
- *
- * Deliberately a second request rather than a field on the completion response:
- * there are three completion routes with three different owners, and threading
- * the same payload through all of them is how they drift. /api/wins folds a
- * trailing window on read, so the task just closed is already in it.
- *
  * NEVER allowed to fail the completion. The task IS closed by the time this
  * runs; a bookkeeping error must not surface as "that didn't work" and send
- * Nick back to tick it again. Same rule as sent-replies recording after a mail
- * has already left.
+ * Nick back to tick it again. The WORDS come from the server (wins.headline).
  */
-async function _headlineAfterCompletion() {
+export async function headlineAfterCompletion() {
   try {
-    // The WORDS come from the server (wins.headline), not from here. The nudge
-    // and this both say what today came to, and two copies of the phrasing is
-    // how they end up disagreeing about it.
     const data = await apiFetch('/api/wins');
     return data?.headline || null;
   } catch {
@@ -39,47 +26,25 @@ async function _headlineAfterCompletion() {
   }
 }
 
+/**
+ * The outcome-aware tick. → { ...outcome, headline } where outcome is the
+ * shared helper's ({ kind: done|repeated|rolled|held|refused|error, ... }).
+ * The headline is asked for only when something was closed.
+ */
+export async function completeTaskOutcome(item, opts = {}) {
+  const outcome = await sharedComplete(saimCall, item, opts);
+  const closed = outcome.kind === 'done' || outcome.kind === 'repeated' || outcome.kind === 'rolled';
+  return { ...outcome, headline: closed ? await headlineAfterCompletion() : null };
+}
+
+/**
+ * The older contract (NotificationActionCard): resolves to the wins headline,
+ * THROWS when nothing was closed — with the server's own words, so a Jira-linked
+ * task says which ticket closes it rather than failing silently.
+ */
 export async function completeTask(item) {
   if (!item) throw new Error('No task given');
-
-  if (item.task_id) {
-    await apiFetch(`/api/tasks/${item.task_id}/complete`, { method: 'POST' });
-    // A NEURO task that mirrors a Microsoft one still has to be closed there,
-    // or the next sync brings it straight back.
-    if (item.ms_id) {
-      await apiFetch('/api/todos/complete-ms', {
-        method: 'POST',
-        body: JSON.stringify({
-          msId: item.ms_id,
-          source: item.source,
-          filePath: item.filePath,
-          lineNumber: item.lineNumber,
-        }),
-      }).catch(() => {}); // local completion already landed; don't undo it
-    }
-    return _headlineAfterCompletion();
-  }
-
-  if (item.ms_id) {
-    await apiFetch('/api/todos/complete-ms', {
-      method: 'POST',
-      body: JSON.stringify({
-        msId: item.ms_id,
-        source: item.source,
-        filePath: item.filePath,
-        lineNumber: item.lineNumber,
-      }),
-    });
-    return _headlineAfterCompletion();
-  }
-
-  if (item.filePath && item.lineNumber != null) {
-    await apiFetch('/api/todos/toggle', {
-      method: 'POST',
-      body: JSON.stringify({ filePath: item.filePath, lineNumber: item.lineNumber }),
-    });
-    return _headlineAfterCompletion();
-  }
-
-  throw new Error('This task has no id NEURO can complete');
+  const o = await completeTaskOutcome(item);
+  if (o.kind === 'refused' || o.kind === 'error' || o.kind === 'held') throw new Error(outcomeLine(o));
+  return o.headline || (o.kind === 'repeated' || o.kind === 'rolled' ? outcomeLine(o) : null);
 }

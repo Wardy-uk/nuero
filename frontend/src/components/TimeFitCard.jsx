@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
+import { desktopCall } from '../desktopCall';
+import { completeTask, canComplete, jiraHint } from '../../../saim/shared-ui/completeTask.mjs';
+import { startTaskSession } from '../../../saim/shared-ui/startTask.mjs';
+import { ParkedNote } from '../../../saim/shared-ui/NotToday.jsx';
+import { TickOutcome } from '../../../saim/shared-ui/TaskActions.jsx';
 import './TimeFitCard.css';
 
 /**
@@ -60,6 +65,8 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
   // then made you go and find it again in the list below.
   const [actingId, setActingId] = useState(null);
   const [actError, setActError] = useState(null);
+  const [parked, setParked] = useState(null);
+  const [tickOut, setTickOut] = useState(null); // { key, outcome }
   const [error, setError] = useState(null);
   const [override, setOverride] = useState(null);
   const [savingId, setSavingId] = useState(null);
@@ -106,77 +113,45 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
     setEstimate(taskId, minutes, true);
   };
 
+  // A row's identity across both actions (a Microsoft or vault row has no task_id).
+  const rowId = (item) => item.task_id || item.ms_id || (item.filePath ? `${item.filePath}:${item.lineNumber}` : item.text);
+
   /**
    * Start a session on the thing that fits. This is the whole point of the card
    * — Nick's difficulty is INITIATION, and "here is what fits" followed by no
    * way to begin it is awareness raised with the barrier left exactly where it
    * was.
    *
-   * ⚠ 409 means a session is already running. That is a question, not an error,
-   * and it is answered the same way `AdhdPanel` answers it: name what is
-   * running and ask, rather than silently replacing it.
+   * Through the ONE shared helper (saim/shared-ui/startTask.mjs, 7 Nov 2026): a
+   * running session is parked straight away — no browser confirm — and offered
+   * back in place as "Parked X — Resume it".
    */
   const start = async (item) => {
-    if (!item.task_id || actingId) return;
-    setActingId(item.task_id);
+    if (actingId) return;
+    setActingId(rowId(item));
     setActError(null);
-    try {
-      const post = (force) => fetch(apiUrl('/api/session/start'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: item.task_id, text: item.text, ...(force ? { force: true } : {}) }),
-      });
-      let res = await post(false);
-      let json = await res.json().catch(() => ({}));
-      if (res.status === 409 && json.session) {
-        const ok = window.confirm(
-          `You're ${json.session.elapsedMinutes} minutes into "${json.session.text}".\n\nPark it and start this instead?`
-        );
-        if (!ok) { setActingId(null); return; }
-        res = await post(true);
-        json = await res.json().catch(() => ({}));
-      }
-      if (!res.ok) throw new Error(json.error || `${res.status}`);
-      onStarted?.();
-      load();
-    } catch (e) {
-      // Said out loud. A button that silently did nothing is worse than none.
-      setActError(e.message);
-    }
+    const r = await startTaskSession(desktopCall, { taskId: item.task_id ?? null, text: item.text, minutes: item.assumed ? null : item.minutes, source: 'manual' });
+    if (r.ok) { setParked(r.parked || null); onStarted?.(); load(); }
+    // Said out loud. A button that silently did nothing is worse than none.
+    else setActError(r.error);
     setActingId(null);
   };
 
   /**
-   * Close it from here.
-   *
-   * ⚠ A tick can be HELD — `task-blocks` refuses to complete a task whose
-   * outcome note has not been written — and the response says so. Reporting
-   * that as done would be the silent half-failure this codebase refuses
-   * everywhere else, so the hold is surfaced in words.
+   * Close it from here — any owner (NEURO, Microsoft, a vault line), through the
+   * ONE shared completion helper. What happened is said on the row: a repeating
+   * task says where it went, a held or refused tick says why (a Jira-linked
+   * task names the ticket). Reporting any of those as done would be the silent
+   * half-failure this codebase refuses everywhere else.
    */
   const complete = async (item) => {
-    if (!item.task_id || actingId) return;
-    setActingId(item.task_id);
+    if (actingId) return;
+    setActingId(rowId(item));
     setActError(null);
-    try {
-      const res = await fetch(apiUrl(`/api/tasks/${item.task_id}/complete`), { method: 'POST' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || `${res.status}`);
-      // `held` rides on the returned ROW — the same field TodoPanel reads, not a
-      // second shape invented here.
-      const held = json.task?.held || null;
-      if (held) {
-        setActError(
-          `Held, not done — ${held.reason || 'no write-up yet'}. `
-          + (held.notePath ? `Write it up in ${held.notePath} and it closes itself.` : 'It stays in progress until the outcome note is written.')
-        );
-      } else {
-        onCompleted?.();
-      }
-      load();
-    } catch (e) {
-      setActError(e.message);
-    }
+    const outcome = await completeTask(desktopCall, item);
+    setTickOut({ key: rowId(item), outcome });
+    if (outcome.kind === 'done' || outcome.kind === 'repeated' || outcome.kind === 'rolled') onCompleted?.();
+    load();
     setActingId(null);
   };
 
@@ -340,29 +315,32 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
                   <option value="custom">Custom…</option>
                 </select>
               )}
-              {/* Only a NEURO-owned row can be started or closed from here. A
-                  row without an id gets no buttons rather than buttons that
-                  would 400 on the tap. */}
-              {item.task_id && (
-                <span className="tf-acts">
-                  <button
-                    className="tf-inline tf-start"
-                    disabled={actingId === item.task_id}
-                    onClick={() => start(item)}
-                  >{actingId === item.task_id ? '…' : 'Start'}</button>
+              {/* Start works on anything with words; Done on any row with an owner
+                  handle (NEURO, Microsoft or a vault line). A row with none gets
+                  no Done rather than one that would fail on the tap. */}
+              <span className="tf-acts">
+                <button
+                  className="tf-inline tf-start"
+                  disabled={actingId === rowId(item)}
+                  onClick={() => start(item)}
+                >{actingId === rowId(item) ? '…' : 'Start'}</button>
+                {canComplete(item) && (
                   <button
                     className="tf-inline"
-                    disabled={actingId === item.task_id}
+                    disabled={actingId === rowId(item)}
+                    title={jiraHint(item) || 'Mark done'}
                     onClick={() => complete(item)}
                   >Done</button>
-                </span>
-              )}
+                )}
+              </span>
+              {tickOut && tickOut.key === rowId(item) && <TickOutcome outcome={tickOut.outcome} call={desktopCall} onUndone={load} />}
             </li>
           ))}
         </ul>
       )}
 
       {actError && <p className="tf-blurb tf-acterr">{actError}</p>}
+      {parked && <ParkedNote parked={parked} call={desktopCall} onResumed={() => { setParked(null); load(); }} />}
 
       <div className="tf-foot">
         {assumedCount > 0 && (

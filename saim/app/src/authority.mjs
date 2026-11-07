@@ -42,7 +42,7 @@ export async function grant(call, preview) {
 
 export async function revoke(call) {
   const r = await post(call, 'revoke');
-  return r.ok ? { kind: 'done', message: r.body.revoked ? 'Today’s allowance is taken away.' : 'There was no allowance to take away.' } : { kind: 'error', message: r.body.error || 'The allowance was not changed.' };
+  return r.ok ? { kind: 'done', message: r.body.revoked ? 'The allowance is taken away.' : 'There was no allowance to take away.' } : { kind: 'error', message: r.body.error || 'The allowance was not changed.' };
 }
 
 export async function stopAll(call) {
@@ -57,7 +57,7 @@ export async function previewResume(call) {
 
 export async function resume(call, preview) {
   const r = await post(call, 'resume', { confirmToken: preview.confirmToken });
-  return r.ok ? { kind: 'done', message: 'SAiM’s actions can run again, within today’s allowance.' } : { kind: 'error', message: r.body.error || 'Nothing was changed.' };
+  return r.ok ? { kind: 'done', message: 'SAiM’s actions can run again, within your allowance.' } : { kind: 'error', message: r.body.error || 'Nothing was changed.' };
 }
 
 /** PURE. The step a receipt line reads as — the receipt's own words only. */

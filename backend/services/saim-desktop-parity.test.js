@@ -95,7 +95,7 @@ test('every slot the SAiM shell gives Situation, the desktop gives too (or it is
 test('both shells draw the SAME card and the SAME Needs-you answers', () => {
   const saim = read('saim/shared-ui/AttentionSurface.jsx');
   const desk = read('frontend/src/components/AttentionCard.jsx');
-  assert.match(saim, /import AttentionCard, \{ NeedsYouActs \} from '\.\/AttentionCard\.jsx'/);
+  assert.match(saim, /import AttentionCard, \{ NeedsYouActs[^}]*\} from '\.\/AttentionCard\.jsx'/);
   assert.match(desk, /from '\.\.\/\.\.\/\.\.\/saim\/shared-ui\/AttentionCard\.jsx'/);
   assert.match(read('frontend/src/components/NowScene.jsx'), /renderNeedsYouActs=/);
   // The desktop's readout cards everywhere, and the promise joins its lead the same way.
@@ -155,11 +155,12 @@ const render = (props) => renderToString(React.createElement(Card.default, { car
 test('the card offers "Move due date" where it can write — not on the kiosk, not on a summary card', () => {
   const call = async () => ({ status: 200, body: {} });
   assert.match(render({ call }), /Move due date/);
-  assert.match(render({ call }), /Not now/);
+  // ONE "Not today" vocabulary (notTodayReasons.mjs, 7 Nov 2026).
+  assert.match(render({ call }), /Not today/);
   assert.doesNotMatch(render({ call: null }), /Move due date/, 'the kiosk passes no call');
-  assert.doesNotMatch(render({ call: null }), /Start this/);
+  assert.doesNotMatch(render({ call: null }), />Start</);
   assert.doesNotMatch(render({ call, card: { ...capacityCard, meta: { by: '2026-11-06' } } }), /Move due date/);
-  assert.doesNotMatch(render({ call, onAct: null }), /Not now|>Done</, 'no lifecycle → no lifecycle buttons');
+  assert.doesNotMatch(render({ call, onAct: null }), /Not today|>Done</, 'no lifecycle → no lifecycle buttons');
 });
 
 test('a Needs-you row naming one task offers "Move due date" too — and both shells pass it a call', () => {

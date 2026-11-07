@@ -560,13 +560,10 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         try {
           if (intent.action === 'start') {
             // "I'm on it" names what the session is about; the brain composed
-            // the words. No `force` — nothing already running is switched
-            // without Nick saying so (the brain does not offer this sentence
-            // while a session runs, so a 409 here is a race and is left alone).
-            await apiFetch('/api/session/start', {
-              method: 'POST',
-              body: JSON.stringify({ text: intent.text, source: 'attention' }),
-            });
+            // the words. Through the ONE shared start helper (7 Nov 2026): the
+            // brain does not offer this sentence while a session runs, so a
+            // running one is a race — it is parked, never asked about.
+            await startTaskSession(makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders }), { text: intent.text, source: 'attention' });
             // Told, not moved: the record keeps its state and gains the
             // evidence. A failure here must not read as the start failing.
             if (intent.recordId) {
@@ -785,8 +782,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       // prepared move, delivery note, evidence and Do this live there now. Never on the kiosk.
       onStartTask={platformNow() === 'kiosk' ? null : async ({ taskId, key, title, force }) => {
         const call = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+        // A running session is parked without asking; the Task screen offers it back.
         const r = await startTaskSession(call, { taskId, text: title, force });
-        if (r.conflict) return r;
         onNavigate?.('task', { context: { taskId, key, startError: r.ok ? null : r.error } });
         return { ok: true };
       }}

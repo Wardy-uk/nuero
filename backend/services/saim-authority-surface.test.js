@@ -59,9 +59,9 @@ test('before any allowance: ONE plain control, nothing left today, no receipts, 
   const h = render(budget.status());
   const t = text(h);
   assert.match(t, /Carrying out moves is switched off on NEURO’s server\./);
-  assert.match(t, /SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any today\./);
+  assert.match(t, /SAiM can prepare moves, but carrying them out is switched off on NEURO’s server and you haven’t allowed any\./); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
   assert.equal((h.match(/<button/g) || []).length, 2, 'two controls only: allow, and stop');
-  assert.match(t, /Allow SAiM to carry out up to three prepared moves today/);
+  assert.match(t, /Allow SAiM to carry out up to three prepared moves a day/);
   assert.match(t, /Nothing has been carried out today\./);
   assert.doesNotMatch(t, /Pi|device lock|SAIM_|env|Money|People contacted|Minutes \d/, 'no implementation words, no sprawling tiles');
   assert.match(h, /class="auth__stop"[^>]*>Stop all SAiM actions</);
@@ -84,7 +84,7 @@ test('after allowing: what is left today in one line; the server switch still re
   assert.match(t, /SAiM can prepare moves, but carrying them out is switched off on NEURO’s server\./);
   assert.match(t, /Nothing has been carried out today\./);
   assert.doesNotMatch(t, /done and read back/);
-  assert.match(t, /Take today’s allowance away/);
+  assert.match(t, /Take the allowance away/); assert.match(t, /The allowance lasts until you take it away\./); // Nick changed the rule on 7 Nov 2026: the allowance stands until taken away, so the wording drops "today".
   process.env.SAIM_PREPARED_MOVE_EXECUTION = 'true';
   try {
     const on = text(render(budget.status()));

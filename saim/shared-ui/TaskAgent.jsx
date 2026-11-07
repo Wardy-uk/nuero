@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { turnOnSwitch, switchFor, SWITCH_LABEL } from './turnOnAndSend.mjs';
 import './TaskAgent.css';
 
 // TaskAgent — the "Do this" workspace on ONE task (23 Oct 2026).
@@ -178,7 +179,9 @@ function StepBody({ step, readOnly, busy, onAct, onSendNow, onOpenActions }) {
           {!readOnly && a.status === 'prepared' && (
             <div className="tagent__row">
               {s.sendingEnabled === false
-                ? <p className="tagent__meta" data-tagent-sending-off>“Send approved emails” is off in Settings → Switches, so it can’t be sent from here yet — the draft is waiting in Actions.</p>
+                // 7 Nov 2026: one press turns the switch on and sends — no trip to Settings.
+                ? <><p className="tagent__meta" data-tagent-sending-off>“Send approved emails” is off.</p>
+                  <button type="button" className="tagent__go" disabled={busy} data-turn-on="governed_execution" onClick={() => onSendNow(step, a, { turnOn: true })}>Turn on and send</button></>
                 : <button type="button" className="tagent__go" disabled={busy} onClick={() => onSendNow(step, a)}>Send now</button>}
               {onOpenActions && <button type="button" className="tagent__quiet" onClick={() => onOpenActions({ actionId: a.actionId })}>Open in Actions</button>}
             </div>
@@ -222,7 +225,8 @@ function StepBody({ step, readOnly, busy, onAct, onSendNow, onOpenActions }) {
           {!readOnly && m.action.status === 'prepared' && (
             <div className="tagent__row">
               {m.calendarEnabled === false
-                ? <p className="tagent__meta">“Send approved calendar changes” is off in Settings → Switches — the invite is waiting in Actions.</p>
+                ? <><p className="tagent__meta">“Send approved calendar changes” is off.</p>
+                  <button type="button" className="tagent__go" disabled={busy} data-turn-on="governed_calendar" onClick={() => onSendNow(step, m.action, { turnOn: true })}>Turn on and send invite</button></>
                 : <button type="button" className="tagent__go" disabled={busy} onClick={() => onSendNow(step, m.action)}>Send invite</button>}
               {onOpenActions && <button type="button" className="tagent__quiet" onClick={() => onOpenActions({ actionId: m.action.actionId })}>Open in Actions</button>}
             </div>
@@ -605,11 +609,15 @@ export default function TaskAgent({ taskId, call, readOnly = false, onOpenAction
       setSteps({ busy: false, error: null, outcome: { stepId: step.id, tone: 'bad', text: (r.body && r.body.error) || `Refused (${r.status}).` } });
     } catch (e) { setSteps({ busy: false, error: e.message || 'Request failed.', outcome: null }); }
   };
-  const sendNow = async (step, action) => {
+  const sendNow = async (step, action, { turnOn = false } = {}) => {
     if (steps.busy) return;
     setSteps({ busy: true, error: null, outcome: null });
     const fail = (text) => setSteps({ busy: false, error: null, outcome: { stepId: step.id, tone: 'bad', text } });
     try {
+      if (turnOn) {
+        const t = await turnOnSwitch(call, switchFor(action));
+        if (!t.ok) return fail(`“${SWITCH_LABEL[switchFor(action)]}” could not be turned on — ${t.error}. Nothing was sent.`);
+      }
       const id = enc(action.actionId);
       const g = await call(`/api/prepared-actions/${id}/intent-grant`, { method: 'POST', body: { version: action.version || 1, payloadHash: action.payloadHash, surface: 'neuro-web', sessionId: sessionId() } });
       if (!(g.status === 200 && g.body && g.body.ok)) { await load(); return fail((g.body && g.body.needsConfirm) ? 'It changed since it was shown — check it and press again.' : ((g.body && g.body.error) || `Not sent (${g.status}).`)); }

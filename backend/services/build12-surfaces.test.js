@@ -70,7 +70,7 @@ test('the primary keeps its five verbs on the phone, through the shell’s onAct
   }));
   assert.match(html, /Reply to Simon about renewals/);
   assert.match(html, />Done</);
-  assert.match(html, /Not now/);
+  assert.match(html, /Not today/, 'the shared "Not today" vocabulary (notTodayReasons.mjs)');
   assert.match(html, /att-card/, 'the shared desktop card, not a second one');
 });
 

@@ -360,8 +360,13 @@ test('11b. no surface still approves with a trusted browser', () => {
   // The Inbox composer lives in the shared card since 13 Oct 2026 (both inboxes render it).
   const inbox = fs.readFileSync(path.join(ui, 'EmailCard.jsx'), 'utf8');
   assert.match(inbox, /executeDirect\(/, 'the Inbox composer sends on a grant');
+  // Chat proposals (7 Nov 2026): one shared component for the desktop chat and
+  // SAiM's Chat on the phone, sending through the shared grant path.
   const chat = fs.readFileSync(path.join(ui, 'ChatPanel.jsx'), 'utf8');
-  assert.match(chat, /executeDirect\(/, 'chat proposals send on a grant');
+  assert.match(chat, /saim\/shared-ui\/ChatProposal\.jsx/, 'the desktop chat renders the shared proposal');
+  const proposal = fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'ChatProposal.jsx'), 'utf8');
+  assert.match(proposal, /sendPrepared\(call, action/, 'chat proposals send on a grant');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'sendPrepared.mjs'), 'utf8'), /\/intent-grant`/, 'positive control: the shared send mints a grant');
   const board = fs.readFileSync(path.join(ui, 'PeopleBoard.jsx'), 'utf8');
   assert.match(board, /\/api\/1to1\/cancel/, 'a Cancel 1-2-1 control exists');
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'routes', 'prepared-actions.js'), 'utf8'), /trust-device', \(req, res\) => res\.status\(410\)/);

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { KmwMove, KmwDelivery } from './presentation/KeepMyWord.jsx';
-import { startTaskSession, switchQuestion } from './startTask.mjs';
+import { startTaskSession, takeParked } from './startTask.mjs';
 import TaskDue from './TaskDue.jsx';
+import NotToday, { ParkedNote } from './NotToday.jsx';
+import DelegateTasks from './DelegateTasks.jsx';
+import { TickOutcome, JiraHint } from './TaskActions.jsx';
+import { completeTask } from './completeTask.mjs';
 import './presentation/KeepMyWord.css';
 import './TaskWorkflow.css';
 
@@ -10,7 +14,8 @@ import './TaskWorkflow.css';
 //
 //   1. Header   the title, due / owed to / state, the focus clock for THIS task
 //               (Pause / Resume / That's done / Stop for now — the focus-session
-//               routes), Back, and "Open in Tasks" where the shell can.
+//               routes), Back, and "Open in Tasks" where the shell can. With no
+//               session on it: Start · Done · Not today, and Delegate (7 Nov 2026).
 //   2. Next     for a promise only: the prepared move (KmwMove + the shell's
 //               governed save step) and the delivery note (KmwDelivery) — the
 //               SAME components and routes the card used; nothing new writes.
@@ -60,8 +65,11 @@ function FocusClock({ session, busy, onAct }) {
  */
 export function TaskWorkflowView({
   data = null, loading = false, error = null, taskId = null,
-  session = null, sessionBusy = false, sessionNote = null, conflict = null,
-  onBack = null, onOpenTask = null, onSessionAct = null, onStart = null, onSwitch = null, onCancelSwitch = null,
+  session = null, sessionBusy = false, sessionNote = null, parked = null,
+  onBack = null, onOpenTask = null, onSessionAct = null, onStart = null,
+  // No session running (7 Nov 2026, audit F5/F18): the header also offers Done,
+  // Not today and Delegate — the same shared pieces as the task lists.
+  onDone = null, tickOutcome = null, onNotToday = null, onDelegated = null, onResumed = null,
   onPrepareDelivery = null, onPromiseMove = null, onOpenActions = null,
   renderPromiseSave = null, renderTools = null, readOnly = false,
   // NEURO's fetch ({status, body}) — with it the due date can be changed here. Null → shown only.
@@ -108,17 +116,29 @@ export function TaskWorkflowView({
         {thread && thread.preparation && thread.preparation.why && <p className="twf__why">{thread.preparation.why}</p>}
         {thread && thread.held && <p className="twf__why twf__held">{thread.held.say}</p>}
         {mine && actions && <FocusClock session={mine} busy={sessionBusy} onAct={onSessionAct || (() => {})} />}
-        {!mine && actions && id && conflict && (
-          <div className="twf__switch" role="group" aria-label="Switch focus">
-            <p>{switchQuestion(conflict.text)}</p>
-            <div className="twf__row">
-              <button type="button" className="twf__btn twf__btn--primary" disabled={sessionBusy} onClick={onSwitch || undefined}>Switch to this</button>
-              <button type="button" className="twf__btn twf__btn--quiet" disabled={sessionBusy} onClick={onCancelSwitch || undefined}>Not now</button>
-            </div>
+        {/* ONE Start (startTask.mjs): a session already running is parked without
+            asking, and "Parked X — Resume it" is offered right here. */}
+        {!mine && actions && id && (onStart || onDone || onNotToday) && (
+          <div className="twf__row">
+            {onStart && <button type="button" className="twf__btn twf__btn--primary" disabled={sessionBusy} onClick={onStart}>{sessionBusy ? 'Starting…' : 'Start'}</button>}
+            {onDone && <button type="button" className="twf__btn" disabled={sessionBusy} onClick={onDone}>Done</button>}
+            {onNotToday && (
+              <NotToday
+                onDefer={onNotToday}
+                call={call}
+                taskId={id}
+                text={title}
+                busy={sessionBusy}
+                classes={{ btn: 'twf__btn twf__btn--quiet', reason: 'twf__btn', wrap: 'twf__row' }}
+              />
+            )}
           </div>
         )}
-        {!mine && actions && id && !conflict && onStart && (
-          <div className="twf__row"><button type="button" className="twf__btn twf__btn--primary" disabled={sessionBusy} onClick={onStart}>{sessionBusy ? 'Starting…' : 'Start a focus session'}</button></div>
+        {parked && actions && <ParkedNote parked={parked} call={call} onResumed={onResumed} className="twf__note" />}
+        {tickOutcome && <TickOutcome outcome={tickOutcome} call={actions ? call : null} className="twf__note" />}
+        {task && <JiraHint item={task} className="twf__note" />}
+        {!mine && actions && id && call && onDelegated && task && task.status !== 'done' && (
+          <DelegateTasks todo={{ task_id: id, text: title }} call={call} onDone={onDelegated} />
         )}
         {sessionNote && <p className={`twf__note${sessionNote.error ? ' twf__note--error' : ''}`} role="status">{sessionNote.message}</p>}
         {error && <p className="twf__note twf__note--error" role="status">{error}</p>}
@@ -167,7 +187,10 @@ export default function TaskWorkflow({ taskId = null, promiseKey = null, call, s
   const [session, setSession] = useState(initialSession);
   const [sessionBusy, setSessionBusy] = useState(false);
   const [sessionNote, setSessionNote] = useState(startError ? { message: startError, error: true } : null);
-  const [conflict, setConflict] = useState(null);
+  // A start made just before this screen opened (the Keep my word card) that
+  // parked another task — offered back here, once.
+  const [parked, setParked] = useState(() => takeParked());
+  const [tickOutcome, setTickOutcome] = useState(null);
 
   const load = useCallback(async () => {
     if (!call) return;
@@ -195,15 +218,37 @@ export default function TaskWorkflow({ taskId = null, promiseKey = null, call, s
   const id = (data && data.task && data.task.id) || (data && data.thread && data.thread.taskId) || taskId;
   const title = (data && data.thread && data.thread.title) || (data && data.task && data.task.text) || '';
 
-  const start = async (force = false) => {
+  const start = async () => {
     if (sessionBusy) return;
     setSessionBusy(true);
     try {
-      const r = await startTaskSession(call, { taskId: id, text: title, force });
-      if (r.conflict) setConflict(r.conflict);
-      else if (r.ok) { setConflict(null); setSession(r.session || null); setSessionNote(null); if (onChanged) onChanged(); }
+      const r = await startTaskSession(call, { taskId: id, text: title });
+      if (r.ok) { setParked(r.parked || null); setSession(r.session || null); setSessionNote(null); if (onChanged) onChanged(); }
       else setSessionNote({ message: r.error, error: true });
     } finally { setSessionBusy(false); }
+  };
+
+  // Done with no session running — the ONE completion helper, and what it did is said.
+  const done = async () => {
+    if (sessionBusy || !id) return;
+    setSessionBusy(true);
+    try {
+      const o = await completeTask(call, { task_id: id, text: title, jiraKey: (data && data.task && data.task.jiraKey) || null });
+      setTickOutcome(o.kind === 'done' ? { kind: 'done', warning: o.warning || null } : o);
+      if (o.kind === 'done') setSessionNote({ message: 'Done — the task is ticked off.', error: false });
+      if (o.kind === 'done' || o.kind === 'repeated') { await load(); if (onChanged) onChanged(); }
+    } finally { setSessionBusy(false); }
+  };
+
+  // Not today — the same lane deferral the task lists use, with the reason recorded.
+  const notToday = async (reason) => {
+    try {
+      const r = await call('/api/todos/lane/defer', { method: 'POST', body: { text: title, reason } });
+      if (!r || !r.body || r.body.ok === false) return { ok: false, error: (r && r.body && r.body.error) || `NEURO answered ${r ? r.status : 'nothing'}` };
+      setSessionNote({ message: 'Put off until tomorrow. The task stays open and keeps its due date.', error: false });
+      if (onChanged) onChanged();
+      return { ok: true };
+    } catch { return { ok: false, error: 'NEURO didn’t answer, so nothing was put off.' }; }
   };
 
   const sessionAct = async (what) => {
@@ -228,13 +273,16 @@ export default function TaskWorkflow({ taskId = null, promiseKey = null, call, s
     <TaskWorkflowView
       {...rest}
       data={data} loading={loading} error={error} taskId={taskId}
-      session={session} sessionBusy={sessionBusy} sessionNote={sessionNote} conflict={conflict}
+      session={session} sessionBusy={sessionBusy} sessionNote={sessionNote} parked={parked}
+      tickOutcome={tickOutcome}
       call={call}
       onDueChanged={async () => { await load(); if (onChanged) onChanged(); }}
       onSessionAct={sessionAct}
-      onStart={() => start(false)}
-      onSwitch={() => start(true)}
-      onCancelSwitch={() => setConflict(null)}
+      onStart={() => start()}
+      onDone={call ? done : null}
+      onNotToday={call ? notToday : null}
+      onDelegated={async () => { await load(); if (onChanged) onChanged(); }}
+      onResumed={async () => { setParked(null); await loadSession(); if (onChanged) onChanged(); }}
       onPromiseMove={rest.onPromiseMove ? async (op) => { const r = await rest.onPromiseMove(op); if (r && r.ok) load(); return r; } : null}
     />
   );

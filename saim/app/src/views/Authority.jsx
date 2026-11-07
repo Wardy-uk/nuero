@@ -5,9 +5,11 @@ import { loadStatus, previewGrant, grant, revoke, stopAll, previewResume, resume
 import './Authority.css';
 
 // What SAiM may do (22 Oct 2026) — ONE plain control. Nick allows SAiM to carry
-// out up to three prepared moves today; each move still shows exactly what it
-// will do and waits for his own confirmation. Then what is left today, today's
-// activity, and Stop all SAiM actions. No implementation words: the server-side
+// out up to three prepared moves a day; each move still shows exactly what it
+// will do and waits for his own confirmation. Since 7 Nov 2026 the allowance
+// STANDS until he takes it away (it used to end at midnight and had to be given
+// again every morning). Then what is left today, today's activity, and Stop all
+// SAiM actions. No implementation words: the server-side
 // switch reads as "SAiM is ready" (or that carrying out is switched off).
 //
 // ⚠ Every sentence is the server's (saim-authority-v1). This screen never
@@ -18,7 +20,7 @@ const when = (iso) => { try { return new Date(iso).toLocaleString('en-GB', { tim
 const onDay = (iso, day) => { try { return new Date(iso).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 10) === day; } catch { return false; } };
 
 /** The words on the one control. Pinned by a test. */
-export const ALLOW_LABEL = 'Allow SAiM to carry out up to three prepared moves today';
+export const ALLOW_LABEL = 'Allow SAiM to carry out up to three prepared moves a day';
 
 /** PURE view: everything comes from `state` and `ui`. */
 export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAllow, onGrant, onRevoke, onStop, onAskResume, onResume, onCancel }) {
@@ -56,12 +58,14 @@ export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAl
         </div>
       )}
 
-      <section className="auth__control" aria-label="Today’s allowance">
+      <section className="auth__control" aria-label="The allowance">
         {s.grant ? (
           <>
             <p className="auth__left">{s.leftToday}</p>
-            <p className="auth__sub">Each move still waits for you to confirm it. The allowance ends at midnight.</p>
-            <button type="button" className="auth__btn auth__btn--quiet" onClick={onRevoke} disabled={busy}>Take today’s allowance away</button>
+            <p className="auth__sub">Each move still waits for you to confirm it. {s.grant.standing === false
+              ? 'This allowance was given for one day and ends at midnight.'
+              : 'The allowance lasts until you take it away.'}</p>
+            <button type="button" className="auth__btn auth__btn--quiet" onClick={onRevoke} disabled={busy}>Take the allowance away</button>
           </>
         ) : ui.kind === 'granting' ? (
           <div className="auth__confirm" role="group" aria-label="What you would allow">
@@ -72,7 +76,12 @@ export function AuthorityView({ state, ui = { kind: 'idle' }, busy = false, onAl
             </div>
           </div>
         ) : (
-          !s.stopped && <button type="button" className="auth__btn auth__btn--yes auth__allow" onClick={onAllow} disabled={busy}>{ALLOW_LABEL}</button>
+          !s.stopped && (
+            <>
+              <button type="button" className="auth__btn auth__btn--yes auth__allow" onClick={onAllow} disabled={busy}>{ALLOW_LABEL}</button>
+              <p className="auth__sub">It lasts until you take it away, and SAiM still asks before each move.</p>
+            </>
+          )
         )}
       </section>
 

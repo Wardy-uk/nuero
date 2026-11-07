@@ -63,7 +63,7 @@ const MOVE = {
   deliverable: { kind: 'email-reply', title: 'Reply: Renewal question', to: { email: 'sam.jones.with.a.very.long.address@acme-renewals-department.example.test', name: 'Sam Jones' },
     sourceFacts: [{ text: 'could you confirm whether the renewal for Acme can go ahead this month?', cite: 'the email', kind: 'source' }],
     suggested: { label: 'Suggested wording — SAiM wrote this from the sources above; check it before you use it.', text: 'Hi Sam,\n\nThanks — I will confirm the renewal for Acme this month.\n\nNick' }, gaps: [] },
-  options: [{ id: 'approve', label: 'As drafted', question: 'Put this reply in Actions for your approval?', writes: ['Put the reply to Sam Jones in Actions, waiting for your approval code. It is NOT sent.'] }],
+  options: [{ id: 'approve', label: 'As drafted', question: 'Put this reply in Actions for your approval?', writes: ['Put the reply to Sam Jones in Actions, waiting for you to send it. It is NOT sent.'] }],
   contacts: 'Nothing is sent: the reply waits in Actions until you approve it with your code.',
   respond: { defer: { days: [{ days: 1, label: 'Until tomorrow' }], reasons: [{ id: 'not-now', label: 'Not now' }] }, decline: { reasons: [{ id: 'not-mine', label: 'Not mine to do' }] } },
   moment: { headline: 'I drafted the reply to Sam.' },

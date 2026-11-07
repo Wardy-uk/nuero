@@ -1,0 +1,7 @@
+/* "It’s over" chip (7 Nov 2026) — SAiM's twin of NEURO desktop's MeetingControls. */
+.moc { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin: 0.4rem 0; }
+.moc__text { font-size: 0.9rem; line-height: 1.4; overflow-wrap: anywhere; }
+.moc__btn { font: inherit; font-size: 0.88rem; padding: 0.32rem 0.75rem; border-radius: 999px; border: 1px solid var(--line, rgba(255, 255, 255, 0.24)); background: transparent; color: inherit; cursor: pointer; }
+.moc__btn--go { font-weight: 600; }
+.moc__btn:disabled { opacity: 0.6; cursor: wait; }
+.moc__err { font-size: 0.85rem; color: var(--warning, #e0a040); }

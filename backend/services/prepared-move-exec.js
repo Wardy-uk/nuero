@@ -242,7 +242,7 @@ function writesForV2(packet, option) {
     const body = String(reply.body || '').trim();
     if (!body || body !== String(draft).trim()) return refuse('the reply is not the draft that was shown');
     steps.push({ step: 'reply', emailId: reply.emailId, mode: 'reply', body, bodySha: sha(body), to: reply.to || null });
-    lines.push(`Put the reply to ${reply.toName || reply.to} in Actions, waiting for your approval code. It is NOT sent.`);
+    lines.push(`Put the reply to ${reply.toName || reply.to} in Actions, waiting for you to send it. It is NOT sent.`);
   }
   const cal = unfinished ? null : writes.find((w) => w.kind === 'calendar.solo');
   if (cal) {
@@ -698,7 +698,7 @@ async function _executeHeld({ record, w, option, grantId, adapters, kind, checks
   }
   const label = (r) => (r.step === 'calendar' ? 'The calendar block' : r.step === 'reply' ? 'The reply draft' : 'The note');
   const STAYS = { calendar: 'The calendar block is in place and stays.', note: 'The note is saved and stays.', reply: 'The reply draft is in Actions and stays — it has not been sent.' };
-  const DONE = { calendar: 'The block is in your calendar, just you.', note: 'The note is saved and read back.', reply: 'The reply is in Actions waiting for your approval code — it has NOT been sent.' };
+  const DONE = { calendar: 'The block is in your calendar, just you.', note: 'The note is saved and read back.', reply: 'The reply is in Actions waiting for you to send it — it has NOT been sent.' };
   // A practice run says so, and never claims your calendar or your vault.
   const DONE_PRACTICE = { calendar: 'A sandbox calendar block was made and read back — not your calendar.', note: 'A sandbox note was saved and read back — not your vault.', reply: 'A sandbox reply draft was made — nothing went to Actions and nothing was sent.' };
   const v2 = w.contract === 'prepared-move-v2';

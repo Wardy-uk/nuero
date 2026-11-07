@@ -39,7 +39,7 @@ test('building blocks: unknown is a dash, headline carries its badge', async () 
   const esbuild = require('esbuild');
   const built = await esbuild.build({
     entryPoints: [C('canonicalUi.jsx')], bundle: true, write: false, platform: 'node', format: 'cjs',
-    jsx: 'automatic', external: ['react', 'react-dom'], logLevel: 'silent',
+    jsx: 'automatic', external: ['react', 'react-dom'], logLevel: 'silent', loader: { '.css': 'empty' },
     plugins: [{ name: 'stub', setup(b) {
       b.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
       b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiFetch = async () => ({});', loader: 'js' }));

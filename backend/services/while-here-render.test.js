@@ -26,7 +26,7 @@ const PANEL = path.resolve(__dirname, '..', '..', 'frontend', 'src', 'components
 const STUBS = {
   api: "export const apiFetch = async () => ({ ok: true, json: async () => ({}) });\nexport const apiUrl = p => p;\nexport const authHeaders = () => ({});\nexport default { apiFetch, apiUrl };", // authHeaders: saim/app PreparedMove + Authority, mounted in the Keep my word card
   attention: "export default function () { return { loading: false, error: null, primary: null, secondary: [], dropped: [], gaps: [], contextCard: null, poolAvailable: true, act: async () => {}, refresh: () => {} }; }",
-  card: 'export default function () { return null; }',
+  card: 'export default function () { return null; } export function DesktopNeedsYouActs() { return null; }',
 };
 
 let WhileHere;

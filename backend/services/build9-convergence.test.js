@@ -110,7 +110,7 @@ const block = (html) => {
   return m ? m[0] : null;
 };
 
-test('SAiM renders the waiting sentence with a "Needs you" tag and NO button', () => {
+test('SAiM renders the waiting sentence with a "Needs you" tag; with no `call` (the kiosk) it stays a statement', () => {
   const approvals = summary.summarise([{ action_type: 'reply_email', status: 'prepared' }], { sendingEnabled: true });
   const html = render(base({ approvals }));
   const b = block(html);
@@ -118,7 +118,15 @@ test('SAiM renders the waiting sentence with a "Needs you" tag and NO button', (
   assert.match(b, /data-approvals="waiting"/);
   assert.match(b, /Needs you/);
   assert.match(b, /1 drafted email waits for your approval/);
-  assert.doesNotMatch(b, /<button/, 'approval is desktop-only: a statement, never a control');
+  assert.doesNotMatch(b, /<button/, 'no call (kiosk): nothing can be pressed');
+  assert.doesNotMatch(html, /psend__go|class="waitdrafts/, 'no call (kiosk): no drafts list with Send');
+});
+
+test('with a `call` the waiting drafts are listed under the sentence with Send (7 Nov 2026)', () => {
+  const src = read('saim/shared-ui/AttentionSurface.jsx');
+  assert.match(src, /<WaitingDrafts call=\{call\}/, 'the legacy list layout lists them');
+  assert.match(src, /it\.id === 'approvals'[\s\S]{0,160}<WaitingDrafts call=\{draftsCall\}/, 'the situation layout lists them on the Needs-you row');
+  assert.match(src, /prof === 'kiosk' \|\| prof === 'watch' \? null : call/, 'never on the kiosk or the watch');
 });
 
 test('SAiM renders nothing when nothing waits (silence is the normal case)', () => {
@@ -199,18 +207,25 @@ test('the Actions badge counts governed drafts as well as the older queue', () =
   assert.match(side, /\/api\/actions'/, 'positive control: the legacy count is still part of it');
 });
 
-test('SAiM says where approval lives — no "for your approval" on a surface with no approval', () => {
+// 7 Nov 2026 (Nick, 24 Oct: "if I click send or any other action, I want it to
+// do it there and then"): SAiM's Chat finishes the job — the reply or invite she
+// prepares is shown under her message with Send / Book, and no label sends him
+// to the desk.
+test('SAiM Chat sends what she prepared in place — no "approve in NEURO" hand-off', () => {
   const chat = read('saim/app/src/views/Chat.jsx');
   assert.doesNotMatch(chat, /for your approval/);
-  assert.doesNotMatch(chat, /create_meeting:/);
-  assert.match(chat, /approve in NEURO/);
+  assert.doesNotMatch(chat, /approve in NEURO/);
+  assert.match(chat, /<ChatProposal /, 'the proposal is rendered under her reply');
+  assert.match(chat, /platformNow\(\) === 'kiosk' \? null/, 'never a send button on the kiosk');
 });
 
-test('no SAiM shell reaches the approval routes (statement-only, every shell)', () => {
-  for (const rel of ['saim/shared-ui/AttentionSurface.jsx', 'saim/app/src/views/Surface.jsx', 'saim/frontend/src/App.jsx']) {
+test('no SAiM shell reaches the CODE approval routes; one press goes through the intent grant', () => {
+  for (const rel of ['saim/shared-ui/AttentionSurface.jsx', 'saim/app/src/views/Surface.jsx', 'saim/frontend/src/App.jsx',
+    'saim/shared-ui/WaitingDrafts.jsx', 'saim/shared-ui/PreparedSend.jsx', 'saim/shared-ui/ChatProposal.jsx']) {
     const src = read(rel);
-    assert.doesNotMatch(src, /prepared-actions\/[^'"`]*approve|\/api\/actions\/[^'"`]*approve/, rel);
+    assert.doesNotMatch(src, /prepared-actions\/[^'"`]*\/approve|approval-challenge|\/api\/actions\/[^'"`]*approve/, rel);
   }
+  assert.match(read('saim/shared-ui/PreparedSend.jsx'), /sendPrepared\(call, cur/, 'positive control: Send is the shared grant path');
 });
 
 // ── iOS, cross-repo (skips without a nuero-ios checkout beside this repo) ──

@@ -11,7 +11,7 @@
  *   POST /grant/preview   — exactly what an allowance would let SAiM do, with a
  *                           one-use two-minute confirmation for those terms.
  *   POST /grant           — grant exactly what was shown (spends that token).
- *   POST /revoke          — take today's allowance away. Immediate.
+ *   POST /revoke          — take the allowance away (standing since 7 Nov 2026). Immediate.
  *   POST /stop            — stop every SAiM action now. Immediate.
  *   POST /resume/preview  — what resuming means, with its own confirmation.
  *   POST /resume          — resume (spends that token).

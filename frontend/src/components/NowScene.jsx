@@ -109,11 +109,11 @@ export default function NowScene({ attention, onNavigate, onStarted, blockTasks 
         attention.refresh();
       }}
       // Keep my word (31 Oct 2026): the card's ONE control. Start a focus session on the
-      // promise's task (asking first when another one runs) and open its Task workflow
+      // promise's task (parking any other one, no question) and open its Task workflow
       // screen; a start NEURO refuses for any other reason still opens it, saying why.
       onStartTask={onNavigate ? async ({ taskId, key, title, force }) => {
+        // A running session is parked without asking; the Task screen offers it back.
         const r = await startTaskSession(desktopCall, { taskId, text: title, force });
-        if (r.conflict) return r;
         attention.refresh();
         onNavigate('task', { taskId, key, startError: r.ok ? null : r.error });
         return { ok: true };

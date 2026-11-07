@@ -1,37 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiUrl } from '../api';
+import { desktopCall } from '../desktopCall';
 import { CalendarBar } from './EmailCard';
 import { openInVault } from '../openVault';
 import { useWorkOnly } from '../workOnly';
+import NextStepRow from '../../../saim/shared-ui/NextStepRow.jsx';
 import './NextStepsPage.css';
 
 /**
- * Next steps (3 Nov 2026): everything pending in one list, the same three
- * choices on every row — Start, Snooze, Not today. The server composes the
- * list from the modules that own each thing (services/next-steps.js); this page
- * renders it and ranks nothing. Start goes to that module's own screen.
+ * Next steps (3 Nov 2026): everything pending in one list. The server composes
+ * the list from the modules that own each thing (services/next-steps.js); this
+ * page renders it and ranks nothing.
+ *
+ * The row is saim/shared-ui/NextStepRow.jsx (7 Nov 2026) — the SAME component
+ * SAiM's Next steps tab renders, so the two cannot drift. Its buttons act in
+ * place: a task's Start starts a focus session, Done ticks it, Book proposes and
+ * sends a 1-2-1 invite, the drafts row sends each draft.
  */
 
 const GROUPS = [
   { key: 'now', label: 'NEEDS YOU NOW' },
   { key: 'today', label: 'TODAY' },
   { key: 'week', label: 'THIS WEEK' },
-];
-
-const KIND_LABEL = { email: 'EMAIL', report: 'REPORT', drafts: 'DRAFTS', task: 'TASK', people: 'PEOPLE', calendar: 'CALENDAR', decision: 'DECISION', family: 'FAMILY', letter: 'LETTER', garden: 'GARDEN' };
-
-const SNOOZES = [
-  { label: '1 hour', minutes: 60 },
-  { label: '3 hours', minutes: 180 },
-  { label: 'Tomorrow', notToday: true },
-  { label: 'Next week', minutes: 7 * 24 * 60 },
-];
-
-const NOT_TODAY_REASONS = [
-  { reason: 'not-now', label: 'Just not today' },
-  { reason: 'too-big', label: 'Too big' },
-  { reason: 'waiting-on-someone', label: 'Waiting on someone' },
-  { reason: 'no-context', label: 'Missing something' },
 ];
 
 // Work or Life (6 Nov 2026, Nick): the page opens on Work every time; Life is
@@ -49,95 +39,12 @@ const FILTERS = [
 
 const sphereOf = (x) => (x.sphere === 'life' ? 'life' : 'work');
 
-function untilLabel(iso) {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '';
-  return new Date(t).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-}
+const renderCalendar = ({ item, onClose }) => (item.calendar
+  ? <CalendarBar source={item.calendar.source} emailId={item.calendar.emailId} subject={item.title} onClose={onClose} />
+  : <div className="ns-err">This row carries no email to read a date from.</div>);
 
-function post(path, body) {
-  return fetch(apiUrl(path), {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  }).then((r) => r.json()).catch(() => ({ ok: false, error: 'No answer from NEURO.' }));
-}
-
-export function NextStepRow({ item, highlighted, onStart, onChanged, snoozed = false }) {
-  const [menu, setMenu] = useState(null); // null | 'snooze' | 'nottoday' | 'calendar'
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  const defer = async (body) => {
-    setBusy(true); setErr('');
-    const r = await post('/api/next-steps/defer', { id: item.id, ...body });
-    setBusy(false); setMenu(null);
-    if (r.ok) onChanged(); else setErr(r.error || 'Not snoozed.');
-  };
-  const act = async (action) => {
-    setBusy(true); setErr('');
-    const r = await post('/api/next-steps/act', { id: item.id, action });
-    setBusy(false);
-    if (r.ok) onChanged(); else setErr(r.error || 'Not done.');
-  };
-  const primary = () => {
-    const a = item.start && item.start.action;
-    if (a === 'add-to-calendar') setMenu(menu === 'calendar' ? null : 'calendar');
-    else if (a === 'caught-up' || a === 'done-for-now') act(a);
-    else onStart(item);
-  };
-  const undefer = async () => {
-    setBusy(true); setErr('');
-    const r = await post('/api/next-steps/undefer', { id: item.id });
-    setBusy(false);
-    if (r.ok) onChanged(); else setErr(r.error || 'Could not bring it back.');
-  };
-
-  return (
-    <div className={`ns-row${highlighted ? ' is-highlighted' : ''}${item.group === 'now' && !snoozed ? ' is-now' : ''}`} id={`ns-${item.id}`}>
-      <div className="ns-row-main">
-        <span className={`ns-kind ns-kind-${item.kind}`}>{KIND_LABEL[item.kind] || item.kind.toUpperCase()}</span>
-        <div className="ns-text">
-          <span className="ns-title">{item.title}</span>
-          <span className="ns-why">
-            {snoozed ? `Snoozed until ${untilLabel(item.snoozedUntil)}${item.snoozeReason && item.snoozeReason !== 'not-now' && item.snoozeReason !== 'unspecified' ? ` · ${item.snoozeReason.replace(/-/g, ' ')}` : ''}` : item.why}
-          </span>
-        </div>
-        {snoozed ? (
-          <button className="ns-btn ns-btn-secondary" disabled={busy} onClick={undefer}>{busy ? '…' : 'Bring it back'}</button>
-        ) : (
-          <>
-            <button className="ns-btn ns-btn-primary" disabled={busy} onClick={primary}>{item.start.label}</button>
-            {item.start.secondary === 'done-for-now' && (
-              <button className="ns-btn ns-btn-secondary" disabled={busy} onClick={() => act('done-for-now')}>Done for now</button>
-            )}
-            <button className="ns-btn ns-btn-secondary" aria-expanded={menu === 'snooze'} disabled={busy} onClick={() => setMenu(menu === 'snooze' ? null : 'snooze')}>Snooze ▾</button>
-            <button className="ns-btn ns-btn-quiet" aria-expanded={menu === 'nottoday'} disabled={busy} onClick={() => setMenu(menu === 'nottoday' ? null : 'nottoday')}>Not today</button>
-          </>
-        )}
-      </div>
-      {menu === 'calendar' && item.calendar && (
-        <CalendarBar source={item.calendar.source} emailId={item.calendar.emailId} subject={item.title} onClose={() => { setMenu(null); onChanged(); }} />
-      )}
-      {menu === 'snooze' && (
-        <div className="ns-menu" role="group" aria-label="Snooze for">
-          {SNOOZES.map((s) => (
-            <button key={s.label} className="ns-chip" disabled={busy} onClick={() => defer(s.notToday ? { notToday: true } : { minutes: s.minutes })}>{s.label}</button>
-          ))}
-        </div>
-      )}
-      {menu === 'nottoday' && (
-        <div className="ns-menu" role="group" aria-label="Why not today">
-          <span className="ns-menu-label">Why? It comes back tomorrow morning.</span>
-          {NOT_TODAY_REASONS.map((r) => (
-            <button key={r.reason} className="ns-chip" disabled={busy} onClick={() => defer({ notToday: true, reason: r.reason })}>{r.label}</button>
-          ))}
-        </div>
-      )}
-      {err && <div className="ns-err">{err}</div>}
-    </div>
-  );
-}
-
-export function NextStepsView({ data, sphere = 'work', setSphere = null, filter, setFilter, highlight, onStart, onChanged }) {
+export function NextStepsView({ data, sphere = 'work', setSphere = null, filter, setFilter, highlight, onStart, onChanged, onOpenTask = null, call = desktopCall }) {
+  const rowProps = { call, surface: 'neuro-web', onOpen: onStart, onOpenTask, onChanged, renderCalendar };
   const allItems = data.items || [];
   const allSnoozed = data.snoozed || [];
   const items = allItems.filter((x) => sphereOf(x) === sphere);
@@ -181,7 +88,9 @@ export function NextStepsView({ data, sphere = 'work', setSphere = null, filter,
       {filter === 'snoozed' ? (
         <section className="ns-group">
           {shown.length === 0 && <p className="ns-empty">Nothing snoozed.</p>}
-          {shown.map((it) => <NextStepRow key={it.id} item={it} snoozed onStart={onStart} onChanged={onChanged} />)}
+          <ul className="ns-list">
+            {shown.map((it) => <NextStepRow key={it.id} item={it} snoozed {...rowProps} />)}
+          </ul>
         </section>
       ) : (
         <>
@@ -194,9 +103,11 @@ export function NextStepsView({ data, sphere = 'work', setSphere = null, filter,
             return (
               <section key={g.key} className="ns-group" aria-label={g.label}>
                 <h2 className={`ns-h2${g.key === 'now' ? ' is-now' : ''}`}>{g.label} · {rows.length}</h2>
-                {rows.map((it) => (
-                  <NextStepRow key={it.id} item={it} highlighted={highlight === it.id} onStart={onStart} onChanged={onChanged} />
-                ))}
+                <ul className="ns-list">
+                  {rows.map((it) => (
+                    <NextStepRow key={it.id} item={it} highlighted={highlight === it.id} {...rowProps} />
+                  ))}
+                </ul>
               </section>
             );
           })}
@@ -246,9 +157,11 @@ export default function NextStepsPage({ context, onNavigate }) {
     if (onNavigate) onNavigate(item.start.view, item.start.context || null);
   };
 
+  const onOpenTask = onNavigate ? (taskId) => onNavigate('task', { taskId }) : null;
+
   if (error && !data) return <div className="ns-page"><div className="ns-gap">{error}</div></div>;
   if (!data) return <div className="ns-page"><p className="ns-empty">Reading what’s pending…</p></div>;
   // Work only on this device: Life is hidden, so is the toggle.
   const shownSphere = workOnly ? 'work' : sphere;
-  return <NextStepsView data={data} sphere={shownSphere} setSphere={workOnly ? null : setSphere} filter={filter} setFilter={setFilter} highlight={highlight} onStart={onStart} onChanged={load} />;
+  return <NextStepsView data={data} sphere={shownSphere} setSphere={workOnly ? null : setSphere} filter={filter} setFilter={setFilter} highlight={highlight} onStart={onStart} onOpenTask={onOpenTask} onChanged={load} />;
 }

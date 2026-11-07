@@ -169,13 +169,28 @@ test('⚠ a Microsoft-owned card hands the push BACK rather than claiming a comp
   assert.equal(db.getAttentionRecord(rec.id).state, 'resolved');
 });
 
-test('a vault checkbox says WHY the tick stopped here, rather than reading as nothing to do', () => {
+test('a vault checkbox is handed to the route to tick by TEXT, never claimed here (7 Nov 2026)', () => {
   const rec = seed(card('Tidy the desk', { owner: { kind: 'file', source: 'Daily 2026-09-01' } }));
   const result = lifecycle.act(rec.id, 'complete');
+  // Not claimed by the synchronous half — the route ticks the line and reports it.
   assert.equal(result.taskCompleted, false);
+  assert.deepEqual(result.pendingFile, { text: 'Tidy the desk', source: 'Daily 2026-09-01' });
   assert.match(result.taskWhy, /checkbox in the vault/);
-  // And it must not silently claim there was nothing there.
   assert.notEqual(result.taskWhy, 'nothing to complete');
+});
+
+test('Done / Not relevant on a card about ONE email hand the email to the route; a pile hands none', () => {
+  const one = lifecycle.reconcile([{ kind: 'item', id: `email-one-${seq += 1}`, type: 'email', title: 'Re: contract', urgency: 'high', tier: 1, source: 'email', actions: ['open', 'complete', 'dismiss', 'defer'], meta: { emailId: 'AAMk-one', count: 1, from: 'Chris' } }], { now: new Date() })[0];
+  const done = lifecycle.act(one.id, 'complete');
+  assert.deepEqual(done.pendingEmail, { emailId: 'AAMk-one', reason: 'done' });
+  assert.equal(done.taskCompleted, false, 'an email is not a task');
+
+  const two = lifecycle.reconcile([{ kind: 'item', id: `email-two-${seq += 1}`, type: 'email', title: 'Re: other', urgency: 'high', tier: 1, source: 'email', actions: ['open', 'complete', 'dismiss', 'defer'], meta: { emailId: 'AAMk-two', count: 1, from: 'Ricky' } }], { now: new Date() })[0];
+  const dis = lifecycle.act(two.id, 'dismiss');
+  assert.deepEqual(dis.pendingEmail, { emailId: 'AAMk-two', reason: 'not-relevant' });
+
+  const pile = lifecycle.reconcile([{ kind: 'item', id: `email-pile-${seq += 1}`, type: 'email', title: '5 emails need action', urgency: 'high', tier: 1, source: 'email', actions: ['open', 'complete', 'dismiss'], meta: { count: 5 } }], { now: new Date() })[0];
+  assert.equal(lifecycle.act(pile.id, 'complete').pendingEmail, null, 'a pile names no single email');
 });
 
 // ── Done on an escalation (11 Sep 2026) ─────────────────────────────────────
