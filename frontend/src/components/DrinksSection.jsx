@@ -51,7 +51,7 @@ export function DrinksView({ data, onChanged }) {
     <section className="hp-section dr" data-testid="drinks-section">
       <h3 className="hp-h3">Drinks <span className="hp-h3-note">last 7 days: {data.last7.units} units from {data.last7.drinks} drink{data.last7.drinks === 1 ? '' : 's'}{data.last7.unknown ? ` · ${data.last7.unknown} unknown` : ''}</span></h3>
       {drinks.length === 0
-        ? <div className="hp-quiet">No drinks logged in the last 30 days in an app that names them. Log drinks in Foodnoms — MyFitnessPal sends no names, so NEURO can’t tell a drink there.</div>
+        ? <div className="hp-quiet">No drinks logged in the last 30 days in an app that names them. Log drinks in Foodnoms and they appear here.</div>
         : (
           <ul className="dr-list">
             {drinks.slice(0, 20).map((d) => (

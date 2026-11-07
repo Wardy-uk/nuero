@@ -58,7 +58,7 @@ const PERSONAL_KINDS = ['goal', 'profile', 'health', 'asked', 'miss'];
 const ALREADY_HAVE = [
   'Apple Watch: heart rate, HRV, sleep stages, VO2 max, stand, workouts — and hike GPS tracks via the NEURO iOS app',
   'HiLo cuffless blood-pressure bracelet (via Apple Health)',
-  'MyFitnessPal food logging (via Apple Health); weigh-ins via Apple Health',
+  'Foodnoms food and drink logging (via Apple Health, with each item named) — when Nick logs; weigh-ins via Apple Health',
   'Life360 location for Nick; Ember (the dog) has a Tractive GPS tracker',
   'Home Assistant: lights, Hive heating with a temperature sensor on every radiator, presence, BLE room sensors',
   'A Blue Maestro portable temperature/humidity/pressure logger, and an outdoor weather station',
@@ -83,6 +83,8 @@ const RULED_OUT = [
   { re: /\bstrava\b/i, why: 'Strava is ruled out — its API is paywalled' },
   { re: /\bsweat\b/i, why: 'no consumer wearable measures sweat — an invented sensor' },
   { re: /myfitnesspal\W+(?:\w+\W+){0,2}api\b/i, why: 'MyFitnessPal has no public API — its data already arrives via Apple Health' },
+  // Nick, 7 Nov 2026: "we don't use MFP anymore — it's Foodnoms now".
+  { re: /\bmyfitnesspal\b|\bmfp\b/i, why: 'Nick no longer uses MyFitnessPal — food is logged in Foodnoms' },
 ];
 
 const path = require('path');
@@ -311,7 +313,7 @@ function foldDuplicates(judged, existing) {
 function buildPrompt({ evidence, decided, captured, open = [], features = [] }) {
   const lines = [];
   lines.push('You are SAiM, the assistant layer of NEURO — Nick Ward\'s personal system (Head of Technical Support, neurodivergent: his difficulty is starting things, not knowing them).');
-  lines.push('NEURO already sees: his calendars, work email, Jira escalations, Obsidian vault, Apple Health (Watch, HiLo blood pressure, MyFitnessPal), phone location and state, the laptop\'s foreground app, Home Assistant (lights, Hive heating, presence, room sensors), a weather station, his car journeys, his finances via Tally.');
+  lines.push('NEURO already sees: his calendars, work email, Jira escalations, Obsidian vault, Apple Health (Watch, HiLo blood pressure, Foodnoms food logging when he logs), phone location and state, the laptop\'s foreground app, Home Assistant (lights, Hive heating, presence, room sensors), a weather station, his car journeys, his finances via Tally.');
   lines.push('');
   lines.push('Task: suggest capabilities NEURO does NOT have yet that would be genuinely useful to Nick personally — features he could build, sensors he could fit, setup steps, purchases or integrations.');
   lines.push('');

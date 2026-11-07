@@ -50,7 +50,7 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
     <section className="hp-section nut">
       <h3 className="hp-h3">
         Nutrition
-        <span className="hp-h3-note">MyFitnessPal, via Apple Health</span>
+        <span className="hp-h3-note">Foodnoms, via Apple Health</span>
         <span className="nut-ranges">
           {RANGES.map((r) => (
             <button key={r} className={`hp-range${r === range ? ' hp-range--on' : ''}`} onClick={() => onRange(r)}>{r}d</button>
@@ -126,7 +126,7 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
                     const pct = n.pctOfRef;
                     return (
                       <tr key={n.metric} className={n.floor ? 'nut-row--floor' : ''}>
-                        <td title={n.note || undefined}>{n.label}{n.floor && <span className="nut-tag" title="MyFitnessPal records 0 when a food's entry lacks this, so the true figure is at least this">floor</span>}</td>
+                        <td title={n.note || undefined}>{n.label}{n.floor && <span className="nut-tag" title="A food app records 0 when a food's entry lacks this, so the true figure is at least this">floor</span>}</td>
                         <td className="hp-num">{n.avg == null ? '—' : `${n.avg} ${n.unit}`}</td>
                         <td className="hp-num" title={n.ref ? n.ref.source : undefined}>
                           {n.ref ? `${n.ref.kind === 'max' ? '≤ ' : n.ref.kind === 'target' ? '≥ ' : ''}${n.ref.value} ${n.unit}` : ''}

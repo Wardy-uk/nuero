@@ -496,7 +496,7 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
   // observations explicable when they never appear.
   guard('diet', 'Food & water logging', 'whether you have eaten and drunk today', () => {
     const last = _latestSample('dietary_energy_consumed') || _latestSample('dietary_water');
-    if (!last) return { state: 'off', why: 'nothing logged in the last 30 days', detail: 'MyFitnessPal writes into Apple Health' };
+    if (!last) return { state: 'off', why: 'nothing logged in the last 30 days', detail: 'Foodnoms writes into Apple Health' };
     const r = rate(last, 24 * 60, now, { staleAfter: 3 * 24 * 60 });
     return r.state === 'stale'
       ? { state: 'off', ageMinutes: r.ageMinutes, why: 'you have stopped logging', detail: 'not a fault — SAiM stays quiet about food until it resumes' }

@@ -60,7 +60,7 @@ const MEASURES = Object.freeze({
   // unknown, never zero — and a drink whose MFP entry lacks caffeine adds 0, so
   // the figure is a floor. NHS: up to 400 mg a day for most adults.
   caffeine: { kind: 'caffeine', label: 'Caffeine', unit: 'mg/day', direction: 'down', domain: 'health', target: 'number', min: 0, max: 2000,
-    source: 'MyFitnessPal via Apple Health — average over the last 7 logged days (a floor: a drink logged without caffeine adds 0)', levers: ['sleep'] },
+    source: 'Foodnoms via Apple Health — average over the last 7 logged days (a floor: a drink logged without caffeine adds 0)', levers: ['sleep'] },
   // 13 Oct 2026. Units by the drink's NAME (strength) and its own water (volume),
   // with its calories as a cross-check — services/drinks.js. Only drinks logged
   // in an app that sends names (Foodnoms); MyFitnessPal sends none.

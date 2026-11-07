@@ -313,5 +313,7 @@ test("NEURO's own feature areas come from CLAUDE.md, and reach the prompt", () =
 
 test('MyFitnessPal API is ruled out', () => {
   assert.match(cap.ruledOutBy({ title: 'x', need: { what: 'MyFitnessPal API read access' } }) || '', /no public API/);
-  assert.equal(cap.ruledOutBy({ title: 'Log alcohol in MyFitnessPal', need: { what: 'pull it via Apple Health' } }), null);
+  // 7 Nov 2026: Nick no longer uses MyFitnessPal at all (Foodnoms), so any MFP suggestion is ruled out.
+  assert.match(cap.ruledOutBy({ title: 'Log alcohol in MyFitnessPal', need: { what: 'pull it via Apple Health' } }) || '', /Foodnoms/);
+  assert.equal(cap.ruledOutBy({ title: 'Log alcohol in Foodnoms', need: { what: 'pull it via Apple Health' } }), null);
 });

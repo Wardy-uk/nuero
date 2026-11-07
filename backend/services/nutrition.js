@@ -208,7 +208,7 @@ function compose({ samples = [], entries = [], today, windowDays = 14, tz, drink
     days,
     nutrients,
     groups: GROUPS,
-    note: `Averages use every day with food logged, today included. A day with nothing logged is left out, never counted as zero. MyFitnessPal records 0 for nutrients a food's entry lacks, so vitamin and mineral figures are a floor, not a measurement. Reference values are UK adult-male figures and are not a diagnosis.`,
+    note: `Averages use every day with food logged, today included. A day with nothing logged is left out, never counted as zero. A food app records 0 for nutrients a food's entry lacks, so vitamin and mineral figures are a floor, not a measurement. Reference values are UK adult-male figures and are not a diagnosis.`,
   };
 }
 
