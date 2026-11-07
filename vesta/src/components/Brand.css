@@ -2,7 +2,7 @@
    restrained amber; sized from the viewport like the rest of the wall. */
 .vbrand { display: flex; flex-direction: column; gap: 0.7vh; min-width: 0; color: #f6efe7; }
 .vbrand__row { display: flex; align-items: center; gap: clamp(8px, 1.1vw, 16px); }
-.vbrand__flame { flex: none; width: auto; height: clamp(38px, 7.4vh, 72px); filter: drop-shadow(0 0 10px rgba(240, 150, 50, 0.35)); }
+.vbrand__mark { flex: none; width: auto; height: clamp(46px, 9vh, 88px); color: #f6efe7; filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.35)); }
 .vbrand__word { flex: none; width: auto; height: clamp(28px, 5.4vh, 54px); color: #f6efe7; filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.35)); }
 .vbrand__sub { margin: 0; font-size: clamp(12px, 2.1vh, 21px); font-weight: 400; color: rgba(246, 239, 231, 0.88); letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

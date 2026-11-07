@@ -6,7 +6,8 @@
  *     COPY (it builds on its own), pinned node for node to frontend/BrandMarks;
  *   - the attribution is one run of text with the build beneath, from the
  *     label it is given (never a hard-coded version);
- *   - the wall footer actually mounts it.
+ *   - the wall footer actually mounts it;
+ *   - the app icons are generated from the same mark paths.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -58,8 +59,19 @@ test('the lockup carries its name as text, and the wall footer mounts the attrib
   const B = await load(BRAND);
   const html = renderToString(React.createElement(B.VestaLockup));
   assert.ok(html.includes('Versatile Everyday Space for Tasks &amp; Answers'));
-  assert.ok(html.includes('class="vbrand__word"') && html.includes('class="vbrand__flame"'), 'SVG wordmark and flame, not a font');
+  assert.ok(html.includes('class="vbrand__word"') && html.includes('class="vbrand__mark"'), 'SVG wordmark and the hearth mark, not a font');
+  for (const d of Object.values(B.MARK_PATHS)) assert.ok(html.includes(`d="${d}"`), 'the lockup draws the hearth mark’s own paths');
   const wall = fs.readFileSync(path.join(ROOT, 'vesta', 'src', 'views', 'Wall.jsx'), 'utf8');
   assert.ok(wall.includes('<PoweredByNeuro build={api.BUILD_LABEL} />'), 'the footer shows the real build label');
   assert.ok(!/c8abb/.test(wall + fs.readFileSync(BRAND, 'utf8')), 'the mockup’s version is not hard-coded');
+});
+
+test('the app icons are the hearth mark: icon.svg is what build-icons.cjs makes from Brand.jsx', async () => {
+  const B = await load(BRAND);
+  const { iconSvg } = require(path.join(ROOT, 'vesta', 'scripts', 'build-icons.cjs'));
+  const svg = fs.readFileSync(path.join(ROOT, 'vesta', 'public', 'icon.svg'), 'utf8').replace(/\r\n/g, '\n'); // a Windows checkout may hold CRLF
+  assert.equal(svg, iconSvg(), 'public/icon.svg is stale — run `node vesta/scripts/build-icons.cjs`');
+  for (const d of Object.values(B.MARK_PATHS)) assert.ok(svg.includes(`d="${d}"`), 'the icon uses the mark’s own paths');
+  const index = fs.readFileSync(path.join(ROOT, 'vesta', 'index.html'), 'utf8');
+  assert.ok(index.includes('href="/icon.svg"') && index.includes('href="/apple-touch-icon.png"'), 'the page names the icons');
 });

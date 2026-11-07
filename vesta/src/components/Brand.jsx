@@ -4,24 +4,27 @@
 // real text for assistive tech — so the SVGs are hidden from it.
 import './Brand.css';
 
-/** The hearth: a warm amber flame with a lighter heart. */
-export function VestaFlame({ size = 48 }) {
+// The hearth mark (Nick's logo, 7 Nov 2026): two bronze flame tongues rising
+// from a hearth ring. One set of paths, shared by the lockup and the app icons
+// (vesta/public/icon.svg is generated from these by vesta-brand.test.js's
+// check — keep them in step). The ring takes `currentColor`, so it is charcoal
+// on a light ground and ivory on the wall's dark one; the flame stays bronze.
+export const MARK_VIEWBOX = '30 4 194 174';
+export const MARK_FLAME = '#b07836';
+export const MARK_PATHS = {
+  // Open at the top: the ring tapers to nothing either side of the flame.
+  ring: 'M92.1 121A92.5 27.5 0 1 0 174.3 123A71 21 0 1 1 92.1 121Z',
+  tall: 'M133 9C142 20 147 34 145 50C143 64 128 82 115 92C108 98 105 108 106 118C107 126 108 132 108 139C99 132 92 124 90 112C88 98 90 84 97 72C104 60 116 52 124 42C129 34 132 22 133 9Z',
+  short: 'M158 59C162 68 166 78 165 88C164 104 157 116 148 122C138 130 130 136 128 144C127 148 125 151 124 153C121 148 119 140 119 132C119 120 124 108 132 101C142 92 153 78 158 59Z',
+};
+
+/** VESTA's mark: the hearth. Height sets the size. */
+export function VestaMark({ size = 48 }) {
   return (
-    <svg className="vbrand__flame" width={Math.round(size * 0.78)} height={size} viewBox="0 0 39 50" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id="vbrandOuter" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffc457" />
-          <stop offset="1" stopColor="#e2701c" />
-        </linearGradient>
-        <linearGradient id="vbrandInner" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffe3a3" />
-          <stop offset="1" stopColor="#f7a33a" />
-        </linearGradient>
-      </defs>
-      {/* Outer flame: a tall lick rising from a rounded base. */}
-      <path fill="url(#vbrandOuter)" d="M19.4 1.5c1.6 7.3-1.7 11.4-5.3 15.9C10.2 22.3 6 27.5 6 34.4 6 42.4 12 48.5 19.6 48.5c7.8 0 13.4-6 13.4-13.9 0-5.7-2.6-10.4-5.8-14.4.4 3.6-.7 6.6-3 8.3.6-9.7-1.3-17.6-4.8-22.9z" />
-      {/* Inner flame: the bright heart, set low. */}
-      <path fill="url(#vbrandInner)" d="M20.6 23.4c.6 4.4-2.4 6.6-4.4 9.2-1.4 1.8-2.3 3.7-2.3 6 0 4 2.8 7 6.2 7 3.6 0 6.3-2.9 6.3-6.8 0-2.6-1.1-4.8-2.6-6.7-.2 1.6-.9 2.8-2 3.5.2-4.6-.5-8.7-1.2-12.2z" />
+    <svg className="vbrand__mark" height={size} width={Math.round(size * 1.115)} viewBox={MARK_VIEWBOX} aria-hidden="true" focusable="false">
+      <path d={MARK_PATHS.ring} fill="currentColor" fillRule="evenodd" />
+      <path d={MARK_PATHS.tall} fill={MARK_FLAME} />
+      <path d={MARK_PATHS.short} fill={MARK_FLAME} />
     </svg>
   );
 }
@@ -52,7 +55,7 @@ export function VestaLockup() {
   return (
     <div className="vbrand" role="img" aria-label={`VESTA — ${VESTA_EXPANSION}`}>
       <div className="vbrand__row">
-        <VestaFlame />
+        <VestaMark />
         <VestaWordmark />
       </div>
       <p className="vbrand__sub" aria-hidden="true">{VESTA_EXPANSION}</p>
