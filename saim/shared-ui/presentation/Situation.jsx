@@ -415,21 +415,31 @@ export default function Situation({
             case 'needsYou':
               return [
                 <div key={i} className="sit__objects" role="list" aria-label="Needs you">
-                  {blk.items.map((it) => (
-                    <article key={it.id} role="listitem" className="sit__object sit__object--p0">
-                      <span className="sit__object-tag">Needs you</span>
-                      <p className="sit__object-title">{it.title}</p>
-                      {it.summary && <p className="sit__object-sub">{it.summary}</p>}
-                      <MoreAbout item={it} />
-                      {plan.actions && plan.profile !== 'kiosk' && onGo && it.go && it.go.view && (
-                        <div className="sit__object-acts">
-                          <button type="button" className="sit__chip sit__chip--yes" onClick={() => onGo(it.go.view, it)}>{it.go.label || 'Open it'}</button>
-                        </div>
-                      )}
-                      {plan.actions && renderNeedsYouActs ? renderNeedsYouActs(it) : null}
-                      {plan.actions && renderItemExtra ? renderItemExtra(it) : null}
-                    </article>
-                  ))}
+                  {blk.items.map((it) => {
+                    const acts = plan.actions && renderNeedsYouActs ? renderNeedsYouActs(it) : null;
+                    // 7 Nov 2026: when the waiting drafts are listed right here with
+                    // Send, "Review and send" is a second door to the same press —
+                    // offered only as "See all" when more wait than are listed (5).
+                    const inlineDrafts = it.id === 'approvals' && acts;
+                    const showGo = plan.actions && plan.profile !== 'kiosk' && onGo && it.go && it.go.view
+                      && (!inlineDrafts || (it.count || 0) > 5);
+                    const goLabel = inlineDrafts ? `See all ${it.count}` : (it.go && it.go.label) || 'Open it';
+                    return (
+                      <article key={it.id} role="listitem" className="sit__object sit__object--p0">
+                        <span className="sit__object-tag">Needs you</span>
+                        <p className="sit__object-title">{it.title}</p>
+                        {it.summary && <p className="sit__object-sub">{it.summary}</p>}
+                        <MoreAbout item={it} />
+                        {showGo && (
+                          <div className="sit__object-acts">
+                            <button type="button" className={`sit__chip ${inlineDrafts ? 'sit__chip--quiet' : 'sit__chip--yes'}`} onClick={() => onGo(it.go.view, it)}>{goLabel}</button>
+                          </div>
+                        )}
+                        {acts}
+                        {plan.actions && renderItemExtra ? renderItemExtra(it) : null}
+                      </article>
+                    );
+                  })}
                   {blk.overflow > 0 && <p className="sit__more">and {blk.overflow} more</p>}
                 </div>,
                 i === anchorAt && preparedEl ? <div key={`${i}-prepared`}>{preparedEl}</div> : null,

@@ -5,6 +5,6 @@
 .chat-proposal-body { white-space: pre-wrap; font-family: inherit; font-size: 0.9em; margin: 6px 0; max-height: 220px; overflow: auto; }
 .chat-proposal-btn { margin-top: 6px; font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
 .chat-proposal-outcome { margin-top: 6px; font-size: 0.9em; }
-.chat-proposal-ok { color: var(--success, #4caf50); }
-.chat-proposal-warn { color: var(--warning, #e0a030); }
-.chat-proposal-bad { color: var(--danger, #e05050); }
+.chat-proposal-ok { color: var(--success, #5ad18f); }
+.chat-proposal-warn { color: var(--warning, #ffb45c); }
+.chat-proposal-bad { color: var(--danger, #ff6b8a); }

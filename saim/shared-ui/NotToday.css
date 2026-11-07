@@ -19,10 +19,10 @@
 .ntd__link { font: inherit; font-size: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; font-weight: 600; }
 .ntd__link:disabled { opacity: 0.5; cursor: default; }
 .ntd__parked, .ntd__ok { margin: 4px 0 0; font-size: 12.5px; opacity: 0.9; }
-.ntd__err { margin: 4px 0 0; font-size: 12.5px; font-weight: 600; color: #e5484d; }
+.ntd__err { margin: 4px 0 0; font-size: 12.5px; font-weight: 600; color: #ff6b8a; }
 .tick-out { margin: 4px 0 0; font-size: 12.5px; line-height: 1.4; }
 .tick-out--ok { opacity: 0.85; }
-.tick-out--info { color: #7fb2d8; }
-.tick-out--warn { color: #d8b06a; }
-.tick-out--bad { color: #e5484d; font-weight: 600; }
+.tick-out--info { color: #8b98a8; }
+.tick-out--warn { color: #ffb45c; }
+.tick-out--bad { color: #ff6b8a; font-weight: 600; }
 .tick-out__btn { font: inherit; font-size: inherit; color: inherit; background: none; border: 0; padding: 0 0 0 6px; text-decoration: underline; cursor: pointer; }

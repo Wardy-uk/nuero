@@ -19,9 +19,9 @@
 .psend__more summary { cursor: pointer; font-size: 0.85em; opacity: 0.8; margin-top: 4px; }
 .psend__note { margin: 6px 0 0; font-size: 0.85em; opacity: 0.75; }
 .psend__outcome { margin: 6px 0 0; font-size: 0.9em; }
-.psend__outcome--ok { color: var(--success, #4caf50); }
-.psend__outcome--warn { color: var(--warning, #e0a030); }
-.psend__outcome--bad { color: var(--danger, #e05050); }
+.psend__outcome--ok { color: var(--success, #5ad18f); }
+.psend__outcome--warn { color: var(--warning, #ffb45c); }
+.psend__outcome--bad { color: var(--danger, #ff6b8a); }
 .psend__acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .psend__go, .psend__quiet {
   font: inherit;
@@ -33,7 +33,7 @@
   background: transparent;
   color: inherit;
 }
-.psend__go { background: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); color: #fff; font-weight: 600; }
+.psend__go { background: rgb(var(--saim-rgb, 114, 150, 211)); border-color: rgb(var(--saim-rgb, 114, 150, 211)); color: #fff; font-weight: 600; }
 .psend__go:disabled, .psend__quiet:disabled { opacity: 0.55; cursor: default; }
 .psend__edit { display: grid; gap: 6px; margin-top: 6px; }
 .psend__edit label { display: grid; gap: 2px; font-size: 0.85em; }

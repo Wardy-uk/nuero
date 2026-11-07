@@ -4,4 +4,4 @@
 .moc__btn { font: inherit; font-size: 0.88rem; padding: 0.32rem 0.75rem; border-radius: 999px; border: 1px solid var(--line, rgba(255, 255, 255, 0.24)); background: transparent; color: inherit; cursor: pointer; }
 .moc__btn--go { font-weight: 600; }
 .moc__btn:disabled { opacity: 0.6; cursor: wait; }
-.moc__err { font-size: 0.85rem; color: var(--warning, #e0a040); }
+.moc__err { font-size: 0.85rem; color: var(--warning, #ffb45c); }

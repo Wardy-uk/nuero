@@ -8,9 +8,9 @@
 .ns-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 .ns-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; line-height: 1.4; }
-.ns-note--ok { color: #3fb950; }
+.ns-note--ok { color: #5ad18f; }
 .ns-note--warn, .ns-note--parked { color: #e9b46a; }
-.ns-note--bad { color: #ff7b72; }
+.ns-note--bad { color: #ff6b8a; }
 
 .ns-panel { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(127, 127, 127, 0.25); padding-top: 8px; }
 .ns-panel-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

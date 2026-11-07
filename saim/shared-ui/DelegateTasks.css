@@ -1,35 +1,35 @@
 /* Delegate (shared since 7 Nov 2026). The .ho rules are copied from the
    desktop's HandOver.css so the panel looks the same on SAiM, where that
    file is not loaded. */
-.ho { border: 1px solid var(--border, #2a2f37); border-left: 3px solid var(--accent, #4f8cff); border-radius: 6px; padding: 8px 10px; margin: 6px 0; background: var(--bg-card, transparent); }
+.ho { border: 1px solid var(--border, #26313f); border-left: 3px solid rgb(var(--saim-rgb, 114, 150, 211)); border-radius: 6px; padding: 8px 10px; margin: 6px 0; background: var(--bg-card, transparent); }
 .ho__line { display: flex; flex-direction: column; gap: 2px; }
 .ho__title { font-weight: 600; }
 .ho__why { color: var(--text, inherit); }
 .ho__acts { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.ho__btn { font: inherit; font-size: 0.85rem; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border, #2a2f37); background: transparent; color: inherit; cursor: pointer; }
-.ho__btn--go { border-color: var(--accent, #4f8cff); color: var(--accent, #4f8cff); }
+.ho__btn { font: inherit; font-size: 0.85rem; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border, #26313f); background: transparent; color: inherit; cursor: pointer; }
+.ho__btn--go { border-color: rgb(var(--saim-rgb, 114, 150, 211)); color: rgb(var(--saim-rgb, 114, 150, 211)); }
 .ho__btn:disabled { opacity: 0.5; cursor: default; }
 .ho__editor { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.ho__to { font-size: 0.8rem; color: var(--text-muted, #8a8f98); }
-.ho__subject, .ho__body { font: inherit; width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid var(--border, #2a2f37); border-radius: 4px; background: var(--bg-input, transparent); color: inherit; }
+.ho__to { font-size: 0.8rem; color: var(--text-muted, #8b98a8); }
+.ho__subject, .ho__body { font: inherit; width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid var(--border, #26313f); border-radius: 4px; background: var(--bg-input, transparent); color: inherit; }
 .ho__body { font-family: var(--font-mono, inherit); font-size: 0.85rem; }
-.ho__note { font-size: 0.82rem; margin-top: 6px; color: var(--text-muted, #8a8f98); }
-.ho__note--warn { color: var(--warning, #d9a441); }
-.ho__note--bad { color: var(--danger, #e5534b); }
-.ho__note--ok { color: var(--success, #3fb950); }
+.ho__note { font-size: 0.82rem; margin-top: 6px; color: var(--text-muted, #8b98a8); }
+.ho__note--warn { color: var(--warning, #ffb45c); }
+.ho__note--bad { color: var(--danger, #ff6b8a); }
+.ho__note--ok { color: var(--success, #5ad18f); }
 .dlg { margin: 8px 0; }
 .dlg__box { display: flex; flex-direction: column; gap: 8px; }
 .dlg__head { display: flex; justify-content: space-between; align-items: center; }
 .dlg__row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dlg__row--top { align-items: flex-start; }
-.dlg__label { width: 56px; flex: 0 0 56px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted, #8a8f98); }
-.dlg__select, .dlg__search { font: inherit; font-size: 0.85rem; padding: 5px 6px; border: 1px solid var(--border, #2a2f37); border-radius: 4px; background: var(--bg-input, transparent); color: inherit; min-width: 240px; }
+.dlg__label { width: 56px; flex: 0 0 56px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted, #8b98a8); }
+.dlg__select, .dlg__search { font: inherit; font-size: 0.85rem; padding: 5px 6px; border: 1px solid var(--border, #26313f); border-radius: 4px; background: var(--bg-input, transparent); color: inherit; min-width: 240px; }
 .dlg__items { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
-.dlg__chip { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; padding: 3px 6px; border: 1px solid var(--border, #2a2f37); border-radius: 4px; }
-.dlg__id { font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--accent, #4f8cff); white-space: nowrap; }
-.dlg__x { margin-left: auto; font: inherit; background: transparent; border: none; color: var(--text-muted, #8a8f98); cursor: pointer; padding: 0 4px; }
-.dlg__matches { display: flex; flex-direction: column; border: 1px solid var(--border, #2a2f37); border-radius: 4px; }
-.dlg__match { text-align: left; font: inherit; font-size: 0.85rem; padding: 4px 6px; background: transparent; border: none; border-bottom: 1px solid var(--border, #2a2f37); color: inherit; cursor: pointer; }
+.dlg__chip { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; padding: 3px 6px; border: 1px solid var(--border, #26313f); border-radius: 4px; }
+.dlg__id { font-family: var(--font-mono, monospace); font-size: 0.75rem; color: rgb(var(--saim-rgb, 114, 150, 211)); white-space: nowrap; }
+.dlg__x { margin-left: auto; font: inherit; background: transparent; border: none; color: var(--text-muted, #8b98a8); cursor: pointer; padding: 0 4px; }
+.dlg__matches { display: flex; flex-direction: column; border: 1px solid var(--border, #26313f); border-radius: 4px; }
+.dlg__match { text-align: left; font: inherit; font-size: 0.85rem; padding: 4px 6px; background: transparent; border: none; border-bottom: 1px solid var(--border, #26313f); color: inherit; cursor: pointer; }
 .dlg__match:last-child { border-bottom: none; }
 .dlg__match:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); }
 .dlg__radio { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
