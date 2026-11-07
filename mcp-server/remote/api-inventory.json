@@ -801,6 +801,22 @@
     "stream": false
   },
   {
+    "id": "get_activity_weekly_report_estimates",
+    "method": "GET",
+    "route": "/api/activity/weekly-report/estimates",
+    "domain": "activity",
+    "source": "routes/neuro-weekly-report.js",
+    "line": 43,
+    "description": "GET /api/activity/weekly-report/estimates. the minutes NEURO counts per kind of thing it did for you (time saved estimates; editable).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_adhd",
     "method": "GET",
     "route": "/api/adhd",
@@ -9033,6 +9049,25 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_activity_weekly_report_estimates",
+    "method": "POST",
+    "route": "/api/activity/weekly-report/estimates",
+    "domain": "activity",
+    "source": "routes/neuro-weekly-report.js",
+    "line": 48,
+    "description": "POST /api/activity/weekly-report/estimates. set how many minutes one kind of action saves you (time saved estimate), or null to reset it to NEURO's default.",
+    "params": [],
+    "query": [],
+    "body": [
+      "area",
+      "minutes"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

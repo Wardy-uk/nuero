@@ -28,6 +28,8 @@ const PRIMARY_ITEMS = [
   { id: 'commitments', label: 'Commitments', icon: '⇄' },
   // Its own entry (7 Nov 2026): it was a card on NEURO Health nobody could find.
   { id: 'could-do',    label: 'NEURO could do', icon: '✧' },
+  // What NEURO did on its own, and the time it saved (moved up from SYSTEM, 7 Nov 2026).
+  { id: 'neuro-did',   label: 'NEURO did for you', icon: '◷' },
 ];
 
 // Groups, in order. Each id appears exactly once across PRIMARY and GROUPS.
@@ -100,8 +102,6 @@ const GROUPS = [
     // What has not been set up yet, per device, judged from evidence.
     // Build 15D: "what has NEURO done?" — one semantic timeline, first in SYSTEM.
     { id: 'activity',     label: 'Activity',      icon: '≡' },
-    // 1 Nov 2026: the weekly "what NEURO did on its own" + misfires to check.
-    { id: 'neuro-did',    label: 'What NEURO did', icon: '◷' },
     { id: 'setup',        label: 'Set up',        icon: '✓' },
     { id: 'sources',      label: 'Sources',       icon: '◎' },
     // Reminder lists, calendar classifications, coverage — moved off Life.

@@ -23,3 +23,13 @@
 .nd-go { margin-left: 6px; color: var(--text-muted, #888); }
 .nd-more { color: var(--text-muted, #888); font-size: 0.85rem; }
 .nd-misfire { padding-left: 8px; border-left: 2px solid var(--warning, #c98a1b); }
+
+/* Time saved (7 Nov 2026) */
+.nd-timesaved { margin: 8px 0 16px; padding: 12px 16px; border: 1px solid var(--border, #333); border-radius: 8px; }
+.nd-timesaved-big { font-size: 1.4rem; font-weight: 600; margin: 0 0 4px; }
+.nd-saved { margin: 2px 0 6px; color: var(--success, #4caf7d); font-size: 0.9rem; }
+.nd-estimates { margin-top: 24px; }
+.nd-estimates table { border-collapse: collapse; margin-top: 8px; width: 100%; }
+.nd-estimates td { padding: 4px 8px; border-bottom: 1px solid var(--border, #333); }
+.nd-estimates input { width: 5em; }
+.nd-quiet { margin-left: 6px; opacity: 0.8; }

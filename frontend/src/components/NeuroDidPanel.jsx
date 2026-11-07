@@ -37,6 +37,9 @@ function Area({ a, onNavigate }) {
         {onNavigate && a.view ? <button type="button" className="nd-open" onClick={() => onNavigate(a.view)}>Open</button> : null}
       </div>
       {a.stats && a.stats.length ? <p className="nd-stats">{a.stats.join(' · ')}</p> : null}
+      {a.minutesSaved > 0 ? (
+        <p className="nd-saved">{`Saved you about ${a.savedWords} — ${a.acted} × ${a.minutesEach} min ${a.savedWhat ? `(${a.savedWhat})` : ''}`}</p>
+      ) : null}
       {a.items && a.items.length ? (
         <ul className="nd-items">
           {a.items.map((i, n) => <li key={n}><Line item={i} onNavigate={onNavigate} /></li>)}
@@ -64,6 +67,16 @@ export function NeuroDidView({ data, week, setWeek, onNavigate = null, error = n
           </select>
         </label>
       </div>
+      {data.timeSaved ? (
+        <section className="nd-timesaved" data-testid="nd-timesaved">
+          <p className="nd-timesaved-big">{data.timeSaved.minutes > 0 ? `Saved you about ${data.timeSaved.words}` : 'No time saved this week'}</p>
+          {data.fiveWeekSaved && data.fiveWeekSaved.weeks > 1 ? (
+            <p className="nd-meta">{`About ${data.fiveWeekSaved.words} over the last ${data.fiveWeekSaved.weeks} weeks`}
+              {(data.recentWeeks || []).length ? ` (${(data.recentWeeks || []).map((w) => `${w.label}: ${w.minutes == null ? '?' : Math.round(w.minutes) + ' min'}`).join(' · ')})` : ''}</p>
+          ) : null}
+          <p className="nd-meta">Estimated — each kind of action counts a set number of minutes. <a href="#nd-estimates">Change the estimates</a></p>
+        </section>
+      ) : null}
       {data.week?.partial ? <p className="nd-meta">This week is still going — counts so far.</p> : null}
       {error ? <p className="nd-gap">Couldn’t refresh ({error}) — showing the last answer.</p> : null}
 
@@ -95,6 +108,37 @@ export function NeuroDidView({ data, week, setWeek, onNavigate = null, error = n
   );
 }
 
+/** The minutes per kind of action, editable (7 Nov 2026). */
+export function EstimatesEditor({ estimates, onSave, busy = false, error = null }) {
+  const [draft, setDraft] = useState({});
+  if (!estimates) return null;
+  return (
+    <details className="nd-estimates" id="nd-estimates" data-testid="nd-estimates">
+      <summary>Time-saved estimates ({estimates.filter((e) => e.changed).length} changed by you)</summary>
+      {error ? <p className="nd-gap">{error}</p> : null}
+      <table>
+        <tbody>
+          {estimates.map((e) => (
+            <tr key={e.id}>
+              <td>{e.what}</td>
+              <td>
+                <input type="number" min="0" max="240" step="0.05" aria-label={`Minutes for ${e.what}`}
+                  value={draft[e.id] ?? e.minutes}
+                  onChange={(ev) => setDraft((d) => ({ ...d, [e.id]: ev.target.value }))} /> min
+              </td>
+              <td>
+                <button type="button" disabled={busy || draft[e.id] === undefined || Number(draft[e.id]) === e.minutes}
+                  onClick={() => { onSave(e.id, Number(draft[e.id])); setDraft((d) => { const n = { ...d }; delete n[e.id]; return n; }); }}>Save</button>
+                {e.changed ? <button type="button" className="nd-quiet" disabled={busy} onClick={() => onSave(e.id, null)}>{`Reset (${e.defaultMinutes})`}</button> : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
 export default function NeuroDidPanel({ onNavigate = null }) {
   const [week, setWeek] = useState(initialWeek);
   const [data, setData] = useState(null);
@@ -110,9 +154,29 @@ export default function NeuroDidPanel({ onNavigate = null }) {
     }
   }, [week]);
   useEffect(() => { load(); }, [load]);
+  const [estimates, setEstimates] = useState(null);
+  const [estError, setEstError] = useState(null);
+  const [estBusy, setEstBusy] = useState(false);
+  useEffect(() => {
+    apiFetch('/api/activity/weekly-report/estimates').then((r) => r.json()).then((j) => setEstimates(j.estimates || null)).catch(() => {});
+  }, []);
+  const saveEstimate = async (area, minutes) => {
+    setEstBusy(true);
+    try {
+      const res = await apiFetch('/api/activity/weekly-report/estimates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ area, minutes }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j.ok === false) throw new Error(j.error || `${res.status}`);
+      setEstimates(j.estimates); setEstError(null);
+      await load();
+    } catch (e) { setEstError(`Not saved — ${e.message}`); }
+    setEstBusy(false);
+  };
   return (
     <div className="nd-panel">
       <NeuroDidView data={data} week={week} setWeek={setWeek} onNavigate={onNavigate} error={error} />
+      <EstimatesEditor estimates={estimates} onSave={saveEstimate} busy={estBusy} error={estError} />
     </div>
   );
 }

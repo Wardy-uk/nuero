@@ -462,6 +462,14 @@ function compose({ week = null, now = Date.now(), d = db } = {}) {
     }
   }
   misfires = rankMisfires(misfires);
+  // Time saved (7 Nov 2026): count × Nick's editable estimate per kind. Never
+  // allowed to fail the report — an unreadable estimate store gives defaults.
+  let timeSaved = null;
+  try {
+    const ts = require('./time-saved').apply(areas);
+    areas.splice(0, areas.length, ...ts.areas);
+    timeSaved = ts.timeSaved;
+  } catch { /* report stands without it */ }
   const acted = areas.filter((a) => !a.informational).reduce((s, a) => s + a.acted, 0);
   const pushes = areas.find((a) => a.id === 'pushes');
   const mis = _bound(misfires);
@@ -470,6 +478,7 @@ function compose({ week = null, now = Date.now(), d = db } = {}) {
     week: _weekOut(w, partial),
     headline: headlineOf({ acted, toCheck: misfires.length, gaps: gaps.length, partial }),
     acted, toCheck: misfires.length, notificationsSent: pushes ? pushes.sent : null,
+    timeSaved,
     misfires: mis.items, misfiresMore: mis.more,
     areas, gaps, notUsedYet,
     options: weekOptions(nowMs),
