@@ -26,6 +26,11 @@ process.env.PLAUD_MCP_BETWEEN_RECORDINGS_MS = '0';
 process.env.PLAUD_SPEAKER_WAIT_ENABLED = 'false';
 process.env.PLAUD_REVISIT_MINUTES = '0.0001';
 for (const k of Object.keys(process.env)) if (/^(ANTHROPIC|OPENROUTER|OPENAI|VOYAGE|OLLAMA)/.test(k)) delete process.env[k];
+// ⚠ No network in this test (7 Nov 2026). On pi5 Ollama and Home Assistant
+// really answer on localhost, so under the full suite's load a side call made
+// during a sync took long enough to blow the 60 s timeout; on a laptop nothing
+// answers and it failed fast. Everything a sync needs here is the fake PLAUD.
+global.fetch = async () => { throw new Error('network disabled in plaud-revisit.test'); };
 
 require.cache[require.resolve('./vault-hooks')] = { exports: { onVaultWrite: () => {} } };
 const processed = [];

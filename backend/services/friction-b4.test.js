@@ -34,7 +34,9 @@ async function bundle(entry) {
 test('sidebar: Drafts, Tasks, People and Overtime carry badges read from existing routes', () => {
   const src = read('frontend/src/components/Sidebar.jsx');
   for (const route of ['/api/prepared-moves/drafts', '/api/todos', '/api/overtime-claims?status=submitted']) assert.ok(src.includes(`'${route}'`), route);
-  for (const id of ['drafts', 'todos', 'people', 'overtime']) assert.match(src, new RegExp(`\\b${id}: \\{ n: `), id);
+  // Drafts folded into "Waiting on your press" (7 Nov 2026): its count rides the Actions badge.
+  assert.match(src, /item\.id === 'actions' && \(actionsCount \+ draftsCount\) > 0/);
+  for (const id of ['todos', 'people', 'overtime']) assert.match(src, new RegExp(`\\b${id}: \\{ n: `), id);
   // People reads the SAME filter the People board's "1-2-1s to book" list uses, off the response already fetched.
   assert.match(src, /a\.actionType === 'create_calendar_event' && a\.origin === '1to1-book'/);
   assert.match(read('frontend/src/components/PeopleBoard.jsx'), /a\.actionType === 'create_calendar_event' && a\.origin === '1to1-book'/, 'the board still uses that filter');
