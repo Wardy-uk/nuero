@@ -26,6 +26,8 @@ const PRIMARY_ITEMS = [
   { id: 'chat',        label: 'Ask',         icon: '›' },
   { id: 'actions',     label: 'Actions',     icon: '✓' },
   { id: 'commitments', label: 'Commitments', icon: '⇄' },
+  // Its own entry (7 Nov 2026): it was a card on NEURO Health nobody could find.
+  { id: 'could-do',    label: 'NEURO could do', icon: '✧' },
 ];
 
 // Groups, in order. Each id appears exactly once across PRIMARY and GROUPS.
@@ -144,6 +146,7 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
   const [escCount, setEscCount] = useState(0);
   const [escTitle, setEscTitle] = useState('');
   const [inboxCount, setInboxCount] = useState(0);
+  const [couldDoCount, setCouldDoCount] = useState(0);
   // Microsoft sign-in due or expired (27 Oct 2026): a menu button, not a banner
   // (Nick's call). Null = could not ask, which shows nothing rather than a guess.
   const [msSignIn, setMsSignIn] = useState(null);
@@ -191,6 +194,12 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
       fetch(apiUrl('/api/email/unseen-count'))
         .then(res => (res.ok ? res.json() : null))
         .then(data => { if (data && typeof data.unseen === 'number') setInboxCount(data.unseen); })
+        .catch(() => {});
+
+      // Open capability suggestions waiting for a yes/no. Unreadable keeps the last number.
+      fetch(apiUrl('/api/setup/capabilities'))
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data && data.known !== false && Array.isArray(data.open)) setCouldDoCount(data.open.length); })
         .catch(() => {});
 
       fetch(apiUrl('/api/microsoft/signin'))
@@ -257,6 +266,9 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
         )}
         {item.id === 'escalations' && escCount > 0 && (
           <span className="sidebar-badge" title={escTitle || undefined}>{escCount > 99 ? '99+' : escCount}</span>
+        )}
+        {item.id === 'could-do' && couldDoCount > 0 && (
+          <span className="sidebar-badge" title="Suggestions waiting for a yes or no">{couldDoCount}</span>
         )}
         {item.id === 'inbox' && inboxCount > 0 && (
           <span className="sidebar-badge" title="Unread in Outlook and not dealt with here">{inboxCount > 99 ? '99+' : inboxCount}</span>

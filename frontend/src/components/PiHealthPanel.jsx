@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiUrl } from '../api';
 import { assessWorker } from '../../../shared/worker-health.cjs';
 import './PiHealthPanel.css';
-import CapabilityGaps from './CapabilityGaps';
 
 const REFRESH_MS = 10000;
 
@@ -364,10 +363,14 @@ export default function PiHealthPanel() {
           question — whether she can still see anything is. */}
       <SignalsSection />
 
-      {/* What she could do with senses and abilities she has not got yet —
-          the next question after "can she still see". Built from the same
-          evidence as Her senses, so it lives beside it. */}
-      <div className="ph-card"><CapabilityGaps /></div>
+      {/* "What NEURO could do" has its own page now (7 Nov 2026) — it was
+          unfindable here. A pointer stays so the old route in still works. */}
+      <div className="ph-card">
+        <p style={{ margin: 0 }}>
+          What NEURO could do for you with new senses or features now has its own page:{' '}
+          <a href="/?view=could-do">What NEURO could do →</a>
+        </p>
+      </div>
 
       {/* ---- FOCUS BAND: the verdict, then only what needs attention ---- */}
       <section className={`ph-focus ph-status-${overallStatus}`}>

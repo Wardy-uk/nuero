@@ -129,6 +129,7 @@ const SourcesPanel = lazyLoad(() => import('./components/canonical/SourcesPanel'
 const FindingsPanel = lazyLoad(() => import('./components/canonical/FindingsPanel'));
 const ActivityPanel = lazyLoad(() => import('./components/canonical/ActivityPanel'));
 const NeuroDidPanel = lazyLoad(() => import('./components/NeuroDidPanel'));
+const CouldDoPage = lazyLoad(() => import('./components/CouldDoPage'));
 const LifePanel = lazyLoad(() => import('./components/canonical/LifePanel'));
 // The Life overhaul (13 Oct 2026): each part of life is its own page. Named
 // exports of one module — lazy() wants a default, so each is lifted.
@@ -515,6 +516,7 @@ function AuthenticatedApp() {
       case 'findings': return <FindingsPanel />;
       case 'activity': return <ActivityPanel />;
       case 'neuro-did': return <NeuroDidPanel onNavigate={handleNavigate} />;
+      case 'could-do': return <CouldDoPage />;
       case 'life': return <LifePanel />;
       case 'home': return <LifeHomePage />;
       case 'family': return <LifeFamilyPage onNavigate={handleNavigate} />;
