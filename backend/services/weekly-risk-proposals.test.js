@@ -145,8 +145,9 @@ nova.listEscalations = async () => [];
 nova.call = async (p) => {
   if (p.startsWith('/api/neuro-bridge/overtime/claims')) {
     if (state.claimsFail) throw Object.assign(new Error('NOVA said no'), { status: 500 });
-    const month = new URL(`http://x${p}`).searchParams.get('month');
-    return p.includes('status=approved') ? state.approved.filter(c => !month || c.date.startsWith(month)) : [];
+    const sp = new URL(`http://x${p}`).searchParams;
+    const from = sp.get('from'); const to = sp.get('to');
+    return p.includes('status=approved') ? state.approved.filter(c => (!from || c.date >= from) && (!to || c.date <= to)) : [];
   }
   return {};
 };
@@ -290,6 +291,13 @@ test('accept routes over HTTP, and machines are refused by the matrix', async ()
     assert.equal(d.allow, false, p);
     assert.equal(d.status, 403, p);
   }
+});
+
+test('a report week across the payroll cut-off (16th/17th) still reads every day of it', async () => {
+  reset();
+  state.approved = [{ date: '2026-11-16', minutes: 60 }, { date: '2026-11-18', minutes: 120 }];
+  const r = await wr.build({ week: '2026-11-23' });
+  assert.equal(r.proposals.sections.overtime.value.hours, 3);
 });
 
 test('the report week the overtime suggestion reads is the completed week before', async () => {

@@ -668,7 +668,14 @@ test('no calendar write to other people exists outside the governed executor', (
   // 19 Oct 2026, a second deliberate exception: SAiM's prepared move creates ONE
   // solo block through action-calendar — never an attendee, never a move or a
   // cancel — behind a default-off switch and a one-use confirmation. Pinned below.
-  assert.deepEqual(writers.sort(), ['routes/vesta.js', 'services/action-calendar.js', 'services/action-executor.js', 'services/google-calendar.js', 'services/prepared-move-exec.js']);
+  // 3 Nov 2026, a third deliberate exception: "Add to calendar" from an email
+  // makes ONE event Nick sees and presses — a solo Outlook event (attendees: [])
+  // or the family Google calendar (which invites nobody). Pinned below.
+  assert.deepEqual(writers.sort(), ['routes/vesta.js', 'services/action-calendar.js', 'services/action-executor.js', 'services/email-calendar.js', 'services/google-calendar.js', 'services/prepared-move-exec.js']);
+  const ecal = fs.readFileSync(path.join(root, 'services/email-calendar.js'), 'utf8');
+  assert.match(ecal, /createCalendarEvent\(\{\s*subject: d\.title, start, end, attendees: \[\]/, 'the email event invites nobody');
+  assert.equal((ecal.match(/createCalendarEvent\(/g) || []).length, 1, 'one Outlook create call site');
+  assert.doesNotMatch(ecal, /moveEvent\(|cancelEvent\(|updateCalendarEvent\(/, 'it never moves or cancels');
   const pmx = fs.readFileSync(path.join(root, 'services/prepared-move-exec.js'), 'utf8');
   assert.doesNotMatch(pmx, /moveEvent\(|cancelEvent\(/, 'a prepared move never moves or cancels an event');
   assert.equal((pmx.match(/createEvent\(/g) || []).length, 1, 'one create call site');

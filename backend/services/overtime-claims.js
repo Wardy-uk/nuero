@@ -68,12 +68,17 @@ const novaFail = (e) => {
 
 // ── Reads ──
 
-async function claims({ status, month } = {}) {
+async function claims({ status, month, from, to } = {}) {
   if (status && !['submitted', 'approved', 'rejected', 'withdrawn'].includes(status)) return bad('unknown status');
   if (month && !MONTH_RE.test(month)) return bad('month must be YYYY-MM');
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+  if ((from && !DAY.test(from)) || (to && !DAY.test(to))) return bad('from/to must be YYYY-MM-DD');
   const q = new URLSearchParams();
   if (status) q.set('status', status);
-  if (month) { const p = signoff().periodForMonth(month); q.set('from', p.from); q.set('to', p.to); }
+  // An exact date span (the weekly report's week) wins over a month: a month is
+  // the payroll CUT-OFF period (17th–16th since 5 Nov 2026), not a calendar month.
+  if (from || to) { if (from) q.set('from', from); if (to) q.set('to', to); }
+  else if (month) { const p = signoff().periodForMonth(month); q.set('from', p.from); q.set('to', p.to); }
   try { return { ok: true, claims: await nova.call(`/api/neuro-bridge/overtime/claims?${q}`) }; } catch (e) { return novaFail(e); }
 }
 

@@ -593,15 +593,15 @@ function flowTimedOut(res) {
 async function readOvertimeClaims(from, to, novaReady = nova.isConfigured()) {
   if (!novaReady) return { ok: false, approved: [], submitted: [], error: 'NOVA bridge not configured' };
   const claimsApi = require('./overtime-claims');
-  const months = [...new Set([from.slice(0, 7), to.slice(0, 7)])];
+  // ⚠ The exact week, never "the months it touches": a month is the payroll
+  // cut-off period (17th–16th) since 5 Nov 2026, so a week across the 16th/17th
+  // asked by calendar month lost the days after the cut-off.
   const out = { ok: true, approved: [], submitted: [] };
   for (const status of ['approved', 'submitted']) {
-    for (const month of months) {
-      const r = await claimsApi.claims({ status, month });
-      if (!r.ok) return { ok: false, approved: [], submitted: [], error: r.error };
-      const list = Array.isArray(r.claims) ? r.claims : [];
-      out[status].push(...list.filter(c => c && c.date >= from && c.date <= to));
-    }
+    const r = await claimsApi.claims({ status, from, to });
+    if (!r.ok) return { ok: false, approved: [], submitted: [], error: r.error };
+    const list = Array.isArray(r.claims) ? r.claims : [];
+    out[status].push(...list.filter(c => c && c.date >= from && c.date <= to));
   }
   return out;
 }
