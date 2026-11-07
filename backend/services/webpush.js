@@ -372,6 +372,26 @@ async function sendToAll(title, body, data = {}) {
     }
   }
 
+  // ── Gate −0.5: is this a good MOMENT? (7 Nov 2026, Nick) ───────────────────
+  // A laptop job while he is out, a work push outside work hours or on a hike,
+  // anything while he is driving — HELD and re-sent when the moment is right
+  // (push-moment.tick, every minute). Unknown never holds; a released push
+  // carries `_momentReleased` and is not held twice.
+  if (!PROBE_TYPES.has(data?.type)) {
+    const held = await require('./push-moment').holdIfWrongMoment(title, body, data || {}, {
+      critical: ALWAYS_DELIVER.has(data?.type),
+    });
+    if (held) {
+      console.log(`[WebPush] Held — ${held.why}, until ${held.until}: "${title}"`);
+      _record(title, body, data, 'held', `${held.why} — sent when ${held.until === 'parked' ? 'you have parked' : held.until === 'on-duty' ? 'work hours start' : held.until === 'hike-over' ? 'the walk is over' : 'you are back at home or work'}`);
+      return;
+    }
+  }
+  if (data && data._momentReleased) {
+    data = { ...data };
+    delete data._momentReleased;
+  }
+
   // Both of the returns below were SILENT. A notification NEURO decided to send
   // and could not deliver is a fact worth keeping — without it, "SAiM has gone
   // quiet" and "SAiM has nothing to say" are the same observation.

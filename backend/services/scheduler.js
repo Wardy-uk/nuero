@@ -386,6 +386,17 @@ function start() {
   // the moment only for an offer it has not already judged in the last 10 min.
   // Not a durable job: both are live reads; a missed minute self-corrects.
   cron.schedule('* * * * *', async () => {
+    // Pushes held for a better moment (out, driving, off duty, on a hike) go
+    // out once the moment allows (push-moment, 7 Nov 2026). Returns at once
+    // when nothing is held.
+    try {
+      const m = await require('./push-moment').tick();
+      if (m && (m.released || m.stale)) {
+        console.log(`[Scheduler] Held pushes: ${m.released} released, ${m.stale} gone stale, ${m.stillHeld} still held`);
+      }
+    } catch (e) {
+      console.error(`[Scheduler] Held-push release failed: ${e.message}`);
+    }
     try {
       const r = await require('./rooms').sweepHolds();
       if (r && (r.restored || r.dropped || r.failed)) {

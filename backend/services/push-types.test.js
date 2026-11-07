@@ -46,6 +46,9 @@ const SUPPRESSIBLE = new Set([
   // Focus blocks (1 Nov 2026): the pushes held during a block, delivered as one
   // summary at its end. Ordinary, so the governor may hold it like any other.
   'block_summary',
+  // Pushes held for a better moment (out, driving, off duty) and released
+  // together (push-moment, 7 Nov 2026). Ordinary — the governor may hold it.
+  'held_summary',
   // The ambient layer — water, sitting, exercise, a health trend. SUPPRESSIBLE
   // by definition: it is the most interruptible thing SAiM says, and the whole
   // design rests on it respecting quiet hours, the dedupe and the hourly cap.

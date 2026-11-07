@@ -62,6 +62,8 @@ const OWNERS = Object.freeze({
   block_wind_down: SAIM,
   block_end: SAIM,
   block_summary: SAIM,
+  // Pushes held for a better moment and released together (push-moment, 7 Nov 2026).
+  held_summary: SAIM,
 
   // ── NEURO: the system, and reports/reviews ready ───────────────────────────
   router_health: NEURO,
