@@ -123,14 +123,33 @@ test('blocks the account cannot see are absent; unreadable ones say so', async (
   assert.ok(nk.includes('Forecast not configured'), 'known:false says why');
 });
 
-test('under the clock: tea, the nearest two countdowns, and the walk banner (amber when overdue)', async () => {
+test('the house panel (7 Nov 2026): equal tabs, Home underlined at rest, the badge inline, tea beneath', async () => {
   const C = await load('WallCinema.jsx');
   const html = cinema(C, full());
-  assert.ok(html.includes('aria-label="Tea tonight — tap to set"') && html.includes('Lasagne'));
-  assert.ok(html.includes('Half term') && html.includes('in 5 days') && html.includes('in 8 days'));
-  assert.ok(!html.includes('cine__walkbanner'), 'no walk: no banner');
+  const nav = html.slice(html.indexOf('class="cine__nav"'), html.indexOf('</section>', html.indexOf('class="cine__nav"')));
+  assert.ok(nav.includes('cine__dock'), 'positive control: the tabs are in the panel');
+  assert.ok(/class="cine__dockbtn cine__dockbtn--on"[^>]*aria-label="Home"/.test(nav), 'Home is the active section at rest');
+  assert.equal(count(nav, /cine__dockbtn--on/g), 1, 'exactly one active section');
+  assert.ok(/<span class="cine__docklabel">Shopping<\/span><span class="cine__badge">3<\/span>/.test(nav), 'the count sits inline after the label');
+  assert.ok(nav.includes('aria-label="Tea tonight — tap to set"') && nav.includes('<span class="cine__teameal">Lasagne</span>'), 'tea is in the panel, under the tabs');
+  assert.ok(!html.includes('cine__bit--tea'), 'no detached Tea pill');
+  assert.deepEqual(C.activeNav([{ id: 'home' }, { id: 'shop' }], { kind: 'shop' }), 'shop', 'an open sheet takes the underline');
+  assert.equal(C.activeNav([{ id: 'shop' }], null), null, 'no Home tab: nothing claims to be active');
+
   const unset = cinema(C, full({ tea: { today: null, days: [], recent: [] } }));
-  assert.ok(unset.includes('<span class="cine__bitlabel">Tea</span> —'), 'tea not set: "Tea —"');
+  assert.ok(unset.includes('cine__teameal cine__teameal--unset">Not set yet'), 'tea not set says so');
+  const long = 'Grandma’s slow-roasted shoulder of lamb with rosemary potatoes, honey carrots and proper gravy';
+  assert.ok(cinema(C, full({ tea: { today: long, days: [], recent: [] } })).includes(long), 'a long meal is drawn whole (CSS wraps it)');
+  const readOnly = text(renderToString(h(C.CinemaView, { data: full(), now: NOW, cal: CAL, act: null })));
+  assert.ok(readOnly.includes('Lasagne') && !readOnly.includes('Tea tonight — tap to set'), 'a read-only wall shows tea but cannot open it');
+});
+
+test('under the household line: the nearest two countdowns and the walk banner (amber when overdue)', async () => {
+  const C = await load('WallCinema.jsx');
+  const html = cinema(C, full());
+  const left = html.slice(html.indexOf('class="cine__left'), html.indexOf('class="cine__right"'));
+  assert.ok(left.includes('Half term') && left.includes('in 5 days') && left.includes('in 8 days'), 'countdowns in the left column');
+  assert.ok(!html.includes('cine__walkbanner'), 'no walk: no banner');
 
   const out = cinema(C, full({ walk: { active: true, state: 'out', name: 'Kinder Scout', start: '2026-10-25T10:00:00', due: '2026-10-25T15:30:00', alertAt: '2026-10-25T16:30:00' } }));
   assert.ok(out.includes('Nick’s on a walk · back by ~15:30') && out.includes('cine__walkbanner"'));

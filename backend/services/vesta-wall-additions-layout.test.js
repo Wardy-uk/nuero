@@ -134,8 +134,8 @@ app.whenReady().then(async () => {
       const over = [...document.querySelectorAll('.cine__layout *')].filter((e) => !e.closest('.cine__sdays')).filter((e) => { const b = e.getBoundingClientRect(); return b.width && (b.right > vw + 1 || b.bottom > vh + 1); }).slice(0, 6).map((e) => e.className || e.tagName);
       const leftKids = [...document.querySelectorAll('.cine__left > *')].map((e) => e.getBoundingClientRect().bottom);
       return { vw, vh, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, over,
-        leftBottom: Math.max(...leftKids), left: r('.cine__left'), right: r('.cine__right'), outside: r('.cine__outside'), dock: r('.cine__dock'),
-        bits: r('.cine__bits'), chips: r('.cine__chipsr'), chipW: Math.min(...[...document.querySelectorAll('.cine__chipsr > *')].map((e) => e.getBoundingClientRect().width)), topR: r('.cine__top'), layoutR: r('.cine__layout'), walk: r('.cine__walkbanner'), walkClipped: (() => { const e = document.querySelector('.cine__walkbanner'); return e ? e.scrollWidth > e.clientWidth + 1 : null; })(), panels: r('.cine__panels'), strip: r('.cine__strip'), card: r('.cine__saimcard'),
+        leftBottom: Math.max(...leftKids), left: r('.cine__left'), right: r('.cine__right'), outside: r('.cine__tw'), nav: r('.cine__nav'), dock: r('.cine__dock'), tea: r('.cine__tea'),
+        bits: r('.cine__bits'), chips: r('.cine__bit--cd'), chipW: Math.min(...[...document.querySelectorAll('.cine__bits .cine__bit--cd')].map((e) => e.getBoundingClientRect().width)), brand: r('.vbrand'), topR: r('.cine__top'), layoutR: r('.cine__layout'), walk: r('.cine__walkbanner'), walkClipped: (() => { const e = document.querySelector('.cine__walkbanner'); return e ? e.scrollWidth > e.clientWidth + 1 : null; })(), panels: r('.cine__panels'), strip: r('.cine__strip'), card: r('.cine__saimcard'),
         line: r('.cine__saimline'), field: !!document.getElementById('saimfield'), offer: !!document.getElementById('saimoffer'),
         dockBtns: [...document.querySelectorAll('.cine__dockbtn')].map((b) => Math.round(b.getBoundingClientRect().height)) };
     })()\`);
@@ -189,7 +189,7 @@ test.before(async () => {
     nodePaths: [mods], loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'silent',
   });
   // App.css first, as in the app: it carries `* { box-sizing: border-box }`, without which the layout's padding overflows on its own.
-  const css = [['src', 'App.css'], ['src', 'views', 'Wall.css'], ['src', 'views', 'WallCinema.css']].map((f) => fs.readFileSync(path.join(VESTA, ...f), 'utf8')).join('\n');
+  const css = [['src', 'App.css'], ['src', 'views', 'Wall.css'], ['src', 'views', 'WallCinema.css'], ['src', 'components', 'Brand.css']].map((f) => fs.readFileSync(path.join(VESTA, ...f), 'utf8')).join('\n');
   const bundle = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
   const jobs = [];
   for (const screen of [false, true]) {
@@ -226,14 +226,18 @@ test('every new piece fits 1024×748 and 1180×820 with no scrolling — iPad an
     const at = `${m.name} @${m.w}x${m.h}`;
     assert.ok(m.sw <= m.vw && m.sh <= m.vh, `${at}: page scrolls (${m.sw}x${m.sh})`);
     assert.deepEqual(m.over, [], `${at}: something runs off the screen`);
-    assert.ok(m.bits && m.walk && m.chips, `${at}: positive control — the walk, tea and countdowns drawn`);
+    assert.ok(m.bits && m.walk && m.chips, `${at}: positive control — the walk and countdowns drawn`);
     assert.ok(m.dock, `${at}: the dock is drawn`);
     assert.equal(m.walkClipped, false, `${at}: the walk banner is cut short`);
     assert.ok(m.leftBottom <= m.panels.top + 1, `${at}: the clock column (${Math.round(m.leftBottom)}) runs into the panels (${Math.round(m.panels.top)})`);
-    assert.ok(m.right.bottom <= m.panels.top + 1, `${at}: Outside + dock run into the panels`);
-    assert.ok(!overlap(m.dock, m.outside), `${at}: the dock overlaps the Outside tile`);
-    assert.ok(!overlap(m.chips, m.dock) && !overlap(m.chips, m.outside), `${at}: tea/countdowns overlap the dock or Outside`);
-    assert.ok(m.chipW >= 80, `${at}: a tea/countdown chip is squashed to ${Math.round(m.chipW)}px`);
+    assert.ok(m.right.bottom <= m.panels.top + 1, `${at}: the weather and house panels run into the panels`);
+    assert.ok(m.nav && m.tea, `${at}: positive control — the house panel and tea drawn`);
+    assert.ok(!overlap(m.nav, m.outside) && m.nav.top >= m.outside.bottom, `${at}: the house panel sits under the weather panel`);
+    assert.ok(Math.abs(m.nav.left - m.outside.left) <= 1 && Math.abs(m.nav.right - m.outside.right) <= 1, `${at}: the two right-hand panels share one width and alignment`);
+    assert.ok(Math.abs(m.outside.right - m.panels.right) <= 1, `${at}: the weather panel meets the screen's right margin`);
+    assert.ok(m.tea.top >= m.dock.bottom - 1, `${at}: tea sits beneath the tabs`);
+    assert.ok(m.brand && m.brand.bottom <= m.panels.top, `${at}: the VESTA lockup is drawn top-left`);
+    assert.ok(m.chipW >= 80, `${at}: a countdown chip is squashed to ${Math.round(m.chipW)}px`);
     assert.ok(!overlap(m.left, m.right), `${at}: the clock column and the right column overlap`);
     assert.ok(m.strip.bottom <= m.vh + 1, `${at}: the strip is cut off`);
     for (const hgt of m.dockBtns) assert.ok(hgt >= 44, `${at}: a dock button is ${hgt}px tall (< 44)`);

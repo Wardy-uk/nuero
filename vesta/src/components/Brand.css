@@ -1,0 +1,13 @@
+/* VESTA's lockup and the NEURO attribution (7 Nov 2026). Ivory letters,
+   restrained amber; sized from the viewport like the rest of the wall. */
+.vbrand { display: flex; flex-direction: column; gap: 0.7vh; min-width: 0; color: #f6efe7; }
+.vbrand__row { display: flex; align-items: center; gap: clamp(8px, 1.1vw, 16px); }
+.vbrand__flame { flex: none; width: auto; height: clamp(38px, 7.4vh, 72px); filter: drop-shadow(0 0 10px rgba(240, 150, 50, 0.35)); }
+.vbrand__word { flex: none; width: auto; height: clamp(28px, 5.4vh, 54px); color: #f6efe7; filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.35)); }
+.vbrand__sub { margin: 0; font-size: clamp(12px, 2.1vh, 21px); font-weight: 400; color: rgba(246, 239, 231, 0.88); letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* "Powered by ⟡ NEURO": one size, one weight; the mark is the text's height. */
+.vbrand__powered { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.25; }
+.vbrand__poweredline { display: inline-flex; align-items: center; gap: 0.3em; font-size: inherit; font-weight: 400; color: inherit; white-space: nowrap; }
+.vbrand__neuro { flex: none; width: 0.92em; height: 1em; color: #4f9cf9; overflow: visible; }
+.vbrand__build { font-size: inherit; color: inherit; opacity: 0.7; font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -307,7 +307,8 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   const chtml = renderToString(React.createElement(CinemaView, {
     data: cdata, now, cal: { view: 'today', offset: 0, range: todayRange, onStep() {}, onToday() {}, onView() {} },
   }));
-  assert.ok(chtml.includes('14:05') && chtml.includes('Monday 19 October'));
+  assert.ok(chtml.includes('14:05') && chtml.includes('>Monday</span>') && chtml.includes('>19 October</span>'), 'time and date in the top-right panel');
+  assert.ok(chtml.includes('aria-label="VESTA — Versatile Everyday Space for Tasks &amp; Answers"'), 'the lockup top-left');
   assert.ok(chtml.includes('Household jobs') && chtml.includes('Car tax') && chtml.includes('Overdue'));
   assert.ok(chtml.includes('9.4 kWh') && chtml.includes('This month 150 kWh') && chtml.includes('yesterday so far') && chtml.includes('running late') && chtml.includes('Energy yesterday'));
   assert.ok(chtml.includes('Coming up') && (chtml.match(/class="cine__sday[ "]/g) || []).length === 7, 'draws the days it was given');
@@ -319,6 +320,7 @@ test('8. the wall renders for real: week columns, Nick at work without detail, a
   for (const invented of ['Feels like', 'breeze', 'vs yesterday']) assert.ok(!chtml.includes(invented), `nothing NEURO does not hold: ${invented}`);
   const cbare = renderToString(React.createElement(CinemaView, { data: { ...cdata, scopes: ['tasks'] }, now, cal: { view: 'today', offset: 0, range: todayRange } }));
   assert.ok(!cbare.includes('cine__people') && !cbare.includes('Energy') && !cbare.includes('Coming up'), 'scopes still decide what is drawn');
+  assert.ok(cbare.includes('14:05') && !cbare.includes('cine__twbody') && !cbare.includes('Week ahead'), 'without the house scope the panel still tells the time, and draws no weather');
 
   assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'home' }, { name: 'Ember', role: 'companion', state: 'out' }] }), 'Everyone’s home');
   assert.equal(presenceLine({ known: true, people: [{ name: 'Helen', role: 'person', state: 'home' }, { name: 'Isaac', role: 'person', state: 'home' }, { name: 'Nick', role: 'person', state: 'out' }] }), 'Helen and Isaac are home');

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../api';
 import { backgroundReport } from '../backgrounds';
+import { PoweredByNeuro } from '../components/Brand.jsx';
 import './Wall.css';
 import { CinemaView, presenceLine, nextLine, sunTimes, skyPhase, photoSlot, stripItems, weatherIcon, dewPoint } from './WallCinema';
 
@@ -841,7 +842,7 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
     },
   };
   return (
-    <div className={`wall-shell${dim ? ' wall-shell--dim' : ''}`}
+    <div className={`wall-shell wall-shell--${look}${dim ? ' wall-shell--dim' : ''}`}
          onClickCapture={(e) => {
            // The first tap on a dimmed wall only wakes it — it must not also press
            // whatever was under the finger in the dark.
@@ -870,7 +871,7 @@ export default function Wall({ onExit, onSignedOut, screen = false, fusion = nul
           {look === 'cinema' ? 'Classic look' : 'Try new look'}
         </button>
         <button className="wall__refresh" onClick={() => window.location.reload()} aria-label="Refresh">↻ Refresh</button>
-        <span className="wall__version">{`v ${api.BUILD_LABEL}`}</span>
+        <PoweredByNeuro build={api.BUILD_LABEL} />
       </footer>}
       {/* No "tap once to keep this screen on" button (Nick, 1 Nov 2026): any
           tap on the wall already arms the keep-awake (onClickCapture above). */}

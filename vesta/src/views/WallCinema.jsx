@@ -4,12 +4,16 @@ import { backgroundFor, cachedUrl, warmCache, weatherCategory, steadyChoice, nex
 import { JobSheet, AddJobSheet, AllJobsSheet, MemberSheet, WeatherSheet, EnergySheet, SheetBoundary, EventSheet, CareRows, HomeSheet, ShoppingSheet, NotesSheet, TeaSheet, WalkSheet } from './WallSheets';
 import WalkMap from '../components/WalkMap.jsx';
 import { LastWalkSheet, TrackSketch, walkSummary } from '../components/LastWalk.jsx';
+import { VestaLockup } from '../components/Brand.jsx';
 import './WallCinema.css';
 
 /**
  * The family wall, "cinema" look (17 Oct 2026) — the approved mockup: a large
  * clock over a landscape, who is home, the outside reading, then Today /
  * Tomorrow / Household jobs / Energy, and the next seven days along the bottom.
+ * Recomposed 7 Nov 2026 to Nick's approved mockup: VESTA's lockup top-left;
+ * the time, date and weather in one panel top-right; Home / Shopping / Notes
+ * and tea tonight in a matching panel beneath it (the old dock + Tea pill).
  *
  * ⚠ A VISUAL REDESIGN ONLY. Every value comes from the same /api/v/wall payload
  * the classic wall reads, redacted on the server exactly as before; nothing here
@@ -245,6 +249,7 @@ export const I = {
   storm: <svg viewBox="0 0 24 24"><path d="M7 14h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 6.9 5.1 4.5 4.5 0 0 0 7 14z" /><path d="M12.5 15.5l-2 3.5h3l-2 3.5" /></svg>,
   fog: <svg viewBox="0 0 24 24"><path d="M4 9.5h16M3 13h18M5 16.5h14M7 20h10" /></svg>,
   wind: <svg viewBox="0 0 24 24"><path d="M3 9h11a2.5 2.5 0 1 0-2.5-2.5M3 13h15a2.5 2.5 0 1 1-2.5 2.5M3 17h8" /></svg>,
+  cutlery: <svg viewBox="0 0 24 24"><path d="M5 3v5.5a2.5 2.5 0 0 0 5 0V3M7.5 3v18" /><path d="M18.5 21V3c-2.2 1.2-3.5 3.8-3.5 7v3.5h3.5" /></svg>,
 };
 
 /** Home Assistant's condition id → one of the icons above. Unknown → none. PURE. */
@@ -396,38 +401,69 @@ export function WeekAheadSheet({ week, today }) {
   );
 }
 
-function Outside({ station, outlook, onOpen, onWeek = null }) {
-  if (!station && outlook === undefined) return null;
-  if (!station || !station.known) {
-    return (
-      <div className="cine__outside">
-        <div className="cine__odetail">
-          {station && <p className="cine__gap">{station.why || 'the weather station could not be read'}.</p>}
-          <OutlookRows outlook={outlook} />
-        </div>
-      </div>
-    );
-  }
+/**
+ * The top-right panel (7 Nov 2026, Nick's approved mockup): time · date ·
+ * weather now along the top; below a rule, the day's outlook on the left and
+ * the station's readings on the right; the week ahead beneath. ALWAYS drawn —
+ * the clock lives here now — while the weather halves need the house scope
+ * (`weather` false = time and date only). Every value is live: a reading NEURO
+ * does not hold is left out, an unreadable source says why, nothing is guessed.
+ */
+function TimeWeather({ now, weather, station, outlook, onOpen, onWeek = null }) {
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const known = Boolean(weather && station && station.known);
+  const ic = known ? weatherIcon(station.condition) : null;
+  const dew = known ? dewPoint(station.tempC, station.humidityPct) : null;
+  const hasOutlook = weather && outlook !== undefined;
+  const hasStation = weather && station !== undefined && station !== null;
+  const open = known ? onOpen : undefined;
   return (
-    <div className="cine__outside cine__tap" aria-label="Outside — tap for details" role="button" tabIndex={0} onClick={onOpen}>
-      {weatherIcon(station.condition) && (
-        <span className="cine__wicon" role="img" aria-label={station.conditionLabel || station.condition} title={station.conditionLabel || ''}>
-          {I[weatherIcon(station.condition)]}
-        </span>
-      )}
-      <div className="cine__temp">{station.tempC != null ? `${station.tempC.toFixed(1)}°` : '—'}</div>
-      <div className="cine__odetail">
-        <OutlookRows outlook={outlook} />
-        <p className="cine__otrend">{station.tendency ? `Pressure ${station.tendency}` : 'Outside'}</p>
-        <ul className="cine__orows">
-          {station.humidityPct != null && <li><Icon name="drop" /> {`${station.humidityPct}% humidity`}</li>}
-          {dewPoint(station.tempC, station.humidityPct) != null && <li><Icon name="dew" /> {`Dew point ${dewPoint(station.tempC, station.humidityPct).toFixed(1)}°`}</li>}
-          {station.pressureHpa != null && <li><Icon name="gauge" /> {`${station.pressureHpa} hPa`}</li>}
-        </ul>
-        {station.indoorLikely && <p className="cine__note">The sensor reads like it’s indoors.</p>}
-        {onWeek && <button className="cine__weekbtn" onClick={(e) => { e.stopPropagation(); onWeek(); }}>Week ahead ›</button>}
+    <section className="cine__tw" aria-label="Time and weather">
+      <div className="cine__twtop">
+        <div className="cine__clock">{`${hh}:${mm}`}</div>
+        <div className="cine__date">
+          <span className="cine__datetext">
+            <span className="cine__dateday">{DAYS_LONG[now.getDay()]}</span>
+            <span className="cine__datedm">{`${now.getDate()} ${MONTHS_LONG[now.getMonth()]}`}</span>
+          </span>
+          <span className="cine__rule" aria-hidden="true" />
+        </div>
+        {known && (station.tempC != null || ic) && (
+          <button className="cine__twnow" onClick={open} aria-label={`Outside${station.tempC != null ? ` ${station.tempC.toFixed(1)} degrees` : ''} — tap for details`}>
+            {ic && (
+              <span className="cine__wicon" role="img" aria-label={station.conditionLabel || station.condition} title={station.conditionLabel || ''}>
+                {I[ic]}
+              </span>
+            )}
+            {station.tempC != null && <span className="cine__temp">{`${station.tempC.toFixed(1)}°`}</span>}
+          </button>
+        )}
       </div>
-    </div>
+      {(hasOutlook || hasStation) && (
+        <div className={`cine__twbody${open ? ' cine__tap' : ''}`} onClick={open} aria-label={open ? 'Outside — tap for details' : undefined}>
+          <div className="cine__twleft">
+            <OutlookRows outlook={outlook} />
+            {known && station.tendency && <p className="cine__otrend">{`Pressure ${station.tendency}`}</p>}
+          </div>
+          {hasStation && (
+            <div className="cine__twright">
+              {known ? (
+                <ul className="cine__orows">
+                  {station.humidityPct != null && <li><Icon name="drop" /> {`${station.humidityPct}% humidity`}</li>}
+                  {dew != null && <li><Icon name="dew" /> {`Dew point ${dew.toFixed(1)}°`}</li>}
+                  {station.pressureHpa != null && <li><Icon name="gauge" /> {`${station.pressureHpa} hPa`}</li>}
+                </ul>
+              ) : (
+                <p className="cine__gap">{`${station.why || 'the weather station could not be read'}.`}</p>
+              )}
+              {known && station.indoorLikely && <p className="cine__note">The sensor reads like it’s indoors.</p>}
+            </div>
+          )}
+        </div>
+      )}
+      {weather && onWeek && <button className="cine__weekbtn" onClick={(e) => { e.stopPropagation(); onWeek(); }}>Week ahead ›</button>}
+    </section>
   );
 }
 
@@ -664,26 +700,24 @@ export function walkBanner(walk) {
 
 /** Whether anything will be drawn under the clock (the clock column tightens to make room). PURE. */
 export function hasBits(data, can) {
-  return Boolean((can('hike') && walkBanner(data.walk)) || (can('home-control') && data.router && (data.router.ask || data.router.note)));
+  return Boolean((can('hike') && walkBanner(data.walk))
+    || (can('calendar') && data.countdowns !== undefined && (data.countdowns === null || data.countdowns.length > 0))
+    || (can('home-control') && data.router && (data.router.ask || data.router.note)));
 }
 
 /**
- * Two places, so 1024×748 still fits with no scrolling (25 Oct 2026): the WALK
- * banner sits under the clock (it matters most, and keeps its full width);
- * tea and the countdowns wrap under the dock, in the space the Outside reading
- * leaves above the panels. `part`: 'walk' | 'chips'.
+ * Under the household line, ONE row: the walk banner (the wall's most urgent
+ * fact, kept whole) then the nearest two countdowns someone marked, which
+ * shrink with an ellipsis. Tea lives in the panel under the weather.
  */
-function DayBits({ data, can, onTea, onWalk, part }) {
+function DayBits({ data, can, onWalk }) {
+  const walk = can('hike') ? walkBanner(data.walk) : null;
   const bits = [];
-  // Tea (scope tasks): absent = not drawn; null = a named gap.
-  if (can('tasks') && data.tea !== undefined) {
-    bits.push(data.tea === null
-      ? <span key="tea" className="cine__bit cine__bit--gap">Tea: can’t read</span>
-      : <button key="tea" className="cine__bit cine__bit--tea" onClick={onTea} aria-label="Tea tonight — tap to set">
-          <span className="cine__bitlabel">Tea</span>{` ${data.tea.today || '—'}`}
-        </button>);
+  if (walk) {
+    bits.push(walk.tone === 'walk' || walk.tone === 'late'
+      ? <button key="walk" className={`cine__walkbanner${walk.tone === 'late' ? ' cine__walkbanner--late' : ''}`} onClick={onWalk} role={walk.tone === 'late' ? 'alert' : undefined}>{walk.text}</button>
+      : <span key="walk" className={`cine__bit${walk.tone === 'gap' ? ' cine__bit--gap' : ''}`}>{walk.text}</span>);
   }
-  // Countdowns (scope calendar): the nearest two someone marked.
   if (can('calendar') && data.countdowns !== undefined) {
     if (data.countdowns === null) bits.push(<span key="cd" className="cine__bit cine__bit--gap">Countdowns: can’t read</span>);
     else for (const c of data.countdowns.slice(0, 2)) {
@@ -692,16 +726,7 @@ function DayBits({ data, can, onTea, onWalk, part }) {
       </span>);
     }
   }
-  const walk = can('hike') ? walkBanner(data.walk) : null;
-  if (part === 'chips') return bits.length ? <div className="cine__chipsr">{bits}</div> : null;
-  if (!walk) return null;
-  return (
-    <div className="cine__bits">
-      {walk && (walk.tone === 'walk' || walk.tone === 'late'
-        ? <button className={`cine__walkbanner${walk.tone === 'late' ? ' cine__walkbanner--late' : ''}`} onClick={onWalk} role={walk.tone === 'late' ? 'alert' : undefined}>{walk.text}</button>
-        : <span className={`cine__bit${walk.tone === 'gap' ? ' cine__bit--gap' : ''}`}>{walk.text}</span>)}
-    </div>
-  );
+  return bits.length ? <div className="cine__bits">{bits}</div> : null;
 }
 
 /* ── The router restart question (1 Nov 2026) ─────────────────────────────── */
@@ -770,19 +795,53 @@ export function dockItems(data, can) {
   return out;
 }
 
-function Dock({ items, onOpen }) {
-  if (!items.length) return null;
+/**
+ * Which section the nav underlines: the one whose sheet is open, else Home —
+ * the wall itself is the home view (the approved mockup). PURE.
+ */
+export function activeNav(items, sheet) {
+  if (sheet && items.some((i) => i.id === sheet.kind)) return sheet.kind;
+  return items.some((i) => i.id === 'home') ? 'home' : null;
+}
+
+/**
+ * The panel under the weather (7 Nov 2026): Home / Shopping / Notes (and the
+ * last walk) as equal tabs, then tea tonight. Replaces the floating dock and the Tea pill; every button opens the
+ * same sheet it always did. Tea is a button only when it can be set (`onTea`).
+ */
+function HouseNav({ items, active, data, can, onOpen, onTea = null }) {
+  const tea = can('tasks') && data.tea !== undefined ? data.tea : undefined;
+  if (!items.length && tea === undefined) return null;
+  const teaInner = (
+    <>
+      <Icon name="cutlery" className="cine__teaicon" />
+      <span className="cine__teaname">Tea</span>
+      <span className={`cine__teameal${tea && tea.today ? '' : ' cine__teameal--unset'}`}>{tea && tea.today ? tea.today : 'Not set yet'}</span>
+      {onTea && <Icon name="chevron" className="cine__chev cine__teachev" />}
+    </>
+  );
   return (
-    <nav className="cine__dock" aria-label="House">
-      {items.map((d) => (
-        <button key={d.id} className={`cine__dockbtn${d.id === 'lastWalk' ? ' cine__dockbtn--walk' : ''}`} onClick={() => onOpen(d.id)}
-                aria-label={d.badge != null ? `${d.label} (${d.badge})` : d.say ? `${d.label}: ${d.say}` : d.label}>
-          <span className="cine__dockicon" aria-hidden="true">{d.id === 'lastWalk' ? <TrackSketch line={d.line} /> : DOCK_ICONS[d.id]}</span>
-          <span className="cine__docklabel">{d.label}</span>
-          {d.badge != null && <span className={`cine__badge${d.badge === '!' ? ' cine__badge--gap' : ''}`}>{d.badge}</span>}
-        </button>
-      ))}
-    </nav>
+    <section className="cine__nav" aria-label="House">
+      {items.length > 0 && (
+        <nav className={`cine__dock${items.length > 3 ? ' cine__dock--many' : ''}`} aria-label="Sections">
+          {items.map((d) => (
+            <button key={d.id} className={`cine__dockbtn${d.id === 'lastWalk' ? ' cine__dockbtn--walk' : ''}${active === d.id ? ' cine__dockbtn--on' : ''}`} onClick={() => onOpen(d.id)}
+                    aria-current={active === d.id ? 'true' : undefined}
+                    aria-label={d.badge != null ? `${d.label} (${d.badge})` : d.say ? `${d.label}: ${d.say}` : d.label}>
+              <span className="cine__dockicon" aria-hidden="true">{d.id === 'lastWalk' ? <TrackSketch line={d.line} /> : DOCK_ICONS[d.id]}</span>
+              <span className="cine__docktext">
+                <span className="cine__docklabel">{d.label}</span>
+                {d.badge != null && <span className={`cine__badge${d.badge === '!' ? ' cine__badge--gap' : ''}`}>{d.badge}</span>}
+              </span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {tea === null && <p className="cine__tea cine__gap">Tea: can’t read</p>}
+      {tea && (onTea
+        ? <button className="cine__tea" onClick={onTea} aria-label="Tea tonight — tap to set">{teaInner}</button>
+        : <div className="cine__tea">{teaInner}</div>)}
+    </section>
   );
 }
 
@@ -918,8 +977,6 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
   const gapFor = (b) => ((data && data.gaps) || []).find((g) => g.block === b)?.why || null;
   const can = (s) => ((data && data.scopes) || []).includes(s);
   const phase = skyPhase(now, data && data.sun);
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
   const [sheet, setSheet] = useState(null);
   const [dirty, setDirty] = useState(false);
   // A sheet left open closes itself after two minutes, like the rest of the wall —
@@ -944,21 +1001,23 @@ export function CinemaView({ data, now, error = null, onExit = null, cal = null,
         <div className="cine__layout">
           <header className="cine__top">
             <div className={`cine__left${data && hasBits(data, can) ? ' cine__left--busy' : ''}`}>
-              <div className="cine__clock">{`${hh}:${mm}`}</div>
-              <div className="cine__date">{`${DAYS_LONG[now.getDay()]} ${now.getDate()} ${MONTHS_LONG[now.getMonth()]}`}</div>
-              <span className="cine__rule" />
+              <VestaLockup />
               {fusion && fusion.line ? <p className="cine__saimline">{fusion.line}</p> : null}
               {data && can('house') && <h1 className="cine__headline">{presenceLine(data.who)}</h1>}
               {week && <p className="cine__subline">{nextLine(week[0], now)}</p>}
-              {data && <DayBits part="walk" data={data} can={can} onWalk={() => setSheet({ kind: 'walk' })} />}
+              {data && <DayBits data={data} can={can} onWalk={() => setSheet({ kind: 'walk' })} />}
               {data && can('home-control') && <RouterAsk router={data.router} onAnswer={act && act.router ? act.router : null} />}
               {data && can('house') && <Presence who={data.who} onPerson={(p) => setSheet({ kind: 'member', person: p })} />}
             </div>
             <div className="cine__right">
-              {data && can('house') && <Outside station={data.station} outlook={data.outlook} onOpen={() => setSheet({ kind: 'weather' })} onWeek={data.weekAhead !== undefined ? () => setSheet({ kind: 'forecast' }) : null} />}
+              <TimeWeather now={now} weather={Boolean(data && can('house'))} station={data && data.station} outlook={data && data.outlook}
+                           onOpen={() => setSheet({ kind: 'weather' })} onWeek={data && data.weekAhead !== undefined ? () => setSheet({ kind: 'forecast' }) : null} />
               {/* Without `act` (a read-only wall) only the last walk opens — it changes nothing. */}
-              <Dock items={dockItems(data, can).filter((d) => act || d.id === 'lastWalk')} onOpen={(id) => setSheet({ kind: id })} />
-              {data && <DayBits part="chips" data={data} can={can} onTea={() => setSheet({ kind: 'tea' })} />}
+              {data && (() => {
+                const items = dockItems(data, can).filter((d) => act || d.id === 'lastWalk');
+                return <HouseNav items={items} active={activeNav(items, sheet)} data={data} can={can}
+                                 onOpen={(id) => setSheet({ kind: id })} onTea={act && act.tea ? () => setSheet({ kind: 'tea' }) : null} />;
+              })()}
             </div>
           </header>
           {fusion && fusion.card ? <div className="cine__saimcard">{fusion.card}</div> : null}

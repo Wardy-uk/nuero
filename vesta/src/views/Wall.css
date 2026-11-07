@@ -169,7 +169,10 @@
 .wall__atwork--off .wall__atwork-label { color: var(--good); }
 
 /* What is holding the screen on — small, so it can be read when it matters. */
-.wall__foot { position: fixed; right: 12px; bottom: 6px; z-index: 4; display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--ink-faint); }
+.wall__foot { position: fixed; right: 12px; bottom: 6px; z-index: 4; display: flex; align-items: flex-end; gap: 12px; font-size: 11px; line-height: 1.25; color: var(--ink-faint); }
+/* The cinema wall: muted ivory over the photograph; the background credit keeps the bottom-left. */
+.wall-shell--cinema .wall__foot { right: 3vw; bottom: 4px; color: rgba(246, 239, 231, 0.62); }
+.wall-shell--cinema .wall__refresh { color: rgba(246, 239, 231, 0.78); border-color: rgba(246, 239, 231, 0.35); }
 .wall__awakeinfo { pointer-events: none; }
 .wall__version { font-variant-numeric: tabular-nums; }
 .wall__refresh { font: inherit; font-size: 12px; color: var(--ink-soft, inherit); background: transparent; border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
