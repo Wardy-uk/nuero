@@ -39,8 +39,25 @@ import Controls from '../app/src/views/Controls';
 import Household from '../app/src/views/Household';
 import Authority from '../app/src/views/Authority';
 import Drafts from '../app/src/views/Drafts';
+import WaitingDrafts from './WaitingDrafts.jsx';
+import { platformNow } from './presentation/platform.mjs';
+import { makeCall } from '../app/src/preparedMove.mjs';
+import { apiUrl, authHeaders } from '../app/src/api';
 import NextSteps from '../app/src/views/NextSteps';
 import TaskScreen from '../app/src/views/TaskScreen';
+
+const tabCall = makeCall({ fetchImpl: (...a) => fetch(...a), apiUrl, authHeaders });
+
+/** SAiM's "Waiting on you": drafted emails/invites (Send in place), then Drafts. */
+function WaitingTab(props) {
+  const kiosk = platformNow() === 'kiosk';
+  return (
+    <>
+      <WaitingDrafts call={kiosk ? null : tabCall} />
+      <Drafts {...props} />
+    </>
+  );
+}
 
 export const PRIMARY = [
   { id: 'capture', label: 'Capture', icon: '➕', Component: Capture },
@@ -56,7 +73,9 @@ export const SECONDARY = [
   // answers to "what should I do now?" — the Surface and Now answer it
   // canonically. Old links resolve through RETIRED_TABS in action-surfaces.
   // Drafts (22 Oct 2026): secondary, so the main bar stays three — reached first from Review.
-  { id: 'drafts', label: 'Drafts', icon: '✎', Component: Drafts },
+  // "Waiting on your press" (7 Nov 2026): the same page as the desktop's — the
+  // drafted emails and invites with one-press Send on top, SAiM's drafts below.
+  { id: 'drafts', label: 'Waiting on you', icon: '✎', Component: WaitingTab },
   // Next steps (3 Nov 2026): everything pending, one list — the desktop page on the
   // phone. Secondary, reached from More and Review; a push carrying `nextStep`
   // opens its row. Not on the kiosk (left out of its menu; no proxy door).

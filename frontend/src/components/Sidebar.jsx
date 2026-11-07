@@ -18,13 +18,14 @@ const PRIMARY_ITEMS = [
   { id: 'today',       label: 'Now',         icon: '◐' },
   // Next steps (3 Nov 2026): everything pending in one list — Start / Snooze / Not today.
   { id: 'next-steps',  label: 'Next steps',  icon: '▸' },
-  // Drafts (22 Oct 2026): every unfinished thing SAiM has prepared, in one place — where Now's "make ready" lands.
-  { id: 'drafts',      label: 'Drafts',      icon: '✎' },
   // The list Nick works from every day — primary, beside the promises behind it (13 Oct 2026).
   { id: 'todos',       label: 'Tasks',       icon: '☑' },
   { id: 'capture',     label: 'Capture',     icon: '+' },
   { id: 'chat',        label: 'Ask',         icon: '›' },
-  { id: 'actions',     label: 'Actions',     icon: '✓' },
+  // Drafts + Actions are ONE page (Nick, 7 Nov 2026): everything waiting on his
+  // press — drafted emails and invites, prepared moves, saved drafts. The view id
+  // stays 'actions' (deep links, pushes); 'drafts' lands on the same page.
+  { id: 'actions',     label: 'Waiting on your press', icon: '✓' },
   { id: 'commitments', label: 'Commitments', icon: '⇄' },
   // Its own entry (7 Nov 2026): it was a card on NEURO Health nobody could find.
   { id: 'could-do',    label: 'NEURO could do', icon: '✧' },
@@ -288,7 +289,6 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
 
   // The newer queue badges, by item id. `n` is shown only when above zero.
   const QUEUE_BADGES = {
-    drafts: { n: draftsCount, title: 'Drafts waiting on your answer or confirmation' },
     todos: { n: triageCount, title: 'Tasks still to triage (MoSCoW, priority, estimate, due date, origin)' },
     people: { n: bookCount, title: '1-2-1s NOVA asked to book — one tap sends each invite' },
     overtime: { n: overtimeCount, title: 'Overtime claims waiting for your decision' },
@@ -315,10 +315,11 @@ export default function Sidebar({ activeView, onNavigate, open, saimWorkspace = 
         {item.id === 'next-steps' && nextCount > 0 && (
           <span className="sidebar-badge" title="Work things pending in Next steps (Life and snoozed ones not counted)">{nextCount > 99 ? '99+' : nextCount}</span>
         )}
-        {item.id === 'actions' && actionsCount > 0 && (
+        {item.id === 'actions' && (actionsCount + draftsCount) > 0 && (
           /* 930 does not fit a badge and 930 is the real number, so say "lots"
-             rather than either lying or breaking the row. */
-          <span className="sidebar-badge" title={actionsTitle || undefined}>{actionsCount > 99 ? '99+' : actionsCount}</span>
+             rather than either lying or breaking the row. Drafts waiting on an
+             answer or confirmation are counted here too (one page, one number). */
+          <span className="sidebar-badge" title={[actionsTitle, draftsCount ? `${draftsCount} prepared draft${draftsCount === 1 ? '' : 's'} to answer or confirm` : null].filter(Boolean).join(' · ') || undefined}>{(actionsCount + draftsCount) > 99 ? '99+' : actionsCount + draftsCount}</span>
         )}
         {item.id === 'escalations' && escCount > 0 && (
           <span className="sidebar-badge" title={escTitle || undefined}>{escCount > 99 ? '99+' : escCount}</span>

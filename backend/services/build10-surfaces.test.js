@@ -95,7 +95,8 @@ test('navigation does not make Work the root of the app', () => {
   const ids = [...primary.matchAll(/id: '([a-z-]+)'/g)].map((m) => m[1]);
   // Drafts (22 Oct 2026) sits beside Now: where Now's "make ready" lands. Next steps (3 Nov 2026) is the whole pending list, after Now. Still not Work-first.
   // NEURO could do / NEURO did for you (7 Nov 2026, Nick: "I can never find it") close the row.
-  assert.deepEqual(ids, ['today', 'next-steps', 'drafts', 'todos', 'capture', 'chat', 'actions', 'commitments', 'could-do', 'neuro-did']);
+  // Drafts folded into Actions = "Waiting on your press" (Nick, 7 Nov 2026); 'drafts' still routes there.
+  assert.deepEqual(ids, ['today', 'next-steps', 'todos', 'capture', 'chat', 'actions', 'commitments', 'could-do', 'neuro-did']);
   const groups = sidebar.slice(sidebar.indexOf('const GROUPS'), sidebar.indexOf('const GROUP_OF'));
   const groupIds = [...groups.matchAll(/\{ id: '([a-z]+)', label: '([A-Z &]+)'/g)].map((m) => m[2]);
   assert.equal(groupIds[0], 'LIFE', 'Life leads; Work is one section');
@@ -210,7 +211,7 @@ test('22+23. iOS reads the canonical screens and renders its governed queue', { 
   assert.match(actions, /GovernedQueueSection\(/, 'Actions renders the governed queue');
 });
 
-test('25 (iOS). no Swift code calls /api/focus; SAiM iOS has no Today/Focus and no task editor', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {
+test('25 (iOS). no Swift code calls /api/focus; SAiM iOS has no Today/Focus', { skip: !IOS && 'no iOS checkout beside this repo' }, () => {
   for (const f of ['NeuroKit/Sources/NeuroKit/Actions.swift', 'Saim/SaimShell.swift', 'Saim/SaimTasksView.swift', 'NeuroKit/Sources/NeuroKit/SaimTabs.swift']) {
     assert.doesNotMatch(swiftCode(f), /"\/api\/focus/, `${f} still calls /api/focus`);
   }
@@ -219,9 +220,8 @@ test('25 (iOS). no Swift code calls /api/focus; SAiM iOS has no Today/Focus and 
   }
   const tabs = swiftCode('NeuroKit/Sources/NeuroKit/SaimTabs.swift');
   assert.doesNotMatch(tabs, /id: "today"|id: "focus"/);
-  const tasks = swiftCode('Saim/SaimTasksView.swift');
-  assert.doesNotMatch(tasks, /TaskEditView\(|DueControl\(/, 'SAiM iOS edits tasks again');
-  assert.match(tasks, /open Tasks in NEURO/, 'positive control: the hand-off is said');
+  // The "SAiM never edits a task" boundary is LIFTED (Nick, 7 Nov 2026: SAiM
+  // Tasks triages, delegates and starts like the desktop), so it is no longer pinned here.
 });
 
 // ── 10F: the Now situation block, rendered for real ─────────────────────────

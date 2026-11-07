@@ -80,25 +80,13 @@ test('a 1-2-1 owed books in place and names the person; one to write up just ope
   assert.equal(hope.start.action, undefined);
 });
 
-test('the drafts row lists each waiting draft with what a one-press Send binds to', () => {
+test('the drafts row is ONE line linking to Waiting on your press — the drafts are not listed here (Nick, 7 Nov 2026)', () => {
   const out = ns.read();
   const d = out.items.find((x) => x.id === 'drafts:waiting');
-  assert.equal(d.start.action, 'drafts');
-  assert.equal(d.title, '3 drafted emails waiting on you');
-  assert.deepEqual(d.drafts.map((x) => x.actionId), ['pa_a', 'pa_b'], 'only the set needsYou counts (approved is not waiting)');
-  const a = d.drafts[0];
-  assert.equal(a.version, 2);
-  assert.equal(a.payloadHash, 'h_a');
-  assert.equal(a.canSend, true);
-  assert.deepEqual(a.to, ['Chris Middleton']);
-  assert.equal(a.preview, 'Hi Chris, Attached.');
-  assert.equal(a.from, 'nickw@x');
-  const b = d.drafts[1];
-  assert.equal(b.canSend, false, 'an uncertain send is never re-sent from here');
-  assert.equal(b.subject, '1-2-1 — Nick / Zoe');
-  assert.deepEqual(b.to, ['Zoe Rees']);
-  assert.equal(b.when, '2026-11-12 14:00');
-  assert.equal(d.draftsMore, 1);
+  assert.equal(d.title, '3 drafted emails waiting on your press');
+  assert.equal(d.start.view, 'actions');
+  assert.equal(d.start.action, undefined);
+  assert.equal(d.drafts, undefined, 'no second set of Send buttons for one draft');
 });
 
 test('draftRow: an unexecutable prepared draft offers no Send', () => {

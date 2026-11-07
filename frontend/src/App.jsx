@@ -75,7 +75,7 @@ const lazyLoad = (load) => lazy(() => load().then((m) => {
 
 const Dashboard = lazyLoad(() => import('./components/Dashboard'));
 // Drafts (22 Oct 2026): SAiM's own Drafts view over the desktop's authenticated client.
-const DraftsPage = lazyLoad(() => import('./components/DraftsPage'));
+const WaitingOnYourPress = lazyLoad(() => import('./components/WaitingOnYourPress'));
 const NextStepsPage = lazyLoad(() => import('./components/NextStepsPage'));
 const ChrisAgendaPage = lazyLoad(() => import('./components/ChrisAgendaPage'));
 const FutureMePanel = lazyLoad(() => import('./components/LifeLoops').then((m) => ({ default: m.FutureMePanel })));
@@ -92,7 +92,6 @@ const CalendarView = lazyLoad(() => import('./components/CalendarView'));
 const InboxPanel = lazyLoad(() => import('./components/InboxPanel'));
 const AdminPanel = lazyLoad(() => import('./components/AdminPanel'));
 const EscalationPanel = lazyLoad(() => import('./components/EscalationPanel'));
-const ActionsPanel = lazyLoad(() => import('./components/ActionsPanel'));
 const DecisionsPanel = lazyLoad(() => import('./components/DecisionsPanel'));
 const WeeklyRiskPanel = lazyLoad(() => import('./components/WeeklyRiskPanel'));
 const ManagementLogPanel = lazyLoad(() => import('./components/ManagementLogPanel'));
@@ -470,7 +469,7 @@ function AuthenticatedApp() {
       case 'today': return <AdhdPanel onNavigate={handleNavigate} />;
       // Off (or unreadable), ?view=saim lands on Now: the fallback is the old home.
       case 'saim': return saimOn ? <SaimWorkspace onNavigate={handleNavigate} /> : <AdhdPanel onNavigate={handleNavigate} />;
-      case 'drafts': return <DraftsPage context={navContext} onNavigate={handleNavigate} />;
+      case 'drafts': return <WaitingOnYourPress section="drafts" context={navContext} onNavigate={handleNavigate} />;
       case 'next-steps': return <NextStepsPage context={navContext} onNavigate={handleNavigate} />;
       case 'chris': return <ChrisAgendaPage onNavigate={handleNavigate} />;
       case 'future-me': return <FutureMePanel context={navContext} />;
@@ -507,7 +506,7 @@ function AuthenticatedApp() {
       case 'setup': return <SetupWizard onNavigate={handleNavigate} />;
       case 'escalations': return <EscalationPanel />;
       case 'microsoft-signin': return <MicrosoftSignInPage onNavigate={handleNavigate} />;
-      case 'actions': return <ActionsPanel onNavigate={handleNavigate} />;
+      case 'actions': return <WaitingOnYourPress section="actions" context={navContext} onNavigate={handleNavigate} />;
       case 'decisions': return <DecisionsPanel />;
       case 'weekly-risk': return <WeeklyRiskPanel onNavigate={handleNavigate} />;
       case 'moved-vantage': return <MovedToVantage />;
@@ -624,7 +623,7 @@ function AuthenticatedApp() {
             the sidebar entry; this is the route to it. */}
         <button className={activeView === 'actions' ? 'active' : ''} onClick={() => handleNavigate('actions')}>
           <span className="bottom-nav-icon">&#x2713;</span>
-          <span>Actions</span>
+          <span>Waiting</span>
         </button>
       </nav>
       {/* Dwell prompt — save this location? */}

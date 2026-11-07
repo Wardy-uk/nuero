@@ -125,25 +125,17 @@ function _drafts(gaps) {
     if (!ny || !ny.known) { gaps.push('drafts waiting: could not check'); return []; }
     const n = (ny.needsApproval || 0) + (ny.needsReview || 0);
     if (!n) return [];
-    // The same set needsYou counts: prepared, uncertain, or failed-but-safe.
-    let drafts = [];
-    try {
-      drafts = pa.listLive()
-        .filter((a) => a.status === 'prepared' || a.status === 'execution_uncertain' || (a.status === 'failed' && a.retrySafe === true))
-        .slice(0, 10)
-        .map(draftRow);
-    } catch (e) { gaps.push(`drafts list: ${e.message}`); }
     return [{
       id: 'drafts:waiting',
       kind: 'drafts',
       group: 'today',
       sphere: 'work',
-      title: `${n} drafted email${n === 1 ? '' : 's'} waiting on you`,
+      title: `${n} drafted email${n === 1 ? '' : 's'} waiting on your press`,
       why: ny.say || 'NEURO has prepared these; nothing is sent until you press.',
       minutes: Math.min(30, n * 3),
-      start: { label: 'Show them', view: 'actions', context: null, action: 'drafts' },
-      drafts,
-      draftsMore: Math.max(0, n - drafts.length),
+      // ONE line and a link (Nick, 7 Nov 2026): the drafts themselves live on
+      // "Waiting on your press" only, so a draft never has two sets of buttons.
+      start: { label: 'Open', view: 'actions', context: null },
       card: { type: 'next_drafts', title: 'Drafts waiting', dedupeKey: 'next:drafts' },
     }];
   } catch (e) {
